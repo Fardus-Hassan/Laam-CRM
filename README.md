@@ -1,4 +1,4 @@
-﻿# Fardus CRM
+﻿# LAAM CRM
 
 Enterprise SaaS CRM monorepo (Nx + pnpm).
 
