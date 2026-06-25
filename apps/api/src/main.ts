@@ -1,4 +1,4 @@
-﻿import { Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app/app.module';
@@ -14,7 +14,7 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Laam CRM API')
-    .setDescription('Fardus enterprise CRM REST API')
+    .setDescription('Laam enterprise CRM REST API')
     .setVersion('0.0.1')
     .addBearerAuth()
     .build();
@@ -37,7 +37,7 @@ async function bootstrap() {
 
   const port = process.env['PORT'] ?? 3333;
   await app.listen(port);
-  Logger.log(`Fardus API running at http://localhost:${port}/${globalPrefix}`);
+  Logger.log(`Laam API running at http://localhost:${port}/${globalPrefix}`);
   Logger.log(`Swagger docs at http://localhost:${port}/${globalPrefix}/docs`);
 }
 

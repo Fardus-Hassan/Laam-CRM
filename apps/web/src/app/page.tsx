@@ -1,4 +1,4 @@
-﻿async function getApiHealth() {
+async function getApiHealth() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333/api';
   try {
     const res = await fetch(`${apiUrl}/health`, { cache: 'no-store' });
@@ -14,7 +14,7 @@ export default async function HomePage() {
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem', maxWidth: 720, margin: '0 auto' }}>
-      <h1>Fardus CRM</h1>
+      <h1>Laam CRM</h1>
       <p>Enterprise SaaS CRM monorepo — Next.js + NestJS + Nx</p>
       <section style={{ marginTop: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: 8 }}>
         <h2>System Status</h2>

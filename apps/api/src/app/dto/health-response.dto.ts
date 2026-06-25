@@ -1,10 +1,10 @@
-﻿import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class HealthResponseDto {
   @ApiProperty({ example: 'ok' })
   status!: 'ok';
 
-  @ApiProperty({ example: 'fardus-api' })
+  @ApiProperty({ example: 'laam-api' })
   service!: string;
 
   @ApiProperty({ example: '0.0.1' })

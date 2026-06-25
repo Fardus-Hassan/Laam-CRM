@@ -1,25 +1,25 @@
-﻿services:
+services:
   postgres:
     image: postgres:16-alpine
-    container_name: fardus-postgres
+    container_name: laam-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: fardus
-      POSTGRES_PASSWORD: fardus
-      POSTGRES_DB: fardus
+      POSTGRES_USER: laam
+      POSTGRES_PASSWORD: laam
+      POSTGRES_DB: laam
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fardus -d fardus"]
+      test: ["CMD-SHELL", "pg_isready -U laam -d laam"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: fardus-redis
+    container_name: laam-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
