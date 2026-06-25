@@ -1,6 +1,14 @@
-packages:
+﻿packages:
+  - "apps/*"
   - "packages/*"
 
 autoInstallPeers: true
 allowBuilds:
   nx: true
+  sharp: true
+  "@parcel/watcher": true
+  unrs-resolver: true
+  less: true
+  "@swc/core": true
+  esbuild: true
+  "@scarf/scarf": true
