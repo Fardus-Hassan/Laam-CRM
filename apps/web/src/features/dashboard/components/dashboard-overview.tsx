@@ -18,7 +18,8 @@ export function DashboardOverview({ stats }: DashboardOverviewProps) {
         <h2 className="text-lg font-semibold">Welcome to Laam CRM</h2>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Sidebar menu items change based on your role. Open the user menu at the
-          bottom and try &quot;Switch role (demo)&quot; to see different navigation.
+          bottom and try &quot;Switch dashboard (demo)&quot; to preview Sales Head
+          or Agent views.
         </p>
       </ContentPanel>
     </div>

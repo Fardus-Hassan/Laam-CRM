@@ -132,17 +132,16 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
 
       <KpiStatGrid metrics={data.kpis} />
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-12">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.salesTrend.title}
           action={
             <PeriodFilter
               value={salesTrendPeriod}
               onChange={setSalesTrendPeriod}
-              className="w-full sm:w-auto"
             />
           }
-          className="min-w-0 xl:col-span-5"
+          className="min-w-0 lg:col-span-2 2xl:col-span-5"
           contentClassName="min-w-0 pt-1 sm:pt-2"
         >
           <MultiLineChart series={salesTrendSeries} />
@@ -150,7 +149,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
 
         <DashboardCard
           title={data.revenueTarget.title}
-          className="min-w-0 xl:col-span-4"
+          className="min-w-0 lg:col-span-1 2xl:col-span-4"
         >
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-stretch">
@@ -209,14 +208,13 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
             </div>
 
             <div className="border-t border-border/70 pt-4">
-              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-muted-foreground">
                   Daily Achievement Trend
                 </p>
                 <PeriodFilter
                   value={achievementPeriod}
                   onChange={setAchievementPeriod}
-                  className="w-full sm:w-auto"
                 />
               </div>
               <SimpleBarChart
@@ -231,13 +229,13 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
 
         <DashboardCard
           title={data.overallPerformance.title}
-          className="min-w-0 xl:col-span-3"
+          className="min-w-0 lg:col-span-1 2xl:col-span-3"
         >
           <MetricRowList metrics={data.overallPerformance.metrics} />
         </DashboardCard>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-12">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.teamPerformance.title}
           action={
@@ -245,10 +243,9 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
               value={teamPeriod}
               onChange={(period) => setTeamPeriod(period as MonthYearPeriod)}
               options={['month', 'year']}
-              className="w-full sm:w-auto"
             />
           }
-          className="min-w-0 xl:col-span-6"
+          className="min-w-0 lg:col-span-2 2xl:col-span-6"
           contentClassName={TABLE_SCROLL_CLASS}
           footer={teamViewMore.footer}
         >
@@ -258,13 +255,9 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         <DashboardCard
           title={data.topAgents.title}
           action={
-            <PeriodFilter
-              value={agentsPeriod}
-              onChange={setAgentsPeriod}
-              className="w-full sm:w-auto"
-            />
+            <PeriodFilter value={agentsPeriod} onChange={setAgentsPeriod} />
           }
-          className="min-w-0 xl:col-span-3"
+          className="min-w-0 lg:col-span-1 2xl:col-span-3"
           footer={agentsViewMore.footer}
         >
           <AgentRankList rows={agentRows} />
@@ -276,10 +269,9 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
             <PeriodFilter
               value={orderStatusPeriod}
               onChange={setOrderStatusPeriod}
-              className="w-full sm:w-auto"
             />
           }
-          className="min-w-0 xl:col-span-3"
+          className="min-w-0 lg:col-span-1 2xl:col-span-3"
         >
           <DonutChart
             segments={orderStatusSegments}
@@ -289,7 +281,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         </DashboardCard>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-12">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.departmentTargets.title}
           action={
@@ -297,10 +289,9 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
               value={deptPeriod}
               onChange={(period) => setDeptPeriod(period as MonthYearPeriod)}
               options={['month', 'year']}
-              className="w-full sm:w-auto"
             />
           }
-          className="min-w-0 xl:col-span-5"
+          className="min-w-0 lg:col-span-2 2xl:col-span-5"
           contentClassName={TABLE_SCROLL_CLASS}
           footer={deptViewMore.footer}
         >
@@ -314,17 +305,16 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
               value={revenuePeriod}
               onChange={(period) => setRevenuePeriod(period as MonthYearPeriod)}
               options={['month', 'year']}
-              className="w-full sm:w-auto"
             />
           }
-          className="min-w-0 xl:col-span-4"
+          className="min-w-0 lg:col-span-1 2xl:col-span-4"
         >
           <SimpleBarChart data={monthlyRevenueData} size="lg" />
         </DashboardCard>
 
         <DashboardCard
           title={data.alerts.title}
-          className="min-w-0 xl:col-span-3"
+          className="min-w-0 lg:col-span-1 2xl:col-span-3"
           footer={alertsViewMore.footer}
         >
           <AlertFeed items={alertsViewMore.visibleItems} />

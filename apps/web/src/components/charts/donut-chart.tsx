@@ -6,7 +6,6 @@ import type { DonutSegment } from '@laam/types';
 import { cn } from '@/lib/utils';
 import { getSeriesColor } from '@/components/charts/chart-theme';
 import { ChartTooltipContent } from '@/components/charts/chart-tooltip';
-import { useIsMobile } from '@/hooks/use-mobile';
 
 type DonutChartProps = {
   segments: DonutSegment[];
@@ -22,21 +21,30 @@ type DonutChartProps = {
 function DonutLegend({
   segments,
   className,
+  compact = false,
 }: {
   segments: DonutSegment[];
   className?: string;
+  compact?: boolean;
 }) {
   return (
-    <ul className={cn('flex flex-col gap-2', className)}>
+    <ul
+      className={cn(
+        'flex flex-col gap-2',
+        compact ? 'gap-1.5' : 'gap-2',
+        className,
+      )}
+    >
       {segments.map((segment, index) => (
-        <li key={segment.id} className="flex items-center gap-2 text-xs">
+        <li
+          key={segment.id}
+          className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 text-xs"
+        >
           <span
             className="size-2.5 shrink-0 rounded-full"
             style={{ backgroundColor: getSeriesColor(index, segment.color) }}
           />
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            {segment.label}
-          </span>
+          <span className="truncate text-muted-foreground">{segment.label}</span>
           <span className="shrink-0 font-medium text-foreground">
             {segment.percent}%
           </span>
@@ -56,14 +64,10 @@ export function DonutChart({
   legendPosition = 'bottom',
   showTooltip = true,
 }: DonutChartProps) {
-  const isMobile = useIsMobile();
-  const chartSize = isMobile ? Math.min(height, 160) : height;
-  const useSideLegend =
-    legendPosition === 'right' ||
-    (legendPosition === 'responsive' && !isMobile);
-  const useBottomLegend =
-    legendPosition === 'bottom' ||
-    (legendPosition === 'responsive' && isMobile);
+  const chartSize = height;
+  const forceBottom = legendPosition === 'bottom';
+  const forceRight = legendPosition === 'right';
+  const useResponsive = legendPosition === 'responsive';
 
   const chart = (
     <div className="relative mx-auto h-full w-full max-w-full">
@@ -116,21 +120,40 @@ export function DonutChart({
     </div>
   );
 
-  if (useSideLegend && showLegend) {
+  if (forceRight && showLegend) {
     return (
       <div
         className={cn(
-          'flex w-full min-w-0 items-center gap-3 sm:gap-4',
+          '@container flex w-full min-w-0 items-center gap-3 sm:gap-4',
           className,
         )}
       >
         <div
-          className="mx-auto shrink-0 sm:mx-0"
+          className="mx-auto shrink-0 @min-[26rem]:mx-0"
           style={{ width: chartSize, height: chartSize }}
         >
           {chart}
         </div>
         <DonutLegend segments={segments} className="min-w-0 flex-1" />
+      </div>
+    );
+  }
+
+  if (useResponsive && showLegend) {
+    return (
+      <div className={cn('@container w-full min-w-0', className)}>
+        <div className="flex flex-col gap-3 @min-[26rem]:flex-row @min-[26rem]:items-center @min-[26rem]:gap-4">
+          <div
+            className="mx-auto w-full max-w-[200px] shrink-0 @min-[26rem]:mx-0 @min-[26rem]:max-w-none"
+            style={{ height: chartSize, width: chartSize }}
+          >
+            {chart}
+          </div>
+          <DonutLegend
+            segments={segments}
+            className="min-w-0 flex-1 grid grid-cols-2 gap-x-3 gap-y-2 @min-[26rem]:flex @min-[26rem]:flex-col"
+          />
+        </div>
       </div>
     );
   }
@@ -143,7 +166,7 @@ export function DonutChart({
       >
         {chart}
       </div>
-      {showLegend && useBottomLegend ? (
+      {showLegend && (forceBottom || !forceRight) ? (
         <DonutLegend
           segments={segments}
           className="grid gap-2 sm:grid-cols-2"

@@ -48,12 +48,12 @@ export function DateRangePicker({
           variant={variant}
           size={size}
           className={cn(
-            'w-full justify-start gap-2 font-normal sm:w-auto',
+            'w-full justify-start gap-2 font-normal text-foreground sm:w-auto',
             !value?.from && 'text-muted-foreground',
             className,
           )}
         >
-          <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
+          <CalendarIcon className="size-4 shrink-0 opacity-70" />
           <span className="truncate text-left">{label}</span>
         </Button>
       </PopoverTrigger>

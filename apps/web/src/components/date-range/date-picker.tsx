@@ -42,12 +42,12 @@ export function DatePicker({
           variant={variant}
           size={size}
           className={cn(
-            'justify-start gap-2 font-normal',
+            'justify-start gap-2 font-normal text-foreground',
             !value && 'text-muted-foreground',
             className,
           )}
         >
-          <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
+          <CalendarIcon className="size-4 shrink-0 opacity-70" />
           <span className="truncate">{label}</span>
         </Button>
       </PopoverTrigger>

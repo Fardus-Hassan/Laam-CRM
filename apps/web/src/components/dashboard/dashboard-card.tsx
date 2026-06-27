@@ -21,16 +21,20 @@ export function DashboardCard({
   contentClassName,
 }: DashboardCardProps) {
   return (
-    <Card className={cn('gap-0 py-0 shadow-none', className)}>
-      <div className="flex flex-col gap-3 border-b px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:py-3">
+    <Card className={cn('@container gap-0 py-0 shadow-none', className)}>
+      <div className="flex items-start justify-between gap-3 border-b px-3 py-3 sm:px-5">
         <div className="min-w-0 flex-1">
-          <CardTitle className="text-sm font-semibold leading-snug">{title}</CardTitle>
+          <CardTitle className="text-sm font-semibold leading-snug text-balance">
+            {title}
+          </CardTitle>
           {description ? (
             <CardDescription className="mt-0.5 text-xs">{description}</CardDescription>
           ) : null}
         </div>
         {action ? (
-          <div className="w-full shrink-0 overflow-x-auto sm:w-auto">{action}</div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            {action}
+          </div>
         ) : null}
       </div>
       <CardContent className={cn('px-3 py-3 sm:px-5 sm:py-4', contentClassName)}>

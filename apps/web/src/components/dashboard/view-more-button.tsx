@@ -29,7 +29,7 @@ export function ViewMoreButton({
         type="button"
         variant="ghost"
         size="sm"
-        className="h-8 w-full justify-center gap-1 text-xs font-medium text-primary hover:text-primary"
+        className="h-8 w-full justify-center gap-1 text-xs font-medium text-primary hover:text-primary dark:hover:bg-white/10 dark:hover:text-primary"
         onClick={onClick}
       >
         {text}

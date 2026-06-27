@@ -2,8 +2,11 @@
 
 import * as React from 'react';
 import { BadgeCheck, ChevronsUpDown, LogOut, Sparkles } from 'lucide-react';
-import { USER_ROLES, ROLE_LABELS, type UserRole } from '@laam/types';
 import { useAuth } from '@/features/auth/hooks/use-auth';
+import {
+  DEMO_DASHBOARD_VIEWS,
+  isDemoDashboardViewActive,
+} from '@/features/dashboard/config/demo-dashboard-views';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -71,15 +74,19 @@ function UserMenuDropdownContent() {
         </DropdownMenuItem>
         {canSwitchRole ? (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Switch role (demo)</DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger>Switch dashboard (demo)</DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
-              {USER_ROLES.map((demoRole: UserRole) => (
+              {DEMO_DASHBOARD_VIEWS.map((view) => (
                 <DropdownMenuItem
-                  key={demoRole}
-                  onClick={() => void switchRole(demoRole)}
-                  className={demoRole === user.role ? 'bg-accent' : undefined}
+                  key={view.id}
+                  onClick={() => void switchRole(view.role)}
+                  className={
+                    isDemoDashboardViewActive(view, user.role)
+                      ? 'bg-accent font-medium'
+                      : undefined
+                  }
                 >
-                  {ROLE_LABELS[demoRole]}
+                  {view.label}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuSubContent>

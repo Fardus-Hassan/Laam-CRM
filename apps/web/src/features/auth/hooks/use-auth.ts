@@ -1,14 +1,30 @@
 'use client';
 
-import { ROLE_LABELS } from '@laam/types';
+import { ROLE_LABELS, type UserRole } from '@laam/types';
 import { useAuthContext } from '@/features/auth/providers/auth-provider';
+import {
+  isAgentRole,
+  isSalesHeadRole,
+} from '@/features/dashboard/config/role-dashboards';
+
+function getRoleLabel(role: UserRole): string {
+  if (isSalesHeadRole(role)) {
+    return 'Sales Head';
+  }
+
+  if (isAgentRole(role)) {
+    return 'Agent';
+  }
+
+  return ROLE_LABELS[role];
+}
 
 export function useAuth() {
   const auth = useAuthContext();
 
   return {
     ...auth,
-    roleLabel: auth.user ? ROLE_LABELS[auth.user.role] : null,
+    roleLabel: auth.user ? getRoleLabel(auth.user.role) : null,
     isLoading: auth.status === 'loading',
     isAuthenticated: auth.status === 'authenticated',
   };

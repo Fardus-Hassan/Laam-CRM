@@ -100,6 +100,77 @@ export const alertItemSchema = z.object({
 });
 export type AlertItem = z.infer<typeof alertItemSchema>;
 
+export const orderStatusTypeSchema = z.enum([
+  'confirmed',
+  'delivered',
+  'cancelled',
+  'hold',
+  'follow_up',
+  'pending',
+  'in_progress',
+]);
+export type OrderStatusType = z.infer<typeof orderStatusTypeSchema>;
+
+export const agentOrderRowSchema = z.object({
+  id: z.string(),
+  orderId: z.string(),
+  customerName: z.string(),
+  status: orderStatusTypeSchema,
+  amount: z.number(),
+  date: z.string(),
+});
+export type AgentOrderRow = z.infer<typeof agentOrderRowSchema>;
+
+export const agentScoreBoardSchema = z.object({
+  totalScore: z.number(),
+  rating: z.string(),
+  rank: z.number().int().positive(),
+  monthChange: z.number(),
+  progressCurrent: z.number(),
+  progressTarget: z.number(),
+});
+export type AgentScoreBoard = z.infer<typeof agentScoreBoardSchema>;
+
+export const incentiveLineItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  amount: z.number(),
+});
+export type IncentiveLineItem = z.infer<typeof incentiveLineItemSchema>;
+
+export const agentIncentiveSummarySchema = z.object({
+  totalEarned: z.number(),
+  periodLabel: z.string(),
+  breakdown: z.array(incentiveLineItemSchema),
+  nextPayoutDate: z.string(),
+});
+export type AgentIncentiveSummary = z.infer<typeof agentIncentiveSummarySchema>;
+
+export const followUpRowSchema = z.object({
+  id: z.string(),
+  customerName: z.string(),
+  phone: z.string(),
+  lastFollowUp: z.string(),
+  nextFollowUp: z.string(),
+  status: z.enum(['pending', 'in_progress', 'completed']),
+});
+export type FollowUpRow = z.infer<typeof followUpRowSchema>;
+
+export const incentiveHistoryRowSchema = z.object({
+  id: z.string(),
+  date: z.string(),
+  description: z.string(),
+  type: z.string(),
+  amount: z.number(),
+});
+export type IncentiveHistoryRow = z.infer<typeof incentiveHistoryRowSchema>;
+
+export const leaderboardRowSchema = agentRankRowSchema.extend({
+  isCurrentUser: z.boolean().optional(),
+  trophy: z.enum(['gold', 'silver', 'bronze']).optional(),
+});
+export type LeaderboardRow = z.infer<typeof leaderboardRowSchema>;
+
 /** Sales Head / Sales Manager dashboard — full API payload shape. */
 export const salesHeadDashboardSchema = z.object({
   role: userRoleSchema,
@@ -153,11 +224,67 @@ export const salesHeadDashboardSchema = z.object({
 });
 export type SalesHeadDashboard = z.infer<typeof salesHeadDashboardSchema>;
 
+/** Agent / Sales Rep dashboard — full API payload shape. */
+export const agentDashboardSchema = z.object({
+  role: userRoleSchema,
+  title: z.string(),
+  subtitle: z.string().optional(),
+  dateRange: z.object({
+    from: z.string(),
+    to: z.string(),
+    label: z.string(),
+  }),
+  kpis: z.array(kpiMetricSchema),
+  myOrders: z.object({
+    title: z.string(),
+    rows: z.array(agentOrderRowSchema),
+  }),
+  scoreBoard: z.object({
+    title: z.string(),
+    data: agentScoreBoardSchema,
+  }),
+  incentive: z.object({
+    title: z.string(),
+    data: agentIncentiveSummarySchema,
+  }),
+  orderStatus: z.object({
+    title: z.string(),
+    totalOrders: z.number(),
+    segments: z.array(donutSegmentSchema),
+  }),
+  ordersTrend: z.object({
+    title: z.string(),
+    periodLabel: z.string(),
+    data: z.array(chartPointSchema),
+  }),
+  leaderboard: z.object({
+    title: z.string(),
+    rows: z.array(leaderboardRowSchema),
+  }),
+  followUps: z.object({
+    title: z.string(),
+    rows: z.array(followUpRowSchema),
+  }),
+  incentiveHistory: z.object({
+    title: z.string(),
+    rows: z.array(incentiveHistoryRowSchema),
+  }),
+  notifications: z.object({
+    title: z.string(),
+    items: z.array(alertItemSchema),
+  }),
+});
+export type AgentDashboard = z.infer<typeof agentDashboardSchema>;
+
 /** Generic dashboard envelope — extend with more role payloads later. */
 export const dashboardResponseSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('sales_head'),
     data: salesHeadDashboardSchema,
+  }),
+  z.object({
+    kind: z.literal('agent'),
+    data: agentDashboardSchema,
   }),
   z.object({
     kind: z.literal('default'),

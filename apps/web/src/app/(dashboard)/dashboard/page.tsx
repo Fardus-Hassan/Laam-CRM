@@ -9,10 +9,12 @@ export default async function DashboardPage() {
   const dashboard = await fetchDashboard('org_admin', isoRange ?? undefined);
 
   const title =
-    dashboard.kind === 'sales_head' ? dashboard.data.title : 'Dashboard';
+    dashboard.kind === 'sales_head' || dashboard.kind === 'agent'
+      ? dashboard.data.title
+      : 'Dashboard';
 
   const description =
-    dashboard.kind === 'sales_head'
+    dashboard.kind === 'sales_head' || dashboard.kind === 'agent'
       ? dashboard.data.subtitle
       : 'Overview of your CRM workspace';
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { FullscreenToggle } from '@/components/layout/top-bar/fullscreen-toggle';
 import { DateBadge } from '@/components/layout/top-bar/date-badge';
 import { LiveStatusBadge } from '@/components/layout/top-bar/live-status-badge';
 import { NotificationBell } from '@/components/layout/top-bar/notification-bell';
@@ -12,6 +13,7 @@ export function TopBarActions() {
       <LiveStatusBadge />
       <DateBadge />
       <NotificationBell count={8} />
+      <FullscreenToggle />
       <ThemeToggle />
       <TopBarUser />
     </div>

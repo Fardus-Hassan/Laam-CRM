@@ -1,4 +1,5 @@
 import type { DashboardResponse } from '@laam/types';
+import { MOCK_AGENT_DASHBOARD } from '@/features/dashboard/data/mocks/agent.mock';
 import { MOCK_SALES_HEAD_DASHBOARD } from '@/features/dashboard/data/mocks/sales-head.mock';
 
 export const MOCK_DEFAULT_DASHBOARD: DashboardResponse = {
@@ -20,6 +21,13 @@ export function getMockDashboardForRole(role: string): DashboardResponse {
     return {
       kind: 'sales_head',
       data: { ...MOCK_SALES_HEAD_DASHBOARD, role: role as typeof MOCK_SALES_HEAD_DASHBOARD.role },
+    };
+  }
+
+  if (role === 'sales_rep') {
+    return {
+      kind: 'agent',
+      data: { ...MOCK_AGENT_DASHBOARD, role: 'sales_rep' },
     };
   }
 

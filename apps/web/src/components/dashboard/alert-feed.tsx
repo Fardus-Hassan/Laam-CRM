@@ -37,7 +37,7 @@ export function AlertFeed({ items, className }: AlertFeedProps) {
         return (
           <li
             key={item.id}
-            className="flex gap-3 rounded-lg border border-border/60 p-3"
+            className="flex items-start gap-2.5 rounded-lg border border-border/60 p-2.5 sm:gap-3 sm:p-3"
           >
             <span
               className={cn(
@@ -47,9 +47,9 @@ export function AlertFeed({ items, className }: AlertFeedProps) {
             >
               <Icon className="size-4" />
             </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-              <p className="text-sm leading-snug">{item.message}</p>
-              <p className="shrink-0 text-xs text-muted-foreground sm:whitespace-nowrap">
+            <div className="flex min-w-0 flex-1 items-start justify-between gap-2 sm:gap-3">
+              <p className="min-w-0 flex-1 text-sm leading-snug">{item.message}</p>
+              <p className="shrink-0 pt-0.5 text-[11px] text-muted-foreground whitespace-nowrap sm:text-xs">
                 {item.timestamp}
               </p>
             </div>

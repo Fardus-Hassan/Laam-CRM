@@ -1,10 +1,17 @@
 'use client';
 
+import { CalendarRange, Check, ChevronDown } from 'lucide-react';
+
 import type { DashboardPeriod } from '@/features/dashboard/types/period';
 import { DASHBOARD_PERIODS, PERIOD_LABELS } from '@/features/dashboard/types/period';
-
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 type PeriodFilterProps = {
   value: DashboardPeriod;
@@ -20,29 +27,40 @@ export function PeriodFilter({
   className,
 }: PeriodFilterProps) {
   return (
-    <div
-      className={cn(
-        'inline-flex max-w-full items-center rounded-lg border border-border bg-muted/40 p-0.5',
-        className,
-      )}
-      role="group"
-      aria-label="Period filter"
-    >
-      {options.map((period) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
-          key={period}
           type="button"
-          variant={value === period ? 'default' : 'ghost'}
-          size="xs"
+          variant="outline"
+          size="sm"
           className={cn(
-            'h-7 min-w-[44px] flex-1 px-2 text-[11px] font-medium sm:min-w-[52px] sm:px-2.5 sm:text-xs',
-            value !== period && 'text-muted-foreground hover:text-foreground',
+            'h-8 shrink-0 gap-1.5 border-border/70 bg-card px-2.5 text-xs font-medium text-foreground shadow-xs sm:px-3 sm:text-sm',
+            className,
           )}
-          onClick={() => onChange(period)}
+          aria-label="Select period"
         >
-          {PERIOD_LABELS[period]}
+          <CalendarRange className="size-3.5 shrink-0 opacity-70" />
+          <span>{PERIOD_LABELS[value]}</span>
+          <ChevronDown className="size-3.5 shrink-0 opacity-70" />
         </Button>
-      ))}
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[9rem]">
+        {options.map((period) => (
+          <DropdownMenuItem
+            key={period}
+            className="gap-2 text-sm"
+            onClick={() => onChange(period)}
+          >
+            <Check
+              className={cn(
+                'size-4 shrink-0',
+                value === period ? 'opacity-100' : 'opacity-0',
+              )}
+            />
+            {PERIOD_LABELS[period]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

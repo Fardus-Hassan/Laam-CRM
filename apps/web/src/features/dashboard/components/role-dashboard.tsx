@@ -6,6 +6,7 @@ import type { DashboardResponse } from '@laam/types';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { fetchDashboard } from '@/features/dashboard/api/dashboard-api';
 import { useDashboardDate } from '@/features/dashboard/providers/dashboard-date-provider';
+import { AgentDashboardView } from '@/features/dashboard/components/dashboards/agent-dashboard';
 import { DefaultDashboardView } from '@/features/dashboard/components/dashboards/default-dashboard';
 import { SalesHeadDashboardView } from '@/features/dashboard/components/dashboards/sales-head-dashboard';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -43,6 +44,10 @@ export function RoleDashboard({ initialData }: RoleDashboardProps) {
 
   if (data.kind === 'sales_head') {
     return <SalesHeadDashboardView data={data.data} />;
+  }
+
+  if (data.kind === 'agent') {
+    return <AgentDashboardView data={data.data} />;
   }
 
   return <DefaultDashboardView data={data.data} />;

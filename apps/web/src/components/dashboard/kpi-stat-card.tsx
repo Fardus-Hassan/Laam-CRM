@@ -1,6 +1,7 @@
 import {
   Banknote,
   CheckCircle2,
+  ClipboardList,
   PauseCircle,
   Phone,
   ShoppingCart,
@@ -17,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 
 const KPI_ICONS: Record<string, LucideIcon> = {
   'shopping-cart': ShoppingCart,
+  'clipboard-list': ClipboardList,
   banknote: Banknote,
   'check-circle': CheckCircle2,
   truck: Truck,
@@ -71,17 +73,24 @@ export function KpiStatCard({ metric, className }: KpiStatCardProps) {
   );
 }
 
+const KPI_GRID_COLUMNS: Record<number, string> = {
+  4: 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+  6: 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6',
+  7: 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7',
+};
+
 type KpiStatGridProps = {
   metrics: KpiMetric[];
+  columns?: 4 | 6 | 7;
   className?: string;
 };
 
-export function KpiStatGrid({ metrics, className }: KpiStatGridProps) {
+export function KpiStatGrid({ metrics, columns = 7, className }: KpiStatGridProps) {
   return (
     <div
       className={cn(
         'flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory sm:grid sm:overflow-visible sm:pb-0 sm:snap-none',
-        'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7',
+        KPI_GRID_COLUMNS[columns],
         className,
       )}
     >

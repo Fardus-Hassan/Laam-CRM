@@ -26,9 +26,10 @@ type AuthContextValue = {
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
 
-const mockAuthApi = createMockAuthApi('org_admin');
+const mockAuthApi = createMockAuthApi('sales_manager');
 const httpAuthApi = createHttpAuthApi();
-const authApi = env.isDev ? mockAuthApi : httpAuthApi;
+const authApi =
+  env.isDev || env.enableRoleSwitch ? mockAuthApi : httpAuthApi;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<AuthStatus>('loading');
@@ -57,11 +58,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const switchRole = React.useCallback(
     async (role: UserRole) => {
-      if (!('setRole' in mockAuthApi)) {
+      if (!('setRole' in authApi) || typeof authApi.setRole !== 'function') {
         return;
       }
 
-      mockAuthApi.setRole(role);
+      authApi.setRole(role);
       await refreshSession();
     },
     [refreshSession],
