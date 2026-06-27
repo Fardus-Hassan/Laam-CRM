@@ -5,6 +5,7 @@ export const authEndpoints = {
 } as const;
 
 export const crmEndpoints = {
+  dashboard: '/crm/dashboard',
   dashboardStats: '/crm/dashboard/stats',
   contacts: '/crm/contacts',
   companies: '/crm/companies',

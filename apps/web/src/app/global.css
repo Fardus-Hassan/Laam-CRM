@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import 'react-day-picker/style.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -71,6 +72,11 @@
   --sidebar-scrollbar-thumb: rgba(255, 255, 255, 0.22);
   --sidebar-scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
   --sidebar-scrollbar-thumb-active: rgba(140, 198, 63, 0.55);
+
+  /* Main content scrollbar */
+  --scrollbar-thumb: rgba(18, 122, 59, 0.22);
+  --scrollbar-thumb-hover: rgba(18, 122, 59, 0.38);
+  --scrollbar-thumb-active: rgba(18, 122, 59, 0.55);
 }
 
 .dark {
@@ -106,6 +112,11 @@
   --sidebar-scrollbar-thumb: rgba(255, 255, 255, 0.22);
   --sidebar-scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
   --sidebar-scrollbar-thumb-active: rgba(140, 198, 63, 0.55);
+
+  /* Main content scrollbar — dark */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
+  --scrollbar-thumb-active: rgba(140, 198, 63, 0.55);
 }
 
 @layer base {
@@ -168,5 +179,44 @@
 
   [data-sidebar='content']:hover::-webkit-scrollbar-thumb:active {
     background-color: var(--sidebar-scrollbar-thumb-active);
+  }
+
+  /* App-wide custom scrollbar — visible on hover */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .custom-scrollbar:hover {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 4px;
+    margin-inline: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+  }
+
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+  }
+
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-thumb-active);
   }
 }

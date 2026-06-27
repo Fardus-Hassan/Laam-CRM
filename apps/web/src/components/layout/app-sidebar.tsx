@@ -1,18 +1,19 @@
 'use client';
 
-import { useNavigation } from '@/features/navigation/hooks/use-navigation';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { NavMain } from '@/components/navigation/nav-main';
 import { NavUser } from '@/components/navigation/nav-user';
 import { SidebarBrandHeader } from '@/components/navigation/sidebar-brand-header';
+import { NavMainSkeleton } from '@/components/navigation/nav-main-skeleton';
 import { Sidebar, SidebarFooter, SidebarRail } from '@/components/ui/sidebar';
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  const navGroups = useNavigation();
+  const { isLoading } = useAuth();
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarBrandHeader />
-      <NavMain groups={navGroups} />
+      {isLoading ? <NavMainSkeleton /> : <NavMain />}
       <SidebarFooter className="border-t border-sidebar-border p-2">
         <NavUser />
       </SidebarFooter>

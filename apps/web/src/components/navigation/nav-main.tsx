@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { ResolvedNavGroup } from '@/features/navigation/lib/filter-navigation';
+import { useNavigation } from '@/features/navigation/hooks/use-navigation';
 import {
   SidebarContent,
   SidebarGroup,
@@ -14,10 +14,6 @@ import {
 } from '@/components/ui/sidebar';
 import { siteConfig } from '@/config/site';
 
-type NavMainProps = {
-  groups: ResolvedNavGroup[];
-};
-
 function isNavItemActive(pathname: string, url: string) {
   return (
     pathname === url ||
@@ -25,8 +21,9 @@ function isNavItemActive(pathname: string, url: string) {
   );
 }
 
-export function NavMain({ groups }: NavMainProps) {
+export function NavMain() {
   const pathname = usePathname();
+  const groups = useNavigation();
 
   return (
     <SidebarContent className="gap-2 px-2 py-3">
