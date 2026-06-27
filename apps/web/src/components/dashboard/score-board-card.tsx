@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 type ScoreBoardCardProps = {
   data: AgentScoreBoard;
   className?: string;
+  rankLabel?: string;
 };
 
 function StatBlock({
@@ -27,7 +28,11 @@ function StatBlock({
   );
 }
 
-export function ScoreBoardCard({ data, className }: ScoreBoardCardProps) {
+export function ScoreBoardCard({
+  data,
+  className,
+  rankLabel = 'Rank',
+}: ScoreBoardCardProps) {
   const progressPercent = Math.min(
     100,
     Math.round((data.progressCurrent / data.progressTarget) * 100),
@@ -71,8 +76,15 @@ export function ScoreBoardCard({ data, className }: ScoreBoardCardProps) {
       />
 
       <dl className="grid grid-cols-3 gap-2 border-t border-border/60 pt-4 sm:gap-3">
-        <StatBlock label="Rank">
-          <span>#{data.rank}</span>
+        <StatBlock label={rankLabel}>
+          <div className="space-y-0.5">
+            <span>#{data.rank}</span>
+            {data.rankChange !== undefined && data.rankChange !== 0 ? (
+              <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 sm:text-xs">
+                ↑ {Math.abs(data.rankChange)} Position
+              </p>
+            ) : null}
+          </div>
         </StatBlock>
         <StatBlock label="This Month">
           <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">

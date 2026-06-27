@@ -85,6 +85,11 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
     [data.orderStatus.segments, orderStatusPeriod],
   );
 
+  const totalSales = React.useMemo(
+    () => scaleMetricValue(data.orderStatus.totalSales, orderStatusPeriod),
+    [data.orderStatus.totalSales, orderStatusPeriod],
+  );
+
   const teamRows = React.useMemo(() => {
     const period: DashboardPeriod = teamPeriod === 'month' ? 'month' : 'year';
     return transformTeamRows(teamViewMore.visibleItems, period);
@@ -275,6 +280,8 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         >
           <DonutChart
             segments={orderStatusSegments}
+            centerValue={totalSales.toLocaleString('en-BD')}
+            centerLabel="Total Sales"
             height={180}
             legendPosition="responsive"
           />

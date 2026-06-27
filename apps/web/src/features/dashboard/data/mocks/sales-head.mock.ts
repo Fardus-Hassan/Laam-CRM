@@ -235,6 +235,7 @@ export const MOCK_SALES_HEAD_DASHBOARD: SalesHeadDashboard = {
   },
   orderStatus: {
     title: 'Order Status Distribution',
+    totalSales: 2482,
     segments: [
       { id: 'confirmed', label: 'Confirmed', value: 1842, percent: 74.2, color: '#127A3B' },
       { id: 'delivered', label: 'Delivered', value: 1264, percent: 50.9, color: '#8CC63F' },

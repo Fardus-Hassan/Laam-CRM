@@ -4,6 +4,7 @@ import { ROLE_LABELS, type UserRole } from '@laam/types';
 import { useAuthContext } from '@/features/auth/providers/auth-provider';
 import {
   isAgentRole,
+  isMarketingHeadRole,
   isSalesHeadRole,
 } from '@/features/dashboard/config/role-dashboards';
 
@@ -14,6 +15,10 @@ function getRoleLabel(role: UserRole): string {
 
   if (isAgentRole(role)) {
     return 'Agent';
+  }
+
+  if (isMarketingHeadRole(role)) {
+    return 'Marketing Head';
   }
 
   return ROLE_LABELS[role];

@@ -1,12 +1,24 @@
 import {
   Banknote,
+  Building2,
   CheckCircle2,
   ClipboardList,
+  Coins,
+  DollarSign,
+  LineChart,
   PauseCircle,
+  Percent,
   Phone,
+  Server,
   ShoppingCart,
+  Target,
+  TrendingUp,
   Truck,
+  UserCheck,
+  UserPlus,
+  Users,
   XCircle,
+  Bell,
   type LucideIcon,
 } from 'lucide-react';
 import type { KpiMetric } from '@laam/types';
@@ -15,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { formatPercent } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Sparkline } from '@/components/dashboard/sparkline';
 
 const KPI_ICONS: Record<string, LucideIcon> = {
   'shopping-cart': ShoppingCart,
@@ -25,6 +38,18 @@ const KPI_ICONS: Record<string, LucideIcon> = {
   'x-circle': XCircle,
   'pause-circle': PauseCircle,
   phone: Phone,
+  users: Users,
+  'user-check': UserCheck,
+  'user-plus': UserPlus,
+  percent: Percent,
+  coins: Coins,
+  'trending-up': TrendingUp,
+  'dollar-sign': DollarSign,
+  target: Target,
+  'line-chart': LineChart,
+  'building-2': Building2,
+  bell: Bell,
+  server: Server,
 };
 
 type KpiStatCardProps = {
@@ -67,6 +92,13 @@ export function KpiStatCard({ metric, className }: KpiStatCardProps) {
               </span>
             ) : null}
           </div>
+        ) : null}
+        {metric.sparkline?.length ? (
+          <Sparkline
+            data={metric.sparkline}
+            trend={metric.trend}
+            className="mt-1 h-9"
+          />
         ) : null}
       </CardContent>
     </Card>

@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -24,6 +25,7 @@ type SimpleBarChartProps = {
   valueFormatter?: (value: number) => string;
   className?: string;
   size?: 'sm' | 'md' | 'lg';
+  showValueLabels?: boolean;
 };
 
 const SIZE_CLASS = {
@@ -38,6 +40,7 @@ export function SimpleBarChart({
   valueFormatter,
   className,
   size = 'md',
+  showValueLabels = false,
 }: SimpleBarChartProps) {
   const theme = useChartTheme();
   const isMobile = useIsMobile();
@@ -49,7 +52,7 @@ export function SimpleBarChart({
         <BarChart
           data={data}
           margin={{
-            top: 8,
+            top: showValueLabels ? 20 : 8,
             right: isMobile ? 4 : 8,
             left: isMobile ? -8 : 0,
             bottom: 0,
@@ -91,7 +94,21 @@ export function SimpleBarChart({
             fill={color}
             radius={[4, 4, 0, 0]}
             maxBarSize={isMobile ? 28 : 40}
-          />
+          >
+            {showValueLabels ? (
+              <LabelList
+                dataKey="value"
+                position="top"
+                className="fill-muted-foreground text-[10px] sm:text-[11px]"
+                formatter={(value) => {
+                  const numeric = Number(value);
+                  return valueFormatter
+                    ? valueFormatter(numeric)
+                    : formatCurrency(numeric, { compact: true });
+                }}
+              />
+            ) : null}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
