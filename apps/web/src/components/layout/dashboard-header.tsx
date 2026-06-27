@@ -10,6 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { TopBarActions } from '@/components/layout/top-bar/top-bar-actions';
 import { siteConfig } from '@/config/site';
 
 export type BreadcrumbItemConfig = {
@@ -29,38 +30,45 @@ export function DashboardHeader({
   breadcrumbs = [],
 }: DashboardHeaderProps) {
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="mr-2 h-4" />
-      {breadcrumbs.length > 0 ? (
-        <Breadcrumb>
-          <BreadcrumbList>
-            {breadcrumbs.map((crumb, index) => {
-              const isLast = index === breadcrumbs.length - 1;
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-3 sm:h-16 sm:gap-4 sm:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <SidebarTrigger className="-ml-1 shrink-0" />
+        <Separator orientation="vertical" className="mr-1 hidden h-4 sm:block" />
+        {breadcrumbs.length > 0 ? (
+          <Breadcrumb className="min-w-0">
+            <BreadcrumbList className="flex-nowrap">
+              {breadcrumbs.map((crumb, index) => {
+                const isLast = index === breadcrumbs.length - 1;
 
-              return (
-                <span key={`${crumb.label}-${index}`} className="contents">
-                  <BreadcrumbItem>
-                    {isLast || !crumb.href ? (
-                      <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                    ) : (
-                      <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
-                    )}
-                  </BreadcrumbItem>
-                  {!isLast ? <BreadcrumbSeparator /> : null}
-                </span>
-              );
-            })}
-          </BreadcrumbList>
-        </Breadcrumb>
-      ) : (
-        <div>
-          <h1 className="text-sm font-medium">{title}</h1>
-          {description ? (
-            <p className="text-xs text-muted-foreground">{description}</p>
-          ) : null}
-        </div>
-      )}
+                return (
+                  <span key={`${crumb.label}-${index}`} className="contents">
+                    <BreadcrumbItem className="min-w-0">
+                      {isLast || !crumb.href ? (
+                        <BreadcrumbPage className="truncate">{crumb.label}</BreadcrumbPage>
+                      ) : (
+                        <BreadcrumbLink href={crumb.href} className="truncate">
+                          {crumb.label}
+                        </BreadcrumbLink>
+                      )}
+                    </BreadcrumbItem>
+                    {!isLast ? <BreadcrumbSeparator /> : null}
+                  </span>
+                );
+              })}
+            </BreadcrumbList>
+          </Breadcrumb>
+        ) : (
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-medium sm:text-base">{title}</h1>
+            {description ? (
+              <p className="hidden truncate text-xs text-muted-foreground sm:block">
+                {description}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+      <TopBarActions />
     </header>
   );
 }

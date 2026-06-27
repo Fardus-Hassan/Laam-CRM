@@ -19,7 +19,7 @@ export const CRM_MODULES = {
   },
   companies: {
     id: 'companies',
-    title: 'Companies',
+    title: 'Customers',
     description: 'Track accounts, industries, and related opportunities.',
     permissions: ['companies.view'],
     apiPath: '/crm/companies',
@@ -54,7 +54,7 @@ export const CRM_MODULES = {
   },
   activities: {
     id: 'activities',
-    title: 'Activities',
+    title: 'Follow Ups',
     description: 'Calls, emails, meetings, and notes in one timeline.',
     permissions: ['activities.view'],
     apiPath: '/crm/activities',
@@ -68,7 +68,7 @@ export const CRM_MODULES = {
   },
   users: {
     id: 'users',
-    title: 'Users & Roles',
+    title: 'Team',
     description: 'Invite teammates and manage role-based access.',
     permissions: ['users.manage'],
     apiPath: '/crm/users',

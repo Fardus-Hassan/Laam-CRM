@@ -36,6 +36,22 @@ export const NAV_GROUP_LABELS: Record<NavGroupId, string> = {
   administration: 'Administration',
 };
 
+/** Flat sidebar display order (matches product mockup). */
+export const NAV_SIDEBAR_ORDER: NavItemId[] = [
+  'dashboard',
+  'leads',
+  'contacts',
+  'companies',
+  'deals',
+  'tasks',
+  'activities',
+  'reports',
+  'users',
+  'settings',
+  'pipeline',
+  'platform',
+];
+
 export const NAV_ITEMS: NavItemDefinition[] = [
   {
     id: 'dashboard',
@@ -44,6 +60,14 @@ export const NAV_ITEMS: NavItemDefinition[] = [
     icon: LayoutDashboard,
     group: 'overview',
     permissions: ['dashboard.view'],
+  },
+  {
+    id: 'leads',
+    title: 'Leads',
+    url: '/dashboard/leads',
+    icon: Target,
+    group: 'sales',
+    permissions: ['leads.view'],
   },
   {
     id: 'contacts',
@@ -55,19 +79,11 @@ export const NAV_ITEMS: NavItemDefinition[] = [
   },
   {
     id: 'companies',
-    title: 'Companies',
+    title: 'Customers',
     url: '/dashboard/companies',
     icon: Building2,
     group: 'sales',
     permissions: ['companies.view'],
-  },
-  {
-    id: 'leads',
-    title: 'Leads',
-    url: '/dashboard/leads',
-    icon: Target,
-    group: 'sales',
-    permissions: ['leads.view'],
   },
   {
     id: 'deals',
@@ -76,14 +92,6 @@ export const NAV_ITEMS: NavItemDefinition[] = [
     icon: Handshake,
     group: 'sales',
     permissions: ['deals.view'],
-  },
-  {
-    id: 'pipeline',
-    title: 'Pipeline',
-    url: '/dashboard/pipeline',
-    icon: Kanban,
-    group: 'sales',
-    permissions: ['pipeline.view'],
   },
   {
     id: 'tasks',
@@ -95,7 +103,7 @@ export const NAV_ITEMS: NavItemDefinition[] = [
   },
   {
     id: 'activities',
-    title: 'Activities',
+    title: 'Follow Ups',
     url: '/dashboard/activities',
     icon: Activity,
     group: 'work',
@@ -111,7 +119,7 @@ export const NAV_ITEMS: NavItemDefinition[] = [
   },
   {
     id: 'users',
-    title: 'Users & Roles',
+    title: 'Team',
     url: '/dashboard/users',
     icon: Users,
     group: 'administration',
@@ -124,6 +132,14 @@ export const NAV_ITEMS: NavItemDefinition[] = [
     icon: Settings,
     group: 'administration',
     permissions: ['settings.manage'],
+  },
+  {
+    id: 'pipeline',
+    title: 'Pipeline',
+    url: '/dashboard/pipeline',
+    icon: Kanban,
+    group: 'sales',
+    permissions: ['pipeline.view'],
   },
   {
     id: 'platform',

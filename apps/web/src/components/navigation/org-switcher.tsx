@@ -1,7 +1,8 @@
 'use client';
 
-import { ChevronsUpDown, GalleryVerticalEnd } from 'lucide-react';
+import { ChevronsUpDown } from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/use-auth';
+import { BrandLogo } from '@/components/brand/brand-logo';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,7 +36,7 @@ export function OrgSwitcher() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <GalleryVerticalEnd className="size-4" />
+                <BrandLogo width={16} height={16} iconClassName="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{organization.name}</span>
@@ -55,7 +56,7 @@ export function OrgSwitcher() {
             </DropdownMenuLabel>
             <DropdownMenuItem className="gap-2 p-2">
               <div className="flex size-6 items-center justify-center rounded-md border">
-                <GalleryVerticalEnd className="size-3.5 shrink-0" />
+                <BrandLogo width={14} height={14} iconClassName="size-3.5" />
               </div>
               {organization.name}
               <span className="ml-auto text-xs text-muted-foreground">

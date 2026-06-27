@@ -4,6 +4,7 @@ import {
   NAV_GROUP_LABELS,
   NAV_GROUP_ORDER,
   NAV_ITEMS,
+  NAV_SIDEBAR_ORDER,
   type NavItemDefinition,
 } from '@/features/navigation/config/nav-registry';
 
@@ -27,6 +28,20 @@ export function filterNavigation(
     label: NAV_GROUP_LABELS[groupId],
     items: visibleItems.filter((item) => item.group === groupId),
   })).filter((group) => group.items.length > 0);
+}
+
+export function filterFlatNavigation(
+  userPermissions: readonly Permission[],
+): ResolvedNavItem[] {
+  const visibleById = new Map(
+    NAV_ITEMS.filter((item) => hasPermission(userPermissions, item.permissions)).map(
+      (item) => [item.id, item],
+    ),
+  );
+
+  return NAV_SIDEBAR_ORDER.map((id) => visibleById.get(id)).filter(
+    (item): item is ResolvedNavItem => item !== undefined,
+  );
 }
 
 export function getNavItemById(id: ResolvedNavItem['id']) {

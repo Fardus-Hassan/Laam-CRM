@@ -47,9 +47,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = React.useCallback(async () => {
     await authApi.logout();
+    if (env.isDev) {
+      await refreshSession();
+      return;
+    }
     setSession(null);
     setStatus('unauthenticated');
-  }, []);
+  }, [refreshSession]);
 
   const switchRole = React.useCallback(
     async (role: UserRole) => {
