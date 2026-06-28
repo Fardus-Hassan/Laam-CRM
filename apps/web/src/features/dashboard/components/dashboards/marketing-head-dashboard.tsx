@@ -25,6 +25,7 @@ import {
 } from '@/features/dashboard/lib/period-data';
 import type { DashboardPeriod } from '@/features/dashboard/types/period';
 import { CampaignPerformanceTable } from '@/features/dashboard/components/tables/marketing-tables';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 
 type MarketingHeadDashboardViewProps = {
   data: MarketingHeadDashboard;
@@ -111,8 +112,11 @@ export function MarketingHeadDashboardView({
         />
       </div>
 
-      <KpiStatGrid metrics={data.kpis} columns={7} />
+      <DashboardWidget widget="kpis">
+        <KpiStatGrid metrics={data.kpis} columns={7} />
+      </DashboardWidget>
 
+      <DashboardWidget widget="leads">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.leadsTrend.title}
@@ -150,7 +154,9 @@ export function MarketingHeadDashboardView({
           />
         </DashboardCard>
       </div>
+      </DashboardWidget>
 
+      <DashboardWidget widget="marketing">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.campaigns.title}
@@ -189,7 +195,9 @@ export function MarketingHeadDashboardView({
           <BudgetOverviewChart summary={budgetSummary} />
         </DashboardCard>
       </div>
+      </DashboardWidget>
 
+      <DashboardWidget widget="leads">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.leadQuality.title}
@@ -225,6 +233,7 @@ export function MarketingHeadDashboardView({
           <InsightList items={insightsViewMore.visibleItems} />
         </DashboardCard>
       </div>
+      </DashboardWidget>
     </div>
   );
 }

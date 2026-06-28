@@ -13,6 +13,11 @@ import { SuperAdminDashboardView } from '@/features/dashboard/components/dashboa
 import { AgentDashboardView } from '@/features/dashboard/components/dashboards/agent-dashboard';
 import { DefaultDashboardView } from '@/features/dashboard/components/dashboards/default-dashboard';
 import { SalesHeadDashboardView } from '@/features/dashboard/components/dashboards/sales-head-dashboard';
+import {
+  getDashboardRoleForTemplate,
+  resolveDashboardTemplate,
+} from '@/features/dashboard/config/dashboard-templates';
+
 import { DashboardSkeleton } from '@/features/dashboard/components/dashboard-skeleton';
 
 type RoleDashboardProps = {
@@ -25,13 +30,16 @@ export function RoleDashboard({ initialData }: RoleDashboardProps) {
   const [data, setData] = React.useState(initialData);
 
   React.useEffect(() => {
-    if (!user?.role) {
+    if (!user) {
       return;
     }
 
+    const template = resolveDashboardTemplate(user);
+    const dashboardRole = getDashboardRoleForTemplate(template);
+
     let cancelled = false;
 
-    void fetchDashboard(user.role, isoRange ?? undefined).then((next) => {
+    void fetchDashboard(dashboardRole, isoRange ?? undefined).then((next) => {
       if (!cancelled) {
         setData(next);
       }
@@ -40,7 +48,7 @@ export function RoleDashboard({ initialData }: RoleDashboardProps) {
     return () => {
       cancelled = true;
     };
-  }, [user?.role, isoRange?.from, isoRange?.to]);
+  }, [user, isoRange?.from, isoRange?.to]);
 
   if (status === 'loading') {
     return <DashboardSkeleton />;

@@ -1,3 +1,5 @@
+'use client';
+
 import {
   Banknote,
   Building2,
@@ -21,13 +23,15 @@ import {
   Bell,
   type LucideIcon,
 } from 'lucide-react';
-import type { KpiMetric } from '@laam/types';
+import type { KpiMetric, Permission } from '@laam/types';
+import { isValidPermission } from '@laam/types';
 
 import { cn } from '@/lib/utils';
 import { formatPercent } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sparkline } from '@/components/dashboard/sparkline';
+import { usePermissions } from '@/features/auth/hooks/use-permissions';
 
 const KPI_ICONS: Record<string, LucideIcon> = {
   'shopping-cart': ShoppingCart,
@@ -118,6 +122,24 @@ type KpiStatGridProps = {
 };
 
 export function KpiStatGrid({ metrics, columns = 7, className }: KpiStatGridProps) {
+  const { can } = usePermissions();
+
+  const visibleMetrics = metrics.filter((metric) => {
+    if (!metric.requiredPermission) {
+      return true;
+    }
+
+    if (!isValidPermission(metric.requiredPermission)) {
+      return true;
+    }
+
+    return can(metric.requiredPermission as Permission);
+  });
+
+  if (!visibleMetrics.length) {
+    return null;
+  }
+
   return (
     <div
       className={cn(
@@ -126,7 +148,7 @@ export function KpiStatGrid({ metrics, columns = 7, className }: KpiStatGridProp
         className,
       )}
     >
-      {metrics.map((metric) => (
+      {visibleMetrics.map((metric) => (
         <KpiStatCard
           key={metric.id}
           metric={metric}

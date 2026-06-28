@@ -1,6 +1,13 @@
-import { EntityPage } from '@/features/crm/components/entity-page';
-import { CRM_MODULES } from '@/features/crm/config/modules';
+import { PageShell } from '@/components/layout/page-shell';
+import { UsersAdminPanel } from '@/features/rbac/components/users-admin-panel';
 
 export default function UsersPage() {
-  return <EntityPage module={CRM_MODULES.users} />;
+  return (
+    <PageShell
+      title="Team"
+      description="Manage users, assign roles, and grant extra permissions per person."
+    >
+      <UsersAdminPanel />
+    </PageShell>
+  );
 }

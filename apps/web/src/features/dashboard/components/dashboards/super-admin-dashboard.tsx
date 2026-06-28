@@ -22,6 +22,7 @@ import {
 } from '@/features/dashboard/lib/period-data';
 import type { DashboardPeriod } from '@/features/dashboard/types/period';
 import { formatCurrency } from '@/lib/format';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 import {
   RecentUsersTable,
   TopAgentsTable,
@@ -101,28 +102,33 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
         />
       </div>
 
-      <KpiStatGrid metrics={data.kpis} columns={6} />
+      <DashboardWidget widget="platform">
+        <KpiStatGrid metrics={data.kpis} columns={6} />
+      </DashboardWidget>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardCard
-          title={data.salesOverview.title}
-          action={
-            <PeriodFilter value={salesPeriod} onChange={setSalesPeriod} />
-          }
-          className="min-w-0 lg:col-span-2 2xl:col-span-6"
-          contentClassName="min-w-0 pt-1 sm:pt-2"
-        >
-          <DualAxisLineChart
-            data={data.salesOverview.data}
-            leftLabel={data.salesOverview.revenueLabel}
-            rightLabel={data.salesOverview.ordersLabel}
-            leftFormatter={(value) => formatCurrency(value, { compact: true })}
-            rightFormatter={(value) => value.toLocaleString('en-BD')}
-          />
-        </DashboardCard>
+        <DashboardWidget widget="revenue">
+          <DashboardCard
+            title={data.salesOverview.title}
+            action={
+              <PeriodFilter value={salesPeriod} onChange={setSalesPeriod} />
+            }
+            className="min-w-0 lg:col-span-2 2xl:col-span-6"
+            contentClassName="min-w-0 pt-1 sm:pt-2"
+          >
+            <DualAxisLineChart
+              data={data.salesOverview.data}
+              leftLabel={data.salesOverview.revenueLabel}
+              rightLabel={data.salesOverview.ordersLabel}
+              leftFormatter={(value) => formatCurrency(value, { compact: true })}
+              rightFormatter={(value) => value.toLocaleString('en-BD')}
+            />
+          </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={data.ordersStatus.title}
+        <DashboardWidget widget="orders">
+          <DashboardCard
+            title={data.ordersStatus.title}
           action={
             <PeriodFilter
               value={ordersStatusPeriod}
@@ -140,9 +146,11 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
             legendVariant="value-percent"
           />
         </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={data.roleDistribution.title}
+        <DashboardWidget widget="platform">
+          <DashboardCard
+            title={data.roleDistribution.title}
           action={<PeriodFilter value={rolePeriod} onChange={setRolePeriod} />}
           className="min-w-0 lg:col-span-1 2xl:col-span-3"
         >
@@ -155,11 +163,13 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
             legendVariant="value-percent"
           />
         </DashboardCard>
+        </DashboardWidget>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardCard
-          title={data.monthlyRevenue.title}
+        <DashboardWidget widget="revenue">
+          <DashboardCard
+            title={data.monthlyRevenue.title}
           className="min-w-0 lg:col-span-1 2xl:col-span-4"
         >
           <SimpleBarChart
@@ -170,9 +180,11 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
             size="lg"
           />
         </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={data.recentUsers.title}
+        <DashboardWidget widget="platform">
+          <DashboardCard
+            title={data.recentUsers.title}
           action={
             <CardLinkAction href="/dashboard/users" label="View All Users" />
           }
@@ -184,18 +196,22 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
             <RecentUsersTable rows={usersViewMore.visibleItems} />
           </div>
         </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={data.systemHealth.title}
+        <DashboardWidget widget="platform">
+          <DashboardCard
+            title={data.systemHealth.title}
           className="min-w-0 lg:col-span-1 2xl:col-span-3"
         >
           <SystemHealthList items={data.systemHealth.items} />
         </DashboardCard>
+        </DashboardWidget>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-12">
-        <DashboardCard
-          title={data.topAgents.title}
+        <DashboardWidget widget="team">
+          <DashboardCard
+            title={data.topAgents.title}
           action={
             <CardLinkAction href="/dashboard/agents" label="View All Agents" />
           }
@@ -207,6 +223,7 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
             <TopAgentsTable rows={agentsViewMore.visibleItems} />
           </div>
         </DashboardCard>
+        </DashboardWidget>
 
         <DashboardCard
           title={data.recentActivities.title}
@@ -216,8 +233,9 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
           <AgentActivityFeed items={activitiesViewMore.visibleItems} />
         </DashboardCard>
 
-        <DashboardCard
-          title={data.leadSources.title}
+        <DashboardWidget widget="leads">
+          <DashboardCard
+            title={data.leadSources.title}
           action={
             <PeriodFilter
               value={leadSourcesPeriod}
@@ -235,13 +253,16 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
             legendVariant="value-percent"
           />
         </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={data.storageUsage.title}
+        <DashboardWidget widget="platform">
+          <DashboardCard
+            title={data.storageUsage.title}
           className="min-w-0 2xl:col-span-2"
         >
           <StorageUsageChart usage={data.storageUsage.usage} />
         </DashboardCard>
+        </DashboardWidget>
       </div>
     </div>
   );

@@ -1,49 +1,70 @@
 import type { Permission } from '@laam/types';
 import { hasPermission } from '@laam/types';
-import {
-  NAV_GROUP_LABELS,
-  NAV_GROUP_ORDER,
-  NAV_ITEMS,
-  NAV_SIDEBAR_ORDER,
-  type NavItemDefinition,
-} from '@/features/navigation/config/nav-registry';
 
-export type ResolvedNavItem = NavItemDefinition;
+import { UNIVERSAL_NAV_REGISTRY } from '@/features/navigation/config/universal-nav-registry';
+import type {
+  ResolvedNavChild,
+  ResolvedNavGroup,
+  ResolvedNavItem,
+  UniversalNavItem,
+} from '@/features/navigation/types/universal-nav';
 
-export type ResolvedNavGroup = {
-  id: (typeof NAV_GROUP_ORDER)[number];
-  label: string;
-  items: ResolvedNavItem[];
-};
+function filterNavChildren(
+  children: UniversalNavItem['children'],
+  userPermissions: readonly Permission[],
+): ResolvedNavChild[] | undefined {
+  if (!children?.length) {
+    return undefined;
+  }
+
+  const visible = children.filter((child) =>
+    hasPermission(userPermissions, child.permissions),
+  );
+
+  return visible.length > 0 ? visible : undefined;
+}
+
+function filterNavItem(
+  item: UniversalNavItem,
+  userPermissions: readonly Permission[],
+): ResolvedNavItem | null {
+  const visibleChildren = filterNavChildren(item.children, userPermissions);
+  const canViewParent = hasPermission(userPermissions, item.permissions);
+
+  if (!canViewParent && !visibleChildren?.length) {
+    return null;
+  }
+
+  if (item.children?.length) {
+    if (!visibleChildren?.length) {
+      return null;
+    }
+
+    return {
+      ...item,
+      children: visibleChildren,
+    };
+  }
+
+  if (!canViewParent || !item.url) {
+    return null;
+  }
+
+  return { ...item };
+}
 
 export function filterNavigation(
   userPermissions: readonly Permission[],
 ): ResolvedNavGroup[] {
-  const visibleItems = NAV_ITEMS.filter((item) =>
-    hasPermission(userPermissions, item.permissions),
-  );
+  return UNIVERSAL_NAV_REGISTRY.map((group) => {
+    const items = group.items
+      .map((item) => filterNavItem(item, userPermissions))
+      .filter((item): item is ResolvedNavItem => item !== null);
 
-  return NAV_GROUP_ORDER.map((groupId) => ({
-    id: groupId,
-    label: NAV_GROUP_LABELS[groupId],
-    items: visibleItems.filter((item) => item.group === groupId),
-  })).filter((group) => group.items.length > 0);
-}
-
-export function filterFlatNavigation(
-  userPermissions: readonly Permission[],
-): ResolvedNavItem[] {
-  const visibleById = new Map(
-    NAV_ITEMS.filter((item) => hasPermission(userPermissions, item.permissions)).map(
-      (item) => [item.id, item],
-    ),
-  );
-
-  return NAV_SIDEBAR_ORDER.map((id) => visibleById.get(id)).filter(
-    (item): item is ResolvedNavItem => item !== undefined,
-  );
-}
-
-export function getNavItemById(id: ResolvedNavItem['id']) {
-  return NAV_ITEMS.find((item) => item.id === id);
+    return {
+      id: group.id,
+      label: group.label,
+      items,
+    };
+  }).filter((group) => group.items.length > 0);
 }

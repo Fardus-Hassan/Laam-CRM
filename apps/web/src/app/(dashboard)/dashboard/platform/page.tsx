@@ -1,6 +1,19 @@
-import { EntityPage } from '@/features/crm/components/entity-page';
-import { CRM_MODULES } from '@/features/crm/config/modules';
+import { PageShell } from '@/components/layout/page-shell';
+import { PlatformTenantsPanel } from '@/features/platform/components/platform-tenants-panel';
 
-export default function PlatformPage() {
-  return <EntityPage module={CRM_MODULES.platform} />;
+type PlatformPageProps = {
+  searchParams?: Promise<{ tab?: string }>;
+};
+
+export default async function PlatformPage({ searchParams }: PlatformPageProps) {
+  const params = searchParams ? await searchParams : undefined;
+
+  return (
+    <PageShell
+      title="Platform"
+      description="Super Admin controls for tenants, onboarding, and system health."
+    >
+      <PlatformTenantsPanel initialTab={params?.tab} />
+    </PageShell>
+  );
 }

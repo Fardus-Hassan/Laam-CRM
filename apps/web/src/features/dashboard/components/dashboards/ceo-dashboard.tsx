@@ -33,6 +33,7 @@ import {
   CeoDepartmentTable,
   CeoTopTeamsTable,
 } from '@/features/dashboard/components/tables/ceo-tables';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 import { cn } from '@/lib/utils';
 
 type CeoDashboardViewProps = {
@@ -110,8 +111,11 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
         />
       </div>
 
-      <KpiStatGrid metrics={data.kpis} columns={6} />
+      <DashboardWidget widget="kpis">
+        <KpiStatGrid metrics={data.kpis} columns={6} />
+      </DashboardWidget>
 
+      <DashboardWidget widget="revenue">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.revenueOverview.title}
@@ -193,7 +197,9 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
           />
         </DashboardCard>
       </div>
+      </DashboardWidget>
 
+      <DashboardWidget widget="team">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.departmentPerformance.title}
@@ -230,7 +236,9 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
           </div>
         </DashboardCard>
       </div>
+      </DashboardWidget>
 
+      <DashboardWidget widget="marketing">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <DashboardCard title={data.marketOverview.title} className="min-w-0">
           <MarketMetricList items={data.marketOverview.items} />
@@ -271,8 +279,11 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
           <AlertFeed items={alertsViewMore.visibleItems} />
         </DashboardCard>
       </div>
+      </DashboardWidget>
 
-      <CompactStatGrid metrics={data.footerStats} />
+      <DashboardWidget widget="kpis">
+        <CompactStatGrid metrics={data.footerStats} />
+      </DashboardWidget>
     </div>
   );
 }

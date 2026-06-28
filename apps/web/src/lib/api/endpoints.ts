@@ -10,5 +10,6 @@ export const crmEndpoints = {
   contacts: '/crm/contacts',
   companies: '/crm/companies',
   leads: '/crm/leads',
+  orders: '/crm/orders',
   deals: '/crm/deals',
 } as const;

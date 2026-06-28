@@ -21,6 +21,7 @@ export const kpiMetricSchema = z.object({
   comparisonLabel: z.string().optional(),
   icon: z.string().optional(),
   sparkline: z.array(chartPointSchema).optional(),
+  requiredPermission: z.string().optional(),
 });
 export type KpiMetric = z.infer<typeof kpiMetricSchema>;
 

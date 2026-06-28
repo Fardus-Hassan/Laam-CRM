@@ -24,6 +24,7 @@ import {
 } from '@/features/dashboard/lib/period-data';
 import type { DashboardPeriod } from '@/features/dashboard/types/period';
 import { TeamAgentsTable } from '@/features/dashboard/components/tables/team-leader-tables';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 
 type TeamLeaderDashboardViewProps = {
   data: TeamLeaderDashboard;
@@ -98,8 +99,11 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
         />
       </div>
 
-      <KpiStatGrid metrics={data.kpis} columns={6} />
+      <DashboardWidget widget="kpis">
+        <KpiStatGrid metrics={data.kpis} columns={6} />
+      </DashboardWidget>
 
+      <DashboardWidget widget="team">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.teamPerformance.title}
@@ -129,7 +133,9 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
           <IncentiveSummaryCard data={data.incentive.data} />
         </DashboardCard>
       </div>
+      </DashboardWidget>
 
+      <DashboardWidget widget="team">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
           title={data.agentPerformance.title}
@@ -153,10 +159,12 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
           <AgentActivityFeed items={activitiesViewMore.visibleItems} />
         </DashboardCard>
       </div>
+      </DashboardWidget>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-12">
-        <DashboardCard
-          title={data.orderStatus.title}
+        <DashboardWidget widget="orders">
+          <DashboardCard
+            title={data.orderStatus.title}
           action={
             <PeriodFilter
               value={orderStatusPeriod}
@@ -174,6 +182,7 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
             legendVariant="value-percent"
           />
         </DashboardCard>
+        </DashboardWidget>
 
         <DashboardCard
           title={data.followUpOverview.title}

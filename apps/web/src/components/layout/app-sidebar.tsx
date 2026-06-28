@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { NavMain } from '@/components/navigation/nav-main';
 import { NavUser } from '@/components/navigation/nav-user';
@@ -13,7 +14,13 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarBrandHeader />
-      {isLoading ? <NavMainSkeleton /> : <NavMain />}
+      {isLoading ? (
+        <NavMainSkeleton />
+      ) : (
+        <React.Suspense fallback={<NavMainSkeleton />}>
+          <NavMain />
+        </React.Suspense>
+      )}
       <SidebarFooter className="border-t border-sidebar-border p-2">
         <NavUser />
       </SidebarFooter>

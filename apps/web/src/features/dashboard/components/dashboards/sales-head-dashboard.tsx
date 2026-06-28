@@ -31,6 +31,7 @@ import {
   DepartmentTargetsTable,
   TeamPerformanceTable,
 } from '@/features/dashboard/components/tables/dashboard-tables';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 
 type SalesHeadDashboardViewProps = {
   data: SalesHeadDashboard;
@@ -135,7 +136,9 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         />
       </div>
 
-      <KpiStatGrid metrics={data.kpis} />
+      <DashboardWidget widget="kpis">
+        <KpiStatGrid metrics={data.kpis} />
+      </DashboardWidget>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
         <DashboardCard
@@ -152,10 +155,11 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
           <MultiLineChart series={salesTrendSeries} />
         </DashboardCard>
 
-        <DashboardCard
-          title={data.revenueTarget.title}
-          className="min-w-0 lg:col-span-1 2xl:col-span-4"
-        >
+        <DashboardWidget widget="revenue">
+          <DashboardCard
+            title={data.revenueTarget.title}
+            className="min-w-0 lg:col-span-1 2xl:col-span-4"
+          >
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-stretch">
               <div className="h-[140px] w-[140px] shrink-0 sm:h-[148px] sm:w-[148px]">
@@ -231,6 +235,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
             </div>
           </div>
         </DashboardCard>
+        </DashboardWidget>
 
         <DashboardCard
           title={data.overallPerformance.title}
@@ -241,8 +246,9 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardCard
-          title={data.teamPerformance.title}
+        <DashboardWidget widget="team">
+          <DashboardCard
+            title={data.teamPerformance.title}
           action={
             <PeriodFilter
               value={teamPeriod}
@@ -256,9 +262,11 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         >
           <TeamPerformanceTable rows={teamRows} />
         </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={data.topAgents.title}
+        <DashboardWidget widget="team">
+          <DashboardCard
+            title={data.topAgents.title}
           action={
             <PeriodFilter value={agentsPeriod} onChange={setAgentsPeriod} />
           }
@@ -267,9 +275,11 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         >
           <AgentRankList rows={agentRows} />
         </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={data.orderStatus.title}
+        <DashboardWidget widget="orders">
+          <DashboardCard
+            title={data.orderStatus.title}
           action={
             <PeriodFilter
               value={orderStatusPeriod}
@@ -286,6 +296,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
             legendPosition="responsive"
           />
         </DashboardCard>
+        </DashboardWidget>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
@@ -305,8 +316,9 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
           <DepartmentTargetsTable rows={deptRows} />
         </DashboardCard>
 
-        <DashboardCard
-          title={data.monthlyRevenue.title}
+        <DashboardWidget widget="revenue">
+          <DashboardCard
+            title={data.monthlyRevenue.title}
           action={
             <PeriodFilter
               value={revenuePeriod}
@@ -318,6 +330,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         >
           <SimpleBarChart data={monthlyRevenueData} size="lg" />
         </DashboardCard>
+        </DashboardWidget>
 
         <DashboardCard
           title={data.alerts.title}

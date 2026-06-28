@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { permissionSchema } from './permission-catalog.js';
+import { dashboardTemplateSchema } from './dashboard-template.js';
 import { userRoleSchema } from './roles.js';
 
 export const organizationSchema = z.object({
@@ -17,7 +19,11 @@ export const sessionUserSchema = z.object({
   role: userRoleSchema,
   organizationId: z.string().uuid(),
   avatarUrl: z.string().url().optional(),
-  /** Override role defaults when backend sends custom ACL. */
+  customRoleId: z.string().min(1).optional(),
+  dashboardTemplate: dashboardTemplateSchema.optional(),
+  permissionGrants: z.array(permissionSchema).optional(),
+  permissionDenies: z.array(permissionSchema).optional(),
+  /** @deprecated Use permissionGrants */
   permissions: z.array(z.string()).optional(),
 });
 

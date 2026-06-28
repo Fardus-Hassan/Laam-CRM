@@ -27,6 +27,7 @@ import {
   FollowUpsTable,
   IncentiveHistoryTable,
 } from '@/features/dashboard/components/tables/agent-tables';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 
 type AgentDashboardViewProps = {
   data: AgentDashboard;
@@ -91,11 +92,14 @@ export function AgentDashboardView({ data }: AgentDashboardViewProps) {
         />
       </div>
 
-      <KpiStatGrid metrics={data.kpis} columns={6} />
+      <DashboardWidget widget="kpis">
+        <KpiStatGrid metrics={data.kpis} columns={6} />
+      </DashboardWidget>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardCard
-          title={data.myOrders.title}
+        <DashboardWidget widget="orders">
+          <DashboardCard
+            title={data.myOrders.title}
           action={
             <CardLinkAction href="/dashboard/orders" label="View All Orders" />
           }
@@ -107,6 +111,7 @@ export function AgentDashboardView({ data }: AgentDashboardViewProps) {
             <AgentOrdersTable rows={ordersViewMore.visibleItems} />
           </div>
         </DashboardCard>
+        </DashboardWidget>
 
         <DashboardCard
           title={data.scoreBoard.title}
@@ -124,8 +129,9 @@ export function AgentDashboardView({ data }: AgentDashboardViewProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardCard
-          title={data.orderStatus.title}
+        <DashboardWidget widget="orders">
+          <DashboardCard
+            title={data.orderStatus.title}
           action={
             <PeriodFilter
               value={orderStatusPeriod}
@@ -142,9 +148,11 @@ export function AgentDashboardView({ data }: AgentDashboardViewProps) {
             legendPosition="responsive"
           />
         </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={`${data.ordersTrend.title} (${data.ordersTrend.periodLabel})`}
+        <DashboardWidget widget="orders">
+          <DashboardCard
+            title={`${data.ordersTrend.title} (${data.ordersTrend.periodLabel})`}
           action={
             <PeriodFilter
               value={ordersTrendPeriod}
@@ -156,9 +164,11 @@ export function AgentDashboardView({ data }: AgentDashboardViewProps) {
         >
           <SimpleBarChart data={ordersTrendData} />
         </DashboardCard>
+        </DashboardWidget>
 
-        <DashboardCard
-          title={data.leaderboard.title}
+        <DashboardWidget widget="team">
+          <DashboardCard
+            title={data.leaderboard.title}
           action={
             <>
               <PeriodFilter
@@ -176,6 +186,7 @@ export function AgentDashboardView({ data }: AgentDashboardViewProps) {
         >
           <LeaderboardList rows={leaderboardRows} />
         </DashboardCard>
+        </DashboardWidget>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">

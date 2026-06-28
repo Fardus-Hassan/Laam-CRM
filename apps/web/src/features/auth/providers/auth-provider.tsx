@@ -2,12 +2,35 @@
 
 import * as React from 'react';
 import type { AuthSession, Permission, UserRole } from '@laam/types';
-import { resolveUserPermissions } from '@laam/types';
+import {
+  resolveUserPermissions,
+} from '@laam/types';
 import { env } from '@/config/env';
 import {
   createHttpAuthApi,
   createMockAuthApi,
 } from '@/features/auth/api/auth-api';
+import {
+  getDemoCustomRoleIdForUserRole,
+  getRolePermissions,
+} from '@/features/platform/data/mock-tenant-store';
+
+function resolveSessionPermissions(user: AuthSession['user']): Permission[] {
+  const customRolePermissions = user.customRoleId
+    ? getRolePermissions(user.organizationId, user.customRoleId)
+    : getRolePermissions(
+        user.organizationId,
+        getDemoCustomRoleIdForUserRole(user.organizationId, user.role),
+      );
+
+  return resolveUserPermissions({
+    role: user.role,
+    customRolePermissions,
+    permissionGrants: user.permissionGrants,
+    permissionDenies: user.permissionDenies,
+    permissions: user.permissions,
+  });
+}
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -21,6 +44,8 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   /** Dev/demo only — swap mock role without backend. */
   switchRole: (role: UserRole) => Promise<void>;
+  /** Dev/demo only — preview as a tenant org admin after onboarding. */
+  previewAsTenantOwner: (tenantId: string) => Promise<boolean>;
   canSwitchRole: boolean;
 };
 
@@ -68,8 +93,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [refreshSession],
   );
 
+  const previewAsTenantOwner = React.useCallback(
+    async (tenantId: string) => {
+      if (
+        !('previewAsTenantOwner' in authApi) ||
+        typeof authApi.previewAsTenantOwner !== 'function'
+      ) {
+        return false;
+      }
+
+      const ok = authApi.previewAsTenantOwner(tenantId);
+      if (ok) {
+        await refreshSession();
+      }
+
+      return ok;
+    },
+    [refreshSession],
+  );
+
   const permissions = React.useMemo(
-    () => (session ? resolveUserPermissions(session.user) : []),
+    () => (session ? resolveSessionPermissions(session.user) : []),
     [session],
   );
 
@@ -83,9 +127,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshSession,
       logout,
       switchRole,
+      previewAsTenantOwner,
       canSwitchRole: env.isDev || env.enableRoleSwitch,
     }),
-    [status, session, permissions, refreshSession, logout, switchRole],
+    [status, session, permissions, refreshSession, logout, switchRole, previewAsTenantOwner],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
