@@ -6,6 +6,8 @@ import {
   CheckSquare,
   Contact,
   CreditCard,
+  GitBranch,
+  Handshake,
   LayoutDashboard,
   Megaphone,
   Server,
@@ -20,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import type { UniversalNavGroup } from '@/features/navigation/types/universal-nav';
+import { ORDER_QUEUE_NAV_ITEMS } from '@/features/orders/config/order-queue-registry';
 
 const pv = (p: Permission) => [p] as Permission[];
 
@@ -47,14 +50,13 @@ export const UNIVERSAL_NAV_REGISTRY: UniversalNavGroup[] = [
         title: 'Orders',
         icon: ShoppingCart,
         permissions: pv('orders.view'),
-        children: [
-          { id: 'orders-all', title: 'All Orders', url: '/dashboard/orders', permissions: pv('orders.view') },
-          { id: 'orders-pending', title: 'Pending', url: '/dashboard/orders?status=pending', permissions: pv('orders.view') },
-          { id: 'orders-confirmed', title: 'Confirmed', url: '/dashboard/orders?status=confirmed', permissions: pv('orders.confirm') },
-          { id: 'orders-hold', title: 'On Hold', url: '/dashboard/orders?status=hold', permissions: pv('orders.view') },
-          { id: 'orders-cancelled', title: 'Cancelled', url: '/dashboard/orders?status=cancelled', permissions: pv('orders.cancel') },
-          { id: 'orders-delivered', title: 'Delivered', url: '/dashboard/orders?status=delivered', permissions: pv('orders.view') },
-        ],
+        children: ORDER_QUEUE_NAV_ITEMS.map((queue) => ({
+          id: `orders-${queue.id}`,
+          title: queue.label,
+          url: queue.href,
+          permissions:
+            queue.id === 'create_new' ? pv('orders.create') : pv('orders.view'),
+        })),
       },
       {
         id: 'leads',
@@ -67,6 +69,24 @@ export const UNIVERSAL_NAV_REGISTRY: UniversalNavGroup[] = [
           { id: 'leads-call', title: 'Inbound Call', url: '/dashboard/leads?source=call', permissions: pv('leads.view') },
           { id: 'leads-ecommerce', title: 'E-commerce', url: '/dashboard/leads?source=ecommerce', permissions: pv('leads.view') },
           { id: 'leads-unassigned', title: 'Unassigned', url: '/dashboard/leads?status=unassigned', permissions: pv('leads.assign') },
+        ],
+      },
+      {
+        id: 'pipeline',
+        title: 'Pipeline',
+        icon: GitBranch,
+        url: '/dashboard/pipeline',
+        permissions: pv('pipeline.view'),
+      },
+      {
+        id: 'deals',
+        title: 'Deals',
+        icon: Handshake,
+        permissions: pv('deals.view'),
+        children: [
+          { id: 'deals-all', title: 'All Deals', url: '/dashboard/deals', permissions: pv('deals.view') },
+          { id: 'deals-won', title: 'Won', url: '/dashboard/deals?stage=won', permissions: pv('deals.view') },
+          { id: 'deals-negotiation', title: 'Negotiation', url: '/dashboard/deals?stage=negotiation', permissions: pv('deals.view') },
         ],
       },
       {

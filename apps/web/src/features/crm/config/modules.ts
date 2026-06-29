@@ -49,14 +49,14 @@ export const CRM_MODULES = {
     id: 'deals',
     title: 'Deals',
     description: 'Monitor deal stages, amounts, and close dates.',
-    permissions: ['orders.view'],
+    permissions: ['deals.view'],
     apiPath: '/crm/deals',
   },
   pipeline: {
     id: 'pipeline',
     title: 'Pipeline',
     description: 'Visualize your sales funnel and forecast revenue.',
-    permissions: ['orders.view'],
+    permissions: ['pipeline.view'],
     apiPath: '/crm/pipeline',
   },
   tasks: {

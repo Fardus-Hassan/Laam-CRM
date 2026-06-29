@@ -1,6 +1,16 @@
-import { EntityPage } from '@/features/crm/components/entity-page';
-import { CRM_MODULES } from '@/features/crm/config/modules';
+import { Suspense } from 'react';
+import { DealsListPage } from '@/features/deals/components/deals-list-page';
+import { Skeleton } from '@/components/ui/skeleton';
 
-export default function DealsPage() {
-  return <EntityPage module={CRM_MODULES.deals} />;
+type DealsPageProps = {
+  searchParams?: Promise<{ stage?: string; search?: string }>;
+};
+
+export default async function DealsPage({ searchParams }: DealsPageProps) {
+  const params = searchParams ? await searchParams : undefined;
+  return (
+    <Suspense fallback={<Skeleton className="m-4 h-64 w-full" />}>
+      <DealsListPage stage={params?.stage} />
+    </Suspense>
+  );
 }

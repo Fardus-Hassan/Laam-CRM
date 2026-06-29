@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Plus } from 'lucide-react';
 
 import type { CrmModuleId } from '@laam/types';
@@ -23,11 +24,27 @@ export function CrmPageActions({ moduleId }: CrmPageActionsProps) {
     <div className="flex flex-wrap gap-2">
       {actions.map((action) => (
         <Can key={action.permission} permission={action.permission}>
-          <Button type="button" size="sm" variant={action.variant ?? 'default'}>
-            {action.variant === 'default' || !action.variant ? (
-              <Plus className="size-4" />
-            ) : null}
-            {action.label}
+          <Button
+            type="button"
+            size="sm"
+            variant={action.variant ?? 'default'}
+            asChild={Boolean(action.href)}
+          >
+            {action.href ? (
+              <Link href={action.href}>
+                {action.variant === 'default' || !action.variant ? (
+                  <Plus className="size-4" />
+                ) : null}
+                {action.label}
+              </Link>
+            ) : (
+              <>
+                {action.variant === 'default' || !action.variant ? (
+                  <Plus className="size-4" />
+                ) : null}
+                {action.label}
+              </>
+            )}
           </Button>
         </Can>
       ))}

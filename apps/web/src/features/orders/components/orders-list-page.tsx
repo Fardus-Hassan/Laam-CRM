@@ -9,6 +9,8 @@ import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { PageShell } from '@/components/layout/page-shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { OrdersBulkActionsBar } from '@/features/orders/components/orders-bulk-actions-bar';
+import { OrdersSalesSummary } from '@/features/orders/components/orders-sales-summary';
 import { OrdersTable } from '@/features/orders/components/orders-table';
 import {
   getOrderPageCopy,
@@ -81,6 +83,8 @@ export function OrdersListPage({ status }: OrdersListPageProps) {
     },
   ];
 
+  const showCourierSubmit = statusFilter === 'confirmed' || statusFilter === 'confirmed_2';
+
   return (
     <PageShell title={pageCopy.title} description={pageCopy.description}>
       <div className="space-y-4">
@@ -94,6 +98,8 @@ export function OrdersListPage({ status }: OrdersListPageProps) {
           onSearchChange={setSearch}
           searchPlaceholder="Search order, customer, phone, area…"
         />
+
+        <OrdersBulkActionsBar showCourierSubmit={showCourierSubmit} />
 
         <Card className="gap-0 py-0 shadow-none">
           <CardHeader className="border-b px-4 py-3">
@@ -111,6 +117,11 @@ export function OrdersListPage({ status }: OrdersListPageProps) {
             </div>
           </CardContent>
         </Card>
+
+        <OrdersSalesSummary
+          orderCount={data?.summary.count ?? 0}
+          totalAmount={data?.summary.totalAmount ?? 0}
+        />
       </div>
     </PageShell>
   );

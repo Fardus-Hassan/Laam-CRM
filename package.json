@@ -12,7 +12,10 @@
         "build:all": "nx run-many -t build",
         "typecheck": "nx run-many -t typecheck",
         "docker:up": "docker compose up -d",
-        "docker:down": "docker compose down"
+        "docker:down": "docker compose down",
+        "db:generate": "prisma generate --schema=apps/api/prisma/schema.prisma",
+        "db:push": "prisma db push --schema=apps/api/prisma/schema.prisma",
+        "db:seed": "node apps/api/prisma/seed.mjs"
     },
     "dependencies": {
         "@nestjs/common": "^11.0.0",

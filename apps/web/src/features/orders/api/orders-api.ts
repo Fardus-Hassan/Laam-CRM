@@ -55,4 +55,5 @@ export function createHttpOrdersApi(): OrdersApi {
   };
 }
 
-export const ordersApi = createMockOrdersApi();
+export const ordersApi =
+  process.env.NEXT_PUBLIC_USE_API === 'true' ? createHttpOrdersApi() : createMockOrdersApi();

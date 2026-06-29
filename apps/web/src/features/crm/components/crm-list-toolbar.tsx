@@ -11,6 +11,7 @@ type CrmStatusTab = {
   id: string;
   label: string;
   href: string;
+  isActive?: (searchParams: URLSearchParams) => boolean;
 };
 
 type CrmListToolbarProps = {
@@ -37,8 +38,9 @@ export function CrmListToolbar({
         <div className="custom-scrollbar flex gap-1 overflow-x-auto pb-1">
           {tabs.map((tab) => {
             const tabStatus = tab.id;
-            const isActive =
-              tabStatus === 'all'
+            const isActive = tab.isActive
+              ? tab.isActive(searchParams)
+              : tabStatus === 'all'
                 ? !searchParams.get('status')
                 : currentStatus === tabStatus;
 

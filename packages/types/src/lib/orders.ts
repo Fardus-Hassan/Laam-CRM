@@ -97,3 +97,52 @@ export const orderListResponseSchema = z.object({
 });
 
 export type OrderListResponse = z.infer<typeof orderListResponseSchema>;
+
+export const failedOrderTypeSchema = z.enum(['duplicate', 'blocked', 'other']);
+
+export type FailedOrderType = z.infer<typeof failedOrderTypeSchema>;
+
+export const failedOrderListItemSchema = z.object({
+  id: z.string(),
+  customerName: z.string(),
+  customerPhone: z.string(),
+  address: z.string(),
+  products: z.array(z.string()),
+  status: orderStatusTypeSchema,
+  failedType: failedOrderTypeSchema,
+  website: z.string().optional(),
+  lastUpdateNote: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type FailedOrderListItem = z.infer<typeof failedOrderListItemSchema>;
+
+export const failedOrderListQuerySchema = z.object({
+  search: z.string().optional(),
+  failedType: failedOrderTypeSchema.optional(),
+  noteStatus: z.enum(['all', 'has_note', 'no_note']).optional(),
+  website: z.string().optional(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().default(10),
+});
+
+export type FailedOrderListQuery = z.infer<typeof failedOrderListQuerySchema>;
+
+export const failedOrderReportSchema = z.object({
+  totalTracked: z.number(),
+  confirmed: z.number(),
+  failedToConfirmedPercent: z.number(),
+});
+
+export type FailedOrderReport = z.infer<typeof failedOrderReportSchema>;
+
+export const failedOrderListResponseSchema = z.object({
+  items: z.array(failedOrderListItemSchema),
+  total: z.number(),
+  page: z.number(),
+  pageSize: z.number(),
+  report: failedOrderReportSchema,
+});
+
+export type FailedOrderListResponse = z.infer<typeof failedOrderListResponseSchema>;

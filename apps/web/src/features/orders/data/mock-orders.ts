@@ -142,6 +142,13 @@ export const MOCK_ORDERS: OrderDetail[] = [
   buildOrder(23, { status: 'pending', customerName: 'Asif Khan', source: 'facebook' }),
   buildOrder(24, { status: 'confirmed', customerName: 'Farhana Begum', source: 'call' }),
   buildOrder(25, { status: 'delivered', customerName: 'Kamal Uddin', source: 'ecommerce' }),
+  buildOrder(26, { status: 'pending_2', customerName: 'Noman Ali' }),
+  buildOrder(27, { status: 'pending_3', customerName: 'Salma Khatun' }),
+  buildOrder(28, { status: 'in_courier', customerName: 'Ibrahim Hossain' }),
+  buildOrder(29, { status: 'completed', customerName: 'Fatima Begum' }),
+  buildOrder(30, { status: 'processing', customerName: 'Rashed Khan' }),
+  buildOrder(31, { status: 'convert', customerName: 'Priya Saha' }),
+  buildOrder(32, { status: 'cod_changed', customerName: 'Hasan Mahmud' }),
 ];
 
 export function getMockOrderById(orderNumber: string): OrderDetail | undefined {

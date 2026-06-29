@@ -1,6 +1,5 @@
-import { EntityPage } from '@/features/crm/components/entity-page';
-import { CRM_MODULES } from '@/features/crm/config/modules';
+import { PipelinePageClient } from '@/features/deals/components/pipeline-page-client';
 
 export default function PipelinePage() {
-  return <EntityPage module={CRM_MODULES.pipeline} />;
+  return <PipelinePageClient />;
 }

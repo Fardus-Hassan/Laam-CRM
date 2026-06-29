@@ -8,3 +8,7 @@ export * from './lib/navigation.js';
 export * from './lib/dashboard.js';
 export * from './lib/tenant.js';
 export * from './lib/orders.js';
+export * from './lib/leads.js';
+export * from './lib/contacts.js';
+export * from './lib/companies.js';
+export * from './lib/deals.js';

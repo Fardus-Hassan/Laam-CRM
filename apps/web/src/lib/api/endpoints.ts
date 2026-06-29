@@ -12,4 +12,5 @@ export const crmEndpoints = {
   leads: '/crm/leads',
   orders: '/crm/orders',
   deals: '/crm/deals',
+  pipeline: '/crm/pipeline',
 } as const;
