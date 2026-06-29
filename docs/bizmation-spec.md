@@ -1,142 +1,190 @@
-# Laam CRM — Product Requirement Spec  
+# Laam CRM — Product Requirement Specification  
 ## Reference: Bizmation CRM (Bangladesh E-commerce Operations)
 
-**Document type:** Requirement & feature inventory (COO / stakeholder review)  
-**Status:** Screenshot inventory **complete** for ops modules — ready for build phase  
+**Document type:** Product requirements & feature specification  
+**Status:** Requirements baseline complete — implementation in progress  
 **Last updated:** 2026-06-29  
-**Owner:** Product (La'am) · **Stakeholder mandate:** COO — *“Bizmation-এর মতো CRM; যেখানে সম্ভব আরও ভালো”*
+**Owner:** Product (La'am)
 
-> **এই document কী?** Bizmation CRM-এর প্রতিটি module, screen, এবং key action আমরা screenshot দিয়ে inventory করেছি। Laam CRM এটার **parity + improvement** plan। এটি code নয় — build-এর single source of truth।
->
-> **Parity guarantee:** Bizmation sidebar-এর **সব ops module (১–১২)** — lists, forms, filters, bulk actions, settings — আমরা **বুঝি ও document করেছি** (Section 0.2 + Section 3)। Laam = **same capability** + **better UX/SaaS** যেখানে approved।
+> **Purpose:** This document defines **Laam CRM** — an order-centric operations platform for Bangladesh e-commerce. It is modeled on **Bizmation CRM** (market reference) and extends it with modern SaaS architecture, improved UX, and a roadmap for HRM and Accounting.
 
 ---
 
-## 0. COO Executive Summary (এই section share করুন)
+## 0. Product Overview
 
-### 0.1 Mandate & commitment
+### 0.1 Product vision
 
-| Item | Detail |
-|------|--------|
-| **COO directive** | Bizmation CRM-এর মতো build করতে হবে; **যেখানে সম্ভব better** |
-| **আমাদের বোঝাপড়া** | Bizmation-এর **সব major module, sub-menu, list/create/bulk actions** screenshot থেকে document করা হয়েছে — আমরা জানি **কী কী আছে** |
-| **Laam promise** | Same **ops flow** (order-centric BD e-commerce) + **modern UI** + **SaaS multi-tenant** + approved জায়গায় **সহজ UX** |
-| **Future (post-MVP)** | Full **HRM** + **Accounting** modules (Bizmation-এ hints আছে — Expense/Income, Admin HR; আমরা proper module করব) |
+Laam CRM helps e-commerce teams manage the full order lifecycle: from pre-order and lead capture through confirmation, courier dispatch, delivery, follow-up, inventory, support, and light finance — in one system.
 
-### 0.2 আমরা Bizmation-এ কী কী বুঝেছি — module-at-a-glance
+| Dimension | Definition |
+|-----------|------------|
+| **Product type** | Operations CRM (order-centric) — not generic pipeline/deals CRM |
+| **Market reference** | Bizmation CRM — structure, fields, and workflows aligned to BD e-commerce ops |
+| **Laam differentiation** | Modern UI, multi-tenant SaaS, finer role permissions, unified UX patterns |
+| **Long-term scope** | Operations MVP → Dashboard & Reports → HRM → Accounting |
 
-| # | Module | Bizmation-এ আছে (short) | Inventory |
-|---|--------|--------------------------|-----------|
-| 1 | **Orders** | Create, All Orders, 33+ status queues, Failed, Detail, bulk, courier submit | ✅ Done |
-| 2 | **Pre Orders/Lead** | List, filters, bulk, Create Pre Order (customer + products + payment) | ✅ Done |
-| 3 | **Customers** | List, heavy filters, segments, courier score, bulk SMS/followup | ✅ Done |
-| 4 | **Followups 1/2/3** | Same list UI — status-wise ৩ menu; schedule, notes, Create Order | ✅ Done |
-| 5 | **Inventory (×6)** | Product, Suppliers, Purchase, Returns, Mixer, Stock Adjustment | ✅ Done |
-| 6 | **Support Tickets** | List, create (attach/audio), chat detail, assign/transfer | ✅ Done |
-| 7 | **Other Expense / Incomes** | Table + create form + purpose categories | ✅ Done |
-| 8 | **Coupons** | List + create (%, expiry, max use) | ✅ Done |
-| 9 | **Recycle Bin** | Restore: Orders, Customers, Products, Categories | ✅ Done |
-| 10 | **Steadfast Notifications** | Courier webhook inbox — tracking, rider, COD | ✅ Done |
-| 11 | **Settings (×9)** | General, Website/API sync, Courier, SMS, Email, Import, Cat/Brand/Attr | ✅ Done |
-| 12 | **Account** | Roles (permissions), Admins (assign/OTP), Billing, IP/Mobile block | ✅ Done |
-| 13 | **Reports (×12)** | Summary, Meta Ads, product sales… | ⏸ Deferred — full system ready হলে owner decide |
-| 14 | **Dashboard** | Home KPI/widgets | ⏸ Deferred — same |
+### 0.2 MVP — high-level scope
 
-**নিশ্চিতকরণ:** উপরের **১–১২ নং** module-এর screens, filters, tables, forms, bulk actions Bizmation থেকে capture ও spec-এ লেখা আছে (Section 3 detail)। আমরা **blind build করছি না**।
-
-### 0.3 Laam কীভাবে Bizmation-এর চেয়ে better হবে (approved direction)
-
-| Area | Bizmation | Laam (planned better) |
-|------|-----------|------------------------|
-| **UI/UX** | Legacy admin UI | Modern design system (shadcn/Tailwind), faster filters, mobile-friendly |
-| **SaaS** | Single-tenant feel | Multi-tenant: Super Admin → Company → Role → User |
-| **Permission** | Module-group checkboxes | Page → section → line visibility (finer control) |
-| **Navigation** | Followups 1/2/3 duplicate menus | Shared list + queue param (optional simplify — build-time approve) |
-| **Customer journey** | Scattered across menus | Same customer block everywhere; deep links (build-time) |
-| **Courier** | Settings + separate Steadfast page | Unified courier hub (config + notifications) — planned |
-| **Data** | — | Consistent product picker: Order = Pre Order = Purchase |
-
-*Flow tweaks build শুরু হলে product owner approve করবে — COO mandate: parity first, then better.*
-
-### 0.4 Build roadmap (high-level)
+**MVP goal:** End-to-end e-commerce operations on a modern platform. Teams run daily ops without switching tools.
 
 ```mermaid
-flowchart LR
-  p1[Phase 1 - UI + mock]
-  p2[Phase 2 - API + DB]
-  p3[Phase 3 - Dashboard + Reports]
-  p4[Phase 4 - HRM + Accounting]
-  p1 --> p2 --> p3 --> p4
+flowchart TB
+  subgraph core [Core ops — MVP]
+    O[Orders & queues]
+    P[Pre Orders / Leads]
+    C[Customers]
+    F[Followups]
+    I[Inventory]
+  end
+  subgraph support [Support & finance — MVP]
+    S[Support tickets]
+    X[Expense / Income]
+    CP[Coupons]
+    RB[Recycle bin]
+  end
+  subgraph platform [Platform — MVP]
+    ST[Settings]
+    AC[Account & roles]
+    SF[Courier notifications]
+  end
+  subgraph later [Post-MVP]
+    D[Dashboard]
+    R[Reports]
+    H[HRM]
+    A[Accounting]
+  end
+  core --> support
+  support --> platform
+  platform --> later
 ```
 
-| Phase | Scope | Status |
+**In MVP**
+
+| Area | Capability (summary) |
+|------|----------------------|
+| **Orders** | Create order, status queues (33+), failed orders, bulk actions, courier submit |
+| **Pre Orders** | Lead/pre-order list, filters, create with customer + products + payment |
+| **Customers** | Customer list, segments, courier score, bulk SMS/follow-up |
+| **Follow-ups** | Three status queues (same UI); schedule, notes, convert to order |
+| **Inventory** | Products, suppliers, purchase, returns, mixer, stock adjustment |
+| **Support** | Ticket list, create (attachments), chat detail, assign/transfer |
+| **Finance (light)** | Other expense & income with purpose categories |
+| **Coupons** | Create and manage discount codes |
+| **Recycle bin** | Restore deleted orders, customers, products, categories |
+| **Courier** | Steadfast notification inbox (tracking, rider, COD) |
+| **Settings** | General, website/API sync, courier, SMS, email, import, catalog |
+| **Account** | Roles & permissions, admin users, billing, IP/mobile block |
+
+**Out of MVP (planned later)**
+
+| Area | Rationale |
+|------|-----------|
+| **Dashboard** | KPI/widgets defined after core modules are live |
+| **Reports** (12 types) | Report set finalized after operational data model is stable |
+| **All Orders / Order Detail (full)** | Basic scaffold in Phase 1; full rebuild in a later phase |
+| **Pipeline / Deals** | Not in reference product; generic CRM — deferred |
+
+### 0.3 Module map
+
+| # | Module | What it does | MVP |
+|---|--------|--------------|-----|
+| 1 | Orders | Order creation, queues, failed handling, detail & bulk ops | Partial — queues & create: yes; full list/detail: later |
+| 2 | Pre Orders / Lead | Pre-order pipeline before confirmed order | Yes |
+| 3 | Customers | B2C customer records, segmentation, courier reliability | Yes |
+| 4 | Follow-ups 1/2/3 | Callback queues by status; same list pattern as order queues | Yes |
+| 5 | Inventory (×6) | Stock, suppliers, purchasing, returns, mixing, adjustments | Yes |
+| 6 | Support Tickets | Customer support with ticket lifecycle | Yes |
+| 7 | Expense / Income | Operational cash in/out (not full accounting) | Yes |
+| 8 | Coupons | Promotional codes for orders | Yes |
+| 9 | Recycle Bin | Soft-delete recovery | Yes |
+| 10 | Steadfast Notifications | Courier webhook events | Yes |
+| 11 | Settings (×9) | Tenant configuration & integrations | Yes |
+| 12 | Account | Access control, users, billing, security | Yes |
+| 13 | Reports | Sales, ads, product analytics (12 report types) | Deferred |
+| 14 | Dashboard | Home overview & KPIs | Deferred |
+
+_Detailed screen-level requirements: Section 3._
+
+### 0.4 Laam improvements over reference
+
+| Area | Reference (Bizmation) | Laam (planned) |
+|------|----------------------|----------------|
+| **UI/UX** | Legacy admin interface | Modern design system; responsive; faster filters |
+| **Architecture** | Single-tenant feel | Multi-tenant SaaS: platform → company → role → user |
+| **Permissions** | Module-level checkboxes | Page → section → field/line granularity |
+| **Navigation** | Duplicate follow-up menus | Shared list component with queue parameter (optional) |
+| **Data consistency** | Varied forms across modules | Unified customer block and product picker across flows |
+| **Courier** | Settings + separate notification page | Unified courier hub (configuration + events) |
+
+_Flow changes require product approval at implementation time. Default: reference parity first, then approved improvements._
+
+### 0.5 Delivery phases
+
+| Phase | Focus | Status |
 |-------|--------|--------|
-| **Phase 1** | Ops modules UI + mock; permissions open; Bizmation structure match | **Next** |
-| **Phase 2** | API, DB, tenant isolation, role permission enforce | Planned |
-| **Phase 3** | Dashboard + Reports — owner decides content | Deferred |
-| **Phase 4** | **HRM** (attendance, payroll…) + **Accounting** (full ledger) | Future |
+| **Phase 1** | UI + mock data; reference structure match; permissions open for all roles | In progress |
+| **Phase 2** | API, database, tenant isolation, permission enforcement | Planned |
+| **Phase 3** | Dashboard & Reports — content per product decision | Deferred |
+| **Phase 4** | HRM (attendance, payroll) & Accounting (full ledger) | Future |
 
-### 0.5 Key product decisions (already confirmed)
+### 0.6 Key decisions
 
-- **Reference:** Bizmation structure/fields/flow — not generic HubSpot CRM  
-- **Orders:** Create New = full match; queues = yes; All Orders + Detail full rebuild = **Later**  
-- **Dashboard + Reports:** **Deferred** until full system ready  
-- **Auth:** Super Admin cannot see other tenants’ operational data  
-- **Not in MVP:** Pipeline / Deals (Bizmation sidebar-এ নেই)
+- **Reference model:** Bizmation structure and flows — not HubSpot-style generic CRM  
+- **Design:** Match reference fields and flow; Laam visual style (shadcn / Tailwind)  
+- **Auth:** Super Admin manages platform only — no access to tenant operational data  
+- **Permissions:** Phase 1 all open; Phase 2 role-based on API and UI  
+- **Excluded from MVP:** Pipeline, Deals, Contacts (reference uses Customers only)
 
-### 0.6 COO — কোথায় detail পাবেন
+### 0.7 Where to read more
 
 | Section | Content |
 |---------|---------|
-| **Section 2** | MVP scope & confirmed decisions |
-| **Section 3** | Screen-by-screen inventory (screenshots) |
-| **Section 11** | Auth, tenancy, permission strategy |
-| **Section 12** | Laam vision & module map |
+| **Section 2** | MVP scope table & confirmed decisions |
+| **Section 3** | Screen-level feature inventory |
+| **Section 11** | Auth, tenancy & permissions |
+| **Section 12** | Product vision & module status |
 | **Section 8** | Build readiness |
 
 ---
 
-## 1. Meta
+## 1. Document meta
 
 | Field | Value |
 |-------|-------|
-| Reference product | **Bizmation** |
-| Target product | **Laam CRM** (Fardus monorepo) |
-| Stakeholder | **COO** — Bizmation-like, better where possible |
-| Design rule | Bizmation **structure, fields, flow** match; **visual style** Laam (shadcn/Tailwind) |
-| Build strategy | Phase 1: UI + mock → Phase 2: API + DB → Phase 3: Dashboard/Reports → Phase 4: HRM + Accounting |
-| Product vision | **Bizmation parity** + **easier UX** + **SaaS multi-tenant** + **future HRM/Accounting** |
-| Doc status | **COO-ready** — ops module inventory complete |
-| Doc owner | Product owner + dev team |
+| Reference product | Bizmation CRM |
+| Target product | Laam CRM (Fardus monorepo) |
+| Design rule | Reference **structure, fields, flow**; Laam **visual style** (shadcn / Tailwind) |
+| Build strategy | Phase 1: UI + mock → Phase 2: API + DB → Phase 3: Dashboard / Reports → Phase 4: HRM + Accounting |
+| Product vision | E-commerce operations parity + modern SaaS + improved UX |
+| Requirements status | Ops modules specified; Dashboard & Reports pending product decision |
+| Doc owner | Product & engineering |
 | Last updated | 2026-06-29 |
-| Screenshot phase | **Complete** (ops); Dashboard + Reports deferred |
 
-### How to use this doc
+### How to use this document
 
-| Audience | Read |
-|----------|------|
-| **COO / stakeholder** | **Section 0** (Executive Summary) — ৫–১০ min |
-| **Product owner** | Section 0 + Section 2 (decisions) |
-| **Developers** | Section 3 (screen inventory) + Section 11 (auth) + Section 8 (build) |
+| Audience | Start here |
+|----------|------------|
+| **Stakeholders** | Section 0 — Product Overview (~10 min) |
+| **Product** | Section 0 + Section 2 (MVP scope & decisions) |
+| **Engineering** | Section 3 (screen inventory) + Section 11 (auth) + Section 8 (build) |
 
-_Screenshot collection phase complete (2026-06-29). Dashboard + Reports intentionally deferred._
+### Requirements coverage
 
-### Inventory completion checklist
-
-- [x] Sidebar — full menu tree (Batch 0)
-- [x] Orders — create, list, queues, failed, detail (5a–5d)
-- [x] Pre Orders, Customers, Followups, Inventory (all 6)
-- [x] Support, Expense/Income, Coupons, Recycle Bin
-- [x] Settings (9), Account (Roles, Admins, Billing, IP Block)
-- [x] Steadfast Notifications
-- [ ] Dashboard — deferred (owner decides after full build)
-- [ ] Reports (12 types) — deferred (same)
+| Area | Status |
+|------|--------|
+| Sidebar & navigation | Specified |
+| Orders (create, queues, failed, detail) | Specified |
+| Pre Orders, Customers, Follow-ups, Inventory (×6) | Specified |
+| Support, Expense/Income, Coupons, Recycle Bin | Specified |
+| Settings (×9), Account, Steadfast Notifications | Specified |
+| Dashboard | Deferred |
+| Reports (×12) | Deferred |
 
 ---
 
-## 2. MVP Scope (your decisions)
+## 2. MVP scope & decisions
 
-**Legend:** `Confirmed` = owner decided · `Yes` = build with Bizmation parity · `Later` / `Deferred` = phase 2+ · `TBD` = pending decision
+**Legend:** `Confirmed` = decided · `Yes` = in MVP · `Later` / `Deferred` = future phase · `TBD` = pending decision
 
 | Priority | Module | Bizmation menu | Laam route | Include? | Notes |
 |----------|--------|----------------|------------|----------|-------|
@@ -145,30 +193,30 @@ _Screenshot collection phase complete (2026-06-29). Dashboard + Reports intentio
 | P0 | Orders → Detail/Edit (full) | Order row click | `/dashboard/orders/[orderId]` | **Later** | Batch 5c documented; basic scaffold only for now |
 | P0 | Orders (queues) | Orders (33+ sub-items) | `/dashboard/orders?status=…` | **Yes** | Shared list + Failed page — Phase 1 started |
 | P0 | Orders → Create New | Orders → Create New | `/dashboard/orders/new` | **Confirmed** | **Full match** — page scaffold live |
-| P0 | Pre Orders/Lead | Pre Orders/Lead | `/dashboard/leads` | **Yes** | SS captured — list + create + filters |
-| P0 | Customers | Customers | `/dashboard/customers` | **Yes** | SS captured — list + segments + bulk |
-| P1 | Followups | Followups (badge: 285) | `/dashboard/followups` | **Yes** | SS captured — 3 queues same UI |
+| P0 | Pre Orders/Lead | Pre Orders/Lead | `/dashboard/leads` | **Yes** | List, create, filters |
+| P0 | Customers | Customers | `/dashboard/customers` | **Yes** | List, segments, bulk actions |
+| P1 | Followups | Followups (badge: 285) | `/dashboard/followups` | **Yes** | Three queues, shared UI |
 | P1 | Followups 2 | Followups 2 | `/dashboard/followups?queue=2` | **Yes** | Status queue 2 |
 | P1 | Followups 3 | Followups 3 | `/dashboard/followups?queue=3` | **Yes** | Status queue 3 |
-| P1 | Inventory | Inventory (6 sub-items) | `/dashboard/inventory/*` | **Yes** | All 6 sub-menus captured |
-| P1 | Reports | Report (12 sub-items) | `/dashboard/reports` | **Deferred** | Full system ready → owner decides |
-| P2 | Settings | Settings (9 sub-items) | `/dashboard/settings` | **Yes** | All 9 captured — Courier/SMS critical |
-| P2 | Steadfast Notifications | Steadfast Notifications | `/dashboard/steadfast` | **Yes** | Courier inbox captured |
-| P2 | Support Tickets | Support Tickets | `/dashboard/support` | **Yes** | List + create + chat |
-| P2 | Coupons | Coupons | `/dashboard/coupons` | **Yes** | List + create |
-| P2 | Recycle Bin | Recycle Bin | `/dashboard/recycle-bin` | **Yes** | 4 restore tables |
+| P1 | Inventory | Inventory (6 sub-items) | `/dashboard/inventory/*` | **Yes** | All six sub-modules |
+| P1 | Reports | Report (12 sub-items) | `/dashboard/reports` | **Deferred** | Defined after core modules live |
+| P2 | Settings | Settings (9 sub-items) | `/dashboard/settings` | **Yes** | Courier and SMS critical for BD ops |
+| P2 | Steadfast Notifications | Steadfast Notifications | `/dashboard/steadfast` | **Yes** | Courier event inbox |
+| P2 | Support Tickets | Support Tickets | `/dashboard/support` | **Yes** | List, create, chat |
+| P2 | Coupons | Coupons | `/dashboard/coupons` | **Yes** | List, create |
+| P2 | Recycle Bin | Recycle Bin | `/dashboard/recycle-bin` | **Yes** | Four restore tables |
 | P3 | Other Expense | Other Expense | `/dashboard/finance/expenses` | **Yes** | Light finance — future Accounting module |
 | P3 | Other Incomes | Other Incomes | `/dashboard/finance/incomes` | **Yes** | Light finance — future Accounting module |
-| P3 | Roles | Roles (Account) | `/dashboard/settings/roles` | **Yes** | Permission groups captured |
-| P3 | Admins | Admins | `/dashboard/users` | **Yes** | Users + assign captured |
+| P3 | Roles | Roles (Account) | `/dashboard/settings/roles` | **Yes** | Permission groups |
+| P3 | Admins | Admins | `/dashboard/users` | **Yes** | User management and assignment |
 | P3 | Billing | Billing | `/dashboard/billing` | **Yes** | Tenant SaaS billing (Laam platform) |
-| P3 | IP/Mobile Blocked | IP/Mobile Blocked | `/dashboard/security/blocked` | **Yes** | Fraud block captured |
+| P3 | IP/Mobile Blocked | IP/Mobile Blocked | `/dashboard/security/blocked` | **Yes** | Fraud prevention |
 | — | Pipeline | _(sidebar-এ নেই)_ | `/dashboard/pipeline` | **Later?** | Generic CRM; Bizmation-এ নেই |
 | — | Deals | _(sidebar-এ নেই)_ | `/dashboard/deals` | **Later?** | Generic CRM; Bizmation-এ নেই |
 | — | Contacts | _(sidebar-এ নেই)_ | `/dashboard/contacts` | **Later?** | Bizmation শুধু Customers |
 | — | Campaigns | _(Meta Ads under Report)_ | `/dashboard/campaigns` | **TBD** | Report → Meta Ads |
 
-### Confirmed decisions (non-screenshot)
+### Confirmed decisions
 
 | Decision | Choice | Source |
 |----------|--------|--------|
@@ -188,16 +236,16 @@ _Screenshot collection phase complete (2026-06-29). Dashboard + Reports intentio
 | **Build order** | Ops modules আগে; **Dashboard + Reports** = full system ready হলে owner decide | Product owner |
 | **Dashboard** | **Deferred** — widget/content owner পরে ঠিক করবে | Product owner |
 | **Reports** | **Deferred** — কোন report দেখাবে owner পরে decide | Product owner |
-| **COO mandate** | Bizmation-like; better where approved; future **HRM + Accounting** | COO |
-| **Bizmation parity** | All ops modules/actions **documented** — we understand what to build | Product owner |
-| **Flow tweaks** | Build time-এ owner approve করলে — default Bizmation match | Product owner |
+| **Product vision** | Bizmation-like ops CRM; improved UX & SaaS; future HRM + Accounting | Product |
+| **Reference parity** | Ops modules & actions defined in Section 3 | Product |
+| **Flow changes** | Approved at implementation; default = reference match | Product |
 
-### Future modules (post-MVP — COO roadmap)
+### Future modules (post-MVP)
 
-| Module | Bizmation today | Laam plan |
+| Module | Reference today | Laam plan |
 |--------|-----------------|-----------|
-| **HRM** | Admins-এ HR shortcuts (attendance, salaries…) | Dedicated **HRM module** |
-| **Accounting** | Expense/Income + Purchase ledger (light) | Dedicated **Accounting module** |
+| **HRM** | Admin HR shortcuts (attendance, salaries) | Dedicated HRM module |
+| **Accounting** | Expense/Income + purchase ledger (light) | Full accounting module |
 | **Dashboard + Reports** | Full analytics | Owner decides after ops system live |
 
 ---
@@ -1647,7 +1695,7 @@ Implementation নয় — শুধু বর্তমান অবস্থ�
 | 2026-06-29 | **Batch 5c** | Order Detail/Edit #540919: customer block, courier success rate, products, notes, payments, audit, status tracking, support tickets, modals (Pathao, payment, followup, add item, ticket) |
 | 2026-06-29 | **Batch 5b** | Orders → All Orders: filters, Group by Status tiles, 10-col table, bulk actions, Sales Summary P&L |
 | 2026-06-29 | **Batch 5a** | Orders → Create New: full form inventory (customer, products, UTM, summary, coupon, skip followup); MVP confirmed full match |
-| 2026-06-29 | **COO doc** | Section 0 executive summary; MVP table synced; HRM/Accounting roadmap; share-ready |
+| 2026-06-29 | **Product overview** | Section 0 rewritten — professional MVP summary; module map & delivery phases |
 | 2026-06-29 | **Account** | Roles (grouped permissions), Admins (distribution/OTP), Billing (SaaS credit), IP/Mobile block |
 | 2026-06-29 | **Plan** | Screenshot-First workflow: capture checklists for Batches 1–3, 5d, 6–7; Section 8 Build Readiness Assessment (interim) |
 | — | Batch 1 | _Awaiting user screenshot — checklist in Section 3_ |
@@ -1659,35 +1707,29 @@ Implementation নয় — শুধু বর্তমান অবস্থ�
 
 ---
 
-## 7. Screenshot workflow — এখন কোন SS পাঠাবে
+## 7. Requirements capture — status
 
-### Done — Orders (আর লাগবে না)
+### Ops modules
 
-| Batch | Screen | Status |
-|-------|--------|--------|
-| 0 | Sidebar navigation | Done |
-| 5a | Create New Order | Done — MVP confirmed |
-| 5b | All Orders list | Done |
-| 5c | Order Detail/Edit | Done |
-| 5d | Queues + full flow (Pending, Confirmed, In Courier, Failed, COD) | Done |
+All operational modules (Orders through Account) are specified in Section 3. Dashboard and Reports are deferred until core modules are live and product defines KPI/report requirements.
 
-Queue page আর পাঠাতে হবে না — standard queues = same list, Failed = separate page (confirmed).
+| Area | Status |
+|------|--------|
+| Orders (create, list, queues, failed, detail) | Specified |
+| Pre Orders, Customers, Follow-ups, Inventory | Specified |
+| Support, Finance, Coupons, Recycle Bin | Specified |
+| Settings, Account, Steadfast | Specified |
+| Dashboard | Deferred |
+| Reports (12 types) | Deferred |
 
----
-
-### Screenshot phase — status
-
-> **Owner confirmed (2026-06-29):** **Dashboard + Reports পরে** — full system ready হলে owner decide করবে কী দেখাবে। Screenshot এখন লাগবে না।
-
-**Screenshot inventory: COMPLETE** for ops modules (Orders, Leads, Customers, Followups, Inventory, Support, Finance, Coupons, Recycle, Settings, Account, Steadfast).
-
-**Deferred (no SS now):** Dashboard, Reports (12 types).
-
-**Optional:** Orders gap screenshots (Action dropdown, Print, etc.)
-
----
-
-### ~~এখন পাঠাও~~ — archive (screenshot phase done)
+```mermaid
+flowchart LR
+  spec[Requirements complete]
+  build[Implementation]
+  full[Core modules live]
+  insights[Dashboard + Reports]
+  spec --> build --> full --> insights
+```
 
 <details>
 <summary>Previous priority list (reference)</summary>
@@ -1804,15 +1846,15 @@ Assistant **Section 3** fill + **Section 8** revise করবে।
 
 ---
 
-## 8. কী কী লাগবে — Build Readiness Assessment
+## 8. Build readiness
 
-**Status:** Screenshot inventory **complete** (ops modules). **Build phase** next. Dashboard + Reports **deferred**.
+**Status:** Ops module requirements complete. Implementation in progress. Dashboard and Reports deferred.
 
-**Rule:** Bizmation structure/fields/flow match; Laam visual style (shadcn/Tailwind). Phase 1: UI + mock, then Phase 2: API.
+**Rule:** Reference structure, fields, and flow; Laam visual style (shadcn / Tailwind). Phase 1: UI + mock; Phase 2: API + database.
 
-### 8.1 Executive summary
+### 8.1 Summary
 
-Ops modules spec captured. **Dashboard + Reports** — owner will decide content after **full system ready** (no screenshot/build now). Focus: implement Leads, Customers, Followups, Inventory, Settings, Support, etc.
+Ops modules are specified in Section 3. Dashboard and Reports will be defined after core modules are live. Current focus: Leads, Customers, Follow-ups, Inventory, Settings, Support, and related ops modules.
 
 ### 8.2 MVP scope — draft matrix (owner confirm needed)
 
@@ -1882,17 +1924,14 @@ Order (5a+5c fields), OrderLineItem, OrderNote, OrderPayment, StatusHistory, Act
 2. Companies → Customers replace নাকি rename?
 3. Pipeline/Deals — keep Later?
 
-### 8.9 Next action
+### 8.9 Next steps
 
-**Screenshot phase: DONE** (Dashboard + Reports intentionally skipped — owner decides later).
-
-**Build phase:** Start implementing ops modules per Section 3 inventory. Placeholder `/dashboard` + `/dashboard/reports` until owner ready.
-
-| Deferred | When |
-|----------|------|
-| Dashboard | Full system ready → owner says what to show → then SS + build |
+| Item | When |
+|------|------|
+| Implement ops modules | Per Section 3 |
+| Dashboard | After core modules live — product defines widgets |
 | Reports | Same |
-| Orders All Orders + Detail full | Owner said **Later** |
+| Orders All Orders + Detail (full) | Later phase |
 
 ---
 
@@ -2067,58 +2106,44 @@ Phase B-তে:
 
 ---
 
-## 12. Laam product vision (high-level)
+## 12. Laam product vision
 
-**Rule:** Screenshot phase = **কী আছে inventory**, deep field spec নয়। Dev শুরু হলে Section 3 detail fill।
+### 12.1 Approach
 
-### 12.1 Workflow
+1. **Requirements** — map reference product modules and screens to Laam (Section 3)
+2. **Build** — implement reference structure and flows on Laam platform
+3. **Improve** — apply approved UX and architecture enhancements (Section 0.4)
 
-```mermaid
-flowchart LR
-  ss[Bizmation screenshots]
-  inv[Module inventory]
-  laam[Laam build]
-  plus[Easier UX + extras]
-  ss --> inv --> laam --> plus
-```
+### 12.2 Module status
 
-1. তুমি Bizmation screenshot পাঠাও → আমি **কী কী module/screen আছে** note করি
-2. সব module inventory হলে → **Bizmation structure/flow** অনুযায়ী Laam build
-3. একই সাথে → **সহজ UX** + **Laam-only features** যোগ
+| Module | Scope | Status |
+|--------|-------|--------|
+| Sidebar / nav | Full menu tree | Specified |
+| Orders | Create, queues, failed, detail | Specified |
+| Pre Orders / Lead | List, filters, create | Specified (detail optional) |
+| Customers | List, segments, bulk, courier score | Specified (detail optional) |
+| Follow-ups 1/2/3 | Status queues; shared list UI | Specified |
+| Inventory (×6) | Product, suppliers, purchase, returns, mixer, stock adj. | Specified |
+| Support Tickets | List, create, chat | Specified |
+| Expense / Income | Table, create, purposes | Specified |
+| Coupons | List, create | Specified |
+| Recycle Bin | Restore deleted records | Specified |
+| Settings (×9) | General, website, courier, SMS, email, import, catalog | Specified |
+| Account | Roles, admins, billing, IP block | Specified |
+| Reports | 12 report types | Deferred |
+| Dashboard | Home widgets | Deferred |
 
-### 12.2 Bizmation — যা দেখেছি (module map)
+### 12.3 Laam enhancements (beyond reference)
 
-| Module | Bizmation-এ আছে | SS status |
-|--------|------------------|-----------|
-| Sidebar / nav | Full menu tree | Done |
-| Orders | Create, All Orders, 33+ queues, Failed, Detail | Done |
-| Pre Orders/Lead | List + filters + Create Pre Order | **Partial** (detail pending) |
-| Customers | List + filters + segments + bulk + courier score | **Partial** (detail/expand pending) |
-| Followups 1/2/3 | List + filters + bulk; **same UI, status queues** | **Done** |
-| Inventory (6 sub-menus) | Product, Suppliers, Purchase, Returns, Mixer, Stock Adj. | **Done** |
-| Support Tickets | List + create + chat detail | **Done** |
-| Other Expense / Incomes | Table + create + purposes | **Done** |
-| Coupons | List + create | **Done** |
-| Recycle Bin | Orders/Customers/Products/Categories restore | **Done** |
-| Settings (9 sub-menus) | General, Website, Courier, SMS, Email, Import, Cat/Brand/Attr | **Done** |
-| Account | Roles, Admins, Billing, IP Block | **Done** |
-| Reports | 12 types | **Deferred** — owner decides after full build |
-| Dashboard | Home widgets | **Deferred** — owner decides after full build |
+| Area | Enhancement |
+|------|-------------|
+| **UX** | Modern UI (shadcn), faster filters, keyboard shortcuts, mobile-responsive |
+| **Auth** | Super Admin → Tenant → Role; page/section/line permissions (Section 11) |
+| **Multi-tenant** | SaaS — multiple companies, isolated data |
+| **Quality** | Consistent customer block and product picker across modules |
+| **Future** | HRM, Accounting, audit trail, API integrations |
+| **Excluded** | Pipeline / Deals — not in reference product |
 
-### 12.3 Laam — Bizmation ছাড়াও যা থাকা উচিত
+### 12.4 Current status
 
-| Area | Laam extra (proposed) |
-|------|------------------------|
-| **UX** | Modern UI (shadcn), faster filters, keyboard shortcuts, responsive mobile |
-| **Auth** | Super Admin → Tenant → Role; page/section/line permission (Section 11) |
-| **Multi-tenant** | SaaS — এক platform, অনেক company, data isolated |
-| **Dev phase** | Phase 1 সব open; Phase 2 API + strict permission |
-| **Not in Bizmation** | Pipeline/Deals — **Later** (generic CRM; sidebar-এ নেই) |
-| **Quality** | Consistent customer block (Order = Pre Order = Customer), shared product picker |
-| **Future** | **HRM + Accounting** full modules (COO roadmap); audit trail, API integrations |
-
-### 12.4 Status & next step
-
-**Screenshot / inventory phase: COMPLETE** (ops modules). **COO-ready** — share Section 0.
-
-**Build phase:** Implement Laam per Section 3. Flow improvements — **owner approve at build time**; default = Bizmation parity.
+**Requirements:** Ops modules specified (Section 3). **Implementation:** Phase 1 in progress. **Next:** Build remaining UI modules per spec; flow refinements require product approval.
