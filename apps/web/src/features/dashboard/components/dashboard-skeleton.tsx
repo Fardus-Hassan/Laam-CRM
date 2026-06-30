@@ -1,3 +1,7 @@
+import {
+  DASHBOARD_GRID_LG_12,
+  DASHBOARD_GRID_LG_12_SM2,
+} from '@/features/dashboard/lib/dashboard-grid';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,12 +16,12 @@ function DashboardCardSkeleton({
   children: React.ReactNode;
 }) {
   return (
-    <Card className={cn('@container gap-0 py-0 shadow-none', className)}>
+    <Card className={cn('@container h-fit w-full gap-0 py-0 shadow-none', className)}>
       <div className="flex items-center justify-between gap-3 border-b px-3 py-3 sm:px-5">
         <Skeleton className="h-4 w-28 sm:w-36" />
         <Skeleton className="h-7 w-20 rounded-md" />
       </div>
-      <CardContent className={cn('px-3 py-3 sm:px-5 sm:py-4', contentClassName)}>
+      <CardContent className={cn('px-3 py-3 sm:px-5 sm:py-3', contentClassName)}>
         {children}
       </CardContent>
     </Card>
@@ -165,7 +169,7 @@ export function DashboardSkeleton() {
 
       <KpiSkeletonGrid count={6} />
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCardSkeleton className="min-w-0 lg:col-span-2 2xl:col-span-6">
           <LineChartSkeleton />
         </DashboardCardSkeleton>
@@ -179,7 +183,7 @@ export function DashboardSkeleton() {
         </DashboardCardSkeleton>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCardSkeleton className="min-w-0 lg:col-span-1 2xl:col-span-4">
           <BarChartSkeleton />
         </DashboardCardSkeleton>
@@ -196,7 +200,7 @@ export function DashboardSkeleton() {
         </DashboardCardSkeleton>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12_SM2}>
         <DashboardCardSkeleton
           className="min-w-0 sm:col-span-2 2xl:col-span-4"
           contentClassName="pt-0"

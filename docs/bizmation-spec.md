@@ -2,7 +2,7 @@
 ## Reference: Bizmation CRM (Bangladesh E-commerce Operations)
 
 **Document type:** Product requirements & feature specification  
-**Status:** Requirements baseline complete — implementation in progress  
+**Status:** Requirements baseline complete — mockup phase in progress  
 **Last updated:** 2026-06-29  
 **Owner:** Product (La'am)
 
@@ -122,10 +122,34 @@ _Flow changes require product approval at implementation time. Default: referenc
 
 | Phase | Focus | Status |
 |-------|--------|--------|
-| **Phase 1** | UI + mock data; reference structure match; permissions open for all roles | In progress |
-| **Phase 2** | API, database, tenant isolation, permission enforcement | Planned |
-| **Phase 3** | Dashboard & Reports — content per product decision | Deferred |
-| **Phase 4** | HRM (attendance, payroll) & Accounting (full ledger) | Future |
+| **Phase 1 — Mockup** | Page-by-page Bizmation SS → discuss → Laam UI mockup; clickable demo; toast feedback; reload resets | **In progress** |
+| **Phase 2 — Backend** | API, database, tenant isolation, permission enforcement, integrations | After meeting confirm |
+| **Phase 3** | Dashboard & Reports (Bizmation content) — product decision | Deferred |
+| **Phase 4** | HRM & Accounting (full modules) | Future |
+
+#### Phase 1 mockup rules (confirmed)
+
+| Behavior | Mock phase |
+|----------|------------|
+| Owner sends Bizmation **screenshot per page** | Discuss → approve → build Laam UI |
+| **Click / navigation** | Route change between mock screens |
+| **Actions** (save, confirm, status change, bulk…) | In-memory UI update + toast (e.g. react-hot-toast) |
+| **Reload** | State resets — no persistence required |
+| **API / DB** | None — mock data only |
+| **Goal** | Meeting-ready demo: clearly show what exists and what happens on action |
+
+#### Phase 1 product decisions (owner)
+
+| Topic | Decision |
+|-------|----------|
+| Status queues (Pending 2/3…) | Admin-created labels for search convenience — not separate workflows |
+| Pre Order detail | Same as Order detail page; list/create are light variations |
+| Customer detail | Table-only (Bizmation style); detail UX decided at dev time |
+| Routes / naming | Flexible in demo; **Laam design/theme fixed** |
+| Business rules (duplicate detect, Completed vs Delivered, etc.) | Decided later |
+| Status transitions (production) | Config-driven — any status → any status allowed |
+| Dashboard / Reports content | Decided after core ops mockups + meeting |
+| End state | Status, role, permission **100% dynamic + secure** (Phase 2+) |
 
 ### 0.6 Key decisions
 
@@ -154,9 +178,10 @@ _Flow changes require product approval at implementation time. Default: referenc
 | Reference product | Bizmation CRM |
 | Target product | Laam CRM (Fardus monorepo) |
 | Design rule | Reference **structure, fields, flow**; Laam **visual style** (shadcn / Tailwind) |
-| Build strategy | Phase 1: UI + mock → Phase 2: API + DB → Phase 3: Dashboard / Reports → Phase 4: HRM + Accounting |
+| Build strategy | Phase 1: page-wise mockup UI → meeting → Phase 2: API + DB → Phase 3: Dashboard/Reports → Phase 4: HRM + Accounting |
 | Product vision | E-commerce operations parity + modern SaaS + improved UX |
-| Requirements status | Ops modules specified; Dashboard & Reports pending product decision |
+| Requirements status | Ops modules specified; mockup build page-by-page from owner screenshots |
+| Workflow | Owner SS → discuss → approve → mockup code |
 | Doc owner | Product & engineering |
 | Last updated | 2026-06-29 |
 
@@ -220,9 +245,11 @@ _Flow changes require product approval at implementation time. Default: referenc
 
 | Decision | Choice | Source |
 |----------|--------|--------|
-| Reference CRM | Bizmation | Product owner |
-| First build phase | UI + mock, then API | Product owner |
-| Visual approach | Adapt to Laam design system | Product owner |
+| Reference CRM | Bizmation | Product |
+| First build phase | **Mockup frontend** → meeting → backend | Product |
+| Mockup interaction | Click navigates; actions → toast + in-memory update; reload resets | Product |
+| Mockup input | Owner sends Bizmation SS **page by page**; discuss before code | Product |
+| Visual approach | Laam design system (fixed); structure/routes flexible in demo | Product |
 | Doc location | `docs/bizmation-spec.md` | Product owner |
 | Orders MVP scope | Page screenshot দেখে প্রতিটি menu item বুঝে decide | Product owner |
 | Create New Order page | **Full match** — customer, products, UTM, summary, coupon, skip followup | Product owner (Batch 5a) |
@@ -236,9 +263,11 @@ _Flow changes require product approval at implementation time. Default: referenc
 | **Build order** | Ops modules আগে; **Dashboard + Reports** = full system ready হলে owner decide | Product owner |
 | **Dashboard** | **Deferred** — widget/content owner পরে ঠিক করবে | Product owner |
 | **Reports** | **Deferred** — কোন report দেখাবে owner পরে decide | Product owner |
-| **Product vision** | Bizmation-like ops CRM; improved UX & SaaS; future HRM + Accounting | Product |
-| **Reference parity** | Ops modules & actions defined in Section 3 | Product |
-| **Flow changes** | Approved at implementation; default = reference match | Product |
+| Status queues | Admin-created labels (Pending 2/3…) — convenience, not separate workflow | Product |
+| Pre Order detail | Shared Order detail page | Product |
+| Customer UI | Table-only (no separate detail page in reference) | Product |
+| Status transitions | Config: any status → any (production) | Product |
+| Nav (demo) | Bizmation ops visible; Pipeline/Deals/Contacts/Marketing hidden | Product |
 
 ### Future modules (post-MVP)
 
@@ -1695,7 +1724,7 @@ Implementation নয় — শুধু বর্তমান অবস্থ�
 | 2026-06-29 | **Batch 5c** | Order Detail/Edit #540919: customer block, courier success rate, products, notes, payments, audit, status tracking, support tickets, modals (Pathao, payment, followup, add item, ticket) |
 | 2026-06-29 | **Batch 5b** | Orders → All Orders: filters, Group by Status tiles, 10-col table, bulk actions, Sales Summary P&L |
 | 2026-06-29 | **Batch 5a** | Orders → Create New: full form inventory (customer, products, UTM, summary, coupon, skip followup); MVP confirmed full match |
-| 2026-06-29 | **Product overview** | Section 0 rewritten — professional MVP summary; module map & delivery phases |
+| 2026-06-29 | **Mockup phase** | Phase 1 workflow: SS → discuss → mockup; click/toast/reload rules; owner product decisions logged |
 | 2026-06-29 | **Account** | Roles (grouped permissions), Admins (distribution/OTP), Billing (SaaS credit), IP/Mobile block |
 | 2026-06-29 | **Plan** | Screenshot-First workflow: capture checklists for Batches 1–3, 5d, 6–7; Section 8 Build Readiness Assessment (interim) |
 | — | Batch 1 | _Awaiting user screenshot — checklist in Section 3_ |
@@ -1848,13 +1877,13 @@ Assistant **Section 3** fill + **Section 8** revise করবে।
 
 ## 8. Build readiness
 
-**Status:** Ops module requirements complete. Implementation in progress. Dashboard and Reports deferred.
+**Status:** Requirements complete. **Phase 1 mockup** in progress — page-by-page from owner screenshots.
 
-**Rule:** Reference structure, fields, and flow; Laam visual style (shadcn / Tailwind). Phase 1: UI + mock; Phase 2: API + database.
+**Rule:** Bizmation structure/fields/flow in mock screens; Laam visual style. No API until meeting confirm.
 
 ### 8.1 Summary
 
-Ops modules are specified in Section 3. Dashboard and Reports will be defined after core modules are live. Current focus: Leads, Customers, Follow-ups, Inventory, Settings, Support, and related ops modules.
+Build order: owner sends SS per page → discuss → Laam mockup. Ops modules first. Dashboard/Reports and business rules after meeting. Laam role dashboards (6 roles) remain as demo UI separate from Bizmation ops mockup track.
 
 ### 8.2 MVP scope — draft matrix (owner confirm needed)
 
@@ -1983,7 +2012,7 @@ Fill during development when product owner provides rules. **TBD until confirmed
 
 | Rule ID | Topic | Bizmation behavior (observed) | Owner input needed | Status |
 |---------|-------|------------------------------|-------------------|--------|
-| BR-001 | Pending vs Pending 2 vs 3 | Separate queues, same UI | Business difference? | TBD |
+| BR-001 | Pending vs Pending 2 vs 3 | Separate queues, same UI — admin convenience labels | **No business difference** — owner confirmed | Confirmed |
 | BR-002 | Failed duplicate detect | Type filter: Duplicate/Blocked | Mobile? IP? Both? | TBD |
 | BR-003 | Failed auto-delete | 90 days | Confirm retention | TBD |
 | BR-004 | Completed → due paid | Auto on status (5c NB) | Confirm | TBD |
@@ -2009,7 +2038,7 @@ When owner provides answers → update this table + implement in status handlers
 | **Phase A — এখন (UI + mock)** | Feature build করার সময় | **সব feature সব role-এর জন্য open** — কেউ কিছু miss করবে না, dev/test সহজ |
 | **Phase B — Full auth** | API + real login পরে | **Admin role-wise permission set** করবে; **API ও UI দুই জায়গায়** enforce |
 
-**গুরুত্ব:** Phase A-তে UI তৈরি হলেও `<Can>` / nav permission hook থাকবে — শুধু default = allow all। Phase B-তে same checks strict হবে।
+**গুরুত্ব:** Phase A-তে UI তৈরি হলেও `<Can>` / `DashboardWidget` pattern থাকবে — role-এর dashboard-এ থাকা widget গুলো সেই role-এর permission-এ include করতে হবে যাতে demo chart/section hide না হয়। Phase B-তে strict enforce।
 
 ### 11.2 Tenant hierarchy (SaaS)
 
@@ -2146,4 +2175,4 @@ Phase B-তে:
 
 ### 12.4 Current status
 
-**Requirements:** Ops modules specified (Section 3). **Implementation:** Phase 1 in progress. **Next:** Build remaining UI modules per spec; flow refinements require product approval.
+**Requirements:** Ops modules specified (Section 3). **Phase 1:** Page-by-page mockup from owner Bizmation screenshots — discuss before code. **Laam role dashboards (6):** Demo UI; widget visibility follows role permissions (Super Admin + Agent include all dashboard chart widgets).

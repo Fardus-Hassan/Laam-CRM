@@ -31,6 +31,7 @@ import {
   DepartmentTargetsTable,
   TeamPerformanceTable,
 } from '@/features/dashboard/components/tables/dashboard-tables';
+import { DASHBOARD_GRID_LG_12 } from '@/features/dashboard/lib/dashboard-grid';
 import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 
 type SalesHeadDashboardViewProps = {
@@ -140,7 +141,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         <KpiStatGrid metrics={data.kpis} />
       </DashboardWidget>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCard
           title={data.salesTrend.title}
           action={
@@ -155,10 +156,10 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
           <MultiLineChart series={salesTrendSeries} />
         </DashboardCard>
 
-        <DashboardWidget widget="revenue">
+        <DashboardWidget widget="revenue" className="min-w-0 lg:col-span-1 2xl:col-span-4">
           <DashboardCard
             title={data.revenueTarget.title}
-            className="min-w-0 lg:col-span-1 2xl:col-span-4"
+            className="min-w-0"
           >
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-stretch">
@@ -245,8 +246,8 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         </DashboardCard>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardWidget widget="team">
+      <div className={DASHBOARD_GRID_LG_12}>
+        <DashboardWidget widget="team" className="min-w-0 lg:col-span-2 2xl:col-span-6">
           <DashboardCard
             title={data.teamPerformance.title}
           action={
@@ -256,7 +257,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
               options={['month', 'year']}
             />
           }
-          className="min-w-0 lg:col-span-2 2xl:col-span-6"
+          className="min-w-0"
           contentClassName={TABLE_SCROLL_CLASS}
           footer={teamViewMore.footer}
         >
@@ -264,20 +265,20 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="team">
+        <DashboardWidget widget="team" className="min-w-0 lg:col-span-1 2xl:col-span-3">
           <DashboardCard
             title={data.topAgents.title}
           action={
             <PeriodFilter value={agentsPeriod} onChange={setAgentsPeriod} />
           }
-          className="min-w-0 lg:col-span-1 2xl:col-span-3"
+          className="min-w-0"
           footer={agentsViewMore.footer}
         >
           <AgentRankList rows={agentRows} />
         </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="orders">
+        <DashboardWidget widget="orders" className="min-w-0 lg:col-span-1 2xl:col-span-3">
           <DashboardCard
             title={data.orderStatus.title}
           action={
@@ -286,7 +287,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
               onChange={setOrderStatusPeriod}
             />
           }
-          className="min-w-0 lg:col-span-1 2xl:col-span-3"
+          className="min-w-0"
         >
           <DonutChart
             segments={orderStatusSegments}
@@ -299,7 +300,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
         </DashboardWidget>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCard
           title={data.departmentTargets.title}
           action={
@@ -316,7 +317,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
           <DepartmentTargetsTable rows={deptRows} />
         </DashboardCard>
 
-        <DashboardWidget widget="revenue">
+        <DashboardWidget widget="revenue" className="min-w-0 lg:col-span-1 2xl:col-span-4">
           <DashboardCard
             title={data.monthlyRevenue.title}
           action={
@@ -326,7 +327,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
               options={['month', 'year']}
             />
           }
-          className="min-w-0 lg:col-span-1 2xl:col-span-4"
+          className="min-w-0"
         >
           <SimpleBarChart data={monthlyRevenueData} size="lg" />
         </DashboardCard>

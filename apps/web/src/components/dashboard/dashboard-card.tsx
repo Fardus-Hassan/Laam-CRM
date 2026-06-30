@@ -21,7 +21,7 @@ export function DashboardCard({
   contentClassName,
 }: DashboardCardProps) {
   return (
-    <Card className={cn('@container gap-0 py-0 shadow-none', className)}>
+    <Card className={cn('@container h-fit w-full gap-0 py-0 shadow-none', className)}>
       <div className="flex items-start justify-between gap-3 border-b px-3 py-3 sm:px-5">
         <div className="min-w-0 flex-1">
           <CardTitle className="text-sm font-semibold leading-snug text-balance">
@@ -37,7 +37,9 @@ export function DashboardCard({
           </div>
         ) : null}
       </div>
-      <CardContent className={cn('px-3 py-3 sm:px-5 sm:py-4', contentClassName)}>
+      <CardContent
+        className={cn('px-3 py-3 sm:px-5 sm:py-3', contentClassName)}
+      >
         {children}
         {footer}
       </CardContent>

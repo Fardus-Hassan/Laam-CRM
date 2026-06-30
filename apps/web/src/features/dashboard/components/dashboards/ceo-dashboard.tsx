@@ -28,12 +28,16 @@ import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardDate } from '@/features/dashboard/providers/dashboard-date-provider';
 import { useViewMore } from '@/features/dashboard/hooks/use-view-more';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 import { formatCurrency } from '@/lib/format';
 import {
   CeoDepartmentTable,
   CeoTopTeamsTable,
 } from '@/features/dashboard/components/tables/ceo-tables';
-import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
+import {
+  DASHBOARD_GRID_XL_12,
+  DASHBOARD_GRID_XL_5,
+} from '@/features/dashboard/lib/dashboard-grid';
 import { cn } from '@/lib/utils';
 
 type CeoDashboardViewProps = {
@@ -116,7 +120,7 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
       </DashboardWidget>
 
       <DashboardWidget widget="revenue">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_XL_12}>
         <DashboardCard
           title={data.revenueOverview.title}
           className="min-w-0 xl:col-span-1 2xl:col-span-4"
@@ -200,7 +204,7 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
       </DashboardWidget>
 
       <DashboardWidget widget="team">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_XL_12}>
         <DashboardCard
           title={data.departmentPerformance.title}
           className="min-w-0 xl:col-span-1 2xl:col-span-4"
@@ -239,7 +243,7 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
       </DashboardWidget>
 
       <DashboardWidget widget="marketing">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+      <div className={DASHBOARD_GRID_XL_5}>
         <DashboardCard title={data.marketOverview.title} className="min-w-0">
           <MarketMetricList items={data.marketOverview.items} />
         </DashboardCard>

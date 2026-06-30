@@ -17,6 +17,7 @@ import { DonutChart } from '@/components/charts/donut-chart';
 import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { useDashboardDate } from '@/features/dashboard/providers/dashboard-date-provider';
 import { useViewMore } from '@/features/dashboard/hooks/use-view-more';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 import {
   transformChartSeries,
   transformDonutSegments,
@@ -24,7 +25,7 @@ import {
 } from '@/features/dashboard/lib/period-data';
 import type { DashboardPeriod } from '@/features/dashboard/types/period';
 import { TeamAgentsTable } from '@/features/dashboard/components/tables/team-leader-tables';
-import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
+import { DASHBOARD_GRID_LG_12, DASHBOARD_GRID_LG_12_SM2 } from '@/features/dashboard/lib/dashboard-grid';
 
 type TeamLeaderDashboardViewProps = {
   data: TeamLeaderDashboard;
@@ -104,7 +105,7 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
       </DashboardWidget>
 
       <DashboardWidget widget="team">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCard
           title={data.teamPerformance.title}
           action={
@@ -136,7 +137,7 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
       </DashboardWidget>
 
       <DashboardWidget widget="team">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCard
           title={data.agentPerformance.title}
           action={
@@ -161,8 +162,8 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
       </div>
       </DashboardWidget>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-12">
-        <DashboardWidget widget="orders">
+      <div className={DASHBOARD_GRID_LG_12_SM2}>
+        <DashboardWidget widget="orders" className="min-w-0 2xl:col-span-3">
           <DashboardCard
             title={data.orderStatus.title}
           action={
@@ -171,7 +172,7 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
               onChange={setOrderStatusPeriod}
             />
           }
-          className="min-w-0 2xl:col-span-3"
+          className="min-w-0"
         >
           <DonutChart
             segments={orderStatusSegments}

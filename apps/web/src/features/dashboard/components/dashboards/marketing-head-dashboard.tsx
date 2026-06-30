@@ -19,13 +19,14 @@ import { MonthlyLeadsChart } from '@/components/charts/monthly-leads-chart';
 import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { useDashboardDate } from '@/features/dashboard/providers/dashboard-date-provider';
 import { useViewMore } from '@/features/dashboard/hooks/use-view-more';
+import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 import {
   transformChartSeries,
   transformDonutSegments,
 } from '@/features/dashboard/lib/period-data';
 import type { DashboardPeriod } from '@/features/dashboard/types/period';
 import { CampaignPerformanceTable } from '@/features/dashboard/components/tables/marketing-tables';
-import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
+import { DASHBOARD_GRID_LG_12 } from '@/features/dashboard/lib/dashboard-grid';
 
 type MarketingHeadDashboardViewProps = {
   data: MarketingHeadDashboard;
@@ -117,7 +118,7 @@ export function MarketingHeadDashboardView({
       </DashboardWidget>
 
       <DashboardWidget widget="leads">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCard
           title={data.leadsTrend.title}
           action={
@@ -135,7 +136,7 @@ export function MarketingHeadDashboardView({
         <DashboardCard
           title={data.leadsFunnel.title}
           className="min-w-0 lg:col-span-1 2xl:col-span-3"
-          contentClassName="flex min-h-0 flex-col justify-center"
+          contentClassName="min-w-0"
         >
           <FunnelChart stages={data.leadsFunnel.stages} />
         </DashboardCard>
@@ -157,7 +158,7 @@ export function MarketingHeadDashboardView({
       </DashboardWidget>
 
       <DashboardWidget widget="marketing">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCard
           title={data.campaigns.title}
           action={
@@ -190,7 +191,7 @@ export function MarketingHeadDashboardView({
             />
           }
           className="min-w-0 lg:col-span-1 2xl:col-span-3"
-          contentClassName="flex min-h-0 flex-col justify-center"
+          contentClassName="min-w-0"
         >
           <BudgetOverviewChart summary={budgetSummary} />
         </DashboardCard>
@@ -198,7 +199,7 @@ export function MarketingHeadDashboardView({
       </DashboardWidget>
 
       <DashboardWidget widget="leads">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCard
           title={data.leadQuality.title}
           className="min-w-0 lg:col-span-1 2xl:col-span-3"

@@ -28,6 +28,7 @@ import {
   IncentiveHistoryTable,
 } from '@/features/dashboard/components/tables/agent-tables';
 import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
+import { DASHBOARD_GRID_LG_12 } from '@/features/dashboard/lib/dashboard-grid';
 
 type AgentDashboardViewProps = {
   data: AgentDashboard;
@@ -96,100 +97,100 @@ export function AgentDashboardView({ data }: AgentDashboardViewProps) {
         <KpiStatGrid metrics={data.kpis} columns={6} />
       </DashboardWidget>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardWidget widget="orders">
+      <div className={DASHBOARD_GRID_LG_12}>
+        <DashboardWidget widget="orders" className="min-w-0 lg:col-span-2 2xl:col-span-6">
           <DashboardCard
             title={data.myOrders.title}
-          action={
-            <CardLinkAction href="/dashboard/orders" label="View All Orders" />
-          }
-          className="min-w-0 lg:col-span-2 2xl:col-span-6"
-          contentClassName="pt-0"
-          footer={ordersViewMore.footer}
-        >
-          <div className={TABLE_SCROLL_CLASS}>
-            <AgentOrdersTable rows={ordersViewMore.visibleItems} />
-          </div>
-        </DashboardCard>
+            action={
+              <CardLinkAction href="/dashboard/orders" label="View All Orders" />
+            }
+            className="min-w-0"
+            contentClassName="pt-0"
+            footer={ordersViewMore.footer}
+          >
+            <div className={TABLE_SCROLL_CLASS}>
+              <AgentOrdersTable rows={ordersViewMore.visibleItems} />
+            </div>
+          </DashboardCard>
         </DashboardWidget>
 
         <DashboardCard
           title={data.scoreBoard.title}
-          className="min-w-0 h-full lg:col-span-1 2xl:col-span-3"
+          className="min-w-0 lg:col-span-1 2xl:col-span-3"
         >
           <ScoreBoardCard data={data.scoreBoard.data} />
         </DashboardCard>
 
         <DashboardCard
           title={data.incentive.title}
-          className="min-w-0 h-full lg:col-span-1 2xl:col-span-3"
+          className="min-w-0 lg:col-span-1 2xl:col-span-3"
         >
           <IncentiveSummaryCard data={data.incentive.data} />
         </DashboardCard>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardWidget widget="orders">
+      <div className={DASHBOARD_GRID_LG_12}>
+        <DashboardWidget widget="orders" className="min-w-0 lg:col-span-1 2xl:col-span-4">
           <DashboardCard
             title={data.orderStatus.title}
-          action={
-            <PeriodFilter
-              value={orderStatusPeriod}
-              onChange={setOrderStatusPeriod}
+            action={
+              <PeriodFilter
+                value={orderStatusPeriod}
+                onChange={setOrderStatusPeriod}
+              />
+            }
+            className="min-w-0"
+          >
+            <DonutChart
+              segments={orderStatusSegments}
+              centerValue={String(totalOrders)}
+              centerLabel="Total Orders"
+              height={200}
+              legendPosition="responsive"
             />
-          }
-          className="min-w-0 lg:col-span-1 2xl:col-span-4"
-        >
-          <DonutChart
-            segments={orderStatusSegments}
-            centerValue={String(totalOrders)}
-            centerLabel="Total Orders"
-            height={200}
-            legendPosition="responsive"
-          />
-        </DashboardCard>
+          </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="orders">
+        <DashboardWidget widget="orders" className="min-w-0 lg:col-span-1 2xl:col-span-4">
           <DashboardCard
             title={`${data.ordersTrend.title} (${data.ordersTrend.periodLabel})`}
-          action={
-            <PeriodFilter
-              value={ordersTrendPeriod}
-              onChange={setOrdersTrendPeriod}
-            />
-          }
-          className="min-w-0 lg:col-span-1 2xl:col-span-4"
-          contentClassName="min-w-0 pt-1 sm:pt-2"
-        >
-          <SimpleBarChart data={ordersTrendData} />
-        </DashboardCard>
+            action={
+              <PeriodFilter
+                value={ordersTrendPeriod}
+                onChange={setOrdersTrendPeriod}
+              />
+            }
+            className="min-w-0"
+            contentClassName="min-w-0 pt-1 sm:pt-2"
+          >
+            <SimpleBarChart data={ordersTrendData} />
+          </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="team">
+        <DashboardWidget widget="team" className="min-w-0 lg:col-span-2 2xl:col-span-4">
           <DashboardCard
             title={data.leaderboard.title}
-          action={
-            <>
-              <PeriodFilter
-                value={leaderboardPeriod}
-                onChange={setLeaderboardPeriod}
-              />
-              <CardLinkAction
-                href="/dashboard/leaderboard"
-                label="View Full Leaderboard"
-              />
-            </>
-          }
-          className="min-w-0 lg:col-span-2 2xl:col-span-4"
-          footer={leaderboardViewMore.footer}
-        >
-          <LeaderboardList rows={leaderboardRows} />
-        </DashboardCard>
+            action={
+              <>
+                <PeriodFilter
+                  value={leaderboardPeriod}
+                  onChange={setLeaderboardPeriod}
+                />
+                <CardLinkAction
+                  href="/dashboard/leaderboard"
+                  label="View Full Leaderboard"
+                />
+              </>
+            }
+            className="min-w-0"
+            footer={leaderboardViewMore.footer}
+          >
+            <LeaderboardList rows={leaderboardRows} />
+          </DashboardCard>
         </DashboardWidget>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
+      <div className={DASHBOARD_GRID_LG_12}>
         <DashboardCard
           title={data.followUps.title}
           className="min-w-0 lg:col-span-2 2xl:col-span-5"

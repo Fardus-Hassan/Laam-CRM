@@ -23,6 +23,7 @@ import {
 import type { DashboardPeriod } from '@/features/dashboard/types/period';
 import { formatCurrency } from '@/lib/format';
 import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
+import { DASHBOARD_GRID_LG_12, DASHBOARD_GRID_LG_12_SM2 } from '@/features/dashboard/lib/dashboard-grid';
 import {
   RecentUsersTable,
   TopAgentsTable,
@@ -106,14 +107,14 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
         <KpiStatGrid metrics={data.kpis} columns={6} />
       </DashboardWidget>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardWidget widget="revenue">
+      <div className={DASHBOARD_GRID_LG_12}>
+        <DashboardWidget widget="revenue" className="min-w-0 lg:col-span-2 2xl:col-span-6">
           <DashboardCard
             title={data.salesOverview.title}
             action={
               <PeriodFilter value={salesPeriod} onChange={setSalesPeriod} />
             }
-            className="min-w-0 lg:col-span-2 2xl:col-span-6"
+            className="min-w-0"
             contentClassName="min-w-0 pt-1 sm:pt-2"
           >
             <DualAxisLineChart
@@ -126,142 +127,135 @@ export function SuperAdminDashboardView({ data }: SuperAdminDashboardViewProps) 
           </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="orders">
+        <DashboardWidget widget="orders" className="min-w-0 lg:col-span-1 2xl:col-span-3">
           <DashboardCard
             title={data.ordersStatus.title}
-          action={
-            <PeriodFilter
-              value={ordersStatusPeriod}
-              onChange={setOrdersStatusPeriod}
+            action={
+              <PeriodFilter
+                value={ordersStatusPeriod}
+                onChange={setOrdersStatusPeriod}
+              />
+            }
+            className="min-w-0"
+          >
+            <DonutChart
+              segments={orderStatusSegments}
+              centerValue={totalOrders.toLocaleString('en-BD')}
+              centerLabel={['Total', 'Orders']}
+              height={200}
+              legendPosition="responsive"
+              legendVariant="value-percent"
             />
-          }
-          className="min-w-0 lg:col-span-1 2xl:col-span-3"
-        >
-          <DonutChart
-            segments={orderStatusSegments}
-            centerValue={totalOrders.toLocaleString('en-BD')}
-            centerLabel={['Total', 'Orders']}
-            height={200}
-            legendPosition="responsive"
-            legendVariant="value-percent"
-          />
-        </DashboardCard>
+          </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="platform">
+        <DashboardWidget widget="platform" className="min-w-0 lg:col-span-1 2xl:col-span-3">
           <DashboardCard
             title={data.roleDistribution.title}
-          action={<PeriodFilter value={rolePeriod} onChange={setRolePeriod} />}
-          className="min-w-0 lg:col-span-1 2xl:col-span-3"
-        >
-          <DonutChart
-            segments={roleSegments}
-            centerValue={totalUsers.toLocaleString('en-BD')}
-            centerLabel={['Total', 'Users']}
-            height={200}
-            legendPosition="responsive"
-            legendVariant="value-percent"
-          />
-        </DashboardCard>
+            action={<PeriodFilter value={rolePeriod} onChange={setRolePeriod} />}
+            className="min-w-0"
+          >
+            <DonutChart
+              segments={roleSegments}
+              centerValue={totalUsers.toLocaleString('en-BD')}
+              centerLabel={['Total', 'Users']}
+              height={200}
+              legendPosition="responsive"
+              legendVariant="value-percent"
+            />
+          </DashboardCard>
         </DashboardWidget>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 2xl:grid-cols-12">
-        <DashboardWidget widget="revenue">
-          <DashboardCard
-            title={data.monthlyRevenue.title}
-          className="min-w-0 lg:col-span-1 2xl:col-span-4"
-        >
-          <SimpleBarChart
-            data={data.monthlyRevenue.data}
-            color="#8B5CF6"
-            showValueLabels
-            valueFormatter={(value) => formatCurrency(value, { compact: true })}
-            size="lg"
-          />
-        </DashboardCard>
+      <div className={DASHBOARD_GRID_LG_12}>
+        <DashboardWidget widget="revenue" className="min-w-0 lg:col-span-1 2xl:col-span-4">
+          <DashboardCard title={data.monthlyRevenue.title} className="min-w-0">
+            <SimpleBarChart
+              data={data.monthlyRevenue.data}
+              color="#8B5CF6"
+              showValueLabels
+              valueFormatter={(value) => formatCurrency(value, { compact: true })}
+              size="lg"
+            />
+          </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="platform">
+        <DashboardWidget widget="platform" className="min-w-0 lg:col-span-2 2xl:col-span-5">
           <DashboardCard
             title={data.recentUsers.title}
-          action={
-            <CardLinkAction href="/dashboard/users" label="View All Users" />
-          }
-          className="min-w-0 lg:col-span-2 2xl:col-span-5"
-          contentClassName="pt-0"
-          footer={usersViewMore.footer}
-        >
-          <div className={TABLE_SCROLL_CLASS}>
-            <RecentUsersTable rows={usersViewMore.visibleItems} />
-          </div>
-        </DashboardCard>
+            action={
+              <CardLinkAction href="/dashboard/users" label="View All Users" />
+            }
+            className="min-w-0"
+            contentClassName="pt-0"
+            footer={usersViewMore.footer}
+          >
+            <div className={TABLE_SCROLL_CLASS}>
+              <RecentUsersTable rows={usersViewMore.visibleItems} />
+            </div>
+          </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="platform">
-          <DashboardCard
-            title={data.systemHealth.title}
-          className="min-w-0 lg:col-span-1 2xl:col-span-3"
-        >
-          <SystemHealthList items={data.systemHealth.items} />
-        </DashboardCard>
+        <DashboardWidget widget="platform" className="min-w-0 lg:col-span-1 2xl:col-span-3">
+          <DashboardCard title={data.systemHealth.title} className="min-w-0">
+            <SystemHealthList items={data.systemHealth.items} />
+          </DashboardCard>
         </DashboardWidget>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-12">
-        <DashboardWidget widget="team">
+      <div className={DASHBOARD_GRID_LG_12_SM2}>
+        <DashboardWidget widget="team" className="min-w-0 sm:col-span-2 2xl:col-span-4">
           <DashboardCard
             title={data.topAgents.title}
-          action={
-            <CardLinkAction href="/dashboard/agents" label="View All Agents" />
-          }
-          className="min-w-0 sm:col-span-2 2xl:col-span-4"
-          contentClassName="pt-0"
-          footer={agentsViewMore.footer}
-        >
-          <div className={TABLE_SCROLL_CLASS}>
-            <TopAgentsTable rows={agentsViewMore.visibleItems} />
-          </div>
-        </DashboardCard>
+            action={
+              <CardLinkAction href="/dashboard/agents" label="View All Agents" />
+            }
+            className="min-w-0"
+            contentClassName="pt-0"
+            footer={agentsViewMore.footer}
+          >
+            <div className={TABLE_SCROLL_CLASS}>
+              <TopAgentsTable rows={agentsViewMore.visibleItems} />
+            </div>
+          </DashboardCard>
         </DashboardWidget>
 
-        <DashboardCard
-          title={data.recentActivities.title}
-          className="min-w-0 2xl:col-span-3"
-          footer={activitiesViewMore.footer}
-        >
-          <AgentActivityFeed items={activitiesViewMore.visibleItems} />
-        </DashboardCard>
+        <div className="min-w-0 2xl:col-span-3">
+          <DashboardCard
+            title={data.recentActivities.title}
+            className="min-w-0"
+            footer={activitiesViewMore.footer}
+          >
+            <AgentActivityFeed items={activitiesViewMore.visibleItems} />
+          </DashboardCard>
+        </div>
 
-        <DashboardWidget widget="leads">
+        <DashboardWidget widget="leads" className="min-w-0 2xl:col-span-3">
           <DashboardCard
             title={data.leadSources.title}
-          action={
-            <PeriodFilter
-              value={leadSourcesPeriod}
-              onChange={setLeadSourcesPeriod}
+            action={
+              <PeriodFilter
+                value={leadSourcesPeriod}
+                onChange={setLeadSourcesPeriod}
+              />
+            }
+            className="min-w-0"
+          >
+            <DonutChart
+              segments={leadSourceSegments}
+              centerValue={totalLeads.toLocaleString('en-BD')}
+              centerLabel={['Total', 'Leads']}
+              height={200}
+              legendPosition="responsive"
+              legendVariant="value-percent"
             />
-          }
-          className="min-w-0 2xl:col-span-3"
-        >
-          <DonutChart
-            segments={leadSourceSegments}
-            centerValue={totalLeads.toLocaleString('en-BD')}
-            centerLabel={['Total', 'Leads']}
-            height={200}
-            legendPosition="responsive"
-            legendVariant="value-percent"
-          />
-        </DashboardCard>
+          </DashboardCard>
         </DashboardWidget>
 
-        <DashboardWidget widget="platform">
-          <DashboardCard
-            title={data.storageUsage.title}
-          className="min-w-0 2xl:col-span-2"
-        >
-          <StorageUsageChart usage={data.storageUsage.usage} />
-        </DashboardCard>
+        <DashboardWidget widget="platform" className="min-w-0 2xl:col-span-2">
+          <DashboardCard title={data.storageUsage.title} className="min-w-0">
+            <StorageUsageChart usage={data.storageUsage.usage} />
+          </DashboardCard>
         </DashboardWidget>
       </div>
     </div>
