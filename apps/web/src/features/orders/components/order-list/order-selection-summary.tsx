@@ -1,0 +1,69 @@
+'use client';
+
+import type { OrderListRow } from '@laam/types';
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  ORDER_SECTION_BODY_CLASS,
+  ORDER_SECTION_HEADER_CLASS,
+} from '@/features/orders/components/create-order/section-layout';
+import { formatCurrency } from '@/lib/format';
+import { cn } from '@/lib/utils';
+
+type OrderSelectionSummaryProps = {
+  rows: OrderListRow[];
+  className?: string;
+};
+
+export function OrderSelectionSummary({ rows, className }: OrderSelectionSummaryProps) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const productTotal = rows.reduce((sum, row) => sum + row.subtotal, 0);
+  const discount = rows.reduce((sum, row) => sum + row.discount, 0);
+  const paid = rows.reduce((sum, row) => sum + row.paid, 0);
+  const grandTotal = rows.reduce((sum, row) => sum + row.amount, 0);
+  const due = rows.reduce((sum, row) => sum + row.due, 0);
+
+  const lines = [
+    { label: 'Product Total', value: productTotal },
+    { label: 'Total Shipping', value: 0 },
+    { label: 'Discount', value: discount },
+    { label: 'Grand Total', value: grandTotal, bold: true },
+    { label: 'Paid', value: paid, positive: true },
+    { label: 'Due', value: due, danger: true },
+    { label: 'Return/Damage', value: 0 },
+    { label: 'Return Discount', value: 0, danger: true },
+  ];
+
+  return (
+    <Card className={cn('gap-0 py-0 shadow-none', className)}>
+      <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+        <CardTitle className="text-sm">Summary</CardTitle>
+      </CardHeader>
+      <CardContent className={cn('space-y-2', ORDER_SECTION_BODY_CLASS)}>
+        {lines.map((line) => (
+          <div
+            key={line.label}
+            className={cn(
+              'flex items-center justify-between gap-2 text-sm',
+              line.bold && 'font-semibold',
+            )}
+          >
+            <span className="text-muted-foreground">{line.label}</span>
+            <span
+              className={cn(
+                'tabular-nums',
+                line.positive && 'text-primary font-medium',
+                line.danger && 'text-destructive',
+              )}
+            >
+              {formatCurrency(line.value)}
+            </span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}

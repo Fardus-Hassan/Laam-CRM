@@ -1,4 +1,52 @@
-import type { OrderDetail, OrderListItem, OrderListQuery, OrderListResponse, OrderTimelineEvent } from '@laam/types';
+import type {
+  OrderDetail,
+  OrderListItem,
+  OrderListQuery,
+  OrderListResponse,
+  OrderListRow,
+  OrderListRowResponse,
+  OrderSalesSummary,
+  OrderTimelineEvent,
+} from '@laam/types';
+
+import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
+import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
+import { getStatusConfigBySlug } from '@/features/orders/data/mock-status-config';
+
+function orderMatchesSearch(order: OrderDetail, rawSearch: string): boolean {
+  const search = rawSearch.trim().toLowerCase();
+  if (!search) {
+    return true;
+  }
+
+  const statusLabel = getStatusConfigBySlug(order.status)?.label ?? order.status;
+  const sourceLabel = ORDER_SOURCE_LABELS[order.source] ?? order.source;
+  const productText = order.lineItems
+    .map((line) => `${line.productName} ${line.sku ?? ''}`)
+    .join(' ');
+
+  const haystack = [
+    order.id,
+    order.orderNumber,
+    order.customerName,
+    order.customerPhone,
+    order.shippingArea,
+    order.shippingAddress,
+    order.assignedAgentName,
+    order.status,
+    statusLabel,
+    order.source,
+    sourceLabel,
+    productText,
+    String(order.amount),
+    order.notes,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return haystack.includes(search);
+}
 
 const AGENTS = ['Sakib Ahmed', 'Mitu Rahman', 'Imran Hossain', 'Tania Sultana', 'Arif Mahmud'];
 const AREAS = ['Gulshan', 'Banani', 'Dhanmondi', 'Mirpur', 'Uttara', 'Mohammadpur', 'Bashundhara'];
@@ -157,6 +205,157 @@ export function getMockOrderById(orderNumber: string): OrderDetail | undefined {
   );
 }
 
+export function orderDetailToListRow(order: OrderDetail, serialNumber?: number): OrderListRow {
+  const paid = order.paymentStatus === 'paid' ? order.amount : order.paymentStatus === 'partial' ? order.amount * 0.5 : 0;
+  const due = Math.max(0, order.amount - paid);
+
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    customerName: order.customerName,
+    customerPhone: order.customerPhone,
+    source: order.source,
+    itemsCount: order.itemsCount,
+    amount: order.amount,
+    paymentStatus: order.paymentStatus,
+    assignedAgentName: order.assignedAgentName,
+    shippingArea: order.shippingArea,
+    createdAt: order.createdAt,
+    serialNumber,
+    hasNote: Boolean(order.notes),
+    products: order.lineItems.map((line, idx) => ({
+      name: line.productName,
+      price: line.lineTotal,
+      sku: line.sku,
+      imageUrl: MOCK_PRODUCTS[idx % MOCK_PRODUCTS.length]?.imageUrl,
+    })),
+    shippingAddress: order.shippingAddress,
+    subtotal: order.subtotal,
+    discount: order.discount,
+    paid,
+    due,
+    courier: buildMockCourierStats(
+      order.status,
+      serialNumber ?? (Number.parseInt(order.orderNumber.replace(/\D/g, ''), 10) || 0),
+    ),
+  };
+}
+
+function buildMockCourierStats(
+  status: OrderDetail['status'],
+  index: number,
+): OrderListRow['courier'] {
+  if (status === 'cancelled') {
+    return undefined;
+  }
+
+  const labels = ['New', 'Regular', 'Express', 'Priority'];
+  const percent =
+    status === 'delivered' || status === 'completed'
+      ? 100
+      : status === 'in_courier'
+        ? 45 + (index % 4) * 12
+        : 20 + (index % 5) * 15;
+
+  const su = status === 'delivered' || status === 'completed' ? 1 : 0;
+  const fa = status === 'returned' ? 1 : 0;
+
+  return {
+    to: 1 + (index % 3),
+    co: index % 2,
+    su,
+    fa,
+    label: labels[index % labels.length],
+    percent: Math.min(100, percent),
+  };
+}
+
+function sortMockOrderRows(
+  rows: OrderDetail[],
+  sortBy?: string,
+  sortDir?: 'asc' | 'desc',
+): OrderDetail[] {
+  if (!sortBy) {
+    return rows;
+  }
+
+  const direction = sortDir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const getValue = (order: OrderDetail): string | number => {
+      switch (sortBy) {
+        case 'status':
+          return order.status;
+        case 'customer':
+          return order.customerName;
+        case 'date':
+          return new Date(order.createdAt).getTime();
+        case 'products':
+          return order.orderNumber;
+        default:
+          return order.orderNumber;
+      }
+    };
+
+    const left = getValue(a);
+    const right = getValue(b);
+    if (typeof left === 'number' && typeof right === 'number') {
+      return (left - right) * direction;
+    }
+    return String(left).localeCompare(String(right)) * direction;
+  });
+}
+
+export function filterMockOrderRows(query: OrderListQuery): OrderListRowResponse {
+  const base = filterMockOrders({ ...query, page: 1, pageSize: 9999 });
+  const allRows = MOCK_ORDERS.filter((order) => {
+    if (query.status && order.status !== query.status) {
+      return false;
+    }
+    if (query.source && order.source !== query.source) {
+      return false;
+    }
+    const search = query.search?.trim() ?? '';
+    if (!search) {
+      return true;
+    }
+    return orderMatchesSearch(order, search);
+  });
+
+  const total = allRows.length;
+  const sortedRows = sortMockOrderRows(allRows, query.sortBy, query.sortDir);
+  const start = (query.page - 1) * query.pageSize;
+  const pageRows = sortedRows.slice(start, start + query.pageSize);
+
+  return {
+    items: pageRows.map((order, index) => orderDetailToListRow(order, start + index + 1)),
+    total,
+    page: query.page,
+    pageSize: query.pageSize,
+    summary: base.summary,
+  };
+}
+
+export function buildMockSalesSummary(orderCount: number, totalAmount: number): OrderSalesSummary {
+  const courierCharge = Math.round(totalAmount * 0.055);
+  const afterCourier = totalAmount - courierCharge;
+
+  return {
+    productTotal: totalAmount,
+    shippingCollected: 0,
+    orderTotalWithShipping: totalAmount,
+    courierChargeApi: courierCharge,
+    courierChargeOther: 0,
+    totalCourierCharge: courierCharge,
+    afterCourierCharge: afterCourier,
+    purchaseAmount: 0,
+    salesProfitLoss: afterCourier,
+    otherExpense: 0,
+    netIncome: afterCourier,
+    orderCount,
+  };
+}
+
 export function filterMockOrders(query: OrderListQuery): OrderListResponse {
   const search = query.search?.trim().toLowerCase() ?? '';
   let items = MOCK_ORDERS.filter((order) => {
@@ -172,12 +371,7 @@ export function filterMockOrders(query: OrderListQuery): OrderListResponse {
       return true;
     }
 
-    return (
-      order.orderNumber.toLowerCase().includes(search) ||
-      order.customerName.toLowerCase().includes(search) ||
-      order.customerPhone.includes(search) ||
-      order.shippingArea.toLowerCase().includes(search)
-    );
+    return orderMatchesSearch(order, search);
   });
 
   const total = items.length;

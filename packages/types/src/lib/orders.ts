@@ -77,6 +77,8 @@ export const orderListQuerySchema = z.object({
   source: orderSourceSchema.optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().default(20),
+  sortBy: z.string().optional(),
+  sortDir: z.enum(['asc', 'desc']).optional(),
 });
 
 export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
@@ -146,3 +148,78 @@ export const failedOrderListResponseSchema = z.object({
 });
 
 export type FailedOrderListResponse = z.infer<typeof failedOrderListResponseSchema>;
+
+export const orderListProductPreviewSchema = z.object({
+  name: z.string(),
+  imageUrl: z.string().optional(),
+  price: z.number(),
+  sku: z.string().optional(),
+});
+
+export type OrderListProductPreview = z.infer<typeof orderListProductPreviewSchema>;
+
+export const orderCourierStatsSchema = z.object({
+  to: z.number().int().nonnegative(),
+  co: z.number().int().nonnegative(),
+  su: z.number().int().nonnegative(),
+  fa: z.number().int().nonnegative(),
+  label: z.string(),
+  percent: z.number().min(0).max(100),
+});
+
+export type OrderCourierStats = z.infer<typeof orderCourierStatsSchema>;
+
+/** Rich table row for order list (Batch 5b). */
+export const orderListRowSchema = orderListItemSchema.extend({
+  serialNumber: z.number().int().positive().optional(),
+  hasNote: z.boolean().default(false),
+  products: z.array(orderListProductPreviewSchema).default([]),
+  shippingAddress: z.string(),
+  subtotal: z.number(),
+  discount: z.number(),
+  paid: z.number(),
+  due: z.number(),
+  courier: orderCourierStatsSchema.optional(),
+});
+
+export type OrderListRow = z.infer<typeof orderListRowSchema>;
+
+export const orderListRowResponseSchema = orderListResponseSchema.extend({
+  items: z.array(orderListRowSchema),
+});
+
+export type OrderListRowResponse = z.infer<typeof orderListRowResponseSchema>;
+
+export const orderSalesSummarySchema = z.object({
+  productTotal: z.number(),
+  shippingCollected: z.number(),
+  orderTotalWithShipping: z.number(),
+  courierChargeApi: z.number(),
+  courierChargeOther: z.number(),
+  totalCourierCharge: z.number(),
+  afterCourierCharge: z.number(),
+  purchaseAmount: z.number(),
+  salesProfitLoss: z.number(),
+  otherExpense: z.number(),
+  netIncome: z.number(),
+  orderCount: z.number().int().nonnegative(),
+});
+
+export type OrderSalesSummary = z.infer<typeof orderSalesSummarySchema>;
+
+export {
+  bulkActionIdSchema,
+  orderPageKindSchema,
+  orderQueuePageSchema,
+  orderStatusConfigSchema,
+  orderStatusCountSchema,
+  orderStatusDisplayModeSchema,
+  orderWorkflowGroupSchema,
+  type BulkActionId,
+  type OrderPageKind,
+  type OrderQueuePage,
+  type OrderStatusConfig,
+  type OrderStatusCount,
+  type OrderStatusDisplayMode,
+  type OrderWorkflowGroup,
+} from './order-status-config.js';

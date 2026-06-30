@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 import type { UniversalNavGroup } from '@/features/navigation/types/universal-nav';
-import { ORDER_QUEUE_NAV_ITEMS } from '@/features/orders/config/order-queue-registry';
+import { buildOrdersNav } from '@/features/orders/config/build-orders-nav';
 
 const pv = (p: Permission) => [p] as Permission[];
 
@@ -50,12 +50,12 @@ export const UNIVERSAL_NAV_REGISTRY: UniversalNavGroup[] = [
         title: 'Orders',
         icon: ShoppingCart,
         permissions: pv('orders.view'),
-        children: ORDER_QUEUE_NAV_ITEMS.map((queue) => ({
-          id: `orders-${queue.id}`,
-          title: queue.label,
-          url: queue.href,
-          permissions:
-            queue.id === 'create_new' ? pv('orders.create') : pv('orders.view'),
+        children: buildOrdersNav().map((queue) => ({
+          id: queue.id,
+          title: queue.title,
+          url: queue.url,
+          permissions: queue.permissions,
+          badge: queue.badge,
         })),
       },
       {

@@ -14,6 +14,8 @@ type FormPhoneInputProps = Omit<FormInputProps, 'type'> & {
   showCopy?: boolean;
   dialPrefix?: string;
   copyToastMessage?: string;
+  /** `stacked` puts action buttons below the phone field to save horizontal space. */
+  layout?: 'inline' | 'stacked';
 };
 
 function normalizePhone(value: string, dialPrefix: string) {
@@ -41,6 +43,7 @@ export function FormPhoneInput({
   showCopy = true,
   dialPrefix = '88',
   copyToastMessage = 'Mobile number copied',
+  layout = 'inline',
   disabled,
   ...props
 }: FormPhoneInputProps) {
@@ -74,17 +77,8 @@ export function FormPhoneInput({
     toast.success(copyToastMessage);
   }
 
-  return (
-    <div className="flex min-w-0 gap-1">
-      <FormInput
-        type="tel"
-        inputMode="tel"
-        autoComplete="tel"
-        value={value}
-        disabled={disabled}
-        className={cn('min-w-0 flex-1', className)}
-        {...props}
-      />
+  const actionButtons = (
+    <>
       {showWhatsapp ? (
         <Button
           type="button"
@@ -94,7 +88,7 @@ export function FormPhoneInput({
           onClick={openWhatsapp}
           aria-label="WhatsApp"
         >
-          <MessageCircle className="size-3.5 text-emerald-600" />
+          <MessageCircle className="size-3.5 text-primary" />
         </Button>
       ) : null}
       {showCall ? (
@@ -121,6 +115,39 @@ export function FormPhoneInput({
           <Copy className="size-3.5" />
         </Button>
       ) : null}
+    </>
+  );
+
+  if (layout === 'stacked') {
+    const hasActions = showWhatsapp || showCall || showCopy;
+    return (
+      <div className="space-y-1" data-no-drag-scroll>
+        <FormInput
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          value={value}
+          disabled={disabled}
+          className={cn('w-full', className)}
+          {...props}
+        />
+        {hasActions ? <div className="flex gap-1">{actionButtons}</div> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 gap-1" data-no-drag-scroll>
+      <FormInput
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel"
+        value={value}
+        disabled={disabled}
+        className={cn('min-w-0 flex-1', className)}
+        {...props}
+      />
+      {actionButtons}
     </div>
   );
 }

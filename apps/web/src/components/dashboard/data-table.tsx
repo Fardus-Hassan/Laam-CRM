@@ -1,18 +1,27 @@
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+'use client';
 
+import * as React from 'react';
+import type { ReactNode } from 'react';
+
+import {
+  CrmDataTable,
+  type CrmColumnDef,
+} from '@/components/data-table';
+
+/**
+ * @deprecated Use `CrmColumnDef` from `@/components/data-table` directly.
+ */
 export type DataTableColumn<T> = {
   id: string;
-  header: string;
+  header: ReactNode;
+  cell: (row: T) => ReactNode;
   className?: string;
-  cell: (row: T) => React.ReactNode;
+  headerClassName?: string;
+  cellClassName?: string;
+  align?: 'top' | 'middle';
+  enableSorting?: boolean;
+  priority?: 'primary' | 'secondary' | 'hidden-mobile';
+  label?: string;
 };
 
 type DataTableProps<T> = {
@@ -22,50 +31,58 @@ type DataTableProps<T> = {
   className?: string;
   tableClassName?: string;
   emptyMessage?: string;
+  isLoading?: boolean;
+  showToolbar?: boolean;
 };
 
+export function legacyColumnsToCrm<T>(columns: DataTableColumn<T>[]): CrmColumnDef<T>[] {
+  return columns.map(
+    (column) =>
+      ({
+        id: column.id,
+        header: column.header,
+        enableSorting: column.enableSorting,
+        cell: ({ row }) => column.cell(row.original),
+        meta: {
+          label:
+            column.label ??
+            (typeof column.header === 'string' ? column.header : column.id),
+          priority: column.priority ?? 'primary',
+          headerClassName: column.headerClassName ?? column.className,
+          cellClassName: column.cellClassName ?? column.className,
+          align: column.align,
+        },
+      }) as CrmColumnDef<T>,
+  );
+}
+
+/**
+ * @deprecated Use `CrmDataTable` from `@/components/data-table`.
+ */
 export function DataTable<T>({
   columns,
   rows,
   getRowId,
   className,
   tableClassName,
-  emptyMessage = 'No data available',
+  emptyMessage,
+  isLoading,
+  showToolbar = false,
 }: DataTableProps<T>) {
-  if (rows.length === 0) {
-    return (
-      <p className="py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
-    );
-  }
-
   return (
-    <Table className={cn('min-w-full', className)}>
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          {columns.map((column) => (
-            <TableHead
-              key={column.id}
-              className={cn('text-xs sm:text-sm', column.className)}
-            >
-              {column.header}
-            </TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={getRowId(row)}>
-            {columns.map((column) => (
-              <TableCell
-                key={column.id}
-                className={cn('text-xs sm:text-sm', column.className)}
-              >
-                {column.cell(row)}
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <CrmDataTable
+      columns={legacyColumnsToCrm(columns)}
+      data={rows}
+      getRowId={getRowId}
+      className={className}
+      tableClassName={tableClassName}
+      emptyMessage={emptyMessage}
+      isLoading={isLoading}
+      showToolbar={showToolbar}
+      manualPagination={false}
+      manualSorting={false}
+    />
   );
 }
+
+export { CrmDataTableSkeleton as DataTableEmptyState } from '@/components/data-table/crm-data-table-skeleton';

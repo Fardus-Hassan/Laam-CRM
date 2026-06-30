@@ -1,10 +1,12 @@
 'use client';
 
 import type { FailedOrderListItem } from '@laam/types';
-import { Check, MessageCircle, Phone } from 'lucide-react';
+import { Check } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { DataTable, type DataTableColumn } from '@/components/dashboard/data-table';
 import { EntityStatusBadge } from '@/components/dashboard/entity-status-badge';
+import { FormPhoneInput } from '@/components/form/form-phone-input';
 import { Button } from '@/components/ui/button';
 
 function formatFailedDate(value: string) {
@@ -45,14 +47,8 @@ const FAILED_COLUMNS: DataTableColumn<FailedOrderListItem>[] = [
       <div className="text-sm">
         <p className="font-medium">{row.customerName}</p>
         <p className="text-muted-foreground">{row.address}</p>
-        <div className="mt-1 flex items-center gap-2">
-          <span>{row.customerPhone}</span>
-          <Button type="button" variant="ghost" size="icon-sm" className="size-7" aria-label="Call">
-            <Phone className="size-3.5" />
-          </Button>
-          <Button type="button" variant="ghost" size="icon-sm" className="size-7" aria-label="WhatsApp">
-            <MessageCircle className="size-3.5" />
-          </Button>
+        <div className="mt-1 max-w-[200px]">
+          <FormPhoneInput value={row.customerPhone} readOnly className="h-7 text-xs" />
         </div>
       </div>
     ),
@@ -78,7 +74,12 @@ const FAILED_COLUMNS: DataTableColumn<FailedOrderListItem>[] = [
     id: 'action',
     header: 'Action',
     cell: () => (
-      <Button type="button" size="sm">
+      <Button
+        type="button"
+        size="sm"
+        className="bg-teal-600 hover:bg-teal-700"
+        onClick={() => toast.success('Order confirmed — moved to pipeline')}
+      >
         <Check className="size-4" />
         Confirm
       </Button>

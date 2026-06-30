@@ -1,10 +1,16 @@
 import Link from 'next/link';
-import { UserCog, Settings2 } from 'lucide-react';
+import { GitBranch, UserCog, Settings2 } from 'lucide-react';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const SETTINGS_LINKS = [
+  {
+    title: 'Order Statuses',
+    description: 'Pipeline statuses, sidebar placement, and nested queue tabs.',
+    href: '/dashboard/settings/order-statuses',
+    icon: GitBranch,
+  },
   {
     title: 'Roles & Permissions',
     description: 'Create custom roles and assign page/action permissions.',

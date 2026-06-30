@@ -97,7 +97,12 @@ function NavBranchItem({
                   isActive={isNavUrlActive(pathname, searchParams, child.url)}
                 >
                   <Link href={child.url}>
-                    <span>{child.title}</span>
+                    <span className="flex-1 truncate">{child.title}</span>
+                    {child.badge != null && child.badge > 0 ? (
+                      <span className="ml-auto shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-950">
+                        {child.badge > 9999 ? '9999+' : child.badge}
+                      </span>
+                    ) : null}
                   </Link>
                 </SidebarMenuSubButton>
               </SidebarMenuSubItem>
