@@ -1,5 +1,7 @@
 'use client';
 
+import { Toaster } from 'sonner';
+
 import { AuthProvider } from '@/features/auth/providers/auth-provider';
 import { BrandProvider } from '@/features/brand/providers/brand-provider';
 import { ThemeProvider } from '@/features/theme/providers/theme-provider';
@@ -10,7 +12,10 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <BrandProvider>
         <DashboardDateProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {children}
+            <Toaster richColors position="top-right" closeButton />
+          </AuthProvider>
         </DashboardDateProvider>
       </BrandProvider>
     </ThemeProvider>
