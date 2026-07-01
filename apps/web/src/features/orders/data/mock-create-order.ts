@@ -47,7 +47,7 @@ export const MOCK_DISTRICTS = [
   'Narayanganj',
 ];
 
-export const MOCK_ORDER_TAGS = ['VIP', 'Repeat', 'Risk', 'New', 'Wholesale'];
+export const MOCK_ORDER_TAGS = ['VIP', 'Repeat', 'COD Risk', 'New', 'Ramadan', 'Gift Buyer'];
 
 export const MOCK_ORDER_STATUSES = [
   { value: 'pending', label: 'Pending' },

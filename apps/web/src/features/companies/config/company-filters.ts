@@ -20,7 +20,7 @@ export const COMPANY_STATUS_FILTERS: {
   },
   {
     id: 'prospect',
-    label: 'Prospects',
+    label: 'New buyers',
     href: '/dashboard/companies?status=prospect',
     isActive: (params) => params.get('status') === 'prospect',
   },
@@ -33,23 +33,32 @@ export const COMPANY_STATUS_FILTERS: {
 ];
 
 export const COMPANY_STATUS_LABELS: Record<CompanyStatus, string> = {
-  active: 'Active',
+  active: 'Repeat buyer',
   inactive: 'Inactive',
-  prospect: 'Prospect',
+  prospect: 'New buyer',
 };
 
 export function getCompanyPageCopy(status?: string) {
   if (status === 'active') {
-    return { title: 'Active Customers', description: 'Currently active customer accounts.' };
+    return {
+      title: 'Repeat buyers',
+      description: 'Customers who order modhu, khejur and gift items regularly.',
+    };
   }
   if (status === 'prospect') {
-    return { title: 'Prospect Customers', description: 'Potential customers in pipeline.' };
+    return {
+      title: 'New buyers',
+      description: 'First-time or recent buyers — follow up to build repeat orders.',
+    };
   }
   if (status === 'inactive') {
-    return { title: 'Inactive Customers', description: 'Inactive or churned accounts.' };
+    return {
+      title: 'Inactive buyers',
+      description: 'No recent orders — win them back with offers or a call.',
+    };
   }
   return {
     title: 'Customers',
-    description: 'Track accounts, industries, and related opportunities.',
+    description: 'Everyday buyers — mobile, orders, and delivery history in one place.',
   };
 }

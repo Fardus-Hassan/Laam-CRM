@@ -19,6 +19,11 @@ import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { getStatusConfigBySlug } from '@/features/orders/data/mock-status-config';
 import { isFollowUpDue } from '@/features/orders/lib/order-age';
+import {
+  calcOrderPaymentTotals,
+  registerOrderPaidAmount,
+  seedOrderPaidAmount,
+} from '@/features/orders/lib/order-payment-totals';
 
 function orderMatchesSearch(order: OrderDetail, rawSearch: string): boolean {
   const search = rawSearch.trim().toLowerCase();
@@ -93,7 +98,12 @@ function buildOrder(
 
     return {
       id: `${base.id}-line-${itemIndex}`,
-      productName: ['Premium Dates 500g', 'Mixed Nuts 250g', 'Organic Honey', 'Gift Hamper'][itemIndex % 4],
+      productName: [
+        'Khejur (Dates) 500g',
+        'Modhu (Honey) 350ml',
+        'Modhu + Khejur Combo',
+        'Ramadan Gift Box',
+      ][itemIndex % 4],
       sku: `SKU-${100 + itemIndex}`,
       quantity,
       unitPrice,
@@ -155,20 +165,28 @@ function buildOrder(
     });
   }
 
-  return {
-    ...base,
-    customerEmail: `${base.customerName.split(' ')[0].toLowerCase()}@email.com`,
-    shippingAddress: `House ${index + 2}, Road ${index % 12}, ${base.shippingArea}, Dhaka`,
-    deliveryCharge,
-    discount,
-    subtotal,
-    lineItems,
-    timeline,
-    notes: index % 4 === 0 ? 'Call before delivery.' : undefined,
-    leadId: index % 3 === 0 ? `lead-${index}` : undefined,
-    confirmedAt: ['confirmed', 'delivered', 'hold'].includes(base.status) ? base.createdAt : undefined,
-    deliveredAt: base.status === 'delivered' ? base.createdAt : undefined,
-  };
+  return finalizeMockOrder(
+    {
+      ...base,
+      customerEmail: `${base.customerName.split(' ')[0].toLowerCase()}@email.com`,
+      shippingAddress: `House ${index + 2}, Road ${index % 12}, ${base.shippingArea}, Dhaka`,
+      deliveryCharge,
+      discount,
+      subtotal,
+      lineItems,
+      timeline,
+      notes: index % 4 === 0 ? 'Call before delivery.' : undefined,
+      leadId: index % 3 === 0 ? `lead-${index}` : undefined,
+      confirmedAt: ['confirmed', 'delivered', 'hold'].includes(base.status) ? base.createdAt : undefined,
+      deliveredAt: base.status === 'delivered' ? base.createdAt : undefined,
+    },
+    index,
+  );
+}
+
+function finalizeMockOrder(detail: OrderDetail, seedIndex: number): OrderDetail {
+  seedOrderPaidAmount(detail.id, detail.amount, detail.paymentStatus, seedIndex);
+  return detail;
 }
 
 export const MOCK_ORDERS: OrderDetail[] = [
@@ -176,10 +194,10 @@ export const MOCK_ORDERS: OrderDetail[] = [
   buildOrder(2, { status: 'pending', customerName: 'Fatema Akter' }),
   buildOrder(3, { status: 'pending', customerName: 'Karim Hassan' }),
   buildOrder(4, { status: 'pending', customerName: 'Nusrat Jahan' }),
-  buildOrder(5, { status: 'confirmed', customerName: 'Sakib Ahmed' }),
-  buildOrder(6, { status: 'confirmed', customerName: 'Mitu Rahman' }),
-  buildOrder(7, { status: 'confirmed', customerName: 'Imran Hossain' }),
-  buildOrder(8, { status: 'confirmed', customerName: 'Tania Sultana' }),
+  buildOrder(5, { status: 'confirmed', customerName: 'Kabir Hossain' }),
+  buildOrder(6, { status: 'confirmed', customerName: 'Rokeya Begum' }),
+  buildOrder(7, { status: 'confirmed', customerName: 'Shamim Ahmed' }),
+  buildOrder(8, { status: 'confirmed', customerName: 'Farzana Akter' }),
   buildOrder(9, { status: 'confirmed', customerName: 'Arif Mahmud' }),
   buildOrder(10, { status: 'hold', customerName: 'Hasan Ali' }),
   buildOrder(11, { status: 'hold', customerName: 'Sabrina Khan' }),
@@ -207,9 +225,34 @@ export const MOCK_ORDERS: OrderDetail[] = [
   ...Array.from({ length: 23 }, (_, offset) => {
     const index = 33 + offset;
     const statuses = ['pending', 'confirmed', 'in_courier', 'delivered', 'hold'] as const;
+    const extraNames = [
+      'Delwar Hossain',
+      'Mousumi Akter',
+      'Zahid Khan',
+      'Papiya Sultana',
+      'Enamul Haque',
+      'Shirin Akter',
+      'Biplob Das',
+      'Nasrin Jahan',
+      'Raju Ahmed',
+      'Sumaiya Khatun',
+      'Habibur Rahman',
+      'Tasnim Akter',
+      'Mizanur Rahman',
+      'Joya Begum',
+      'Alamgir Hossain',
+      'Rina Das',
+      'Sajib Islam',
+      'Mahmuda Akter',
+      'Parvez Khan',
+      'Shahana Begum',
+      'Liton Das',
+      'Afroza Sultana',
+      'Nayeem Hossain',
+    ];
     return buildOrder(index, {
       status: statuses[index % statuses.length],
-      customerName: `Customer ${index}`,
+      customerName: extraNames[offset % extraNames.length],
     });
   }),
 ];
@@ -277,6 +320,7 @@ export function createMockOrder(payload: CreateOrderPayload): OrderDetail {
     subtotal,
     lineItems,
     notes: payload.notes,
+    leadId: payload.leadId,
     timeline: [
       {
         id: `${order.id}-t1`,
@@ -290,6 +334,11 @@ export function createMockOrder(payload: CreateOrderPayload): OrderDetail {
   };
 
   mockOrderStore.unshift(detail);
+  if (payload.paidAmount !== undefined && payload.paymentStatus === 'partial') {
+    registerOrderPaidAmount(detail.id, payload.paidAmount);
+  } else {
+    finalizeMockOrder(detail, index);
+  }
   return detail;
 }
 
@@ -348,6 +397,9 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
   };
 
   mockOrderStore[index] = updated;
+  if (patch.paymentStatus) {
+    seedOrderPaidAmount(updated.id, updated.amount, updated.paymentStatus, index);
+  }
   return updated;
 }
 
@@ -369,6 +421,41 @@ export function checkMockDuplicate(query: DuplicateCheckQuery): DuplicateCheckRe
     existingOrderId: existing.id,
     existingOrderNumber: existing.orderNumber,
     message: `Similar order ${existing.orderNumber} exists for this phone within the last 72 hours.`,
+  };
+}
+
+export function bulkSetFollowUp(orderIds: string[], followUpDate: string): BulkActionResult {
+  let successCount = 0;
+  for (const orderId of orderIds) {
+    const order = getMockOrderById(orderId);
+    if (!order) continue;
+
+    const noteLine = `Follow-up due: ${followUpDate}`;
+    const notes = order.notes ? `${order.notes}\n${noteLine}` : noteLine;
+
+    const index = mockOrderStore.findIndex((o) => o.id === order.id);
+    const current = mockOrderStore[index];
+    const timeline = appendTimelineEvent(current, {
+      type: 'note',
+      label: 'Follow-up scheduled',
+      description: noteLine,
+      timestamp: new Date().toISOString(),
+      actorName: 'Agent',
+    });
+
+    mockOrderStore[index] = {
+      ...current,
+      status: 'hold_followup',
+      notes,
+      timeline,
+    };
+    successCount += 1;
+  }
+
+  return {
+    successCount,
+    failedCount: orderIds.length - successCount,
+    message: `Follow-up set for ${successCount} order(s)`,
   };
 }
 
@@ -468,8 +555,7 @@ export function getFollowUpDueCount(): number {
 }
 
 export function orderDetailToListRow(order: OrderDetail, serialNumber?: number): OrderListRow {
-  const paid = order.paymentStatus === 'paid' ? order.amount : order.paymentStatus === 'partial' ? order.amount * 0.5 : 0;
-  const due = Math.max(0, order.amount - paid);
+  const { paid, due } = calcOrderPaymentTotals(order);
 
   return {
     id: order.id,

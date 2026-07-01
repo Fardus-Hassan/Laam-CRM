@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { toast } from 'sonner';
+import type { OrderDetail } from '@laam/types';
 
 import {
   Dialog,
@@ -9,8 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import type { OrderDetail } from '@laam/types';
-
+import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/format';
 
 type PrintPreviewDialogProps = {
@@ -29,7 +28,7 @@ export function PrintPreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
-        <DialogHeader>
+        <DialogHeader className="no-print">
           <DialogTitle>
             {type === 'invoice' ? 'Invoice preview' : 'Packing slip preview'} — {order.orderNumber}
           </DialogTitle>
@@ -68,19 +67,14 @@ export function PrintPreviewDialog({
           </table>
           <p className="mt-3 text-right font-semibold">Total: {formatCurrency(order.amount)}</p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Print preview — connect PDF service in production.
-        </p>
-        <button
-          type="button"
-          className="text-sm text-primary underline"
-          onClick={() => {
-            toast.success('Print dialog opened (mock)');
-            onOpenChange(false);
-          }}
-        >
-          Print now
-        </button>
+        <div className="no-print flex items-center justify-between gap-3 pt-2">
+          <p className="text-xs text-muted-foreground">
+            Opens your browser print dialog. PDF service in Phase 2.
+          </p>
+          <Button type="button" size="sm" onClick={() => window.print()}>
+            Print now
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { MOCK_ORDER_STATUSES } from '@/features/orders/data/mock-status-config';
+import { getOrderStatuses } from '@/features/orders/data/order-status-store';
 import { loadSmsTemplates } from '@/features/orders/data/mock-sms-templates';
 import { exportOrdersToCsv } from '@/features/orders/lib/export-orders-csv';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
@@ -40,7 +40,7 @@ type OrderBulkModalsProps = {
 };
 
 export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }: OrderBulkModalsProps) {
-  const { bulkAction, isLoading } = useOrderMutations();
+  const { bulkAction, bulkSetFollowUp, isLoading } = useOrderMutations();
   const smsTemplates = React.useMemo(() => loadSmsTemplates(), [state?.type]);
   const [smsTemplate, setSmsTemplate] = React.useState('confirm');
   const [smsMessage, setSmsMessage] = React.useState('');
@@ -119,12 +119,11 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleFollowUpSubmit() {
     if (state?.type !== 'followup') return;
-    await bulkAction({
-      action: 'status_change',
-      orderIds: state.orderIds,
-      status: 'hold_followup',
-    });
-    toast.success(`Follow-up set for ${followUpDate} on ${state.orderIds.length} order(s)`);
+    if (!followUpDate) {
+      toast.error('Select a follow-up date');
+      return;
+    }
+    await bulkSetFollowUp(state.orderIds, followUpDate);
     onSuccess?.();
     onClose();
   }
@@ -184,7 +183,7 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <FormSearchSelect
               value={status}
               onChange={setStatus}
-              options={MOCK_ORDER_STATUSES.map((s) => ({ value: s.slug, label: s.label }))}
+              options={getOrderStatuses().map((s) => ({ value: s.slug, label: s.label }))}
             />
           </FormField>
           <DialogFooter>

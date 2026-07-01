@@ -9,7 +9,7 @@ type LeadDetailPageClientProps = {
 };
 
 export function LeadDetailPageClient({ leadNumber }: LeadDetailPageClientProps) {
-  const { data, isLoading, error } = useLeadDetail(leadNumber);
+  const { data, isLoading, error, refresh } = useLeadDetail(leadNumber);
 
   if (isLoading) {
     return (
@@ -25,5 +25,12 @@ export function LeadDetailPageClient({ leadNumber }: LeadDetailPageClientProps) 
     return <p className="p-4 text-sm text-destructive">{error ?? 'Lead not found.'}</p>;
   }
 
-  return <LeadDetailView lead={data} />;
+  return (
+    <LeadDetailView
+      lead={data}
+      onLeadUpdated={() => {
+        void refresh();
+      }}
+    />
+  );
 }

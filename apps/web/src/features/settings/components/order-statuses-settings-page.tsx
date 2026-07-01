@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
+import type { OrderStatusConfig, OrderStatusDisplayMode } from '@laam/types';
 
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
@@ -14,18 +15,29 @@ import {
   ORDER_SECTION_GRID_GAP,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { MOCK_ORDER_STATUSES } from '@/features/orders/data/mock-status-config';
-import type { OrderStatusConfig, OrderStatusDisplayMode } from '@laam/types';
+import {
+  appendOrderStatus,
+  getOrderStatuses,
+  ORDER_STATUSES_CHANGED,
+} from '@/features/orders/data/order-status-store';
 import { cn } from '@/lib/utils';
 
 export function OrderStatusesSettingsPage() {
-  const [statuses, setStatuses] = React.useState<OrderStatusConfig[]>(MOCK_ORDER_STATUSES);
+  const [statuses, setStatuses] = React.useState<OrderStatusConfig[]>(() => getOrderStatuses());
   const [draft, setDraft] = React.useState({
     label: '',
     slug: '',
     displayMode: 'filter_only' as OrderStatusDisplayMode,
     color: 'hsl(174 58% 42%)',
   });
+
+  React.useEffect(() => {
+    function refresh() {
+      setStatuses(getOrderStatuses());
+    }
+    window.addEventListener(ORDER_STATUSES_CHANGED, refresh);
+    return () => window.removeEventListener(ORDER_STATUSES_CHANGED, refresh);
+  }, []);
 
   function handleAdd() {
     if (!draft.label.trim() || !draft.slug.trim()) {
@@ -35,24 +47,28 @@ export function OrderStatusesSettingsPage() {
 
     const slug = draft.slug.trim().replace(/\s+/g, '_').toLowerCase();
 
-    setStatuses((current) => [
-      ...current,
-      {
-        id: `status-${slug}`,
-        slug: slug as OrderStatusConfig['slug'],
-        label: draft.label.trim(),
-        color: draft.color,
-        group: 'intake',
-        displayMode: draft.displayMode,
-        isTerminal: false,
-        isDefault: false,
-        allowedTransitions: [],
-        bulkActions: ['export'],
-        showInGroupByStatus: true,
-      },
-    ]);
+    if (statuses.some((status) => status.slug === slug)) {
+      toast.error('A status with this slug already exists');
+      return;
+    }
+
+    appendOrderStatus({
+      id: `status-${slug}`,
+      slug: slug as OrderStatusConfig['slug'],
+      label: draft.label.trim(),
+      color: draft.color,
+      group: 'intake',
+      displayMode: draft.displayMode,
+      isTerminal: false,
+      isDefault: false,
+      allowedTransitions: [],
+      bulkActions: ['export'],
+      showInGroupByStatus: true,
+    });
+
+    setStatuses(getOrderStatuses());
     setDraft({ label: '', slug: '', displayMode: 'filter_only', color: draft.color });
-    toast.success('Status added to demo config (mock — API in Phase 2)');
+    toast.success('Status saved — persists across reloads in this browser');
   }
 
   return (
@@ -134,7 +150,7 @@ export function OrderStatusesSettingsPage() {
               </table>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              Sidebar and queue pages read from mock config in Phase 1. Save to API coming in Phase 2.
+              Custom statuses are stored in localStorage for Phase 1 demos. API persistence in Phase 2.
             </p>
           </CardContent>
         </Card>

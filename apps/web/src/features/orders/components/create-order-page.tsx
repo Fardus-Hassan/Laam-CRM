@@ -8,6 +8,12 @@ import { toast } from 'sonner';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { VALID_COUPON_CODE } from '@/features/orders/data/mock-create-order';
+import {
+  clearLeadConvertPrefill,
+  loadLeadConvertPrefill,
+  markLeadConverted,
+} from '@/features/leads/data/mock-leads';
+import { mapLeadPrefillToOrderLineItems } from '@/features/leads/lib/lead-order-prefill';
 import { CreateOrderOtherSection } from '@/features/orders/components/create-order/create-order-other-section';
 import { CreateOrderStepIndicator } from '@/features/orders/components/create-order/create-order-step-indicator';
 import { CustomerBlock } from '@/features/orders/components/shared/customer-block';
@@ -34,6 +40,29 @@ export function CreateOrderPage() {
     orderNumber: string;
     orderId: string;
   } | null>(null);
+  const [leadPrefillId, setLeadPrefillId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const prefill = loadLeadConvertPrefill();
+    if (!prefill) return;
+
+    form.patch({
+      name: prefill.customerName,
+      mobile: prefill.customerPhone,
+      email: prefill.customerEmail ?? '',
+      address: prefill.shippingAddress ?? '',
+      district: prefill.shippingArea ?? '',
+      orderSource: prefill.orderSource,
+      ...(prefill.lineItems?.length
+        ? { lineItems: mapLeadPrefillToOrderLineItems(prefill.lineItems) }
+        : {}),
+    });
+    setLeadPrefillId(prefill.leadId);
+    clearLeadConvertPrefill();
+    toast.info(`Pre-filled from lead ${prefill.leadNumber}`);
+    // Run once on mount when converting from a lead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleMobileCheck() {
     form.lookupCustomer();
@@ -81,13 +110,20 @@ export function CreateOrderPage() {
           : form.state.advancePayment > 0
             ? 'partial'
             : 'cod',
+      paidAmount:
+        form.state.advancePayment > 0 ? form.state.advancePayment : undefined,
       deliveryCharge: form.state.shipping,
       discount: form.totals.orderDiscount + form.totals.couponDiscount,
       lineItems,
       notes: form.state.orderNote || undefined,
       skipFollowup: form.state.skipFollowup,
       couponCode: form.state.couponApplied ? form.state.couponCode : undefined,
+      leadId: leadPrefillId ?? undefined,
     });
+
+    if (leadPrefillId) {
+      markLeadConverted(leadPrefillId, order.orderNumber);
+    }
 
     router.push(`/dashboard/orders/${order.orderNumber}`);
   }

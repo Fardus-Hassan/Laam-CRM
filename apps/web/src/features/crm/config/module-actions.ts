@@ -17,7 +17,7 @@ export const CRM_MODULE_ACTIONS: Partial<Record<CrmModuleId, CrmPageAction[]>> =
     { permission: 'companies.edit', label: 'Import', variant: 'outline' },
   ],
   leads: [
-    { permission: 'leads.create', label: 'New Lead' },
+    { permission: 'leads.create', label: 'New Lead', href: '/dashboard/leads/new' },
     { permission: 'leads.export', label: 'Export', variant: 'outline' },
     { permission: 'leads.assign', label: 'Assign', variant: 'secondary' },
   ],

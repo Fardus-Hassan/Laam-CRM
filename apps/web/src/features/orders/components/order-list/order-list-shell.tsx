@@ -6,8 +6,10 @@ import type { OrderListRow } from '@laam/types';
 
 import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
+import { EmptyState } from '@/components/layout/empty-state';
 import { PageShell } from '@/components/layout/page-shell';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import type { OrderQueueContext } from '@/features/orders/config/order-queue-resolver';
 import {
   ORDER_CARD_CLASS,
@@ -169,8 +171,8 @@ export function OrderListShell({ queue }: OrderListShellProps) {
 
   return (
     <PageShell
-      title={queue.title}
-      description={queue.description}
+      title="Orders"
+      description="Manage orders, queues, and fulfillment workflows."
       breadcrumbs={createOrdersListBreadcrumbs(queue.title)}
     >
       <div className={cn(ORDER_PAGE_GAP)}>
@@ -229,22 +231,33 @@ export function OrderListShell({ queue }: OrderListShellProps) {
           />
         ) : null}
 
-        <OrderSelectionBar
-          selectedCount={selectedIds.size}
-          selectedOrderIds={[...selectedIds]}
-          selectedRows={selectedRows}
-          actionIds={queue.bulkActions}
-          onClearSelection={() => setSelectedIds(new Set())}
-          onSuccess={() => {
-            setSelectedIds(new Set());
-            handleRefresh();
-          }}
-        />
-
         <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
+          <OrderSelectionBar
+            selectedCount={selectedIds.size}
+            selectedOrderIds={[...selectedIds]}
+            selectedRows={selectedRows}
+            actionIds={queue.bulkActions}
+            onClearSelection={() => setSelectedIds(new Set())}
+            onSuccess={() => {
+              setSelectedIds(new Set());
+              handleRefresh();
+            }}
+          />
           <CardContent className={cn('p-0', ORDER_SECTION_BODY_CLASS)}>
             {error ? (
               <p className="px-4 py-8 text-center text-sm text-destructive">{error}</p>
+            ) : !isLoading && data && data.items.length === 0 ? (
+              <div className="flex flex-col items-center gap-4 px-4 py-8">
+                <EmptyState
+                  title="No orders match this view"
+                  description="Try adjusting filters or search, or switch to another queue."
+                />
+                {queue.showFilterPanel ? (
+                  <Button type="button" variant="outline" size="sm" onClick={handleClearFilters}>
+                    Clear filters
+                  </Button>
+                ) : null}
+              </div>
             ) : (
               <OrderDataTable
                 rows={data?.items ?? []}

@@ -20,14 +20,14 @@ export const CRM_MODULES = {
   companies: {
     id: 'companies',
     title: 'Customers',
-    description: 'Track accounts, industries, and related opportunities.',
+    description: 'Everyday buyers — mobile lookup, order history, and repeat purchase tracking.',
     permissions: ['companies.view'],
     apiPath: '/crm/companies',
   },
   leads: {
     id: 'leads',
     title: 'Leads',
-    description: 'Qualify inbound leads and convert them into orders.',
+    description: 'Pre-orders from Facebook, calls, and walk-ins — convert to confirmed orders.',
     permissions: ['leads.view'],
     apiPath: '/crm/leads',
   },

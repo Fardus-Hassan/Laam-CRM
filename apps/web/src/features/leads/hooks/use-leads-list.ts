@@ -5,12 +5,13 @@ import type { LeadListQuery, LeadListResponse } from '@laam/types';
 
 import { leadsApi } from '@/features/leads/api/leads-api';
 
-export function useLeadsList(query: LeadListQuery) {
+export function useLeadsList(query: LeadListQuery, listVersion = 0) {
   const [data, setData] = React.useState<LeadListResponse | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   const queryKey = JSON.stringify(query);
+  const refreshKey = `${queryKey}:${listVersion}`;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -35,7 +36,12 @@ export function useLeadsList(query: LeadListQuery) {
     return () => {
       cancelled = true;
     };
-  }, [queryKey]);
+  }, [refreshKey]);
 
-  return { data, isLoading, error, refresh: () => leadsApi.listLeads(query).then(setData) };
+  return {
+    data,
+    isLoading,
+    error,
+    refresh: () => leadsApi.listLeads(query).then(setData),
+  };
 }

@@ -25,15 +25,16 @@ const COLUMNS: DataTableColumn<CompanyListItem>[] = [
       </Link>
     ),
   },
-  { id: 'industry', header: 'Industry', cell: (row) => row.industry ?? '—' },
+  { id: 'phone', header: 'Mobile', cell: (row) => row.phone ?? '—' },
+  { id: 'industry', header: 'Area', cell: (row) => row.industry ?? '—' },
   {
     id: 'status',
     header: 'Status',
     cell: (row) => <EntityStatusBadge status={row.status} kind="company" />,
   },
-  { id: 'contacts', header: 'Contacts', cell: (row) => row.contactCount },
-  { id: 'dealValue', header: 'Deal value', cell: (row) => formatCurrency(row.dealValue) },
-  { id: 'city', header: 'City', cell: (row) => row.city ?? '—' },
+  { id: 'contacts', header: 'Orders', cell: (row) => row.contactCount },
+  { id: 'dealValue', header: 'Total spent', cell: (row) => formatCurrency(row.dealValue) },
+  { id: 'city', header: 'District', cell: (row) => row.city ?? '—' },
   { id: 'agent', header: 'Agent', cell: (row) => row.assignedAgentName ?? '—' },
   {
     id: 'actions',
@@ -61,6 +62,12 @@ const COLUMNS: DataTableColumn<CompanyListItem>[] = [
 
 export function CompaniesTable({ rows }: { rows: CompanyListItem[] }) {
   return (
-    <DataTable columns={COLUMNS} rows={rows} getRowId={(row) => row.id} emptyMessage="No customers found." className="min-w-[900px]" />
+    <DataTable
+      columns={COLUMNS}
+      rows={rows}
+      getRowId={(row) => row.id}
+      emptyMessage="No customers found."
+      className="min-w-[820px]"
+    />
   );
 }

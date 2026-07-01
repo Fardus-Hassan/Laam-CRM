@@ -240,6 +240,8 @@ export const createOrderPayloadSchema = z.object({
   assignedAgentName: z.string().optional(),
   skipFollowup: z.boolean().optional(),
   couponCode: z.string().optional(),
+  paidAmount: z.number().nonnegative().optional(),
+  leadId: z.string().optional(),
 });
 
 export type CreateOrderPayload = z.infer<typeof createOrderPayloadSchema>;

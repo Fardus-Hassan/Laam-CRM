@@ -230,7 +230,17 @@
   [data-sidebar],
   header,
   nav,
-  .no-print {
+  .no-print,
+  [data-radix-dialog-overlay] {
     display: none !important;
+  }
+
+  [role='dialog'] {
+    position: static !important;
+    max-width: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    transform: none !important;
   }
 }

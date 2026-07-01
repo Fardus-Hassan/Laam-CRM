@@ -9,6 +9,13 @@ export function useLeadDetail(leadNumber: string) {
   const [data, setData] = React.useState<LeadDetail | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [version, setVersion] = React.useState(0);
+
+  const refresh = React.useCallback(async () => {
+    const lead = await leadsApi.getLead(leadNumber);
+    setData(lead);
+    return lead;
+  }, [leadNumber]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -36,7 +43,20 @@ export function useLeadDetail(leadNumber: string) {
     return () => {
       cancelled = true;
     };
-  }, [leadNumber]);
+  }, [leadNumber, version]);
 
-  return { data, isLoading, error };
+  const bump = React.useCallback(() => {
+    setVersion((v) => v + 1);
+  }, []);
+
+  return {
+    data,
+    isLoading,
+    error,
+    refresh: async () => {
+      const lead = await refresh();
+      bump();
+      return lead;
+    },
+  };
 }

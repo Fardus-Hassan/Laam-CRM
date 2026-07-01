@@ -65,12 +65,26 @@ export function useOrderMutations() {
     }
   }, []);
 
+  const bulkSetFollowUp = React.useCallback(async (orderIds: string[], followUpDate: string) => {
+    setIsLoading(true);
+    try {
+      const result: BulkActionResult = await ordersApi.bulkSetFollowUp(orderIds, followUpDate);
+      toast.success(result.message ?? `Follow-up set for ${result.successCount} order(s)`);
+      return result;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to set follow-up');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const updateNote = React.useCallback(async (orderId: string, note: string) => {
     await ordersApi.updateOrderNote(orderId, note);
     toast.success('Note saved');
   }, []);
 
-  return { isLoading, createOrder, updateOrder, checkDuplicate, bulkAction, updateNote };
+  return { isLoading, createOrder, updateOrder, checkDuplicate, bulkAction, bulkSetFollowUp, updateNote };
 }
 
 export function useOrderDetailMutations(order: OrderDetail | null, onUpdated?: (order: OrderDetail) => void) {

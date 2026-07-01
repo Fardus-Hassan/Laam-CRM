@@ -2,8 +2,7 @@
 
 import * as React from 'react';
 import type { OrderDetail, OrderSource } from '@laam/types';
-import { Phone, UserRound } from 'lucide-react';
-import { toast } from 'sonner';
+import { MessageCircle, Phone, UserRound } from 'lucide-react';
 
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
@@ -77,16 +76,29 @@ export function CustomerBlock(props: CustomerBlockProps) {
         <p className="text-muted-foreground">{value.phone}</p>
         {value.email ? <p className="text-muted-foreground">{value.email}</p> : null}
       </div>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="w-full"
-        onClick={() => toast.info('Opens phone dialer — Phase 2')}
-      >
-        <Phone className="size-4" />
-        Call / WhatsApp
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" asChild>
+          <a href={`tel:${value.phone.replace(/\D/g, '')}`}>
+            <Phone className="size-4" />
+            Call
+          </a>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            window.open(
+              `https://wa.me/${value.phone.replace(/\D/g, '')}`,
+              '_blank',
+              'noopener,noreferrer',
+            );
+          }}
+        >
+          <MessageCircle className="size-4" />
+          WhatsApp
+        </Button>
+      </div>
       <div>
         <p className="text-muted-foreground">Address</p>
         <p>{value.address}</p>

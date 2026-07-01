@@ -43,23 +43,23 @@ export const LEAD_SOURCE_FILTERS: {
 export const LEAD_PAGE_COPY = {
   all: {
     title: 'Leads',
-    description: 'Qualify inbound leads and convert them into orders.',
+    description: 'Pre-orders from Facebook, calls, and your shop — qualify and convert to orders.',
   },
   unassigned: {
-    title: 'Unassigned Leads',
-    description: 'Leads waiting for agent assignment.',
+    title: 'Unassigned leads',
+    description: 'Inbound inquiries waiting for an agent to call back.',
   },
   facebook: {
-    title: 'Facebook Leads',
-    description: 'Leads captured from Facebook ads and messenger.',
+    title: 'Facebook leads',
+    description: 'Modhu & khejur interest from Facebook ads and messenger.',
   },
   call: {
-    title: 'Inbound Call Leads',
-    description: 'Leads from inbound phone calls.',
+    title: 'Phone leads',
+    description: 'Inbound calls asking about products, price, and delivery.',
   },
   ecommerce: {
-    title: 'E-commerce Leads',
-    description: 'Leads from online store and landing pages.',
+    title: 'Online leads',
+    description: 'Leads from your website or online store forms.',
   },
 } as const;
 

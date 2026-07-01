@@ -20,6 +20,7 @@ type OrderDetailHeaderProps = {
 
 export function OrderDetailHeader({ order, className }: OrderDetailHeaderProps) {
   const { paid, due } = calcOrderPaymentTotals(order);
+  const phoneDigits = order.customerPhone.replace(/\D/g, '');
 
   return (
     <div
@@ -51,11 +52,20 @@ export function OrderDetailHeader({ order, className }: OrderDetailHeaderProps) 
               <Copy className="size-3.5" />
               {order.customerPhone}
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => toast.info('Dialer — Phase 2')}>
-              <Phone className="size-3.5" />
-              Call
+            <Button type="button" size="sm" variant="outline" asChild>
+              <a href={`tel:${phoneDigits}`}>
+                <Phone className="size-3.5" />
+                Call
+              </a>
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => toast.info('WhatsApp — Phase 2')}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                window.open(`https://wa.me/${phoneDigits}`, '_blank', 'noopener,noreferrer');
+              }}
+            >
               <MessageCircle className="size-3.5" />
               WhatsApp
             </Button>

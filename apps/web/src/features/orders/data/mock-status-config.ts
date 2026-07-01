@@ -5,6 +5,8 @@ import type {
   OrderStatusType,
 } from '@laam/types';
 
+import { getOrderStatuses } from '@/features/orders/data/order-status-store';
+
 const DEFAULT_BULK: BulkActionId[] = [
   'print_selected',
   'print_barcode',
@@ -327,7 +329,7 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
 ];
 
 export function getStatusConfigBySlug(slug: OrderStatusType): OrderStatusConfig | undefined {
-  return MOCK_ORDER_STATUSES.find((item) => item.slug === slug);
+  return getOrderStatuses().find((item) => item.slug === slug);
 }
 
 export function getQueuePageBySlug(slug: string): OrderQueuePage | undefined {
@@ -335,11 +337,11 @@ export function getQueuePageBySlug(slug: string): OrderQueuePage | undefined {
 }
 
 export function getSidebarStatuses(): OrderStatusConfig[] {
-  return MOCK_ORDER_STATUSES.filter((item) => item.displayMode === 'sidebar').sort(
+  return getOrderStatuses().filter((item) => item.displayMode === 'sidebar').sort(
     (a, b) => (a.sidebarOrder ?? 99) - (b.sidebarOrder ?? 99),
   );
 }
 
 export function getGroupByStatusItems(): OrderStatusConfig[] {
-  return MOCK_ORDER_STATUSES.filter((item) => item.showInGroupByStatus);
+  return getOrderStatuses().filter((item) => item.showInGroupByStatus);
 }

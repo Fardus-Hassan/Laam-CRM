@@ -15,6 +15,7 @@ import type {
 
 import {
   bulkUpdateMockOrders,
+  bulkSetFollowUp,
   checkMockDuplicate,
   createMockOrder,
   filterMockOrderRows,
@@ -36,6 +37,7 @@ export type OrdersApi = {
   updateOrder: (id: string, patch: UpdateOrderPayload) => Promise<OrderDetail>;
   checkDuplicate: (query: DuplicateCheckQuery) => Promise<DuplicateCheckResult>;
   bulkAction: (payload: OrderBulkActionPayload) => Promise<BulkActionResult>;
+  bulkSetFollowUp: (orderIds: string[], followUpDate: string) => Promise<BulkActionResult>;
   getCourierTracking: (orderId: string) => Promise<OrderCourierTracking>;
   updateOrderNote: (orderId: string, note: string) => Promise<void>;
   getOrdersByPhone: (phone: string, excludeOrderId?: string) => Promise<OrderDetail[]>;
@@ -75,6 +77,10 @@ export function createMockOrdersApi(): OrdersApi {
     async bulkAction(payload) {
       await delay(250);
       return bulkUpdateMockOrders(payload);
+    },
+    async bulkSetFollowUp(orderIds, followUpDate) {
+      await delay(200);
+      return bulkSetFollowUp(orderIds, followUpDate);
     },
     async getCourierTracking(orderId) {
       await delay(80);
@@ -170,6 +176,14 @@ export function createHttpOrdersApi(): OrdersApi {
       return apiRequest<BulkActionResult>(`${crmEndpoints.orders}/bulk`, {
         method: 'POST',
         body: JSON.stringify(payload),
+      });
+    },
+    async bulkSetFollowUp(orderIds, followUpDate) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<BulkActionResult>(`${crmEndpoints.orders}/bulk/follow-up`, {
+        method: 'POST',
+        body: JSON.stringify({ orderIds, followUpDate }),
       });
     },
     async getCourierTracking(orderId) {

@@ -62,14 +62,8 @@ export const UNIVERSAL_NAV_REGISTRY: UniversalNavGroup[] = [
         id: 'leads',
         title: 'Leads',
         icon: Target,
+        url: '/dashboard/leads',
         permissions: pv('leads.view'),
-        children: [
-          { id: 'leads-all', title: 'All Leads', url: '/dashboard/leads', permissions: pv('leads.view') },
-          { id: 'leads-facebook', title: 'Facebook', url: '/dashboard/leads?source=facebook', permissions: pv('leads.view') },
-          { id: 'leads-call', title: 'Inbound Call', url: '/dashboard/leads?source=call', permissions: pv('leads.view') },
-          { id: 'leads-ecommerce', title: 'E-commerce', url: '/dashboard/leads?source=ecommerce', permissions: pv('leads.view') },
-          { id: 'leads-unassigned', title: 'Unassigned', url: '/dashboard/leads?status=unassigned', permissions: pv('leads.assign') },
-        ],
       },
       {
         id: 'pipeline',
