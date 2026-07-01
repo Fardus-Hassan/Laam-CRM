@@ -38,9 +38,10 @@ export function OrderListShell({ queue }: OrderListShellProps) {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [sort, setSort] = React.useState<{ id: string; desc: boolean } | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
+  const searchParamsKey = searchParams.toString();
 
   React.useEffect(() => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParamsKey);
     if (debouncedSearch) {
       params.set('search', debouncedSearch);
     } else {
@@ -50,12 +51,14 @@ export function OrderListShell({ queue }: OrderListShellProps) {
     params.set('pageSize', String(pageSize));
     if (queue.statusFilter) {
       params.set('status', queue.statusFilter);
+    } else {
+      params.delete('status');
     }
     const next = params.toString();
-    if (next !== searchParams.toString()) {
+    if (next !== searchParamsKey) {
       router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
     }
-  }, [debouncedSearch, page, pageSize, pathname, queue.statusFilter, router, searchParams]);
+  }, [debouncedSearch, page, pageSize, pathname, queue.statusFilter, router, searchParamsKey]);
 
   const { data, isLoading, error } = useOrderRowsList({
     status: queue.statusFilter,

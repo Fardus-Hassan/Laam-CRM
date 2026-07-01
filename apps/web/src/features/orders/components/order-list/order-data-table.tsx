@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import type { OrderListRow } from '@laam/types';
 
 import { CrmDataTable, CrmDataTableToolbar } from '@/components/data-table';
@@ -46,6 +47,11 @@ export function OrderDataTable({
   search,
   onSearchChange,
 }: OrderDataTableProps) {
+  const selectionState = React.useMemo(
+    () => ({ selectedIds, onChange: onSelectionChange }),
+    [selectedIds, onSelectionChange],
+  );
+
   return (
     <CrmDataTable
       columns={ORDER_TABLE_COLUMNS}
@@ -56,7 +62,7 @@ export function OrderDataTable({
       minTableWidth={1280}
       pinnedColumns={ORDER_TABLE_PINNED}
       mobileCard={OrderTableMobileCard}
-      selection={{ selectedIds, onChange: onSelectionChange }}
+      selection={selectionState}
       density="compact"
       page={page}
       pageSize={pageSize}

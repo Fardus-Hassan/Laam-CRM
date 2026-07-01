@@ -7,7 +7,9 @@ import {
   useReactTable,
   type ColumnDef,
   type ColumnPinningState,
+  type OnChangeFn,
   type RowSelectionState,
+  type SortingState,
   type VisibilityState,
 } from '@tanstack/react-table';
 
@@ -23,6 +25,9 @@ import {
 import { Checkbox, type CheckedState } from '@/components/ui/checkbox';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useIsTablet } from '@/hooks/use-media-query';
+
+const coreRowModel = getCoreRowModel();
+const sortedRowModel = getSortedRowModel();
 
 function buildColumnPinning(
   pinned: CrmPinnedColumns | undefined,
@@ -109,6 +114,15 @@ function buildExpandColumn<T>(): CrmColumnDef<T> {
   };
 }
 
+function visibilityStateEqual(a: VisibilityState, b: VisibilityState): boolean {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+  return keysA.every((key) => a[key] === b[key]);
+}
+
 export function useCrmDataTable<T>({
   columns,
   data,
@@ -142,8 +156,18 @@ export function useCrmDataTable<T>({
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
 
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [manualVisibility, setManualVisibility] = React.useState<VisibilityState>({});
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
+
+  const responsiveVisibility = React.useMemo(
+    () => (isTablet && !isMobile ? buildTabletVisibility(columns) : {}),
+    [columns, isMobile, isTablet],
+  );
+
+  const columnVisibility = React.useMemo(
+    () => ({ ...responsiveVisibility, ...manualVisibility }),
+    [responsiveVisibility, manualVisibility],
+  );
 
   const resolvedColumns = React.useMemo(() => {
     const next: ColumnDef<T, unknown>[] = [...columns];
@@ -156,24 +180,101 @@ export function useCrmDataTable<T>({
     return next;
   }, [columns, enableRowSelection, isMobile, isTablet]);
 
-  React.useEffect(() => {
-    if (isTablet && !isMobile) {
-      setColumnVisibility(buildTabletVisibility(columns));
-    } else if (!isTablet) {
-      setColumnVisibility({});
-    }
-  }, [columns, isMobile, isTablet]);
-
+  const selectedIds = selection?.selectedIds;
   const rowSelection = React.useMemo<RowSelectionState>(() => {
-    if (!selection) {
+    if (!selectedIds || selectedIds.size === 0) {
       return {};
     }
     const state: RowSelectionState = {};
-    for (const id of selection.selectedIds) {
+    for (const id of selectedIds) {
       state[id] = true;
     }
     return state;
-  }, [selection]);
+  }, [selectedIds]);
+
+  const columnPinning = React.useMemo(
+    () => buildColumnPinning(pinnedColumns, enableRowSelection),
+    [pinnedColumns, enableRowSelection],
+  );
+
+  const sorting = React.useMemo(
+    () => sortingStateFromCrm(sort),
+    [sort?.id, sort?.desc],
+  );
+
+  const pagination = React.useMemo(
+    () => ({
+      pageIndex: Math.max(0, (page ?? 1) - 1),
+      pageSize: pageSize ?? 10,
+    }),
+    [page, pageSize],
+  );
+
+  const isControlledSorting = manualSorting || Boolean(onSortChange);
+  const isControlledPagination = manualPagination || Boolean(total);
+
+  const handleSortingChange = React.useCallback<OnChangeFn<SortingState>>(
+    (updater) => {
+      if (!onSortChange) {
+        return;
+      }
+      const next =
+        typeof updater === 'function' ? updater(sortingStateFromCrm(sort)) : updater;
+      onSortChange(crmSortFromSortingState(next));
+    },
+    [onSortChange, sort],
+  );
+
+  const handleColumnVisibilityChange = React.useCallback<OnChangeFn<VisibilityState>>(
+    (updater) => {
+      setManualVisibility((prev) => {
+        const merged = { ...responsiveVisibility, ...prev };
+        const next = typeof updater === 'function' ? updater(merged) : updater;
+        const manualOnly: VisibilityState = {};
+        for (const [key, value] of Object.entries(next)) {
+          if (responsiveVisibility[key] !== value) {
+            manualOnly[key] = value;
+          }
+        }
+        return visibilityStateEqual(prev, manualOnly) ? prev : manualOnly;
+      });
+    },
+    [responsiveVisibility],
+  );
+
+  const onSelectionChange = selection?.onChange;
+
+  const handleRowSelectionChange = React.useCallback<OnChangeFn<RowSelectionState>>(
+    (updater) => {
+      if (!onSelectionChange) {
+        return;
+      }
+      const next =
+        typeof updater === 'function' ? updater(rowSelection) : updater;
+      onSelectionChange(new Set(Object.keys(next).filter((key) => next[key])));
+    },
+    [onSelectionChange, rowSelection],
+  );
+
+  const tableState = React.useMemo(
+    () => ({
+      ...(isControlledSorting ? { sorting } : {}),
+      columnVisibility,
+      columnPinning,
+      ...(enableRowSelection ? { rowSelection } : {}),
+      ...(isControlledPagination ? { pagination } : {}),
+    }),
+    [
+      columnPinning,
+      columnVisibility,
+      enableRowSelection,
+      isControlledPagination,
+      isControlledSorting,
+      pagination,
+      rowSelection,
+      sorting,
+    ],
+  );
 
   const table = useReactTable({
     data,
@@ -185,41 +286,16 @@ export function useCrmDataTable<T>({
       maxSize: 400,
     },
     enableColumnPinning: true,
-    state: {
-      sorting: sortingStateFromCrm(sort),
-      columnVisibility,
-      columnPinning: buildColumnPinning(pinnedColumns, enableRowSelection),
-      rowSelection,
-      pagination: {
-        pageIndex: Math.max(0, (page ?? 1) - 1),
-        pageSize: pageSize ?? 10,
-      },
-    },
+    state: tableState,
     enableRowSelection,
     manualPagination,
     manualSorting,
     pageCount: total && pageSize ? Math.ceil(total / pageSize) : undefined,
-    onSortingChange: (updater) => {
-      if (!onSortChange) {
-        return;
-      }
-      const next =
-        typeof updater === 'function'
-          ? updater(sortingStateFromCrm(sort))
-          : updater;
-      onSortChange(crmSortFromSortingState(next));
-    },
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: (updater) => {
-      if (!selection) {
-        return;
-      }
-      const next =
-        typeof updater === 'function' ? updater(rowSelection) : updater;
-      selection.onChange(new Set(Object.keys(next).filter((key) => next[key])));
-    },
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
+    onSortingChange: isControlledSorting ? handleSortingChange : undefined,
+    onColumnVisibilityChange: handleColumnVisibilityChange,
+    onRowSelectionChange: enableRowSelection ? handleRowSelectionChange : undefined,
+    getCoreRowModel: coreRowModel,
+    getSortedRowModel: manualSorting ? undefined : sortedRowModel,
   });
 
   function toggleRowExpanded(rowId: string) {
@@ -241,7 +317,7 @@ export function useCrmDataTable<T>({
     expandedRows,
     toggleRowExpanded,
     columnVisibility,
-    setColumnVisibility,
+    setColumnVisibility: setManualVisibility,
     hiddenOnTablet,
   };
 }

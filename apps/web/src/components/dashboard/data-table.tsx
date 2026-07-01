@@ -69,9 +69,11 @@ export function DataTable<T>({
   isLoading,
   showToolbar = false,
 }: DataTableProps<T>) {
+  const crmColumns = React.useMemo(() => legacyColumnsToCrm(columns), [columns]);
+
   return (
     <CrmDataTable
-      columns={legacyColumnsToCrm(columns)}
+      columns={crmColumns}
       data={rows}
       getRowId={getRowId}
       className={className}
