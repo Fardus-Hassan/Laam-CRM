@@ -6,54 +6,61 @@ import type {
 
 const WEBSITES = ['laambd.com', 'laam.com.bd', 'laambd.shop', 'laambd.co'];
 
-const MOCK_FAILED_ORDERS: FailedOrderListItem[] = [
-  {
-    id: 'failed-1',
-    customerName: 'আসিফ',
-    customerPhone: '01402125992',
-    address: 'জেলা চট্টগ্রাম, থানা ফটিকছড়ি',
-    products: ['কালোজিরা রসুন মধু এবং ইরানি জাফরান মশলা এক কেজি'],
-    status: 'pending',
-    failedType: 'duplicate',
-    website: 'laambd.shop',
-    lastUpdateNote: 'Courier Success Score are 0',
-    createdAt: '2026-06-29T12:03:00.000Z',
-    updatedAt: '2026-06-29T12:03:00.000Z',
-  },
-  {
-    id: 'failed-2',
-    customerName: 'রফিক',
-    customerPhone: '01715003479',
-    address: 'ঢাকা, মিরপুর',
-    products: ['কালোজিরা ফুলের মধু ৫০০গ্রাম'],
-    status: 'pending',
-    failedType: 'blocked',
-    website: 'laambd.com',
-    lastUpdateNote: 'Invalid OTP!',
-    createdAt: '2026-06-28T09:15:00.000Z',
-    updatedAt: '2026-06-29T10:20:00.000Z',
-  },
-  {
-    id: 'failed-3',
-    customerName: 'কামরুল',
-    customerPhone: '01812345678',
-    address: 'সিলেট, জকিগঞ্জ',
-    products: ['মিক্সড নাটস ২৫০গ্রাম'],
-    status: 'pending',
-    failedType: 'other',
-    website: 'laambd.co',
-    createdAt: '2026-06-27T14:30:00.000Z',
-    updatedAt: '2026-06-27T14:30:00.000Z',
-  },
+const NAMES = [
+  'আসিফ', 'রফিক', 'কামরুল', 'সাবrina', 'নাসির', 'রুবাইয়া', 'ইমরান', 'ফারহানা',
+  'জাহিদ', 'মিতু', 'আরিফ', 'সালমা', 'করিম', 'নুসরাত', 'তানভীর',
 ];
+
+const PRODUCTS = [
+  'কালোজিরা রসুন মধু এবং ইরানি জাফরান মশলা এক কেজি',
+  'কালোজিরা ফুলের মধু ৫০০গ্রাম',
+  'মিক্সড নাটস ২৫০গ্রাম',
+  'প্রিমিয়াম খেজুর ৫০০গ্রাম',
+  'অর্গানিক মধু ১ কেজি',
+];
+
+const ADDRESSES = [
+  'জেলা চট্টগ্রাম, থানা ফটিকছড়ি',
+  'ঢাকা, মিরপুর',
+  'সিলেট, জকিগঞ্জ',
+  'ঢাকা, গুলশান',
+  'চট্টগ্রাম, পাহাড়তলী',
+];
+
+function buildFailedOrder(index: number): FailedOrderListItem {
+  const types = ['duplicate', 'blocked', 'other'] as const;
+  return {
+    id: `failed-${index}`,
+    customerName: NAMES[index % NAMES.length],
+    customerPhone: `01${String(700000000 + index).slice(0, 9)}`,
+    address: ADDRESSES[index % ADDRESSES.length],
+    products: [PRODUCTS[index % PRODUCTS.length]],
+    status: 'pending',
+    failedType: types[index % types.length],
+    website: WEBSITES[index % WEBSITES.length],
+    lastUpdateNote: index % 2 === 0 ? 'Courier Success Score are 0' : undefined,
+    createdAt: new Date(Date.now() - index * 86400000).toISOString(),
+    updatedAt: new Date(Date.now() - index * 43200000).toISOString(),
+  };
+}
+
+export const mockFailedOrderStore: FailedOrderListItem[] = Array.from({ length: 15 }, (_, i) =>
+  buildFailedOrder(i + 1),
+);
 
 export function filterMockFailedOrders(query: FailedOrderListQuery): FailedOrderListResponse {
   const search = query.search?.trim().toLowerCase() ?? '';
-  let items = MOCK_FAILED_ORDERS.filter((order) => {
+  let items = mockFailedOrderStore.filter((order) => {
     if (query.failedType && order.failedType !== query.failedType) {
       return false;
     }
     if (query.website && query.website !== 'all' && order.website !== query.website) {
+      return false;
+    }
+    if (query.noteStatus === 'has_note' && !order.lastUpdateNote) {
+      return false;
+    }
+    if (query.noteStatus === 'no_note' && order.lastUpdateNote) {
       return false;
     }
     if (!search) {
@@ -76,11 +83,29 @@ export function filterMockFailedOrders(query: FailedOrderListQuery): FailedOrder
     page: query.page,
     pageSize: query.pageSize,
     report: {
-      totalTracked: 34807,
-      confirmed: 1546,
+      totalTracked: mockFailedOrderStore.length,
+      confirmed: Math.round(mockFailedOrderStore.length * 0.12),
       failedToConfirmedPercent: 4.44,
     },
   };
+}
+
+export function retryMockFailedOrder(id: string): { success: boolean; message: string } {
+  const index = mockFailedOrderStore.findIndex((o) => o.id === id);
+  if (index < 0) {
+    return { success: false, message: 'Failed order not found' };
+  }
+  mockFailedOrderStore.splice(index, 1);
+  return { success: true, message: 'Order retried and moved to pending queue' };
+}
+
+export function dismissMockFailedOrder(id: string): boolean {
+  const index = mockFailedOrderStore.findIndex((o) => o.id === id);
+  if (index < 0) {
+    return false;
+  }
+  mockFailedOrderStore.splice(index, 1);
+  return true;
 }
 
 export { WEBSITES as FAILED_ORDER_WEBSITES };

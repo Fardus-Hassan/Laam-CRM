@@ -75,6 +75,12 @@ export const orderListQuerySchema = z.object({
   status: orderStatusTypeSchema.optional(),
   search: z.string().optional(),
   source: orderSourceSchema.optional(),
+  employee: z.string().optional(),
+  district: z.string().optional(),
+  paymentStatus: paymentStatusSchema.optional(),
+  courier: z.string().optional(),
+  product: z.string().optional(),
+  dateRange: z.enum(['last_30', 'this_month', 'custom', 'all_time']).optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().default(20),
   sortBy: z.string().optional(),
@@ -206,6 +212,179 @@ export const orderSalesSummarySchema = z.object({
 });
 
 export type OrderSalesSummary = z.infer<typeof orderSalesSummarySchema>;
+
+export const createOrderLinePayloadSchema = z.object({
+  productName: z.string(),
+  sku: z.string().optional(),
+  quantity: z.number().int().positive(),
+  unitPrice: z.number(),
+});
+
+export type CreateOrderLinePayload = z.infer<typeof createOrderLinePayloadSchema>;
+
+export const createOrderPayloadSchema = z.object({
+  customerName: z.string(),
+  customerPhone: z.string(),
+  customerEmail: z.string().email().optional(),
+  shippingAddress: z.string(),
+  shippingArea: z.string(),
+  district: z.string().optional(),
+  source: orderSourceSchema,
+  status: orderStatusTypeSchema.default('pending'),
+  paymentStatus: paymentStatusSchema.default('cod'),
+  deliveryCharge: z.number().default(0),
+  discount: z.number().default(0),
+  lineItems: z.array(createOrderLinePayloadSchema).min(1),
+  notes: z.string().optional(),
+  assignedAgentName: z.string().optional(),
+  skipFollowup: z.boolean().optional(),
+  couponCode: z.string().optional(),
+});
+
+export type CreateOrderPayload = z.infer<typeof createOrderPayloadSchema>;
+
+export const updateOrderPayloadSchema = z.object({
+  customerName: z.string().optional(),
+  customerPhone: z.string().optional(),
+  customerEmail: z.string().email().optional(),
+  shippingAddress: z.string().optional(),
+  shippingArea: z.string().optional(),
+  source: orderSourceSchema.optional(),
+  status: orderStatusTypeSchema.optional(),
+  paymentStatus: paymentStatusSchema.optional(),
+  deliveryCharge: z.number().optional(),
+  discount: z.number().optional(),
+  notes: z.string().optional(),
+  assignedAgentName: z.string().optional(),
+  lineItems: z.array(createOrderLinePayloadSchema).optional(),
+});
+
+export type UpdateOrderPayload = z.infer<typeof updateOrderPayloadSchema>;
+
+export const duplicateCheckQuerySchema = z.object({
+  phone: z.string(),
+  productIds: z.array(z.string()).optional(),
+  windowHours: z.number().int().positive().optional(),
+});
+
+export type DuplicateCheckQuery = z.infer<typeof duplicateCheckQuerySchema>;
+
+export const duplicateCheckResultSchema = z.object({
+  isDuplicate: z.boolean(),
+  existingOrderId: z.string().optional(),
+  existingOrderNumber: z.string().optional(),
+  message: z.string().optional(),
+});
+
+export type DuplicateCheckResult = z.infer<typeof duplicateCheckResultSchema>;
+
+export const orderBulkActionTypeSchema = z.enum([
+  'sms',
+  'status_change',
+  'courier_submit',
+  'transfer_employee',
+  'export',
+  'print',
+  'barcode',
+]);
+
+export type OrderBulkActionType = z.infer<typeof orderBulkActionTypeSchema>;
+
+export const orderBulkActionPayloadSchema = z.object({
+  action: orderBulkActionTypeSchema,
+  orderIds: z.array(z.string()).min(1),
+  status: orderStatusTypeSchema.optional(),
+  employeeName: z.string().optional(),
+  courier: z.string().optional(),
+  smsTemplateId: z.string().optional(),
+  smsMessage: z.string().optional(),
+});
+
+export type OrderBulkActionPayload = z.infer<typeof orderBulkActionPayloadSchema>;
+
+export const bulkActionResultSchema = z.object({
+  successCount: z.number().int().nonnegative(),
+  failedCount: z.number().int().nonnegative(),
+  message: z.string().optional(),
+});
+
+export type BulkActionResult = z.infer<typeof bulkActionResultSchema>;
+
+export const orderPaymentStatusSchema = z.enum(['pending', 'collected', 'reconciled']);
+
+export type OrderPaymentRecordStatus = z.infer<typeof orderPaymentStatusSchema>;
+
+export const orderPaymentMethodSchema = z.enum(['cod', 'bkash', 'nagad', 'bank', 'cash']);
+
+export type OrderPaymentMethod = z.infer<typeof orderPaymentMethodSchema>;
+
+export const orderPaymentRecordSchema = z.object({
+  id: z.string(),
+  orderId: z.string(),
+  orderNumber: z.string(),
+  customerName: z.string(),
+  amount: z.number(),
+  paid: z.number(),
+  due: z.number(),
+  method: orderPaymentMethodSchema,
+  status: orderPaymentStatusSchema,
+  collectedAt: z.string().optional(),
+  createdAt: z.string(),
+});
+
+export type OrderPaymentRecord = z.infer<typeof orderPaymentRecordSchema>;
+
+export const orderPaymentListQuerySchema = z.object({
+  search: z.string().optional(),
+  status: orderPaymentStatusSchema.optional(),
+  method: orderPaymentMethodSchema.optional(),
+  dateRange: z.enum(['last_30', 'this_month', 'all_time']).optional(),
+  page: z.number().int().positive().default(1),
+  pageSize: z.number().int().positive().default(20),
+});
+
+export type OrderPaymentListQuery = z.infer<typeof orderPaymentListQuerySchema>;
+
+export const orderPaymentListResponseSchema = z.object({
+  items: z.array(orderPaymentRecordSchema),
+  total: z.number(),
+  page: z.number(),
+  pageSize: z.number(),
+  summary: z.object({
+    totalCollected: z.number(),
+    totalPending: z.number(),
+    recordCount: z.number(),
+  }),
+});
+
+export type OrderPaymentListResponse = z.infer<typeof orderPaymentListResponseSchema>;
+
+export const orderCourierTrackingStepSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  timestamp: z.string().optional(),
+  completed: z.boolean(),
+});
+
+export type OrderCourierTrackingStep = z.infer<typeof orderCourierTrackingStepSchema>;
+
+export const orderCourierTrackingSchema = z.object({
+  courierName: z.string(),
+  trackingId: z.string().optional(),
+  currentStatus: z.string(),
+  steps: z.array(orderCourierTrackingStepSchema),
+});
+
+export type OrderCourierTracking = z.infer<typeof orderCourierTrackingSchema>;
+
+export const orderFilterPresetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  filters: z.record(z.string(), z.string()),
+  createdAt: z.string(),
+});
+
+export type OrderFilterPreset = z.infer<typeof orderFilterPresetSchema>;
 
 export {
   bulkActionIdSchema,

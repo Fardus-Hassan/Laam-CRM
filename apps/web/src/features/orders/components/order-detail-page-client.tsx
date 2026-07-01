@@ -36,5 +36,5 @@ export function OrderDetailPageClient({ orderNumber }: OrderDetailPageClientProp
     );
   }
 
-  return <OrderDetailView order={data} />;
+  return <OrderDetailView initialOrder={data} />;
 }

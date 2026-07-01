@@ -13,9 +13,10 @@ import { cn } from '@/lib/utils';
 type OrderSelectionSummaryProps = {
   rows: OrderListRow[];
   className?: string;
+  compact?: boolean;
 };
 
-export function OrderSelectionSummary({ rows, className }: OrderSelectionSummaryProps) {
+export function OrderSelectionSummary({ rows, className, compact }: OrderSelectionSummaryProps) {
   if (rows.length === 0) {
     return null;
   }
@@ -26,13 +27,47 @@ export function OrderSelectionSummary({ rows, className }: OrderSelectionSummary
   const grandTotal = rows.reduce((sum, row) => sum + row.amount, 0);
   const due = rows.reduce((sum, row) => sum + row.due, 0);
 
+  const shipping = rows.reduce(
+    (sum, row) => sum + Math.max(0, row.amount - row.subtotal + row.discount),
+    0,
+  );
+
   const lines = [
     { label: 'Product Total', value: productTotal },
-    { label: 'Total Shipping', value: 0 },
+    { label: 'Shipping', value: shipping },
     { label: 'Discount', value: discount },
     { label: 'Grand Total', value: grandTotal, bold: true },
     { label: 'Paid', value: paid, positive: true },
     { label: 'Due', value: due, danger: true },
+  ];
+
+  if (compact) {
+    return (
+      <div className={cn('rounded-lg border bg-muted/30 p-3', className)}>
+        <p className="mb-2 text-xs font-medium text-muted-foreground">Selection summary</p>
+        <div className="space-y-1">
+          {lines.map((line) => (
+            <div key={line.label} className="flex justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">{line.label}</span>
+              <span
+                className={cn(
+                  'tabular-nums',
+                  line.bold && 'font-semibold',
+                  line.positive && 'text-primary',
+                  line.danger && 'text-destructive',
+                )}
+              >
+                {formatCurrency(line.value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const fullLines = [
+    ...lines,
     { label: 'Return/Damage', value: 0 },
     { label: 'Return Discount', value: 0, danger: true },
   ];
@@ -43,7 +78,7 @@ export function OrderSelectionSummary({ rows, className }: OrderSelectionSummary
         <CardTitle className="text-sm">Summary</CardTitle>
       </CardHeader>
       <CardContent className={cn('space-y-2', ORDER_SECTION_BODY_CLASS)}>
-        {lines.map((line) => (
+        {fullLines.map((line) => (
           <div
             key={line.label}
             className={cn(

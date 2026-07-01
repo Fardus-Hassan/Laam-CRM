@@ -3,9 +3,9 @@
 import * as React from 'react';
 import type { OrderListRow } from '@laam/types';
 
-import { CrmDataTable, CrmDataTableToolbar } from '@/components/data-table';
+import { CrmDataTable } from '@/components/data-table';
 import {
-  ORDER_TABLE_COLUMNS,
+  buildOrderTableColumns,
   ORDER_TABLE_PINNED,
 } from '@/features/orders/components/order-list/order-table-columns';
 import { OrderTableMobileCard } from '@/features/orders/components/order-list/order-table-mobile-card';
@@ -27,6 +27,7 @@ type OrderDataTableProps = {
   onSortChange?: (sort: { id: string; desc: boolean } | null) => void;
   search?: string;
   onSearchChange?: (value: string) => void;
+  onNoteClick?: (row: OrderListRow) => void;
 };
 
 export function OrderDataTable({
@@ -46,7 +47,13 @@ export function OrderDataTable({
   onSortChange,
   search,
   onSearchChange,
+  onNoteClick,
 }: OrderDataTableProps) {
+  const columns = React.useMemo(
+    () => buildOrderTableColumns({ onNoteClick }),
+    [onNoteClick],
+  );
+
   const selectionState = React.useMemo(
     () => ({ selectedIds, onChange: onSelectionChange }),
     [selectedIds, onSelectionChange],
@@ -54,7 +61,7 @@ export function OrderDataTable({
 
   return (
     <CrmDataTable
-      columns={ORDER_TABLE_COLUMNS}
+      columns={columns}
       data={rows}
       getRowId={(row) => row.id}
       emptyMessage={emptyMessage}
@@ -77,17 +84,9 @@ export function OrderDataTable({
       search={search}
       onSearchChange={onSearchChange}
       searchPlaceholder="Search orders…"
-      headerSlot={(table) => (
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2">
-          <h3 className="shrink-0 text-sm font-semibold">Order List</h3>
-          <CrmDataTableToolbar
-            table={table}
-            embedded
-            className="min-w-0"
-            search={search}
-            onSearchChange={onSearchChange}
-            searchPlaceholder="Search orders…"
-          />
+      headerSlot={() => (
+        <div className="border-b border-border px-4 py-2.5">
+          <h3 className="text-sm font-semibold">Orders</h3>
         </div>
       )}
     />

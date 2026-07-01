@@ -1,6 +1,7 @@
 import type { Permission } from '@laam/types';
 
 import type { NavChildDefinition } from '@/features/navigation/types/universal-nav';
+import { mockFailedOrderStore } from '@/features/orders/data/mock-failed-orders';
 import { getStatusCount } from '@/features/orders/data/mock-status-counts';
 import {
   getSidebarStatuses,
@@ -11,67 +12,62 @@ export type OrdersNavChild = NavChildDefinition & {
   badge?: number;
 };
 
-export function buildOrdersNav(): OrdersNavChild[] {
-  const items: OrdersNavChild[] = [];
+const TOOL_SLUGS = new Set(['failed', 'bulk_print', 'send_courier_barcode', 'payments']);
+const QUEUE_SLUGS = new Set(['create_new', 'all', 'pendings']);
 
-  const navPages = MOCK_ORDER_QUEUE_PAGES.filter((page) => page.showInNav).sort(
-    (a, b) => a.sidebarOrder - b.sidebarOrder,
+function pageToNavItem(page: (typeof MOCK_ORDER_QUEUE_PAGES)[number]): OrdersNavChild {
+  let badge: number | undefined;
+
+  if (page.slug === 'failed') {
+    badge = mockFailedOrderStore.length;
+  } else if (page.slug === 'pendings') {
+    badge =
+      getStatusCount('pending') +
+      getStatusCount('pending_2') +
+      getStatusCount('pending_3');
+  } else if (page.childStatusSlugs?.length) {
+    badge = page.childStatusSlugs.reduce((sum, slug) => sum + getStatusCount(slug), 0);
+  }
+
+  return {
+    id: `orders-${page.slug}`,
+    title: page.label,
+    url: page.href,
+    permissions:
+      page.kind === 'form'
+        ? (['orders.create'] as Permission[])
+        : (['orders.view'] as Permission[]),
+    badge,
+  };
+}
+
+export function buildOrdersNav(): OrdersNavChild[] {
+  const navPages = MOCK_ORDER_QUEUE_PAGES.filter(
+    (page) => page.showInNav && page.slug !== 'more_statuses',
   );
 
-  for (const page of navPages) {
-    if (page.slug === 'more_statuses') {
-      continue;
-    }
+  const queuePages = navPages.filter((p) => QUEUE_SLUGS.has(p.slug));
+  const toolPages = navPages.filter((p) => TOOL_SLUGS.has(p.slug));
 
-    let badge: number | undefined;
+  const items: OrdersNavChild[] = [
+    ...queuePages.sort((a, b) => a.sidebarOrder - b.sidebarOrder).map(pageToNavItem),
+    ...getSidebarStatuses()
+      .filter((status) => status.parentSlug !== 'pendings')
+      .map((status) => ({
+        id: `orders-status-${status.slug}`,
+        title: status.label,
+        url: `/dashboard/orders?status=${status.slug}`,
+        permissions: ['orders.view'] as Permission[],
+        badge: getStatusCount(status.slug),
+      })),
+    ...toolPages.sort((a, b) => a.sidebarOrder - b.sidebarOrder).map(pageToNavItem),
+    {
+      id: 'orders-more-statuses',
+      title: 'More Statuses',
+      url: '/dashboard/orders/statuses',
+      permissions: ['orders.view'] as Permission[],
+    },
+  ];
 
-    if (page.slug === 'failed') {
-      badge = 227;
-    } else if (page.slug === 'pendings') {
-      badge =
-        getStatusCount('pending') +
-        getStatusCount('pending_2') +
-        getStatusCount('pending_3');
-    } else if (page.childStatusSlugs?.length) {
-      badge = page.childStatusSlugs.reduce((sum, slug) => sum + getStatusCount(slug), 0);
-    }
-
-    items.push({
-      id: `orders-${page.slug}`,
-      title: page.label,
-      url: page.href,
-      permissions: page.kind === 'form' ? (['orders.create'] as Permission[]) : (['orders.view'] as Permission[]),
-      badge,
-    });
-  }
-
-  for (const status of getSidebarStatuses()) {
-    if (status.parentSlug === 'pendings') {
-      continue;
-    }
-
-    items.push({
-      id: `orders-status-${status.slug}`,
-      title: status.label,
-      url: `/dashboard/orders?status=${status.slug}`,
-      permissions: ['orders.view'],
-      badge: getStatusCount(status.slug),
-    });
-  }
-
-  items.push({
-    id: 'orders-more-statuses',
-    title: 'More Statuses',
-    url: '/dashboard/orders/statuses',
-    permissions: ['orders.view'],
-  });
-
-  return items.sort((a, b) => {
-    const orderA = MOCK_ORDER_QUEUE_PAGES.find((p) => a.url === p.href)?.sidebarOrder ?? 100;
-    const orderB = MOCK_ORDER_QUEUE_PAGES.find((p) => b.url === p.href)?.sidebarOrder ?? 100;
-    if (orderA !== orderB) {
-      return orderA - orderB;
-    }
-    return a.title.localeCompare(b.title);
-  });
+  return items;
 }

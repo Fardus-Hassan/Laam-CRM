@@ -32,7 +32,11 @@ export function formatOrderDateTime(value: string) {
     .replace(',', ' -');
 }
 
-export const ORDER_TABLE_COLUMNS: CrmColumnDef<OrderListRow>[] = [
+export function buildOrderTableColumns(options?: {
+  onNoteClick?: (row: OrderListRow) => void;
+}): CrmColumnDef<OrderListRow>[] {
+  const onNoteClick = options?.onNoteClick;
+  return [
   {
     id: 'status',
     header: 'Status',
@@ -79,6 +83,7 @@ export const ORDER_TABLE_COLUMNS: CrmColumnDef<OrderListRow>[] = [
           row.original.hasNote ? 'size-8 text-primary' : 'size-8 text-muted-foreground'
         }
         aria-label={row.original.hasNote ? 'View note' : 'Add note'}
+        onClick={() => onNoteClick?.(row.original)}
       >
         {row.original.hasNote ? (
           <MessageSquare className="size-4" />
@@ -256,6 +261,9 @@ export const ORDER_TABLE_COLUMNS: CrmColumnDef<OrderListRow>[] = [
       ),
   },
 ];
+}
+
+export const ORDER_TABLE_COLUMNS = buildOrderTableColumns();
 
 export const ORDER_TABLE_PINNED = {
   left: ['status'],

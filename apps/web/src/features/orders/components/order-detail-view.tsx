@@ -1,223 +1,165 @@
 'use client';
 
-import Link from 'next/link';
-import type { OrderDetail } from '@laam/types';
-import {
-  ArrowLeft,
-  MapPin,
-  Package,
-  Phone,
-  StickyNote,
-  UserRound,
-} from 'lucide-react';
+import * as React from 'react';
+import type { OrderDetail, OrderCourierTracking } from '@laam/types';
+import { MapPin } from 'lucide-react';
 
-import { Can } from '@/components/auth/can';
-import { DataTable, type DataTableColumn } from '@/components/dashboard/data-table';
-import { StatusBadge } from '@/components/dashboard/status-badge';
 import { PageShell } from '@/components/layout/page-shell';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
-import { formatCurrency } from '@/lib/format';
+import { FormField } from '@/components/form/form-field';
+import { FormTextarea } from '@/components/form/form-textarea';
+import {
+  CustomerBlock,
+  orderToCustomerValue,
+} from '@/features/orders/components/shared/customer-block';
+import { CourierTrackingCard } from '@/features/orders/components/shared/courier-tracking-card';
+import { EditableSectionCard } from '@/features/orders/components/shared/editable-section-card';
+import { LinkedLeadCard } from '@/features/orders/components/shared/linked-lead-card';
+import { MoneySummaryPanel } from '@/features/orders/components/shared/money-summary-panel';
+import { OrderActionBar } from '@/features/orders/components/shared/order-action-bar';
+import { OrderAssignSheet } from '@/features/orders/components/shared/order-assign-sheet';
+import { OrderDetailHeader } from '@/features/orders/components/shared/order-detail-header';
+import { OrderLineItemsCard } from '@/features/orders/components/shared/order-line-items-card';
+import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
+import { OrderTimeline } from '@/features/orders/components/shared/order-timeline';
+import { PrintPreviewDialog } from '@/features/orders/components/shared/print-preview-dialog';
+import {
+  ORDER_PAGE_GAP,
+  ORDER_SIDEBAR_GRID_CLASS,
+} from '@/features/orders/components/create-order/section-layout';
+import { ordersApi } from '@/features/orders/api/orders-api';
+import { useOrderDetailMutations } from '@/features/orders/hooks/use-order-mutations';
+import { createOrderDetailBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
+import { cn } from '@/lib/utils';
 
-type OrderDetailViewProps = {
-  order: OrderDetail;
-};
+export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail }) {
+  const [order, setOrder] = React.useState(initialOrder);
+  const [courierTracking, setCourierTracking] = React.useState<OrderCourierTracking | null>(null);
+  const [printType, setPrintType] = React.useState<'invoice' | 'packing' | null>(null);
+  const [deliveryNote, setDeliveryNote] = React.useState(order.notes ?? '');
+  const [customerDraft, setCustomerDraft] = React.useState(orderToCustomerValue(order));
+  const [assignOpen, setAssignOpen] = React.useState(false);
+  const [statusOpen, setStatusOpen] = React.useState(false);
 
-const LINE_ITEM_COLUMNS: DataTableColumn<OrderDetail['lineItems'][number]>[] = [
-  {
-    id: 'product',
-    header: 'Product',
-    cell: (row) => (
-      <div>
-        <p className="font-medium">{row.productName}</p>
-        {row.sku ? <p className="text-xs text-muted-foreground">{row.sku}</p> : null}
-      </div>
-    ),
-  },
-  {
-    id: 'qty',
-    header: 'Qty',
-    cell: (row) => row.quantity,
-  },
-  {
-    id: 'unit',
-    header: 'Unit price',
-    cell: (row) => formatCurrency(row.unitPrice),
-  },
-  {
-    id: 'total',
-    header: 'Line total',
-    cell: (row) => formatCurrency(row.lineTotal),
-  },
-];
+  const { confirmOrder, cancelOrder, changeStatus, updateOrder } = useOrderDetailMutations(
+    order,
+    setOrder,
+  );
 
-export function OrderDetailView({ order }: OrderDetailViewProps) {
+  React.useEffect(() => {
+    if (['in_courier', 'delivered', 'completed'].includes(order.status)) {
+      void ordersApi.getCourierTracking(order.id).then(setCourierTracking);
+    } else {
+      setCourierTracking(null);
+    }
+  }, [order.id, order.status]);
+
+  React.useEffect(() => {
+    setOrder(initialOrder);
+    setCustomerDraft(orderToCustomerValue(initialOrder));
+    setDeliveryNote(initialOrder.notes ?? '');
+  }, [initialOrder]);
+
   return (
     <PageShell
       title={order.orderNumber}
-      description={`${order.customerName} · ${ORDER_SOURCE_LABELS[order.source]}`}
+      description={`${order.customerName}`}
+      breadcrumbs={createOrderDetailBreadcrumbs(order.orderNumber, order.status)}
     >
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button type="button" variant="outline" size="sm" asChild>
-            <Link href="/dashboard/orders">
-              <ArrowLeft className="size-4" />
-              Back to orders
-            </Link>
-          </Button>
+      <div className={cn(ORDER_PAGE_GAP)}>
+        <OrderDetailHeader order={order} />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={order.status} kind="order" />
-            <Can permission="orders.confirm">
-              <Button type="button" size="sm" disabled={order.status !== 'pending'}>
-                Confirm
-              </Button>
-            </Can>
-            <Can permission="orders.cancel">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={order.status === 'delivered'}
-              >
-                Cancel
-              </Button>
-            </Can>
-            <Can permission="orders.assign">
-              <Button type="button" size="sm" variant="secondary">
-                Assign agent
-              </Button>
-            </Can>
-          </div>
-        </div>
+        <OrderActionBar
+          order={order}
+          onConfirm={confirmOrder}
+          onCancel={cancelOrder}
+          onAssign={() => setAssignOpen(true)}
+          onStatusClick={() => setStatusOpen(true)}
+          onPrint={(type) => setPrintType(type)}
+        />
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="gap-0 py-0 shadow-none lg:col-span-2">
-            <CardHeader className="border-b px-4 py-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Package className="size-4 text-primary" />
-                Order items
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-3 py-3 sm:px-4">
-              <DataTable
-                columns={LINE_ITEM_COLUMNS}
-                rows={order.lineItems}
-                getRowId={(row) => row.id}
-              />
-              <div className="mt-4 space-y-2 border-t border-border/70 pt-4 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatCurrency(order.subtotal)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Delivery</span>
-                  <span>{formatCurrency(order.deliveryCharge)}</span>
-                </div>
-                {order.discount ? (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Discount</span>
-                    <span>-{formatCurrency(order.discount)}</span>
-                  </div>
-                ) : null}
-                <div className="flex justify-between font-semibold">
-                  <span>Total</span>
-                  <span>{formatCurrency(order.amount)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
+        <div className={cn('grid gap-4', ORDER_SIDEBAR_GRID_CLASS)}>
           <div className="space-y-4">
-            <Card className="gap-0 py-0 shadow-none">
-              <CardHeader className="border-b px-4 py-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <UserRound className="size-4 text-primary" />
-                  Customer
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 p-4 text-sm">
-                <div>
-                  <p className="font-medium">{order.customerName}</p>
-                  <p className="text-muted-foreground">{order.customerPhone}</p>
-                  {order.customerEmail ? (
-                    <p className="text-muted-foreground">{order.customerEmail}</p>
-                  ) : null}
-                </div>
-                <Button type="button" variant="outline" size="sm" className="w-full">
-                  <Phone className="size-4" />
-                  Call customer
-                </Button>
-              </CardContent>
-            </Card>
+            <CustomerBlock
+              mode="edit"
+              value={customerDraft}
+              onChange={setCustomerDraft}
+              onSave={async () => {
+                const updated = await updateOrder(order.id, {
+                  customerName: customerDraft.name,
+                  customerPhone: customerDraft.phone,
+                  customerEmail: customerDraft.email,
+                  shippingAddress: customerDraft.address,
+                  source: customerDraft.source,
+                });
+                setCustomerDraft(orderToCustomerValue(updated));
+              }}
+            />
 
-            <Card className="gap-0 py-0 shadow-none">
-              <CardHeader className="border-b px-4 py-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <MapPin className="size-4 text-primary" />
-                  Delivery
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 p-4 text-sm">
+            <OrderLineItemsCard order={order} />
+
+            <EditableSectionCard
+              title="Delivery & notes"
+              icon={<MapPin className="size-4 text-primary" />}
+              editContent={
+                <FormField label="Internal note">
+                  <FormTextarea
+                    rows={3}
+                    value={deliveryNote}
+                    onChange={(e) => setDeliveryNote(e.target.value)}
+                  />
+                </FormField>
+              }
+              onSave={async () => {
+                const updated = await updateOrder(order.id, { notes: deliveryNote });
+                setDeliveryNote(updated.notes ?? '');
+              }}
+              onCancel={() => setDeliveryNote(order.notes ?? '')}
+            >
+              <div className="space-y-2 text-sm">
                 <p>{order.shippingAddress}</p>
                 <p className="text-muted-foreground">Area: {order.shippingArea}</p>
                 <p className="text-muted-foreground">
-                  Payment: {order.paymentStatus.toUpperCase()}
-                </p>
-                <p className="text-muted-foreground">
                   Agent: {order.assignedAgentName ?? 'Unassigned'}
                 </p>
-              </CardContent>
-            </Card>
+                {order.notes ? (
+                  <p className="rounded-md bg-muted/40 p-2 text-muted-foreground">{order.notes}</p>
+                ) : (
+                  <p className="text-muted-foreground">No internal notes yet.</p>
+                )}
+              </div>
+            </EditableSectionCard>
+          </div>
 
-            {order.notes ? (
-              <Card className="gap-0 py-0 shadow-none">
-                <CardHeader className="border-b px-4 py-3">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <StickyNote className="size-4 text-primary" />
-                    Notes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 text-sm text-muted-foreground">
-                  {order.notes}
-                </CardContent>
-              </Card>
-            ) : null}
+          <div className="space-y-4">
+            <MoneySummaryPanel mode="readonly" order={order} />
+            <OrderTimeline events={order.timeline} />
+            {courierTracking ? <CourierTrackingCard tracking={courierTracking} /> : null}
+            {order.leadId ? <LinkedLeadCard leadId={order.leadId} /> : null}
           </div>
         </div>
-
-        <Card className="gap-0 py-0 shadow-none">
-          <CardHeader className="border-b px-4 py-3">
-            <CardTitle className="text-sm">Activity timeline</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <ol className="space-y-4">
-              {order.timeline.map((event) => (
-                <li key={event.id} className="flex gap-3 text-sm">
-                  <div className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
-                  <div>
-                    <p className="font-medium">{event.label}</p>
-                    {event.description ? (
-                      <p className="text-muted-foreground">{event.description}</p>
-                    ) : null}
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {new Intl.DateTimeFormat('en-GB', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      }).format(new Date(event.timestamp))}
-                      {event.actorName ? ` · ${event.actorName}` : ''}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </CardContent>
-        </Card>
       </div>
+
+      <PrintPreviewDialog
+        open={printType !== null}
+        onOpenChange={(open) => !open && setPrintType(null)}
+        order={order}
+        type={printType ?? 'invoice'}
+      />
+
+      <OrderAssignSheet
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        onAssign={async (employeeName) => {
+          await updateOrder(order.id, { assignedAgentName: employeeName });
+        }}
+      />
+
+      <OrderStatusDialog
+        open={statusOpen}
+        onOpenChange={setStatusOpen}
+        currentStatus={order.status}
+        onSelect={changeStatus}
+      />
     </PageShell>
   );
 }

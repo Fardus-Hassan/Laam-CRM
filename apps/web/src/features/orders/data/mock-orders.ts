@@ -1,4 +1,9 @@
 import type {
+  BulkActionResult,
+  CreateOrderPayload,
+  DuplicateCheckQuery,
+  DuplicateCheckResult,
+  OrderBulkActionPayload,
   OrderDetail,
   OrderListItem,
   OrderListQuery,
@@ -7,6 +12,7 @@ import type {
   OrderListRowResponse,
   OrderSalesSummary,
   OrderTimelineEvent,
+  UpdateOrderPayload,
 } from '@laam/types';
 
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
@@ -197,12 +203,241 @@ export const MOCK_ORDERS: OrderDetail[] = [
   buildOrder(30, { status: 'processing', customerName: 'Rashed Khan' }),
   buildOrder(31, { status: 'convert', customerName: 'Priya Saha' }),
   buildOrder(32, { status: 'cod_changed', customerName: 'Hasan Mahmud' }),
+  ...Array.from({ length: 23 }, (_, offset) => {
+    const index = 33 + offset;
+    const statuses = ['pending', 'confirmed', 'in_courier', 'delivered', 'hold'] as const;
+    return buildOrder(index, {
+      status: statuses[index % statuses.length],
+      customerName: `Customer ${index}`,
+    });
+  }),
 ];
 
+/** Mutable in-memory store — mock API mutations update this array. */
+export const mockOrderStore: OrderDetail[] = [...MOCK_ORDERS];
+
+function getOrderStore(): OrderDetail[] {
+  return mockOrderStore;
+}
+
 export function getMockOrderById(orderNumber: string): OrderDetail | undefined {
-  return MOCK_ORDERS.find(
+  return getOrderStore().find(
     (order) => order.orderNumber === orderNumber || order.id === orderNumber,
   );
+}
+
+function nextOrderIndex(): number {
+  const store = getOrderStore();
+  const maxNum = store.reduce((max, order) => {
+    const num = Number.parseInt(order.orderNumber.replace(/\D/g, ''), 10) || 0;
+    return Math.max(max, num);
+  }, 1000);
+  return maxNum - 1000 + 1;
+}
+
+function appendTimelineEvent(order: OrderDetail, event: Omit<OrderTimelineEvent, 'id'>): OrderTimelineEvent[] {
+  return [
+    ...order.timeline,
+    { ...event, id: `${order.id}-t-${order.timeline.length + 1}` },
+  ];
+}
+
+export function createMockOrder(payload: CreateOrderPayload): OrderDetail {
+  const index = nextOrderIndex() + getOrderStore().length;
+  const lineItems = payload.lineItems.map((line, itemIndex) => ({
+    id: `order-new-${index}-line-${itemIndex}`,
+    productName: line.productName,
+    sku: line.sku,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    lineTotal: line.unitPrice * line.quantity,
+  }));
+  const subtotal = lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+  const amount = subtotal + payload.deliveryCharge - payload.discount;
+
+  const order = buildOrder(index, {
+    status: payload.status,
+    customerName: payload.customerName,
+    customerPhone: payload.customerPhone,
+    source: payload.source,
+    paymentStatus: payload.paymentStatus,
+    assignedAgentName: payload.assignedAgentName,
+    shippingArea: payload.shippingArea,
+    amount,
+    itemsCount: lineItems.length,
+  });
+
+  const detail: OrderDetail = {
+    ...order,
+    customerEmail: payload.customerEmail,
+    shippingAddress: payload.shippingAddress,
+    deliveryCharge: payload.deliveryCharge,
+    discount: payload.discount,
+    subtotal,
+    lineItems,
+    notes: payload.notes,
+    timeline: [
+      {
+        id: `${order.id}-t1`,
+        type: 'created',
+        label: 'Order created manually',
+        description: `Source: ${payload.source}`,
+        timestamp: new Date().toISOString(),
+        actorName: payload.assignedAgentName ?? 'Agent',
+      },
+    ],
+  };
+
+  mockOrderStore.unshift(detail);
+  return detail;
+}
+
+export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): OrderDetail | null {
+  const index = mockOrderStore.findIndex((o) => o.id === orderId || o.orderNumber === orderId);
+  if (index < 0) {
+    return null;
+  }
+
+  const current = mockOrderStore[index];
+  const lineItems = patch.lineItems
+    ? patch.lineItems.map((line, itemIndex) => ({
+        id: `${current.id}-line-${itemIndex}`,
+        productName: line.productName,
+        sku: line.sku,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        lineTotal: line.unitPrice * line.quantity,
+      }))
+    : current.lineItems;
+
+  const subtotal = lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+  const deliveryCharge = patch.deliveryCharge ?? current.deliveryCharge;
+  const discount = patch.discount ?? current.discount;
+  const amount = subtotal + deliveryCharge - discount;
+
+  let timeline = current.timeline;
+  if (patch.status && patch.status !== current.status) {
+    timeline = appendTimelineEvent(current, {
+      type: 'note',
+      label: `Status changed to ${patch.status}`,
+      timestamp: new Date().toISOString(),
+      actorName: 'Agent',
+    });
+  }
+
+  const updated: OrderDetail = {
+    ...current,
+    customerName: patch.customerName ?? current.customerName,
+    customerPhone: patch.customerPhone ?? current.customerPhone,
+    customerEmail: patch.customerEmail ?? current.customerEmail,
+    shippingAddress: patch.shippingAddress ?? current.shippingAddress,
+    shippingArea: patch.shippingAddress ? current.shippingArea : current.shippingArea,
+    source: patch.source ?? current.source,
+    status: patch.status ?? current.status,
+    paymentStatus: patch.paymentStatus ?? current.paymentStatus,
+    deliveryCharge,
+    discount,
+    subtotal,
+    amount,
+    lineItems,
+    itemsCount: lineItems.length,
+    notes: patch.notes ?? current.notes,
+    assignedAgentName: patch.assignedAgentName ?? current.assignedAgentName,
+    timeline,
+  };
+
+  mockOrderStore[index] = updated;
+  return updated;
+}
+
+export function checkMockDuplicate(query: DuplicateCheckQuery): DuplicateCheckResult {
+  const phone = query.phone.replace(/\D/g, '');
+  const existing = getOrderStore().find(
+    (order) =>
+      order.customerPhone.replace(/\D/g, '') === phone &&
+      order.status !== 'cancelled' &&
+      order.status !== 'delivered',
+  );
+
+  if (!existing) {
+    return { isDuplicate: false };
+  }
+
+  return {
+    isDuplicate: true,
+    existingOrderId: existing.id,
+    existingOrderNumber: existing.orderNumber,
+    message: `Similar order ${existing.orderNumber} exists for this phone within the last 72 hours.`,
+  };
+}
+
+export function bulkUpdateMockOrders(payload: OrderBulkActionPayload): BulkActionResult {
+  let successCount = 0;
+  for (const orderId of payload.orderIds) {
+    const order = getMockOrderById(orderId);
+    if (!order) {
+      continue;
+    }
+
+    const patch: UpdateOrderPayload = {};
+    if (payload.action === 'status_change' && payload.status) {
+      patch.status = payload.status;
+    }
+    if (payload.action === 'transfer_employee' && payload.employeeName) {
+      patch.assignedAgentName = payload.employeeName;
+    }
+    if (Object.keys(patch).length > 0) {
+      updateMockOrder(order.id, patch);
+      successCount += 1;
+    } else if (['sms', 'courier_submit', 'export', 'print', 'barcode'].includes(payload.action)) {
+      successCount += 1;
+    }
+  }
+
+  return {
+    successCount,
+    failedCount: payload.orderIds.length - successCount,
+    message: `Bulk ${payload.action} completed for ${successCount} order(s)`,
+  };
+}
+
+export function updateMockOrderNote(orderId: string, note: string): void {
+  const order = getMockOrderById(orderId);
+  if (order) {
+    updateMockOrder(order.id, { notes: note });
+  }
+}
+
+function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean {
+  if (query.status && order.status !== query.status) {
+    return false;
+  }
+  if (query.source && order.source !== query.source) {
+    return false;
+  }
+  if (query.paymentStatus && order.paymentStatus !== query.paymentStatus) {
+    return false;
+  }
+  if (query.employee && order.assignedAgentName !== query.employee) {
+    return false;
+  }
+  if (query.district && !order.shippingArea.toLowerCase().includes(query.district.toLowerCase())) {
+    return false;
+  }
+  if (query.product) {
+    const productMatch = order.lineItems.some((line) =>
+      line.productName.toLowerCase().includes(query.product!.toLowerCase()),
+    );
+    if (!productMatch) {
+      return false;
+    }
+  }
+  if (query.search?.trim()) {
+    if (!orderMatchesSearch(order, query.search)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function orderDetailToListRow(order: OrderDetail, serialNumber?: number): OrderListRow {
@@ -307,20 +542,7 @@ function sortMockOrderRows(
 }
 
 export function filterMockOrderRows(query: OrderListQuery): OrderListRowResponse {
-  const base = filterMockOrders({ ...query, page: 1, pageSize: 9999 });
-  const allRows = MOCK_ORDERS.filter((order) => {
-    if (query.status && order.status !== query.status) {
-      return false;
-    }
-    if (query.source && order.source !== query.source) {
-      return false;
-    }
-    const search = query.search?.trim() ?? '';
-    if (!search) {
-      return true;
-    }
-    return orderMatchesSearch(order, search);
-  });
+  const allRows = getOrderStore().filter((order) => orderMatchesFilters(order, query));
 
   const total = allRows.length;
   const sortedRows = sortMockOrderRows(allRows, query.sortBy, query.sortDir);
@@ -332,7 +554,10 @@ export function filterMockOrderRows(query: OrderListQuery): OrderListRowResponse
     total,
     page: query.page,
     pageSize: query.pageSize,
-    summary: base.summary,
+    summary: {
+      count: total,
+      totalAmount: allRows.reduce((sum, order) => sum + order.amount, 0),
+    },
   };
 }
 
@@ -357,22 +582,7 @@ export function buildMockSalesSummary(orderCount: number, totalAmount: number): 
 }
 
 export function filterMockOrders(query: OrderListQuery): OrderListResponse {
-  const search = query.search?.trim().toLowerCase() ?? '';
-  let items = MOCK_ORDERS.filter((order) => {
-    if (query.status && order.status !== query.status) {
-      return false;
-    }
-
-    if (query.source && order.source !== query.source) {
-      return false;
-    }
-
-    if (!search) {
-      return true;
-    }
-
-    return orderMatchesSearch(order, search);
-  });
+  let items = getOrderStore().filter((order) => orderMatchesFilters(order, query));
 
   const total = items.length;
   const totalAmount = items.reduce((sum, order) => sum + order.amount, 0);

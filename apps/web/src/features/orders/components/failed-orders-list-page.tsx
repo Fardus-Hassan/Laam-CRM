@@ -3,24 +3,20 @@
 import * as React from 'react';
 import { toast } from 'sonner';
 
-import { CollapsibleSection } from '@/components/form/collapsible-section';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSelect } from '@/components/form/form-select';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { FailedOrdersTable } from '@/features/orders/components/failed-orders-table';
+import { Card, CardContent } from '@/components/ui/card';
+import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
+import { FailedOrderDataTable } from '@/features/orders/components/failed-orders/failed-order-data-table';
 import {
-  ORDER_SECTION_BODY_CLASS,
-  ORDER_SECTION_GRID_GAP,
-  ORDER_SECTION_HEADER_CLASS,
+  ORDER_CARD_CLASS,
+  ORDER_PAGE_GAP,
 } from '@/features/orders/components/create-order/section-layout';
-import {
-  FAILED_ORDER_WEBSITES,
-  filterMockFailedOrders,
-} from '@/features/orders/data/mock-failed-orders';
+import { failedOrdersApi } from '@/features/orders/api/failed-orders-api';
+import { FAILED_ORDER_WEBSITES } from '@/features/orders/data/mock-failed-orders';
 import { cn } from '@/lib/utils';
 
 export function FailedOrdersListPage() {
@@ -28,144 +24,158 @@ export function FailedOrdersListPage() {
   const [failedType, setFailedType] = React.useState('all');
   const [website, setWebsite] = React.useState('all');
   const [noteStatus, setNoteStatus] = React.useState('all');
-  const [dateRange, setDateRange] = React.useState('last_30');
+  const [page, setPage] = React.useState(1);
+  const [data, setData] = React.useState<Awaited<ReturnType<typeof failedOrdersApi.listFailedOrders>> | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), 150);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const load = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await failedOrdersApi.listFailedOrders({
+        search: search || undefined,
+        failedType:
+          failedType === 'all'
+            ? undefined
+            : (failedType as 'duplicate' | 'blocked' | 'other'),
+        website: website === 'all' ? undefined : website,
+        noteStatus: noteStatus as 'all' | 'has_note' | 'no_note',
+        page,
+        pageSize: 10,
+      });
+      setData(response);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [search, failedType, website, noteStatus, page]);
 
-  const data = filterMockFailedOrders({
-    search: search || undefined,
-    failedType:
-      failedType === 'all'
-        ? undefined
-        : (failedType as 'duplicate' | 'blocked' | 'other'),
-    website: website === 'all' ? undefined : website,
-    page: 1,
-    pageSize: 10,
-  });
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleRetry(row: { id: string }) {
+    const result = await failedOrdersApi.retryFailedOrder(row.id);
+    toast.success(result.message);
+    void load();
+  }
+
+  async function handleDismiss(row: { id: string }) {
+    await failedOrdersApi.dismissFailedOrder(row.id);
+    toast.success('Failed order dismissed');
+    void load();
+  }
+
+  const hasActiveFilters =
+    search !== '' || failedType !== 'all' || website !== 'all' || noteStatus !== 'all';
 
   return (
     <PageShell
       title="Failed Orders"
       description="Duplicate, blocked, or invalid orders for manual review. Auto-deleted after 90 days."
     >
-      <div className="space-y-4">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-          <CollapsibleSection title="Filtering" defaultOpen>
-            <div className={cn('grid sm:grid-cols-2 lg:grid-cols-4', ORDER_SECTION_GRID_GAP)}>
-              <FormField label="Date Range">
-                <FormSelect
-                  value={dateRange}
-                  onChange={setDateRange}
-                  options={[
-                    { value: 'today', label: 'Today' },
-                    { value: 'yesterday', label: 'Yesterday' },
-                    { value: 'last_7', label: 'Last 7 Days' },
-                    { value: 'last_30', label: 'Last 30 Days' },
-                    { value: 'max', label: 'Max' },
-                  ]}
-                  searchable={false}
-                />
-              </FormField>
-              <FormField label="Type">
-                <FormSelect
-                  value={failedType}
-                  onChange={setFailedType}
-                  options={[
-                    { value: 'all', label: 'All' },
-                    { value: 'duplicate', label: 'Duplicate' },
-                    { value: 'blocked', label: 'Blocked' },
-                    { value: 'other', label: 'Without Duplicate/Blocked' },
-                  ]}
-                  searchable={false}
-                />
-              </FormField>
-              <FormField label="Note Status">
-                <FormSelect
-                  value={noteStatus}
-                  onChange={setNoteStatus}
-                  options={[
-                    { value: 'all', label: 'All' },
-                    { value: 'has_note', label: 'Has Note' },
-                    { value: 'no_note', label: 'No Note' },
-                  ]}
-                  searchable={false}
-                />
-              </FormField>
-              <FormField label="Website">
-                <FormSelect
-                  value={website}
-                  onChange={setWebsite}
-                  options={[
-                    { value: 'all', label: 'All' },
-                    ...FAILED_ORDER_WEBSITES.map((site) => ({ value: site, label: site })),
-                  ]}
-                  searchable={false}
-                />
-              </FormField>
-              <FormField label="Search" className="sm:col-span-2 lg:col-span-4">
-                <FormInput
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search customer, phone, address…"
-                />
-              </FormField>
-            </div>
+      <div className={ORDER_PAGE_GAP}>
+        {data ? (
+          <CrmSummaryStrip
+            items={[
+              {
+                id: 'total',
+                label: 'Failed (30 days)',
+                value: data.report.totalTracked.toLocaleString(),
+                hint: 'Tracked in report window',
+              },
+              {
+                id: 'confirmed',
+                label: 'Recovered',
+                value: data.report.confirmed.toLocaleString(),
+              },
+              {
+                id: 'rate',
+                label: 'Failed → confirmed',
+                value: `${data.report.failedToConfirmedPercent}%`,
+              },
+              {
+                id: 'queue',
+                label: 'In queue',
+                value: data.total.toLocaleString(),
+                hint: 'Auto-deleted after 90 days',
+              },
+            ]}
+          />
+        ) : null}
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <FormField label="Type" className="min-w-[140px] flex-1">
+            <FormSelect
+              value={failedType}
+              onChange={setFailedType}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'duplicate', label: 'Duplicate' },
+                { value: 'blocked', label: 'Blocked' },
+                { value: 'other', label: 'Other' },
+              ]}
+              searchable={false}
+            />
+          </FormField>
+          <FormField label="Note status" className="min-w-[140px] flex-1">
+            <FormSelect
+              value={noteStatus}
+              onChange={setNoteStatus}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'has_note', label: 'Has note' },
+                { value: 'no_note', label: 'No note' },
+              ]}
+              searchable={false}
+            />
+          </FormField>
+          <FormField label="Website" className="min-w-[140px] flex-1">
+            <FormSelect
+              value={website}
+              onChange={setWebsite}
+              options={[
+                { value: 'all', label: 'All' },
+                ...FAILED_ORDER_WEBSITES.map((site) => ({ value: site, label: site })),
+              ]}
+              searchable={false}
+            />
+          </FormField>
+          <FormField label="Search" className="min-w-[200px] flex-[2]">
+            <FormInput
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Customer, phone, address…"
+            />
+          </FormField>
+          {hasActiveFilters ? (
             <Button
               type="button"
               size="sm"
               variant="outline"
-              className="mt-3"
               onClick={() => {
                 setSearch('');
                 setFailedType('all');
                 setWebsite('all');
                 setNoteStatus('all');
-                toast.success('Filters cleared');
+                setPage(1);
               }}
             >
-              Clear Filter
+              Clear filters
             </Button>
-          </CollapsibleSection>
-
-          <Card className="gap-0 py-0 shadow-none">
-            <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-              <CardTitle className="text-sm">Failed Order Report (Last 30 Days)</CardTitle>
-            </CardHeader>
-            <CardContent className={cn('space-y-2 text-sm', ORDER_SECTION_BODY_CLASS)}>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total failed tracked</span>
-                <span>{data.report.totalTracked.toLocaleString()} orders</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Confirmed</span>
-                <span className="text-emerald-600">{data.report.confirmed.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between font-medium">
-                <span>Failed to confirmed</span>
-                <span>{data.report.failedToConfirmedPercent}%</span>
-              </div>
-            </CardContent>
-          </Card>
+          ) : null}
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          NB: Failed order will delete automatically after 90 days!
-        </p>
-
-        <Card className="gap-0 py-0 shadow-none">
-          <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-            <CardTitle className="text-sm">Failed Order List</CardTitle>
-          </CardHeader>
-          <CardContent className="custom-scrollbar overflow-x-auto px-3 py-3 sm:px-4">
-            {isLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : (
-              <FailedOrdersTable rows={data.items} />
-            )}
+        <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
+          <CardContent className="p-0">
+            <FailedOrderDataTable
+              rows={data?.items ?? []}
+              isLoading={isLoading}
+              page={page}
+              pageSize={10}
+              total={data?.total}
+              onPageChange={setPage}
+              onRetry={handleRetry}
+              onDismiss={handleDismiss}
+            />
           </CardContent>
         </Card>
       </div>

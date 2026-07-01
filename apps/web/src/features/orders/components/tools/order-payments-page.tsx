@@ -1,56 +1,134 @@
 'use client';
 
-import { PageShell } from '@/components/layout/page-shell';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  ORDER_SECTION_BODY_CLASS,
-  ORDER_SECTION_HEADER_CLASS,
-} from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import * as React from 'react';
+import { toast } from 'sonner';
 
-const MOCK_PAYMENTS = [
-  { id: 'pay-1', orderId: 'ORD-1001', customer: 'Rahim Uddin', method: 'bKash', amount: 2850, date: '30/06/2026' },
-  { id: 'pay-2', orderId: 'ORD-1005', customer: 'Sakib Ahmed', method: 'COD', amount: 4120, date: '29/06/2026' },
-  { id: 'pay-3', orderId: 'ORD-1016', customer: 'Anika Rahman', method: 'Nagad', amount: 1960, date: '28/06/2026' },
-];
+import { FormField } from '@/components/form/form-field';
+import { FormSelect } from '@/components/form/form-select';
+import { FormInput } from '@/components/form/form-input';
+import { PageShell } from '@/components/layout/page-shell';
+import { Card, CardContent } from '@/components/ui/card';
+import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
+import { PaymentDataTable } from '@/features/orders/components/tools/payment-data-table';
+import {
+  ORDER_CARD_CLASS,
+  ORDER_PAGE_GAP,
+} from '@/features/orders/components/create-order/section-layout';
+import { orderPaymentsApi } from '@/features/orders/api/order-payments-api';
+import { useOrderPaymentsList } from '@/features/orders/hooks/use-order-payments-list';
+import { formatCurrency } from '@/lib/format';
+import type { OrderPaymentMethod, OrderPaymentRecordStatus } from '@laam/types';
+import { cn } from '@/lib/utils';
 
 export function OrderPaymentsPage() {
+  const [search, setSearch] = React.useState('');
+  const [status, setStatus] = React.useState('');
+  const [method, setMethod] = React.useState('');
+  const [page, setPage] = React.useState(1);
+
+  const { data, isLoading, refresh } = useOrderPaymentsList({
+    search: search || undefined,
+    status: (status || undefined) as OrderPaymentRecordStatus | undefined,
+    method: (method || undefined) as OrderPaymentMethod | undefined,
+    page,
+    pageSize: 10,
+  });
+
+  async function handleReconcile(row: { id: string }) {
+    await orderPaymentsApi.reconcilePayment(row.id);
+    toast.success('Payment reconciled');
+    void refresh();
+  }
+
   return (
-    <PageShell
-      title="Order Payments"
-      description="Payment ledger and collection tracking."
-    >
-      <Card className="gap-0 py-0 shadow-none">
-        <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-          <CardTitle className="text-sm">Recent payments</CardTitle>
-        </CardHeader>
-        <CardContent className={ORDER_SECTION_BODY_CLASS}>
-          <div className="overflow-x-auto rounded-lg border border-border/70">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Order</th>
-                  <th className="px-3 py-2 font-medium">Customer</th>
-                  <th className="px-3 py-2 font-medium">Method</th>
-                  <th className="px-3 py-2 font-medium">Amount</th>
-                  <th className="px-3 py-2 font-medium">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {MOCK_PAYMENTS.map((payment) => (
-                  <tr key={payment.id} className="border-b last:border-b-0">
-                    <td className="px-3 py-2.5 font-medium">{payment.orderId}</td>
-                    <td className="px-3 py-2.5">{payment.customer}</td>
-                    <td className="px-3 py-2.5">{payment.method}</td>
-                    <td className="px-3 py-2.5 tabular-nums">{formatCurrency(payment.amount)}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{payment.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+    <PageShell title="Order Payments" description="Payment ledger and collection tracking.">
+      <div className={ORDER_PAGE_GAP}>
+        {data ? (
+          <CrmSummaryStrip
+            items={[
+              {
+                id: 'collected',
+                label: 'Collected',
+                value: formatCurrency(data.summary.totalCollected),
+              },
+              {
+                id: 'pending',
+                label: 'Pending',
+                value: formatCurrency(data.summary.totalPending),
+              },
+              {
+                id: 'records',
+                label: 'Records',
+                value: data.summary.recordCount.toLocaleString(),
+              },
+              {
+                id: 'shown',
+                label: 'Showing',
+                value: `${data.items.length} of ${data.total}`,
+              },
+            ]}
+          />
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <FormField label="Search">
+            <FormInput
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Order or customer"
+            />
+          </FormField>
+          <FormField label="Status">
+            <FormSelect
+              value={status}
+              onChange={(v) => {
+                setStatus(v);
+                setPage(1);
+              }}
+              options={[
+                { value: '', label: 'All' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'collected', label: 'Collected' },
+                { value: 'reconciled', label: 'Reconciled' },
+              ]}
+              searchable={false}
+            />
+          </FormField>
+          <FormField label="Method">
+            <FormSelect
+              value={method}
+              onChange={(v) => {
+                setMethod(v);
+                setPage(1);
+              }}
+              options={[
+                { value: '', label: 'All' },
+                { value: 'cod', label: 'COD' },
+                { value: 'bkash', label: 'bKash' },
+                { value: 'nagad', label: 'Nagad' },
+              ]}
+              searchable={false}
+            />
+          </FormField>
+        </div>
+
+        <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
+          <CardContent className="p-0">
+            <PaymentDataTable
+              rows={data?.items ?? []}
+              isLoading={isLoading}
+              page={page}
+              pageSize={10}
+              total={data?.total}
+              onPageChange={setPage}
+              onReconcile={handleReconcile}
+            />
+          </CardContent>
+        </Card>
+      </div>
     </PageShell>
   );
 }
