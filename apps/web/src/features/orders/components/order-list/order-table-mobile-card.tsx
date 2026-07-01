@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import type { OrderListRow } from '@laam/types';
-import { MessageSquare, MessageSquarePlus } from 'lucide-react';
+import { MessageCircle, MessageSquare, MessageSquarePlus, Phone } from 'lucide-react';
+import { toast } from 'sonner';
 
 import {
   DataTableCopyableText,
@@ -22,9 +23,17 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { formatOrderDateTime } from '@/features/orders/components/order-list/order-table-columns';
+import { OrderAgeBadge } from '@/features/orders/components/shared/order-age-badge';
 
-export function OrderTableMobileCard(row: OrderListRow, ctx: CrmRowContext<OrderListRow>) {
+type OrderTableMobileCardProps = {
+  row: OrderListRow;
+  ctx: CrmRowContext<OrderListRow>;
+  onNoteClick?: (row: OrderListRow) => void;
+};
+
+export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobileCardProps) {
   const displayId = row.orderNumber.replace(/^ORD-/, '');
+  const phoneDigits = row.customerPhone.replace(/\D/g, '');
 
   return (
     <div className="divide-y divide-border/60">
@@ -38,6 +47,7 @@ export function OrderTableMobileCard(row: OrderListRow, ctx: CrmRowContext<Order
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={row.status} kind="order" />
+            <OrderAgeBadge createdAt={row.createdAt} status={row.status} />
             <Link
               href={`/dashboard/orders/${row.orderNumber}`}
               className="text-base font-semibold text-primary hover:underline"
@@ -48,19 +58,52 @@ export function OrderTableMobileCard(row: OrderListRow, ctx: CrmRowContext<Order
               <span className="text-[10px] text-muted-foreground">sl: {row.serialNumber}</span>
             ) : null}
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className={row.hasNote ? 'text-primary' : 'text-muted-foreground'}
-          >
-            {row.hasNote ? (
-              <MessageSquare className="size-4" />
-            ) : (
-              <MessageSquarePlus className="size-4" />
-            )}
-            {row.hasNote ? 'View note' : 'Add note'}
-          </Button>
+          <div className="flex flex-wrap gap-1.5">
+            <Button type="button" size="sm" variant="outline" className="h-7 px-2" asChild>
+              <a href={`tel:${phoneDigits}`}>
+                <Phone className="size-3.5" />
+                Call
+              </a>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 px-2"
+              onClick={() => {
+                window.open(`https://wa.me/${phoneDigits}`, '_blank', 'noopener,noreferrer');
+              }}
+            >
+              <MessageCircle className="size-3.5" />
+              WhatsApp
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={row.hasNote ? 'h-7 px-2 text-primary' : 'h-7 px-2 text-muted-foreground'}
+              onClick={() => onNoteClick?.(row)}
+            >
+              {row.hasNote ? (
+                <MessageSquare className="size-3.5" />
+              ) : (
+                <MessageSquarePlus className="size-3.5" />
+              )}
+              Note
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2"
+              onClick={() => {
+                void navigator.clipboard.writeText(row.customerPhone);
+                toast.success('Phone copied');
+              }}
+            >
+              Copy
+            </Button>
+          </div>
         </div>
       </header>
 

@@ -12,7 +12,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MOCK_ORDER_STATUSES } from '@/features/orders/data/mock-status-config';
+import {
+  getStatusConfigBySlug,
+  MOCK_ORDER_STATUSES,
+} from '@/features/orders/data/mock-status-config';
 
 type OrderStatusDialogProps = {
   open: boolean;
@@ -29,6 +32,18 @@ export function OrderStatusDialog({
 }: OrderStatusDialogProps) {
   const [status, setStatus] = React.useState(currentStatus);
   const [saving, setSaving] = React.useState(false);
+
+  const statusOptions = React.useMemo(() => {
+    const current = getStatusConfigBySlug(currentStatus as never);
+    const allowed = current?.allowedTransitions?.length
+      ? MOCK_ORDER_STATUSES.filter(
+          (item) =>
+            item.slug === currentStatus ||
+            current.allowedTransitions.includes(item.slug),
+        )
+      : MOCK_ORDER_STATUSES;
+    return allowed.map((item) => ({ value: item.slug, label: item.label }));
+  }, [currentStatus]);
 
   React.useEffect(() => {
     if (open) {
@@ -56,13 +71,13 @@ export function OrderStatusDialog({
           <FormSearchSelect
             value={status}
             onChange={setStatus}
-            options={MOCK_ORDER_STATUSES.map((item) => ({
-              value: item.slug,
-              label: item.label,
-            }))}
+            options={statusOptions}
             placeholder="Search status"
           />
         </FormField>
+        <p className="text-xs text-muted-foreground">
+          Only allowed transitions from the current status are shown.
+        </p>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel

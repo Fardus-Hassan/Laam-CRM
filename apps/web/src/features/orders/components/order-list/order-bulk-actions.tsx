@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import type { BulkActionId } from '@laam/types';
+import type { BulkActionId, OrderListRow } from '@laam/types';
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
@@ -28,6 +28,7 @@ type OrderBulkActionsProps = {
   actionIds: BulkActionId[];
   selectedCount: number;
   selectedOrderIds: string[];
+  selectedRows?: OrderListRow[];
   className?: string;
   onSuccess?: () => void;
   variant?: 'card' | 'compact';
@@ -39,6 +40,7 @@ export function OrderBulkActions({
   actionIds,
   selectedCount,
   selectedOrderIds,
+  selectedRows = [],
   className,
   onSuccess,
   variant = 'card',
@@ -113,6 +115,7 @@ export function OrderBulkActions({
         {actionButtons}
         <OrderBulkModals
           state={bulkModal}
+          selectedRows={selectedRows}
           onClose={() => setBulkModal(null)}
           onSuccess={onSuccess}
         />
@@ -162,6 +165,7 @@ export function OrderBulkActions({
 
       <OrderBulkModals
         state={bulkModal}
+        selectedRows={selectedRows}
         onClose={() => setBulkModal(null)}
         onSuccess={onSuccess}
       />

@@ -11,6 +11,7 @@ import {
   CustomerBlock,
   orderToCustomerValue,
 } from '@/features/orders/components/shared/customer-block';
+import { CustomerOrderHistoryCard } from '@/features/orders/components/shared/customer-order-history-card';
 import { CourierTrackingCard } from '@/features/orders/components/shared/courier-tracking-card';
 import { EditableSectionCard } from '@/features/orders/components/shared/editable-section-card';
 import { LinkedLeadCard } from '@/features/orders/components/shared/linked-lead-card';
@@ -95,7 +96,20 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
               }}
             />
 
-            <OrderLineItemsCard order={order} />
+            <OrderLineItemsCard
+              order={order}
+              onSaveLineItems={async (lineItems) => {
+                const updated = await updateOrder(order.id, {
+                  lineItems: lineItems.map((line) => ({
+                    productName: line.productName,
+                    sku: line.sku,
+                    quantity: line.quantity,
+                    unitPrice: line.unitPrice,
+                  })),
+                });
+                setOrder(updated);
+              }}
+            />
 
             <EditableSectionCard
               title="Delivery & notes"
@@ -132,6 +146,10 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
 
           <div className="space-y-4">
             <MoneySummaryPanel mode="readonly" order={order} />
+            <CustomerOrderHistoryCard
+              phone={order.customerPhone}
+              currentOrderId={order.id}
+            />
             <OrderTimeline events={order.timeline} />
             {courierTracking ? <CourierTrackingCard tracking={courierTracking} /> : null}
             {order.leadId ? <LinkedLeadCard leadId={order.leadId} /> : null}

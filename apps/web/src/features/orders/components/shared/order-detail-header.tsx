@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { StatusBadge } from '@/components/dashboard/status-badge';
 import { Button } from '@/components/ui/button';
+import { OrderAgeBadge } from '@/features/orders/components/shared/order-age-badge';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { calcOrderPaymentTotals } from '@/features/orders/lib/order-payment-totals';
 import { formatCurrency } from '@/lib/format';
@@ -32,6 +33,7 @@ export function OrderDetailHeader({ order, className }: OrderDetailHeaderProps) 
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold tracking-tight">{order.orderNumber}</h2>
             <StatusBadge status={order.status} kind="order" />
+            <OrderAgeBadge createdAt={order.createdAt} status={order.status} />
           </div>
           <p className="text-sm text-muted-foreground">
             {order.customerName} · {ORDER_SOURCE_LABELS[order.source]}

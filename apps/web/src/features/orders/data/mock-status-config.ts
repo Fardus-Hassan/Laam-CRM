@@ -259,6 +259,17 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
     showInNav: true,
   },
   {
+    slug: 'followups',
+    label: 'Follow-ups Due',
+    href: '/dashboard/orders/queues/followups',
+    kind: 'list',
+    displayMode: 'sidebar',
+    sidebarOrder: 15,
+    title: 'Follow-ups Due',
+    description: 'Orders pending over 48 hours — need agent follow-up.',
+    showInNav: true,
+  },
+  {
     slug: 'failed',
     label: 'Failed Orders',
     href: '/dashboard/orders/failed',

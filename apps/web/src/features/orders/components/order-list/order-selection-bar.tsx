@@ -57,6 +57,7 @@ export function OrderSelectionBar({
             actionIds={actionIds}
             selectedCount={selectedCount}
             selectedOrderIds={selectedOrderIds}
+            selectedRows={selectedRows}
             onSuccess={onSuccess}
           />
         </div>

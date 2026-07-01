@@ -2,6 +2,7 @@
 
 import { Toaster } from 'sonner';
 
+import { CommandPaletteProvider } from '@/components/command-palette/command-palette-provider';
 import { AuthProvider } from '@/features/auth/providers/auth-provider';
 import { BrandProvider } from '@/features/brand/providers/brand-provider';
 import { ThemeProvider } from '@/features/theme/providers/theme-provider';
@@ -13,7 +14,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <BrandProvider>
         <DashboardDateProvider>
           <AuthProvider>
-            {children}
+            <CommandPaletteProvider>
+              {children}
+            </CommandPaletteProvider>
             <Toaster richColors position="top-right" closeButton />
           </AuthProvider>
         </DashboardDateProvider>

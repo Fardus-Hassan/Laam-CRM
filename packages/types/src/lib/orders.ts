@@ -81,6 +81,7 @@ export const orderListQuerySchema = z.object({
   courier: z.string().optional(),
   product: z.string().optional(),
   dateRange: z.enum(['last_30', 'this_month', 'custom', 'all_time']).optional(),
+  followUpDue: z.boolean().optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().default(20),
   sortBy: z.string().optional(),

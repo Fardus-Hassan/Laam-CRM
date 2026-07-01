@@ -6,6 +6,7 @@ import { Filter, Search, X } from 'lucide-react';
 import { FormInput } from '@/components/form/form-input';
 import { Button } from '@/components/ui/button';
 import type { OrderFilterValues } from '@/features/orders/components/order-list/order-filter-panel';
+import { OrderSavedViewsMenu } from '@/features/orders/components/order-list/order-saved-views-menu';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { getStatusConfigBySlug } from '@/features/orders/data/mock-status-config';
 import { cn } from '@/lib/utils';
@@ -18,6 +19,7 @@ type OrderListToolbarProps = {
   onToggleFilters: () => void;
   onClearFilters: () => void;
   onRemoveFilter: (key: keyof OrderFilterValues) => void;
+  onApplySavedView?: (filters: OrderFilterValues, search?: string) => void;
   hideStatusFilter?: boolean;
   className?: string;
 };
@@ -67,6 +69,7 @@ export function OrderListToolbar({
   onToggleFilters,
   onClearFilters,
   onRemoveFilter,
+  onApplySavedView,
   hideStatusFilter,
   className,
 }: OrderListToolbarProps) {
@@ -84,6 +87,9 @@ export function OrderListToolbar({
             className="pl-9"
           />
         </div>
+        {onApplySavedView ? (
+          <OrderSavedViewsMenu onApply={onApplySavedView} className="shrink-0" />
+        ) : null}
         <Button
           type="button"
           variant={filtersOpen ? 'secondary' : 'outline'}

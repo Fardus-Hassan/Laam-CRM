@@ -2,6 +2,7 @@ import type { Permission } from '@laam/types';
 
 import type { NavChildDefinition } from '@/features/navigation/types/universal-nav';
 import { mockFailedOrderStore } from '@/features/orders/data/mock-failed-orders';
+import { getFollowUpDueCount } from '@/features/orders/data/mock-orders';
 import { getStatusCount } from '@/features/orders/data/mock-status-counts';
 import {
   getSidebarStatuses,
@@ -13,7 +14,7 @@ export type OrdersNavChild = NavChildDefinition & {
 };
 
 const TOOL_SLUGS = new Set(['failed', 'bulk_print', 'send_courier_barcode', 'payments']);
-const QUEUE_SLUGS = new Set(['create_new', 'all', 'pendings']);
+const QUEUE_SLUGS = new Set(['create_new', 'all', 'pendings', 'followups']);
 
 function pageToNavItem(page: (typeof MOCK_ORDER_QUEUE_PAGES)[number]): OrdersNavChild {
   let badge: number | undefined;
@@ -25,6 +26,8 @@ function pageToNavItem(page: (typeof MOCK_ORDER_QUEUE_PAGES)[number]): OrdersNav
       getStatusCount('pending') +
       getStatusCount('pending_2') +
       getStatusCount('pending_3');
+  } else if (page.slug === 'followups') {
+    badge = getFollowUpDueCount();
   } else if (page.childStatusSlugs?.length) {
     badge = page.childStatusSlugs.reduce((sum, slug) => sum + getStatusCount(slug), 0);
   }

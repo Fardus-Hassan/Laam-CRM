@@ -54,6 +54,13 @@ export function OrderDataTable({
     [onNoteClick],
   );
 
+  const mobileCard = React.useCallback(
+    (row: OrderListRow, ctx: Parameters<typeof OrderTableMobileCard>[0]['ctx']) => (
+      <OrderTableMobileCard row={row} ctx={ctx} onNoteClick={onNoteClick} />
+    ),
+    [onNoteClick],
+  );
+
   const selectionState = React.useMemo(
     () => ({ selectedIds, onChange: onSelectionChange }),
     [selectedIds, onSelectionChange],
@@ -68,7 +75,7 @@ export function OrderDataTable({
       isLoading={isLoading}
       minTableWidth={1280}
       pinnedColumns={ORDER_TABLE_PINNED}
-      mobileCard={OrderTableMobileCard}
+      mobileCard={mobileCard}
       selection={selectionState}
       density="compact"
       page={page}

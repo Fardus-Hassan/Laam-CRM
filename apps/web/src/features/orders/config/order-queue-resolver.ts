@@ -23,6 +23,7 @@ export type OrderQueueContext = {
   showGroupByStatus: boolean;
   showFilterPanel: boolean;
   showSalesSummary: boolean;
+  followUpDue?: boolean;
 };
 
 const DEFAULT_LIST_CONTEXT: Pick<
@@ -125,6 +126,20 @@ export function resolveOrderQueueFromPath(
 
   if (queueSlug) {
     const page = getQueuePageBySlug(queueSlug);
+    if (page?.slug === 'followups') {
+      return {
+        queueSlug: 'followups',
+        kind: 'parent',
+        title: page.title,
+        description: page.description,
+        href: page.href,
+        bulkActions: DEFAULT_LIST_CONTEXT.bulkActions,
+        showGroupByStatus: false,
+        showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
+        showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
+        followUpDue: true,
+      };
+    }
     if (page?.childStatusSlugs?.length) {
       const activeChild =
         (statusParam as OrderStatusType | undefined) ??

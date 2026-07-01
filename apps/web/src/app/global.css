@@ -220,3 +220,17 @@
     background-color: var(--scrollbar-thumb-active);
   }
 }
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  [data-sidebar],
+  header,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+}

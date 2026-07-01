@@ -8,6 +8,7 @@ import type {
   OrderDetail,
   OrderListQuery,
   OrderListResponse,
+  OrderListRow,
   OrderListRowResponse,
   UpdateOrderPayload,
 } from '@laam/types';
@@ -19,6 +20,9 @@ import {
   filterMockOrderRows,
   filterMockOrders,
   getMockOrderById,
+  getOrdersByPhone,
+  orderDetailToListRow,
+  quickSearchMockOrders,
   updateMockOrder,
   updateMockOrderNote,
 } from '@/features/orders/data/mock-orders';
@@ -34,6 +38,8 @@ export type OrdersApi = {
   bulkAction: (payload: OrderBulkActionPayload) => Promise<BulkActionResult>;
   getCourierTracking: (orderId: string) => Promise<OrderCourierTracking>;
   updateOrderNote: (orderId: string, note: string) => Promise<void>;
+  getOrdersByPhone: (phone: string, excludeOrderId?: string) => Promise<OrderDetail[]>;
+  quickSearchOrders: (query: string, limit?: number) => Promise<OrderListRow[]>;
 };
 
 export function createMockOrdersApi(): OrdersApi {
@@ -77,6 +83,16 @@ export function createMockOrdersApi(): OrdersApi {
     async updateOrderNote(orderId, note) {
       await delay(100);
       updateMockOrderNote(orderId, note);
+    },
+    async getOrdersByPhone(phone, excludeOrderId) {
+      await delay(80);
+      return getOrdersByPhone(phone, excludeOrderId);
+    },
+    async quickSearchOrders(query, limit = 8) {
+      await delay(100);
+      return quickSearchMockOrders(query, limit).map((order, index) =>
+        orderDetailToListRow(order, index + 1),
+      );
     },
   };
 }
@@ -168,6 +184,17 @@ export function createHttpOrdersApi(): OrdersApi {
         method: 'PUT',
         body: JSON.stringify({ note }),
       });
+    },
+    async getOrdersByPhone(phone, excludeOrderId) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      const params = new URLSearchParams({ phone });
+      if (excludeOrderId) params.set('exclude', excludeOrderId);
+      return apiRequest<OrderDetail[]>(`${crmEndpoints.orders}/by-phone?${params}`);
+    },
+    async quickSearchOrders(query, limit = 8) {
+      const response = await fetchList({ search: query, page: 1, pageSize: limit });
+      return response.items;
     },
   };
 }

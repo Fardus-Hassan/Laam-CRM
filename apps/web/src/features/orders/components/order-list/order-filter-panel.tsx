@@ -44,6 +44,7 @@ type OrderFilterPanelProps = {
   onChange: (values: OrderFilterValues) => void;
   onClear?: () => void;
   hideStatus?: boolean;
+  search?: string;
 };
 
 export function OrderFilterPanel({
@@ -51,6 +52,7 @@ export function OrderFilterPanel({
   onChange,
   onClear,
   hideStatus,
+  search,
 }: OrderFilterPanelProps) {
   const [presets, setPresets] = React.useState(loadOrderFilterPresets);
   const [presetName, setPresetName] = React.useState('');
@@ -68,6 +70,9 @@ export function OrderFilterPanel({
     const filters: Record<string, string> = {};
     for (const [key, val] of Object.entries(values)) {
       if (val) filters[key] = String(val);
+    }
+    if (search?.trim()) {
+      filters.search = search.trim();
     }
     const next = saveOrderFilterPreset({
       id,

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { GitBranch, UserCog, Settings2 } from 'lucide-react';
+import { GitBranch, MessageSquare, UserCog, Settings2 } from 'lucide-react';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,12 @@ const SETTINGS_LINKS = [
     description: 'Pipeline statuses, sidebar placement, and nested queue tabs.',
     href: '/dashboard/settings/order-statuses',
     icon: GitBranch,
+  },
+  {
+    title: 'SMS Templates',
+    description: 'Bulk SMS message templates for order notifications.',
+    href: '/dashboard/settings/sms-templates',
+    icon: MessageSquare,
   },
   {
     title: 'Roles & Permissions',

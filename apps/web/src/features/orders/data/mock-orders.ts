@@ -18,6 +18,7 @@ import type {
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { getStatusConfigBySlug } from '@/features/orders/data/mock-status-config';
+import { isFollowUpDue } from '@/features/orders/lib/order-age';
 
 function orderMatchesSearch(order: OrderDetail, rawSearch: string): boolean {
   const search = rawSearch.trim().toLowerCase();
@@ -408,6 +409,25 @@ export function updateMockOrderNote(orderId: string, note: string): void {
   }
 }
 
+export function getOrdersByPhone(phone: string, excludeOrderId?: string): OrderDetail[] {
+  const normalized = phone.replace(/\D/g, '');
+  return getOrderStore()
+    .filter(
+      (order) =>
+        order.customerPhone.replace(/\D/g, '') === normalized &&
+        order.id !== excludeOrderId,
+    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+export function quickSearchMockOrders(query: string, limit = 8): OrderDetail[] {
+  const q = query.trim();
+  if (!q) return [];
+  return getOrderStore()
+    .filter((order) => orderMatchesSearch(order, q))
+    .slice(0, limit);
+}
+
 function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean {
   if (query.status && order.status !== query.status) {
     return false;
@@ -437,7 +457,14 @@ function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean
       return false;
     }
   }
+  if (query.followUpDue && !isFollowUpDue(order.createdAt, order.status)) {
+    return false;
+  }
   return true;
+}
+
+export function getFollowUpDueCount(): number {
+  return getOrderStore().filter((order) => isFollowUpDue(order.createdAt, order.status)).length;
 }
 
 export function orderDetailToListRow(order: OrderDetail, serialNumber?: number): OrderListRow {

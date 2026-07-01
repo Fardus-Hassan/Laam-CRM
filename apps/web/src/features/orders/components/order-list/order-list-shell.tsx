@@ -26,6 +26,7 @@ import { OrderNoteModal } from '@/features/orders/components/order-list/modals/o
 import { OrderQueueTabs } from '@/features/orders/components/order-list/order-queue-tabs';
 import { OrderSalesSummaryPanel } from '@/features/orders/components/order-list/order-sales-summary-panel';
 import { OrderSelectionBar } from '@/features/orders/components/order-list/order-selection-bar';
+import { OrderWorkspaceHeader } from '@/features/orders/components/order-list/order-workspace-header';
 import { buildMockSalesSummary } from '@/features/orders/data/mock-orders';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { useOrderRowsList } from '@/features/orders/hooks/use-order-rows-list';
@@ -53,6 +54,7 @@ export function OrderListShell({ queue }: OrderListShellProps) {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [noteRow, setNoteRow] = React.useState<OrderListRow | null>(null);
   const [listVersion, setListVersion] = React.useState(0);
+  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const { updateNote } = useOrderMutations();
 
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -90,6 +92,7 @@ export function OrderListShell({ queue }: OrderListShellProps) {
       courier: filters.courier,
       product: filters.product,
       dateRange: filters.dateRange,
+      followUpDue: queue.followUpDue,
       page,
       pageSize,
       sortBy: sort?.id,
@@ -97,6 +100,12 @@ export function OrderListShell({ queue }: OrderListShellProps) {
     },
     listVersion,
   );
+
+  React.useEffect(() => {
+    if (data && !isLoading) {
+      setLastRefreshedAt(new Date());
+    }
+  }, [data, isLoading]);
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
@@ -165,6 +174,15 @@ export function OrderListShell({ queue }: OrderListShellProps) {
       breadcrumbs={createOrdersListBreadcrumbs(queue.title)}
     >
       <div className={cn(ORDER_PAGE_GAP)}>
+        <OrderWorkspaceHeader
+          queueSlug={queue.queueSlug}
+          title={queue.title}
+          description={queue.description}
+          lastRefreshedAt={lastRefreshedAt}
+          isRefreshing={isLoading}
+          onRefresh={handleRefresh}
+        />
+
         <CrmPageActions moduleId="orders" />
 
         <CrmSummaryStrip items={summaryItems} />
@@ -188,12 +206,20 @@ export function OrderListShell({ queue }: OrderListShellProps) {
             onClearFilters={handleClearFilters}
             onRemoveFilter={handleRemoveFilter}
             hideStatusFilter={Boolean(queue.statusFilter)}
+            onApplySavedView={(nextFilters, savedSearch) => {
+              setFilters(nextFilters);
+              if (savedSearch !== undefined) {
+                setSearch(savedSearch);
+              }
+              setPage(1);
+            }}
           />
         ) : null}
 
         {queue.showFilterPanel && filtersOpen ? (
           <OrderFilterPanel
             values={filters}
+            search={search}
             onChange={(next) => {
               setFilters(next);
               setPage(1);
