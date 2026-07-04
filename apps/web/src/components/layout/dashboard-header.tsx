@@ -39,19 +39,24 @@ export function DashboardHeader({
             <BreadcrumbList className="flex-nowrap">
               {breadcrumbs.map((crumb, index) => {
                 const isLast = index === breadcrumbs.length - 1;
+                const hideOnMobile = !isLast && breadcrumbs.length > 1;
 
                 return (
                   <span key={`${crumb.label}-${index}`} className="contents">
-                    <BreadcrumbItem className="min-w-0">
+                    <BreadcrumbItem className={hideOnMobile ? 'hidden min-w-0 sm:inline-flex' : 'min-w-0'}>
                       {isLast || !crumb.href ? (
-                        <BreadcrumbPage className="truncate">{crumb.label}</BreadcrumbPage>
+                        <BreadcrumbPage className="max-w-[11rem] truncate sm:max-w-[20rem]">
+                          {crumb.label}
+                        </BreadcrumbPage>
                       ) : (
                         <BreadcrumbLink href={crumb.href} className="truncate">
                           {crumb.label}
                         </BreadcrumbLink>
                       )}
                     </BreadcrumbItem>
-                    {!isLast ? <BreadcrumbSeparator /> : null}
+                    {!isLast ? (
+                      <BreadcrumbSeparator className={hideOnMobile ? 'hidden sm:block' : undefined} />
+                    ) : null}
                   </span>
                 );
               })}

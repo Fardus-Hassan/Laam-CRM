@@ -1,5 +1,5 @@
 import { PageShell } from '@/components/layout/page-shell';
-import { PlatformTenantsPanel } from '@/features/platform/components/platform-tenants-panel';
+import { PlatformShell } from '@/features/platform/components/platform-shell';
 
 type PlatformPageProps = {
   searchParams?: Promise<{ tab?: string }>;
@@ -13,7 +13,7 @@ export default async function PlatformPage({ searchParams }: PlatformPageProps) 
       title="Platform"
       description="Super Admin controls for tenants, onboarding, and system health."
     >
-      <PlatformTenantsPanel initialTab={params?.tab} />
+      <PlatformShell activeTab={params?.tab} />
     </PageShell>
   );
 }

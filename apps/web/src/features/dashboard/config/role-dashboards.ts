@@ -26,6 +26,10 @@ export function isSalesHeadRole(role: UserRole): boolean {
   return SALES_HEAD_ROLES.includes(role);
 }
 
+export function isOrgAdminRole(role: UserRole): boolean {
+  return role === 'org_admin';
+}
+
 export function isAgentRole(role: UserRole): boolean {
   return AGENT_ROLES.includes(role);
 }

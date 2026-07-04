@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { BadgeCheck, ChevronsUpDown, LogOut, Sparkles } from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import {
@@ -68,9 +69,11 @@ function UserMenuDropdownContent() {
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
-        <DropdownMenuItem>
-          <BadgeCheck />
-          Account
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard/settings">
+            <BadgeCheck />
+            Account & Settings
+          </Link>
         </DropdownMenuItem>
         {canSwitchRole ? (
           <DropdownMenuSub>

@@ -9,7 +9,7 @@ import { FormInput } from '@/components/form/form-input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { VALID_COUPON_CODE } from '@/features/orders/data/mock-create-order';
+import { VALID_COUPON_CODES } from '@/features/orders/data/mock-create-order';
 import type { CreateOrderFormApi } from '@/features/orders/hooks/use-create-order-form';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -149,7 +149,7 @@ export function CreateOrderSummaryPanel({
                     onChange={(event) =>
                       patch({ couponCode: event.target.value, couponApplied: false })
                     }
-                    placeholder={`Try ${VALID_COUPON_CODE}`}
+                    placeholder={`Try ${VALID_COUPON_CODES[0]} or ${VALID_COUPON_CODES[1]}`}
                   />
                   <Button
                     type="button"
@@ -160,7 +160,7 @@ export function CreateOrderSummaryPanel({
                       if (applied) {
                         toast.success('Coupon applied — 10% off');
                       } else {
-                        toast.error(`Invalid coupon. Try ${VALID_COUPON_CODE}`);
+                        toast.error(`Invalid coupon. Try ${VALID_COUPON_CODES.join(', ')}`);
                       }
                     }}
                   >

@@ -1,13 +1,13 @@
 import { PageShell } from '@/components/layout/page-shell';
-import { UsersAdminPanel } from '@/features/rbac/components/users-admin-panel';
+import { TeamAdminShell } from '@/features/rbac/components/team-admin-shell';
 
 export default function UsersPage() {
   return (
     <PageShell
-      title="Team"
-      description="Manage users, assign roles, and grant extra permissions per person."
+      title="Team & Admins"
+      description="Invite teammates, assign roles, and manage per-user permissions."
     >
-      <UsersAdminPanel />
+      <TeamAdminShell />
     </PageShell>
   );
 }

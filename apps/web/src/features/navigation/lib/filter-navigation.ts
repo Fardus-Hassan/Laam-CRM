@@ -1,7 +1,7 @@
 import type { Permission } from '@laam/types';
 import { hasPermission } from '@laam/types';
 
-import { UNIVERSAL_NAV_REGISTRY } from '@/features/navigation/config/universal-nav-registry';
+import { getUniversalNavRegistry } from '@/features/navigation/config/universal-nav-registry';
 import type {
   ResolvedNavChild,
   ResolvedNavGroup,
@@ -56,7 +56,7 @@ function filterNavItem(
 export function filterNavigation(
   userPermissions: readonly Permission[],
 ): ResolvedNavGroup[] {
-  return UNIVERSAL_NAV_REGISTRY.map((group) => {
+  return getUniversalNavRegistry().map((group) => {
     const items = group.items
       .map((item) => filterNavItem(item, userPermissions))
       .filter((item): item is ResolvedNavItem => item !== null);

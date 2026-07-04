@@ -1,6 +1,10 @@
-import { EntityPage } from '@/features/crm/components/entity-page';
-import { CRM_MODULES } from '@/features/crm/config/modules';
+import { CampaignsPage } from '@/features/campaigns/components/campaigns-page';
 
-export default function CampaignsPage() {
-  return <EntityPage module={CRM_MODULES.campaigns} />;
+type CampaignsRouteProps = {
+  searchParams?: Promise<{ tab?: string }>;
+};
+
+export default async function CampaignsRoute({ searchParams }: CampaignsRouteProps) {
+  const params = searchParams ? await searchParams : undefined;
+  return <CampaignsPage initialTab={params?.tab} />;
 }

@@ -260,7 +260,7 @@ export const MOCK_ORDERS: OrderDetail[] = [
 /** Mutable in-memory store — mock API mutations update this array. */
 export const mockOrderStore: OrderDetail[] = [...MOCK_ORDERS];
 
-function getOrderStore(): OrderDetail[] {
+export function getOrderStore(): OrderDetail[] {
   return mockOrderStore;
 }
 
@@ -339,6 +339,12 @@ export function createMockOrder(payload: CreateOrderPayload): OrderDetail {
   } else {
     finalizeMockOrder(detail, index);
   }
+
+  // COD spine: customer, stock, follow-up, coupon
+  void import('@/features/ops-spine/domain-events').then(({ onOrderCreated }) => {
+    onOrderCreated(detail, payload);
+  });
+
   return detail;
 }
 
@@ -400,6 +406,20 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
   if (patch.paymentStatus) {
     seedOrderPaidAmount(updated.id, updated.amount, updated.paymentStatus, index);
   }
+
+  if (patch.status && patch.status !== current.status) {
+    void import('@/features/ops-spine/domain-events').then(({ onOrderStatusChanged, onOrderPaid }) => {
+      onOrderStatusChanged(updated, current.status, updated.status);
+      if (patch.paymentStatus === 'paid') {
+        onOrderPaid(updated);
+      }
+    });
+  } else if (patch.paymentStatus === 'paid') {
+    void import('@/features/ops-spine/domain-events').then(({ onOrderPaid }) => {
+      onOrderPaid(updated);
+    });
+  }
+
   return updated;
 }
 

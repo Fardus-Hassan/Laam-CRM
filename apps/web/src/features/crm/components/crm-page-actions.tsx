@@ -21,13 +21,14 @@ export function CrmPageActions({ moduleId }: CrmPageActionsProps) {
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="custom-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 sm:flex-wrap sm:overflow-visible">
       {actions.map((action) => (
         <Can key={action.permission} permission={action.permission}>
           <Button
             type="button"
             size="sm"
             variant={action.variant ?? 'default'}
+            className="shrink-0"
             asChild={Boolean(action.href)}
           >
             {action.href ? (

@@ -27,6 +27,7 @@ import {
   FollowUpsTable,
   IncentiveHistoryTable,
 } from '@/features/dashboard/components/tables/agent-tables';
+import { LowStockBanner } from '@/features/dashboard/components/low-stock-banner';
 import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 import { DASHBOARD_GRID_LG_12 } from '@/features/dashboard/lib/dashboard-grid';
 
@@ -76,6 +77,7 @@ export function AgentDashboardView({ data }: AgentDashboardViewProps) {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 sm:gap-4 sm:p-4">
+      <LowStockBanner />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-foreground sm:text-lg">

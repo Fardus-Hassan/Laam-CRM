@@ -102,30 +102,41 @@ function buildLaamSeedUsers(
       organizationId,
       name: 'Laam Org Admin',
       email: 'admin@laam.com',
+      phone: '01700000001',
       systemRole: 'org_admin',
       customRoleId: presetRoleIds.preset_org_admin,
       permissionGrants: [],
       permissionDenies: [],
+      status: 'active',
+      lastSeenAt: '2026-07-02T09:00:00Z',
     },
     {
       id: '00000000-0000-4000-8000-000000000011',
       organizationId,
       name: 'Sakib Ahmed',
       email: 'sakib@laamcrm.com',
+      phone: '01711223344',
       systemRole: 'sales_rep',
       customRoleId: presetRoleIds.preset_sales_agent,
       permissionGrants: [],
       permissionDenies: [],
+      status: 'active',
+      lastSeenAt: '2026-07-02T08:30:00Z',
+      orderDistributionPercent: 30,
     },
     {
       id: '00000000-0000-4000-8000-000000000012',
       organizationId,
       name: 'Mitu Rahman',
       email: 'mitu@laamcrm.com',
+      phone: '01822334455',
       systemRole: 'team_leader',
       customRoleId: presetRoleIds.preset_team_leader,
       permissionGrants: [],
       permissionDenies: [],
+      status: 'active',
+      lastSeenAt: '2026-07-01T17:00:00Z',
+      orderDistributionPercent: 25,
     },
     {
       id: '00000000-0000-4000-8000-000000000013',
@@ -136,6 +147,22 @@ function buildLaamSeedUsers(
       customRoleId: presetRoleIds.preset_sales_head,
       permissionGrants: ['reports.export'],
       permissionDenies: [],
+      status: 'active',
+      lastSeenAt: '2026-06-30T14:00:00Z',
+      orderDistributionPercent: 20,
+    },
+    {
+      id: '00000000-0000-4000-8000-000000000014',
+      organizationId,
+      name: 'Nadia Islam',
+      email: 'nadia@laamcrm.com',
+      phone: '01933445566',
+      systemRole: 'sales_rep',
+      customRoleId: presetRoleIds.preset_sales_agent,
+      permissionGrants: [],
+      permissionDenies: [],
+      status: 'invited',
+      orderDistributionPercent: 25,
     },
   ];
 }
@@ -216,6 +243,7 @@ export function createTenant(input: CreateTenantRequest): Tenant {
     customRoleId: orgAdminRoleId,
     permissionGrants: [],
     permissionDenies: [],
+    status: 'active',
   };
 
   const tenant: Tenant = {
@@ -255,7 +283,20 @@ export function getRolePermissions(
     return undefined;
   }
 
-  return getRole(organizationId, roleId)?.permissions;
+  const role = getRole(organizationId, roleId);
+  if (!role) {
+    return undefined;
+  }
+
+  // System roles always resolve from current preset catalog (picks up new permissions).
+  if (role.isSystem) {
+    const preset = PERMISSION_PRESETS.find((p) => p.name === role.name);
+    if (preset) {
+      return [...preset.permissions];
+    }
+  }
+
+  return role.permissions;
 }
 
 export function createRole(
@@ -349,6 +390,7 @@ export function createUser(
     customRoleId: input.customRoleId,
     permissionGrants: [...input.permissionGrants],
     permissionDenies: [...input.permissionDenies],
+    status: 'invited',
   };
 
   store.users = [...store.users, user];

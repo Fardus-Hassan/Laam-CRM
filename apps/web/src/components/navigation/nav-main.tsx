@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
@@ -51,7 +52,12 @@ function NavLeafItem({
       >
         <Link href={item.url}>
           <item.icon className="size-[18px]" />
-          <span>{item.title}</span>
+          <span className="flex-1 truncate">{item.title}</span>
+          {item.badge != null && item.badge > 0 ? (
+            <span className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-950">
+              {item.badge > 9999 ? '9999+' : item.badge}
+            </span>
+          ) : null}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -68,12 +74,17 @@ function NavBranchItem({
   searchParams: URLSearchParams;
 }) {
   const isActive = isNavItemBranchActive(pathname, searchParams, item);
-  const defaultOpen = isActive;
+  const [open, setOpen] = React.useState(isActive);
+
+  React.useEffect(() => {
+    setOpen(isActive);
+  }, [isActive]);
 
   return (
     <Collapsible
       asChild
-      defaultOpen={defaultOpen}
+      open={open}
+      onOpenChange={setOpen}
       className="group/collapsible"
     >
       <SidebarMenuItem>

@@ -8,7 +8,7 @@ import { FormInput } from '@/components/form/form-input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  MOCK_PRODUCTS,
+  getOrderCatalogProducts,
   getProductById,
   searchProducts,
 } from '@/features/orders/data/mock-create-order';
@@ -95,7 +95,7 @@ export function ProductCatalogPanel({ form, className }: ProductCatalogPanelProp
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Showing {products.length} of {MOCK_PRODUCTS.length} products · tap + or a row to add
+          Showing {products.length} of {getOrderCatalogProducts().length} products · tap + or a row to add
         </p>
       </CardContent>
     </Card>

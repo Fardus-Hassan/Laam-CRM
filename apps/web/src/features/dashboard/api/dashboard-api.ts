@@ -46,12 +46,13 @@ export async function fetchDashboard(
   role: UserRole,
   query?: DashboardQuery,
 ): Promise<DashboardResponse> {
-  try {
-    const data = await apiRequest<unknown>(buildDashboardUrl(role, query));
-    return dashboardResponseSchema.parse(data);
-  } catch {
+  const useHttpApi = process.env.NEXT_PUBLIC_USE_API === 'true';
+  if (!useHttpApi) {
     return applyMockDateRange(getMockDashboardForRole(role), query);
   }
+  // HTTP mode: fail loudly so integration issues are visible (no silent mock fallback)
+  const data = await apiRequest<unknown>(buildDashboardUrl(role, query));
+  return dashboardResponseSchema.parse(data);
 }
 
 /** @deprecated Use fetchDashboard(role) — kept for backward compatibility. */

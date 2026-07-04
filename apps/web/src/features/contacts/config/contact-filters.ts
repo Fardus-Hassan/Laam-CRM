@@ -8,7 +8,7 @@ export const CONTACT_SOURCE_FILTERS: {
 }[] = [
   {
     id: 'all',
-    label: 'All Contacts',
+    label: 'All sources',
     href: '/dashboard/contacts',
     isActive: (params) => !params.get('source'),
   },
@@ -20,37 +20,35 @@ export const CONTACT_SOURCE_FILTERS: {
   },
   {
     id: 'call',
-    label: 'Inbound Call',
+    label: 'Phone',
     href: '/dashboard/contacts?source=call',
     isActive: (params) => params.get('source') === 'call',
   },
   {
     id: 'ecommerce',
-    label: 'E-commerce',
+    label: 'Online',
     href: '/dashboard/contacts?source=ecommerce',
     isActive: (params) => params.get('source') === 'ecommerce',
+  },
+  {
+    id: 'walk_in',
+    label: 'Walk-in',
+    href: '/dashboard/contacts?source=walk_in',
+    isActive: (params) => params.get('source') === 'walk_in',
   },
 ];
 
 export const CONTACT_SOURCE_LABELS: Record<OrderSource, string> = {
   facebook: 'Facebook',
-  call: 'Inbound Call',
-  ecommerce: 'E-commerce',
+  call: 'Phone',
+  ecommerce: 'Online',
   walk_in: 'Walk-in',
 };
 
-export function getContactPageCopy(source?: string) {
-  if (source === 'facebook') {
-    return { title: 'Facebook Contacts', description: 'Contacts acquired from Facebook channels.' };
-  }
-  if (source === 'call') {
-    return { title: 'Call Contacts', description: 'Contacts from inbound calls.' };
-  }
-  if (source === 'ecommerce') {
-    return { title: 'E-commerce Contacts', description: 'Contacts from online store.' };
-  }
+export function getContactPageCopy() {
   return {
     title: 'Contacts',
-    description: 'Manage people and communication history across your organization.',
+    description:
+      'Everyone you talk to — buyers, suppliers, courier partners, and others. Customers use the full order view.',
   };
 }

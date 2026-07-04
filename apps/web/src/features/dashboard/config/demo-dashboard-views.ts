@@ -4,19 +4,21 @@ import {
   isAgentRole,
   isCeoRole,
   isMarketingHeadRole,
+  isOrgAdminRole,
   isSalesHeadRole,
   isSuperAdminRole,
   isTeamLeaderRole,
 } from '@/features/dashboard/config/role-dashboards';
 
 export type DemoDashboardView = {
-  id: 'sales_head' | 'agent' | 'marketing_head' | 'ceo' | 'team_leader' | 'super_admin';
+  id: 'org_admin' | 'sales_head' | 'agent' | 'marketing_head' | 'ceo' | 'team_leader' | 'super_admin';
   label: string;
   role: UserRole;
 };
 
 /** Temporary demo switcher — dashboards built so far. */
 export const DEMO_DASHBOARD_VIEWS: DemoDashboardView[] = [
+  { id: 'org_admin', label: 'Org Admin', role: 'org_admin' },
   { id: 'sales_head', label: 'Sales Head', role: 'sales_manager' },
   { id: 'agent', label: 'Agent', role: 'sales_rep' },
   { id: 'marketing_head', label: 'Marketing Head', role: 'marketing_head' },
@@ -29,6 +31,10 @@ export function isDemoDashboardViewActive(
   view: DemoDashboardView,
   role: UserRole,
 ): boolean {
+  if (view.id === 'org_admin') {
+    return isOrgAdminRole(role);
+  }
+
   if (view.id === 'sales_head') {
     return isSalesHeadRole(role);
   }

@@ -46,7 +46,9 @@ export function CrmDataTableDesktop<T>({
     <div
       ref={scrollRef}
       className={cn(
-        'custom-scrollbar relative max-h-[min(70vh,780px)] w-full overflow-auto',
+        // Horizontal scroll only — vertical scroll uses the page shell so the
+        // scrollbar sits flush with the screen edge (not inset by page padding).
+        'custom-scrollbar relative w-full overflow-x-auto',
         '[&[data-drag-scrolling=true]]:cursor-grabbing',
       )}
     >
@@ -59,7 +61,7 @@ export function CrmDataTableDesktop<T>({
         )}
         style={minTableWidth ? { minWidth: minTableWidth, width: '100%' } : { width: '100%' }}
       >
-        <thead className="sticky top-0 z-30 bg-card">
+        <thead className="sticky top-14 z-30 bg-card sm:top-16">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id} className="hover:bg-transparent">
               {headerGroup.headers.map((header) => {

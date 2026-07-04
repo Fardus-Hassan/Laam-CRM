@@ -1,6 +1,6 @@
-import { EntityPage } from '@/features/crm/components/entity-page';
-import { CRM_MODULES } from '@/features/crm/config/modules';
+import { redirect } from 'next/navigation';
 
+/** Activities merged into Follow-ups — keep route for old bookmarks. */
 export default function ActivitiesPage() {
-  return <EntityPage module={CRM_MODULES.activities} />;
+  redirect('/dashboard/followups');
 }

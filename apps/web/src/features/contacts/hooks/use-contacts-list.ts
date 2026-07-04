@@ -5,34 +5,28 @@ import type { ContactListQuery, ContactListResponse } from '@laam/types';
 
 import { contactsApi } from '@/features/contacts/api/contacts-api';
 
-export function useContactsList(query: ContactListQuery) {
+export function useContactsList(query: ContactListQuery, listVersion = 0) {
   const [data, setData] = React.useState<ContactListResponse | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const queryKey = JSON.stringify(query);
 
-  React.useEffect(() => {
-    let cancelled = false;
+  const fetchList = React.useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    void contactsApi.listContacts(query).then(
-      (response) => {
-        if (!cancelled) {
-          setData(response);
-          setIsLoading(false);
-        }
-      },
-      () => {
-        if (!cancelled) {
-          setError('Failed to load contacts.');
-          setIsLoading(false);
-        }
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const response = await contactsApi.listContacts(query);
+      setData(response);
+    } catch {
+      setError('Failed to load contacts.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [queryKey]);
 
-  return { data, isLoading, error };
+  React.useEffect(() => {
+    void fetchList();
+  }, [fetchList, listVersion]);
+
+  return { data, isLoading, error, refresh: fetchList };
 }

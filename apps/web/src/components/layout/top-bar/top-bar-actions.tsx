@@ -14,7 +14,7 @@ export function TopBarActions() {
       <CommandPaletteTrigger />
       <LiveStatusBadge />
       <DateBadge />
-      <NotificationBell count={8} />
+      <NotificationBell />
       <FullscreenToggle />
       <ThemeToggle />
       <TopBarUser />

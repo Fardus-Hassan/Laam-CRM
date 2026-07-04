@@ -15,6 +15,7 @@ import { CustomerOrderHistoryCard } from '@/features/orders/components/shared/cu
 import { CourierTrackingCard } from '@/features/orders/components/shared/courier-tracking-card';
 import { EditableSectionCard } from '@/features/orders/components/shared/editable-section-card';
 import { LinkedLeadCard } from '@/features/orders/components/shared/linked-lead-card';
+import { OrderRelatedLinks } from '@/features/orders/components/shared/order-related-links';
 import { MoneySummaryPanel } from '@/features/orders/components/shared/money-summary-panel';
 import { OrderActionBar } from '@/features/orders/components/shared/order-action-bar';
 import { OrderAssignSheet } from '@/features/orders/components/shared/order-assign-sheet';
@@ -146,6 +147,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
 
           <div className="space-y-4">
             <MoneySummaryPanel mode="readonly" order={order} />
+            <OrderRelatedLinks order={order} />
             <CustomerOrderHistoryCard
               phone={order.customerPhone}
               currentOrderId={order.id}

@@ -4,6 +4,10 @@ import type {
   CreateOrderTotals,
   DiscountMode,
 } from '@/features/orders/lib/create-order-types';
+import {
+  calcCouponDiscountAmount,
+  getActiveCouponByCode,
+} from '@/features/coupons/data/mock-coupons';
 
 export function calcLineSubtotal(item: Pick<CreateOrderLineItem, 'unitPrice' | 'quantity' | 'discount'>): number {
   return Math.max(0, item.unitPrice * item.quantity - item.discount);
@@ -32,12 +36,20 @@ export function calcOrderDiscount(
 export function calcCouponDiscount(
   afterOrderDiscount: number,
   couponApplied: boolean,
+  couponCode = '',
 ): number {
   if (!couponApplied || afterOrderDiscount <= 0) {
     return 0;
   }
 
-  return (afterOrderDiscount * 10) / 100;
+  if (getActiveCouponByCode(couponCode)) {
+    return calcCouponDiscountAmount(couponCode, afterOrderDiscount);
+  }
+  // Legacy SAVE10
+  if (couponCode.trim().toUpperCase() === 'SAVE10') {
+    return (afterOrderDiscount * 10) / 100;
+  }
+  return 0;
 }
 
 export function calcCreateOrderTotals(state: Pick<
@@ -48,6 +60,7 @@ export function calcCreateOrderTotals(state: Pick<
   | 'shipping'
   | 'advancePayment'
   | 'couponApplied'
+  | 'couponCode'
 >): CreateOrderTotals {
   const subtotal = calcSubtotal(state.lineItems);
   const orderDiscount = calcOrderDiscount(
@@ -56,7 +69,7 @@ export function calcCreateOrderTotals(state: Pick<
     state.discountValue,
   );
   const afterOrderDiscount = Math.max(0, subtotal - orderDiscount);
-  const couponDiscount = calcCouponDiscount(afterOrderDiscount, state.couponApplied);
+  const couponDiscount = calcCouponDiscount(afterOrderDiscount, state.couponApplied, state.couponCode);
   const afterDiscount = Math.max(0, afterOrderDiscount - couponDiscount);
   const grandTotal = Math.max(0, afterDiscount + state.shipping);
   const due = Math.max(0, grandTotal - state.advancePayment);

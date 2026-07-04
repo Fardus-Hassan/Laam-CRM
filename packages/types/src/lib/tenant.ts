@@ -39,15 +39,22 @@ export const tenantSchema = z.object({
 
 export type Tenant = z.infer<typeof tenantSchema>;
 
+export const tenantUserStatusSchema = z.enum(['active', 'invited', 'suspended']);
+export type TenantUserStatus = z.infer<typeof tenantUserStatusSchema>;
+
 export const tenantUserSchema = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),
   name: z.string().min(1),
   email: z.string().email(),
+  phone: z.string().optional(),
   systemRole: userRoleSchema,
   customRoleId: z.string().min(1).optional(),
   permissionGrants: z.array(permissionSchema).default([]),
   permissionDenies: z.array(permissionSchema).default([]),
+  status: tenantUserStatusSchema.default('active'),
+  lastSeenAt: z.string().optional(),
+  orderDistributionPercent: z.number().min(0).max(100).optional(),
 });
 
 export type TenantUser = z.infer<typeof tenantUserSchema>;

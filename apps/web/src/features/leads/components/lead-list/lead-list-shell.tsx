@@ -209,7 +209,7 @@ export function LeadListShell({ context }: LeadListShellProps) {
       description="Pre-orders from Facebook, phone, and shop — qualify buyers and convert to orders."
       breadcrumbs={createLeadsListBreadcrumbs(context.title)}
     >
-      <div className={cn(ORDER_PAGE_GAP, 'min-w-0 overflow-x-hidden')}>
+      <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
         <LeadWorkspaceHeader
           title={context.title}
           description={context.description}

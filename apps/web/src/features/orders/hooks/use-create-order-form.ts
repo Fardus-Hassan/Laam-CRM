@@ -6,7 +6,7 @@ import {
   DEFAULT_COURIER_NOTE,
   getProductById,
   lookupCustomerByMobile,
-  VALID_COUPON_CODE,
+  isValidCouponCode,
 } from '@/features/orders/data/mock-create-order';
 import {
   calcCreateOrderTotals,
@@ -170,8 +170,7 @@ function reducer(state: CreateOrderFormState, action: FormAction): CreateOrderFo
     case 'apply_coupon':
       return {
         ...state,
-        couponApplied:
-          state.couponCode.trim().toUpperCase() === VALID_COUPON_CODE.toUpperCase(),
+        couponApplied: isValidCouponCode(state.couponCode),
       };
 
     case 'add_line_item_from_product': {
@@ -306,8 +305,7 @@ export function useCreateOrderForm() {
   }, []);
 
   const applyCoupon = React.useCallback(() => {
-    const applied =
-      state.couponCode.trim().toUpperCase() === VALID_COUPON_CODE.toUpperCase();
+    const applied = isValidCouponCode(state.couponCode);
     dispatch({ type: 'apply_coupon' });
     return applied;
   }, [state.couponCode]);

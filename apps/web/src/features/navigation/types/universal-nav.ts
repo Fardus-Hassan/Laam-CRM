@@ -15,6 +15,7 @@ export type UniversalNavItem = {
   icon: LucideIcon;
   url?: string;
   permissions: Permission[];
+  badge?: number;
   children?: NavChildDefinition[];
 };
 

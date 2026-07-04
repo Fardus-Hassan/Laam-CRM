@@ -1,15 +1,33 @@
 import type { OrderSource } from '@laam/types';
 
+import { getActiveCouponByCode, listCoupons } from '@/features/coupons/data/mock-coupons';
+import { MOCK_INVENTORY_PRODUCTS } from '@/features/inventory/data/mock-inventory';
 import { MOCK_ORDERS } from '@/features/orders/data/mock-orders';
-import {
-  MOCK_PRODUCTS,
-  type MockProduct,
-  type MockProductVariation,
-} from '@/features/orders/data/mock-products';
+import type { MockProduct, MockProductVariation } from '@/features/orders/data/mock-products';
 import type { CustomerLookupStats } from '@/features/orders/lib/create-order-types';
 
 export type { MockProduct, MockProductVariation };
-export { MOCK_PRODUCTS };
+
+/** Order catalog = live inventory products (single source of truth). */
+export function getOrderCatalogProducts(): MockProduct[] {
+  return MOCK_INVENTORY_PRODUCTS.filter((p) => p.status === 'active').map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    imageUrl: p.imageUrl ?? '',
+    variations:
+      p.variants.length > 0
+        ? p.variants.map((v) => ({
+            id: v.id,
+            label: v.label,
+            unitPrice: v.salePrice,
+          }))
+        : [{ id: `${p.id}-default`, label: 'Default', unitPrice: p.salePriceMin }],
+  }));
+}
+
+/** Snapshot for seed consumers — prefer getOrderCatalogProducts() at runtime. */
+export const MOCK_PRODUCTS = getOrderCatalogProducts();
 
 export type MockCustomerProfile = {
   mobile: string;
@@ -105,7 +123,21 @@ export const PATHAO_GEO: PathaoCity[] = [
   },
 ];
 
-export const VALID_COUPON_CODE = 'SAVE10';
+/** Active promo codes from coupons module. */
+export function getValidCouponCodes(): string[] {
+  return listCoupons().filter((c) => c.isActive).map((c) => c.code);
+}
+
+export const VALID_COUPON_CODES = ['RAMADAN10', 'FIRST100', 'COMBO50', 'SAVE10'] as const;
+
+/** @deprecated Use getValidCouponCodes / isValidCouponCode */
+export const VALID_COUPON_CODE = 'RAMADAN10';
+
+export function isValidCouponCode(code: string): boolean {
+  if (getActiveCouponByCode(code)) return true;
+  // Legacy demo code
+  return code.trim().toUpperCase() === 'SAVE10';
+}
 
 export const DEFAULT_COURIER_NOTE =
   'পার্সেল খোলা যাবে না — মার্চেন্টকে জানানো ছাড়া খুলবেন না। কাস্টমার কল না ধরলে পার্সেল ক্যান্সেল করবেন না।';
@@ -165,19 +197,20 @@ export function lookupCustomerByMobile(mobile: string): MockCustomerProfile | nu
 }
 
 export function searchProducts(query: string): MockProduct[] {
+  const catalog = getOrderCatalogProducts();
   const q = query.trim().toLowerCase();
   if (!q) {
-    return MOCK_PRODUCTS;
+    return catalog;
   }
 
-  return MOCK_PRODUCTS.filter(
+  return catalog.filter(
     (product) =>
       product.name.toLowerCase().includes(q) || product.sku.toLowerCase().includes(q),
   );
 }
 
 export function getProductById(id: string): MockProduct | undefined {
-  return MOCK_PRODUCTS.find((product) => product.id === id);
+  return getOrderCatalogProducts().find((product) => product.id === id);
 }
 
 export function searchDistricts(query: string): string[] {

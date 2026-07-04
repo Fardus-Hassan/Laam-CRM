@@ -14,6 +14,7 @@ import {
   getDemoCustomRoleIdForUserRole,
   getRolePermissions,
 } from '@/features/platform/data/mock-tenant-store';
+import { setAccessTokenGetter } from '@/lib/api/client';
 
 function resolveSessionPermissions(user: AuthSession['user']): Permission[] {
   const customRolePermissions = user.customRoleId
@@ -51,7 +52,7 @@ type AuthContextValue = {
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
 
-const mockAuthApi = createMockAuthApi('sales_manager');
+const mockAuthApi = createMockAuthApi('org_admin');
 const httpAuthApi = createHttpAuthApi();
 const authApi =
   env.isDev || env.enableRoleSwitch ? mockAuthApi : httpAuthApi;
@@ -70,6 +71,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     void refreshSession();
   }, [refreshSession]);
+
+  // API-ready: attach bearer token for HTTP mode (mock token until real JWT exists)
+  React.useEffect(() => {
+    setAccessTokenGetter(() =>
+      session ? `mock.${session.user.id}.${session.organization.id}` : null,
+    );
+  }, [session]);
 
   const logout = React.useCallback(async () => {
     await authApi.logout();

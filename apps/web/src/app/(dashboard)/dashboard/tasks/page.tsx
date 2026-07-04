@@ -1,6 +1,19 @@
-import { EntityPage } from '@/features/crm/components/entity-page';
-import { CRM_MODULES } from '@/features/crm/config/modules';
+import { Suspense } from 'react';
+
+import { TasksListPage } from '@/features/tasks/components/tasks-list-page';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function TasksPage() {
-  return <EntityPage module={CRM_MODULES.tasks} />;
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-4 p-4">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      }
+    >
+      <TasksListPage />
+    </Suspense>
+  );
 }

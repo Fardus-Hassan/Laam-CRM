@@ -2,12 +2,12 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { PageShell } from '@/components/layout/page-shell';
-import { VALID_COUPON_CODE } from '@/features/orders/data/mock-create-order';
+import { VALID_COUPON_CODES } from '@/features/orders/data/mock-create-order';
 import {
   clearLeadConvertPrefill,
   loadLeadConvertPrefill,
@@ -34,6 +34,7 @@ import { Button } from '@/components/ui/button';
 
 export function CreateOrderPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const form = useCreateOrderForm();
   const { createOrder, checkDuplicate, isLoading } = useOrderMutations();
   const [duplicate, setDuplicate] = React.useState<{
@@ -44,23 +45,31 @@ export function CreateOrderPage() {
 
   React.useEffect(() => {
     const prefill = loadLeadConvertPrefill();
-    if (!prefill) return;
+    if (prefill) {
+      form.patch({
+        name: prefill.customerName,
+        mobile: prefill.customerPhone,
+        email: prefill.customerEmail ?? '',
+        address: prefill.shippingAddress ?? '',
+        district: prefill.shippingArea ?? '',
+        orderSource: prefill.orderSource,
+        ...(prefill.lineItems?.length
+          ? { lineItems: mapLeadPrefillToOrderLineItems(prefill.lineItems) }
+          : {}),
+      });
+      setLeadPrefillId(prefill.leadId);
+      clearLeadConvertPrefill();
+      toast.info(`Pre-filled from lead ${prefill.leadNumber}`);
+      return;
+    }
 
-    form.patch({
-      name: prefill.customerName,
-      mobile: prefill.customerPhone,
-      email: prefill.customerEmail ?? '',
-      address: prefill.shippingAddress ?? '',
-      district: prefill.shippingArea ?? '',
-      orderSource: prefill.orderSource,
-      ...(prefill.lineItems?.length
-        ? { lineItems: mapLeadPrefillToOrderLineItems(prefill.lineItems) }
-        : {}),
-    });
-    setLeadPrefillId(prefill.leadId);
-    clearLeadConvertPrefill();
-    toast.info(`Pre-filled from lead ${prefill.leadNumber}`);
-    // Run once on mount when converting from a lead.
+    const phone = searchParams.get('phone');
+    if (phone) {
+      form.patch({ mobile: phone });
+      form.lookupCustomer();
+      toast.info('Customer phone pre-filled');
+    }
+    // Run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -85,7 +94,7 @@ export function CreateOrderPage() {
     }
 
     if (form.state.couponCode && !form.state.couponApplied) {
-      toast.error(`Invalid coupon. Try ${VALID_COUPON_CODE}`);
+      toast.error(`Invalid coupon. Try ${VALID_COUPON_CODES.join(', ')}`);
       return;
     }
 

@@ -4,6 +4,7 @@ import type { DashboardResponse } from '@laam/types';
 
 import { KpiStatGrid } from '@/components/dashboard/kpi-stat-card';
 import { ContentPanel } from '@/components/layout/content-panel';
+import { LowStockBanner } from '@/features/dashboard/components/low-stock-banner';
 import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 
 type DefaultDashboardViewProps = {
@@ -13,6 +14,7 @@ type DefaultDashboardViewProps = {
 export function DefaultDashboardView({ data }: DefaultDashboardViewProps) {
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
+      <LowStockBanner />
       <div>
         <h2 className="text-lg font-semibold">{data.title}</h2>
         {data.subtitle ? (

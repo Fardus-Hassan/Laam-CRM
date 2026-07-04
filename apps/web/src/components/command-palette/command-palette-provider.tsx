@@ -3,11 +3,20 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  BarChart3,
+  BookOpen,
+  CalendarDays,
+  CheckSquare,
   ClipboardList,
+  FileUp,
+  MessageSquare,
   Package,
   PlusCircle,
   Search,
+  Tag,
+  Trash2,
   Truck,
+  Wallet,
 } from 'lucide-react';
 
 import { FormInput } from '@/components/form/form-input';
@@ -40,7 +49,19 @@ const NAV_ACTIONS = [
   { id: 'create', label: 'Create new order', href: '/dashboard/orders/new', icon: PlusCircle },
   { id: 'all', label: 'All orders', href: '/dashboard/orders', icon: ClipboardList },
   { id: 'pendings', label: 'Pending orders', href: '/dashboard/orders/queues/pendings', icon: Package },
-  { id: 'followups', label: 'Follow-ups due', href: '/dashboard/orders/queues/followups', icon: Truck },
+  { id: 'followups', label: 'Customer follow-ups', href: '/dashboard/followups', icon: Truck },
+  { id: 'tasks', label: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
+  { id: 'inventory', label: 'Inventory — Products', href: '/dashboard/inventory/products', icon: Package },
+  { id: 'accounting', label: 'Accounting overview', href: '/dashboard/accounting/overview', icon: Wallet },
+  { id: 'courier', label: 'Courier Hub', href: '/dashboard/courier', icon: Truck },
+  { id: 'support', label: 'Support tickets', href: '/dashboard/support', icon: MessageSquare },
+  { id: 'coupons', label: 'Coupons', href: '/dashboard/coupons', icon: Tag },
+  { id: 'reports', label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+  { id: 'recycle', label: 'Recycle Bin', href: '/dashboard/recycle-bin', icon: Trash2 },
+  { id: 'import', label: 'Bulk import customers & orders', href: '/dashboard/settings/import', icon: FileUp },
+  { id: 'knowledge', label: 'Knowledge base', href: '/dashboard/knowledge', icon: BookOpen },
+  { id: 'calendar', label: 'Calendar', href: '/dashboard/calendar', icon: CalendarDays },
+  { id: 'merge', label: 'Merge customers', href: '/dashboard/customers/merge', icon: ClipboardList },
   { id: 'failed', label: 'Failed orders', href: '/dashboard/orders/failed', icon: Package },
 ];
 

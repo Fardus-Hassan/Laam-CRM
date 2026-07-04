@@ -1,4 +1,4 @@
-import { CompanyDetailPageClient } from '@/features/companies/components/company-detail-page-client';
+import { CustomerDetailPageClient } from '@/features/customers/components/customer-detail-page-client';
 
 type CompanyDetailPageProps = {
   params: Promise<{ companyId: string }>;
@@ -6,5 +6,5 @@ type CompanyDetailPageProps = {
 
 export default async function CompanyDetailPage({ params }: CompanyDetailPageProps) {
   const { companyId } = await params;
-  return <CompanyDetailPageClient companyId={companyId} />;
+  return <CustomerDetailPageClient customerId={companyId} />;
 }
