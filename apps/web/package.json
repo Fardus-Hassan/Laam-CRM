@@ -2,6 +2,10 @@
   "name": "@laam/web",
   "version": "0.0.1",
   "private": true,
+  "scripts": {
+    "build": "next build",
+    "vercel-build": "pnpm --filter @laam/types run build && next build"
+  },
   "dependencies": {
     "@laam/types": "workspace:*",
     "@radix-ui/react-avatar": "^1.2.0",
