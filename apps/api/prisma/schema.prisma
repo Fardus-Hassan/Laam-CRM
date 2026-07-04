@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id                String   @id @default(cuid())
+  leadNumber        String   @unique
+  name              String
+  phone             String
+  email             String?
+  source            String
+  status            String
+  assignedAgentName String?
+  area              String?
+  estimatedValue    Float?
+  campaignName      String?
+  notes             String?
+  tags              String[] @default([])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Contact {
+  id                String   @id @default(cuid())
+  name              String
+  phone             String
+  email             String?
+  companyName       String?
+  jobTitle          String?
+  source            String
+  assignedAgentName String?
+  address           String?
+  notes             String?
+  tags              String[] @default([])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Company {
+  id                String   @id @default(cuid())
+  name              String
+  industry          String?
+  status            String
+  phone             String?
+  email             String?
+  contactCount      Int      @default(0)
+  dealValue         Float    @default(0)
+  assignedAgentName String?
+  city              String?
+  address           String?
+  website           String?
+  notes             String?
+  tags              String[] @default([])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Deal {
+  id                String    @id @default(cuid())
+  dealNumber        String    @unique
+  title             String
+  companyName       String
+  contactName       String?
+  stage             String
+  amount            Float
+  probability       Int
+  expectedCloseDate DateTime?
+  assignedAgentName String?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Order {
+  id                String   @id @default(cuid())
+  orderNumber       String   @unique
+  status            String
+  customerName      String
+  customerPhone     String
+  source            String
+  itemsCount        Int
+  amount            Float
+  paymentStatus     String
+  assignedAgentName String?
+  shippingArea      String
+  shippingAddress   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

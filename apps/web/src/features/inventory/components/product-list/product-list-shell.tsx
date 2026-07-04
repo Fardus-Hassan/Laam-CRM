@@ -1,0 +1,194 @@
+'use client';
+
+import * as React from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import type { InventoryProductListItem, ProductStatus } from '@laam/types';
+import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
+import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
+import { EmptyState } from '@/components/layout/empty-state';
+import { PageShell } from '@/components/layout/page-shell';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  ORDER_CARD_CLASS,
+  ORDER_PAGE_GAP,
+  ORDER_SECTION_BODY_CLASS,
+} from '@/features/orders/components/create-order/section-layout';
+import { inventoryApi } from '@/features/inventory/api/inventory-api';
+import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
+import { ProductDataTable } from '@/features/inventory/components/product-list/product-data-table';
+import { ProductFilterChips } from '@/features/inventory/components/product-list/product-filter-chips';
+import { ProductListToolbar } from '@/features/inventory/components/product-list/product-list-toolbar';
+import { ProductSelectionBar } from '@/features/inventory/components/product-list/product-selection-bar';
+import { ProductWorkspaceHeader } from '@/features/inventory/components/product-list/product-workspace-header';
+import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
+import { useProductsList } from '@/features/inventory/hooks/use-products-list';
+import { formatCurrency } from '@/lib/format';
+import { cn } from '@/lib/utils';
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
+
+export function ProductListShell() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { updateProduct } = useProductMutations();
+
+  const filter = searchParams.get('filter') ?? 'all';
+  const [search, setSearch] = React.useState(searchParams.get('search') ?? '');
+  const [page, setPage] = React.useState(Number(searchParams.get('page') ?? 1));
+  const [pageSize, setPageSize] = React.useState(Number(searchParams.get('pageSize') ?? 10));
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [listVersion, setListVersion] = React.useState(0);
+  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
+
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const searchParamsKey = searchParams.toString();
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(searchParamsKey);
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    else params.delete('search');
+    params.set('page', String(page));
+    params.set('pageSize', String(pageSize));
+    if (filter && filter !== 'all') params.set('filter', filter);
+    else params.delete('filter');
+    const next = params.toString();
+    if (next !== searchParamsKey) {
+      router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+    }
+  }, [debouncedSearch, filter, page, pageSize, pathname, router, searchParamsKey]);
+
+  const { data, isLoading, error, refresh } = useProductsList(
+    {
+      filter: filter === 'all' ? undefined : (filter as 'low_stock' | 'out_of_stock' | 'active' | 'inactive'),
+      search: debouncedSearch || undefined,
+      page,
+      pageSize,
+    },
+    listVersion,
+  );
+
+  React.useEffect(() => {
+    if (data && !isLoading) setLastRefreshedAt(new Date());
+  }, [data, isLoading]);
+
+  const selectedRows = React.useMemo(
+    () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
+    [data?.items, selectedIds],
+  );
+
+  const summaryItems = [
+    { id: 'count', label: 'Products', value: data ? String(data.summary.count) : '—' },
+    { id: 'low', label: 'Low stock', value: data ? String(data.summary.lowStockCount) : '—' },
+    { id: 'out', label: 'Out of stock', value: data ? String(data.summary.outOfStockCount) : '—' },
+    { id: 'value', label: 'Stock value', value: data ? formatCurrency(data.summary.totalStockValue) : '—' },
+    { id: 'selected', label: 'Selected', value: String(selectedIds.size) },
+  ];
+
+  function handleRefresh() {
+    setListVersion((v) => v + 1);
+    void refresh();
+  }
+
+  function handleClearFilters() {
+    setSearch('');
+    setPage(1);
+    router.replace('/dashboard/inventory/products');
+  }
+
+  async function patchRow(id: string, patch: Parameters<typeof inventoryApi.updateProduct>[1]) {
+    await updateProduct(id, patch);
+    handleRefresh();
+  }
+
+  return (
+    <PageShell
+      title="Inventory"
+      description="Products, stock, suppliers, and purchases for your shop."
+    >
+      <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
+        <InventorySubNav />
+        <CrmPageActions moduleId="inventory" />
+        <ProductWorkspaceHeader
+          lastRefreshedAt={lastRefreshedAt}
+          isRefreshing={isLoading}
+          onRefresh={handleRefresh}
+        />
+        <CrmSummaryStrip items={summaryItems} className="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" />
+        {data?.filters ? <ProductFilterChips filters={data.filters} activeFilterId={filter} /> : null}
+        <ProductListToolbar
+          search={search}
+          onSearchChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+        />
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
+          <ProductSelectionBar
+            selectedCount={selectedIds.size}
+            selectedProductIds={[...selectedIds]}
+            selectedRows={selectedRows}
+            onClearSelection={() => setSelectedIds(new Set())}
+            onSuccess={() => {
+              setSelectedIds(new Set());
+              handleRefresh();
+            }}
+          />
+          <CardContent className={cn('p-0', ORDER_SECTION_BODY_CLASS)}>
+            {error ? (
+              <p className="px-4 py-8 text-center text-sm text-destructive">{error}</p>
+            ) : !isLoading && data && data.items.length === 0 ? (
+              <div className="flex flex-col items-center gap-4 px-4 py-8">
+                <EmptyState
+                  title="No products in this view"
+                  description="Try another filter or add a new product to your catalog."
+                  compact
+                />
+                <Button type="button" variant="outline" size="sm" onClick={handleClearFilters}>
+                  Reset filters
+                </Button>
+              </div>
+            ) : (
+              <ProductDataTable
+                rows={data?.items ?? []}
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                isLoading={isLoading}
+                page={page}
+                pageSize={pageSize}
+                total={data?.total}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+                showPagination={Boolean(data)}
+                rowOffset={(page - 1) * pageSize}
+                onStatusChange={(row, status: ProductStatus) => void patchRow(row.id, { status })}
+                onStockAdjust={(row, delta) =>
+                  void patchRow(row.id, {
+                    stockAdjustment: { delta, reason: 'Quick adjust from list' },
+                  })
+                }
+                onDetailsClick={(row: InventoryProductListItem) => {
+                  router.push(`/dashboard/inventory/products/${row.id}`);
+                }}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </PageShell>
+  );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
