@@ -1,12 +1,15 @@
 import type {
+  CreateOrgTeamRequest,
   CreateTenantRequest,
   CreateTenantUserRequest,
   CustomRole,
   Organization,
+  OrgTeam,
   Permission,
   PermissionPreset,
   Tenant,
   TenantUser,
+  UpdateOrgTeamRequest,
   UpdateTenantUserAcl,
   UserRole,
 } from '@laam/types';
@@ -66,6 +69,7 @@ type OrgStore = {
   organization: Organization;
   roles: CustomRole[];
   users: TenantUser[];
+  teams: OrgTeam[];
   presetRoleIds: Record<string, string>;
 };
 
@@ -123,6 +127,7 @@ function buildLaamSeedUsers(
       status: 'active',
       lastSeenAt: '2026-07-02T08:30:00Z',
       orderDistributionPercent: 30,
+      teamId: 'team-alpha',
     },
     {
       id: '00000000-0000-4000-8000-000000000012',
@@ -137,6 +142,7 @@ function buildLaamSeedUsers(
       status: 'active',
       lastSeenAt: '2026-07-01T17:00:00Z',
       orderDistributionPercent: 25,
+      teamId: 'team-alpha',
     },
     {
       id: '00000000-0000-4000-8000-000000000013',
@@ -161,8 +167,76 @@ function buildLaamSeedUsers(
       customRoleId: presetRoleIds.preset_sales_agent,
       permissionGrants: [],
       permissionDenies: [],
-      status: 'invited',
+      status: 'active',
       orderDistributionPercent: 25,
+      teamId: 'team-alpha',
+    },
+    {
+      id: '00000000-0000-4000-8000-000000000015',
+      organizationId,
+      name: 'Karim Hassan',
+      email: 'karim@laamcrm.com',
+      phone: '01644556677',
+      systemRole: 'team_leader',
+      customRoleId: presetRoleIds.preset_team_leader,
+      permissionGrants: [],
+      permissionDenies: [],
+      status: 'active',
+      lastSeenAt: '2026-07-02T10:00:00Z',
+      teamId: 'team-beta',
+    },
+    {
+      id: '00000000-0000-4000-8000-000000000016',
+      organizationId,
+      name: 'Rina Akter',
+      email: 'rina@laamcrm.com',
+      phone: '01555667788',
+      systemRole: 'sales_rep',
+      customRoleId: presetRoleIds.preset_sales_agent,
+      permissionGrants: [],
+      permissionDenies: [],
+      status: 'active',
+      teamId: 'team-beta',
+    },
+    {
+      id: '00000000-0000-4000-8000-000000000017',
+      organizationId,
+      name: 'Tariq Islam',
+      email: 'tariq@laamcrm.com',
+      phone: '01366778899',
+      systemRole: 'sales_rep',
+      customRoleId: presetRoleIds.preset_sales_agent,
+      permissionGrants: [],
+      permissionDenies: [],
+      status: 'active',
+      teamId: 'team-beta',
+    },
+  ];
+}
+
+function buildLaamSeedTeams(organizationId: string): OrgTeam[] {
+  return [
+    {
+      id: 'team-alpha',
+      organizationId,
+      name: 'Call Team Alpha',
+      leaderUserId: '00000000-0000-4000-8000-000000000012',
+      memberUserIds: [
+        '00000000-0000-4000-8000-000000000011',
+        '00000000-0000-4000-8000-000000000014',
+      ],
+      createdAt: '2026-01-15T00:00:00.000Z',
+    },
+    {
+      id: 'team-beta',
+      organizationId,
+      name: 'Call Team Beta',
+      leaderUserId: '00000000-0000-4000-8000-000000000015',
+      memberUserIds: [
+        '00000000-0000-4000-8000-000000000016',
+        '00000000-0000-4000-8000-000000000017',
+      ],
+      createdAt: '2026-02-01T00:00:00.000Z',
     },
   ];
 }
@@ -189,6 +263,7 @@ const orgStores = new Map<string, OrgStore>([
       organization: { ...MOCK_ORGANIZATION },
       roles: laamBootstrap.roles,
       users: buildLaamSeedUsers(laamOrgId, laamBootstrap.presetRoleIds),
+      teams: buildLaamSeedTeams(laamOrgId),
       presetRoleIds: laamBootstrap.presetRoleIds,
     },
   ],
@@ -260,6 +335,7 @@ export function createTenant(input: CreateTenantRequest): Tenant {
     organization,
     roles,
     users: [owner],
+    teams: [],
     presetRoleIds,
   });
 
@@ -422,6 +498,116 @@ export function updateUserAcl(
 
   store.users = [...store.users.slice(0, index), next, ...store.users.slice(index + 1)];
   return next;
+}
+
+export function listTeams(organizationId: string): OrgTeam[] {
+  return [...(orgStores.get(organizationId)?.teams ?? [])];
+}
+
+export function getTeam(organizationId: string, teamId: string): OrgTeam | undefined {
+  return orgStores.get(organizationId)?.teams.find((t) => t.id === teamId);
+}
+
+function syncUserTeamLinks(
+  store: OrgStore,
+  teamId: string,
+  leaderUserId: string,
+  memberUserIds: string[],
+) {
+  const memberSet = new Set(memberUserIds);
+  store.users = store.users.map((user) => {
+    if (user.id === leaderUserId) {
+      return {
+        ...user,
+        teamId,
+        systemRole: user.systemRole === 'org_admin' || user.systemRole === 'sales_manager'
+          ? user.systemRole
+          : 'team_leader',
+        customRoleId:
+          user.systemRole === 'org_admin' || user.systemRole === 'sales_manager'
+            ? user.customRoleId
+            : store.presetRoleIds.preset_team_leader ?? user.customRoleId,
+      };
+    }
+    if (memberSet.has(user.id)) {
+      return {
+        ...user,
+        teamId,
+        systemRole: user.systemRole === 'team_leader' ? 'sales_rep' : user.systemRole,
+        customRoleId:
+          user.systemRole === 'team_leader'
+            ? store.presetRoleIds.preset_sales_agent ?? user.customRoleId
+            : user.customRoleId,
+      };
+    }
+    if (user.teamId === teamId) {
+      return { ...user, teamId: undefined };
+    }
+    return user;
+  });
+}
+
+export function createTeam(
+  organizationId: string,
+  input: CreateOrgTeamRequest,
+): OrgTeam {
+  const store = orgStores.get(organizationId);
+  if (!store) throw new Error(`Organization not found: ${organizationId}`);
+
+  const members = input.memberUserIds.filter((id) => id !== input.leaderUserId);
+  const team: OrgTeam = {
+    id: `team-${crypto.randomUUID().slice(0, 8)}`,
+    organizationId,
+    name: input.name.trim(),
+    leaderUserId: input.leaderUserId,
+    memberUserIds: members,
+    createdAt: new Date().toISOString(),
+  };
+
+  store.teams = [...store.teams, team];
+  syncUserTeamLinks(store, team.id, team.leaderUserId, team.memberUserIds);
+  return team;
+}
+
+export function updateTeam(
+  organizationId: string,
+  teamId: string,
+  patch: UpdateOrgTeamRequest,
+): OrgTeam | undefined {
+  const store = orgStores.get(organizationId);
+  if (!store) return undefined;
+
+  const index = store.teams.findIndex((t) => t.id === teamId);
+  if (index === -1) return undefined;
+
+  const current = store.teams[index];
+  const leaderUserId = patch.leaderUserId ?? current.leaderUserId;
+  const memberUserIds = (patch.memberUserIds ?? current.memberUserIds).filter(
+    (id) => id !== leaderUserId,
+  );
+
+  const next: OrgTeam = {
+    ...current,
+    name: patch.name?.trim() ?? current.name,
+    leaderUserId,
+    memberUserIds,
+  };
+
+  store.teams = [...store.teams.slice(0, index), next, ...store.teams.slice(index + 1)];
+  syncUserTeamLinks(store, teamId, leaderUserId, memberUserIds);
+  return next;
+}
+
+export function deleteTeam(organizationId: string, teamId: string): boolean {
+  const store = orgStores.get(organizationId);
+  if (!store) return false;
+  const exists = store.teams.some((t) => t.id === teamId);
+  if (!exists) return false;
+  store.teams = store.teams.filter((t) => t.id !== teamId);
+  store.users = store.users.map((u) =>
+    u.teamId === teamId ? { ...u, teamId: undefined } : u,
+  );
+  return true;
 }
 
 export function getDemoCustomRoleIdForUserRole(

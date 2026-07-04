@@ -151,6 +151,8 @@ export const updateProductPayloadSchema = z.object({
     .object({
       delta: z.number().int(),
       reason: z.string(),
+      /** When set, adjust this variant’s stock instead of the first variant. */
+      variantId: z.string().optional(),
     })
     .optional(),
 });
@@ -310,33 +312,48 @@ export const mixerRecipeListResponseSchema = z.object({
 
 export type MixerRecipeListResponse = z.infer<typeof mixerRecipeListResponseSchema>;
 
-/** Bulk raw material → finished products (gram-based calculator). */
-export const productionBatchInputSchema = z.object({
-  productId: z.string(),
-  /** Total grams of this material entering the batch (e.g. 50000 for 50kg). */
-  totalGrams: z.number().positive(),
-  /** How many grams one stock unit represents (1000 = stock counted in kg). */
-  gramsPerStockUnit: z.number().positive().default(1000),
+/** One raw material line in a production batch (own qty unit + cost). */
+export const productionRawMaterialSchema = z.object({
+  /** Optional inventory product for stock deduct. */
+  productId: z.string().optional(),
+  name: z.string().min(1),
+  quantity: z.number().positive(),
+  unit: z.enum(['kg', 'g']),
+  /** Line total in ৳. */
+  totalCost: z.number().nonnegative(),
+  /** Rate in ৳ per kg. */
+  costPerKg: z.number().nonnegative(),
 });
 
-export type ProductionBatchInput = z.infer<typeof productionBatchInputSchema>;
+export type ProductionRawMaterial = z.infer<typeof productionRawMaterialSchema>;
 
-export const productionExtraInputSchema = z.object({
-  productId: z.string(),
-  /** Pieces of this item used per finished product (jar, box, ribbon). */
-  qtyPerUnit: z.number().positive(),
+/** How many units of each finished variant to make from the batch. */
+export const productionOutputLineSchema = z.object({
+  variantId: z.string(),
+  variantLabel: z.string(),
+  /** Finished weight of this variant in grams (500 for 500g, 1000 for 1kg). */
+  gramsPerUnit: z.number().positive(),
+  units: z.number().int().nonnegative(),
 });
 
-export type ProductionExtraInput = z.infer<typeof productionExtraInputSchema>;
+export type ProductionOutputLine = z.infer<typeof productionOutputLineSchema>;
+
+/** Per finished unit: how much of one raw material was used. */
+export const productionRawUsageSchema = z.object({
+  name: z.string(),
+  unit: z.enum(['kg', 'g']),
+  quantityPerUnit: z.number(),
+  costPerUnit: z.number(),
+});
+
+export type ProductionRawUsage = z.infer<typeof productionRawUsageSchema>;
 
 export const runProductionBatchPayloadSchema = z.object({
   outputProductId: z.string(),
-  /** Grams of primary material in each finished product (e.g. 500g jar). */
-  gramsPerUnit: z.number().positive(),
-  primaryInput: productionBatchInputSchema,
-  extraInputs: z.array(productionExtraInputSchema).default([]),
-  /** Override how many units to make (default = max from materials). */
-  unitsToProduce: z.number().int().positive().optional(),
+  /** Multiple raw materials (Kalojira, Honey, Jafran, …). */
+  rawMaterials: z.array(productionRawMaterialSchema).min(1),
+  /** Per-variant output plan (e.g. 20×500g + 10×1kg). */
+  outputs: z.array(productionOutputLineSchema).min(1),
   note: z.string().optional(),
 });
 
@@ -348,22 +365,38 @@ export const productionBatchResultSchema = z.object({
   outputProductId: z.string(),
   outputProductName: z.string(),
   outputSku: z.string(),
-  gramsPerUnit: z.number(),
   unitsProduced: z.number().int(),
-  usedGrams: z.number(),
-  leftoverGrams: z.number(),
+  /** Sum of all raw line costs. */
   materialCost: z.number(),
+  /** Average cost per finished unit. */
   costPerUnit: z.number(),
+  /** Each raw material — separate qty (own unit), rate, line cost. */
   inputs: z.array(
     z.object({
-      productId: z.string(),
-      productName: z.string(),
-      sku: z.string(),
-      usedGrams: z.number().optional(),
-      usedUnits: z.number(),
-      cost: z.number(),
+      productId: z.string().optional(),
+      name: z.string(),
+      sku: z.string().optional(),
+      quantity: z.number(),
+      unit: z.enum(['kg', 'g']),
+      totalCost: z.number(),
+      costPerKg: z.number(),
+      usedUnits: z.number().optional(),
     }),
   ),
+  /** Variants made + cost share + per-unit raw usage for that variant. */
+  outputs: z.array(
+    z.object({
+      variantId: z.string(),
+      variantLabel: z.string(),
+      gramsPerUnit: z.number(),
+      units: z.number().int(),
+      cost: z.number(),
+      costPerUnit: z.number(),
+      rawUsage: z.array(productionRawUsageSchema),
+    }),
+  ),
+  /** Average finished unit: each raw qty + cost. */
+  perUnitRawUsage: z.array(productionRawUsageSchema),
   note: z.string().optional(),
   createdAt: z.string(),
 });

@@ -73,7 +73,9 @@ function buildOrder(
   const deliveryCharge = index % 3 === 0 ? 0 : 120;
   const discount = index % 5 === 0 ? 200 : 0;
   const amount = subtotal + deliveryCharge - discount;
-  const source = (['facebook', 'call', 'ecommerce', 'walk_in'] as const)[index % 4];
+  const source = (
+    ['facebook', 'campaign', 'website', 'landing_page', 'call', 'ecommerce'] as const
+  )[index % 6];
   const paymentStatus = (['cod', 'paid', 'partial'] as const)[index % 3];
   const createdDay = 28 - (index % 14);
 

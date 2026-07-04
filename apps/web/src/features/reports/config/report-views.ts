@@ -61,7 +61,7 @@ export const REPORT_VIEWS: ReportViewConfig[] = [
   { id: 'team-targets', label: 'Team Targets', description: 'Monthly targets vs achievement.', category: 'team', icon: Target },
   { id: 'marketing', label: 'Meta Ads', description: 'Facebook ad spend, ROAS, and campaign ROI.', category: 'marketing', icon: Megaphone },
   { id: 'campaign', label: 'Campaign ROI', description: 'Per-campaign spend and return breakdown.', category: 'marketing', icon: Megaphone },
-  { id: 'sources', label: 'Lead Sources', description: 'Facebook, call, walk-in — conversion by source.', category: 'marketing', icon: Target },
+  { id: 'sources', label: 'Lead Sources', description: 'Facebook Ad, Campaign, Website, Landing — conversion & revenue.', category: 'marketing', icon: Target },
   { id: 'login-history', label: 'Login Histories', description: 'Who logged in, when, and from where.', category: 'security', icon: Shield },
   { id: 'platform', label: 'Platform', description: 'Cross-tenant SaaS metrics (Super Admin).', category: 'platform', icon: BarChart3, permission: 'platform.view' },
 ];

@@ -22,11 +22,12 @@ export function PageShell({ title, description, children, breadcrumbs }: PageShe
         breadcrumbs={breadcrumbs ?? createModuleBreadcrumbs(title)}
       />
       {/*
-        Do not use overflow-x-hidden here — it creates a nested scrollport and
-        pulls the scrollbar inward (away from the screen edge). Horizontal clip
-        only; vertical scroll stays on the dashboard shell.
+        [&>*]:min-w-0 lets wide tables shrink and scroll horizontally inside
+        their own overflow-x-auto containers (instead of blowing out the page).
+        overflow-x-clip avoids a nested vertical scrollport (scrollbar stays
+        flush on the dashboard shell).
       */}
-      <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-x-clip p-3 sm:gap-4 sm:p-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-x-clip p-3 sm:gap-4 sm:p-4 [&>*]:min-w-0">
         {children}
       </div>
     </>

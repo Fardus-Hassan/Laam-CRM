@@ -249,15 +249,16 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
   },
   {
     slug: 'pendings',
-    label: 'Pendings',
+    label: 'Call confirm',
     href: '/dashboard/orders/queues/pendings',
     kind: 'list',
     displayMode: 'sidebar',
     sidebarOrder: 10,
     childStatusSlugs: ['pending', 'pending_2', 'pending_3'],
     defaultChildSlug: 'pending',
-    title: 'Pending Orders',
-    description: 'Review and confirm new orders.',
+    title: 'Call confirm',
+    description:
+      'New orders from Facebook, campaigns, website & landing pages — call center confirms COD.',
     showInNav: true,
   },
   {
@@ -268,7 +269,7 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
     displayMode: 'sidebar',
     sidebarOrder: 15,
     title: 'Follow-ups Due',
-    description: 'Orders pending over 48 hours — need agent follow-up.',
+    description: 'Orders pending over 48 hours — call center follow-up and relationship.',
     showInNav: true,
   },
   {

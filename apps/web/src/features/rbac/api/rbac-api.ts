@@ -1,21 +1,28 @@
 import type {
+  CreateOrgTeamRequest,
   CreateTenantUserRequest,
   CustomRole,
+  OrgTeam,
   Permission,
   TenantUser,
+  UpdateOrgTeamRequest,
   UpdateTenantUserAcl,
 } from '@laam/types';
 
 import {
   createRole,
+  createTeam,
   createUser,
   deleteRole,
+  deleteTeam,
   getPresetById,
   getRolePermissions,
   listRoles,
+  listTeams,
   listUsers,
   PERMISSION_PRESETS,
   updateRole,
+  updateTeam,
   updateUserAcl,
 } from '@/features/platform/data/mock-tenant-store';
 
@@ -49,6 +56,14 @@ export type RbacApi = {
     organizationId: string,
     roleId: string | undefined,
   ) => Promise<Permission[] | undefined>;
+  listTeams: (organizationId: string) => Promise<OrgTeam[]>;
+  createTeam: (organizationId: string, input: CreateOrgTeamRequest) => Promise<OrgTeam>;
+  updateTeam: (
+    organizationId: string,
+    teamId: string,
+    patch: UpdateOrgTeamRequest,
+  ) => Promise<OrgTeam | null>;
+  deleteTeam: (organizationId: string, teamId: string) => Promise<boolean>;
 };
 
 export function createMockRbacApi(): RbacApi {
@@ -76,6 +91,18 @@ export function createMockRbacApi(): RbacApi {
     },
     async getRolePermissions(organizationId, roleId) {
       return getRolePermissions(organizationId, roleId);
+    },
+    async listTeams(organizationId) {
+      return listTeams(organizationId);
+    },
+    async createTeam(organizationId, input) {
+      return createTeam(organizationId, input);
+    },
+    async updateTeam(organizationId, teamId, patch) {
+      return updateTeam(organizationId, teamId, patch) ?? null;
+    },
+    async deleteTeam(organizationId, teamId) {
+      return deleteTeam(organizationId, teamId);
     },
   };
 }

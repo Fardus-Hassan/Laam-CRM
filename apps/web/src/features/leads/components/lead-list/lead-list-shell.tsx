@@ -206,7 +206,7 @@ export function LeadListShell({ context }: LeadListShellProps) {
   return (
     <PageShell
       title="Leads"
-      description="Pre-orders from Facebook, phone, and shop — qualify buyers and convert to orders."
+      description="Facebook ads, campaigns, website & landing pages — call center confirms and converts to orders."
       breadcrumbs={createLeadsListBreadcrumbs(context.title)}
     >
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
@@ -244,7 +244,7 @@ export function LeadListShell({ context }: LeadListShellProps) {
           onAgentChange={handleAgentChange}
         />
 
-        <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <LeadSelectionBar
             selectedCount={selectedIds.size}
             selectedLeadIds={[...selectedIds]}

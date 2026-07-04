@@ -17,9 +17,12 @@ export const ORDER_STATUS_FILTERS = ORDER_QUEUE_REGISTRY.filter((queue) => queue
 );
 
 export const ORDER_SOURCE_LABELS: Record<OrderSource, string> = {
-  facebook: 'Facebook',
+  facebook: 'Facebook Ad',
+  campaign: 'Facebook Campaign',
+  website: 'Website',
+  landing_page: 'Landing Page',
   call: 'Inbound Call',
-  ecommerce: 'E-commerce',
+  ecommerce: 'Online Store',
   walk_in: 'Walk-in',
 };
 

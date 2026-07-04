@@ -172,7 +172,7 @@ export function ContactListShell({ source }: ContactListShellProps) {
           searchPlaceholder="Search name, mobile, ID, organization…"
         />
 
-        <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <ContactSelectionBar
             selectedCount={selectedIds.size}
             selectedContactIds={[...selectedIds]}

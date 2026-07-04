@@ -22,8 +22,8 @@ export function CustomerSegmentChips({
         const isActive = segment.id === activeSegmentId;
         const href =
           segment.id === 'all'
-            ? '/dashboard/companies'
-            : `/dashboard/companies?segment=${segment.id}`;
+            ? '/dashboard/customers'
+            : `/dashboard/customers?segment=${segment.id}`;
 
         return (
           <Link

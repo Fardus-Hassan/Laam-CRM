@@ -8,8 +8,8 @@ import type { CreateOrderPayload, OrderDetail, OrderStatusType } from '@laam/typ
 
 import {
   createMockIncome,
-  markReceivableCollected,
-  MOCK_RECEIVABLES,
+  ensureReceivableForOrder,
+  markReceivableCollectedByOrderNumber,
   postInventoryCogs,
 } from '@/features/accounting/data/mock-accounting';
 import { MOCK_INVENTORY_PRODUCTS } from '@/features/inventory/data/mock-inventory';
@@ -23,7 +23,14 @@ import {
 } from '@/features/courier/data/mock-courier';
 
 const stockApplied = new Set<string>();
-const moneyPosted = new Set<string>();
+/** Sales revenue + COGS already recognized (usually on deliver). */
+const revenuePosted = new Set<string>();
+/** Cash collected (prepaid or COD settlement). */
+const cashSettled = new Set<string>();
+
+function isCodPayment(order: OrderDetail): boolean {
+  return order.paymentStatus === 'cod';
+}
 
 export function onOrderCreated(order: OrderDetail, payload: CreateOrderPayload): void {
   upsertMockCustomerFromOrder({
@@ -41,7 +48,6 @@ export function onOrderCreated(order: OrderDetail, payload: CreateOrderPayload):
     recordCouponUsage(payload.couponCode);
   }
 
-  // Reserve stock on create for non-cancelled orders
   if (order.status !== 'cancelled' && !stockApplied.has(order.id)) {
     decreaseStockForOrderLines(order.lineItems);
     stockApplied.add(order.id);
@@ -88,25 +94,27 @@ export function onOrderStatusChanged(
   }
 
   if (nextStatus === 'cancelled' && stockApplied.has(order.id)) {
-    // Restock on cancel
     decreaseStockForOrderLines(
       order.lineItems.map((l) => ({ ...l, quantity: -l.quantity })),
     );
     stockApplied.delete(order.id);
   }
 
-  if (
-    (nextStatus === 'delivered' || nextStatus === 'completed') &&
-    (order.paymentStatus === 'paid' || order.paymentStatus === 'partial') &&
-    !moneyPosted.has(order.id)
-  ) {
-    postOrderIncome(order);
-  }
-
+  // COD-first: recognize sales + COGS on deliver (even when still COD).
   if (nextStatus === 'delivered' || nextStatus === 'completed') {
-    const ar = MOCK_RECEIVABLES.find((r) => r.orderNumber === order.orderNumber);
-    if (ar && ar.status !== 'collected') {
-      markReceivableCollected(ar.id);
+    if (!revenuePosted.has(order.id)) {
+      postOrderRevenue(order);
+    }
+    if (isCodPayment(order)) {
+      ensureReceivableForOrder({
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        amount: order.amount,
+      });
+    } else if (order.paymentStatus === 'paid' || order.paymentStatus === 'partial') {
+      markReceivableCollectedByOrderNumber(order.orderNumber);
+      cashSettled.add(order.id);
     }
   }
 
@@ -118,7 +126,6 @@ export function runAutomationsForOrderStatus(
   order: OrderDetail,
   nextStatus: OrderStatusType,
 ): void {
-  // Dynamic import avoids circular deps at module init
   void import('@/features/automations/data/mock-automations').then(({ getEnabledRulesForStatus }) => {
     const rules = getEnabledRulesForStatus(nextStatus);
     for (const rule of rules) {
@@ -144,35 +151,61 @@ export function runAutomationsForOrderStatus(
           status: 'ready',
         });
       }
-      // sms / assign: recorded on order timeline via update path when available
       if (rule.action === 'sms') {
-        // Timeline note is applied in updateMockOrder callers; log for mock audit
         console.info(`[automation] SMS queued for ${order.orderNumber}: ${rule.actionLabel}`);
       }
     }
   });
 }
 
-/** Call after orders are set to in_courier via updateMockOrder. */
 export function onCourierSubmitted(orderIds: string[], provider: string): void {
   markOrdersSubmittedToCourier(orderIds, provider);
 }
 
+/**
+ * Cash collected — prepaid pay or COD settlement from courier.
+ * If revenue already posted on deliver (COD), only records cash settle + clears AR.
+ */
 export function onOrderPaid(order: OrderDetail): void {
-  if (moneyPosted.has(order.id)) return;
-  postOrderIncome(order);
-  const ar = MOCK_RECEIVABLES.find((r) => r.orderNumber === order.orderNumber);
-  if (ar) markReceivableCollected(ar.id);
+  const revenueAlreadyPosted = revenuePosted.has(order.id);
+
+  if (!revenueAlreadyPosted) {
+    // Prepaid / paid before deliver — recognize sales once, cash already in
+    postOrderRevenue(order);
+    cashSettled.add(order.id);
+    markReceivableCollectedByOrderNumber(order.orderNumber);
+    return;
+  }
+
+  // COD path: sales already on deliver — settlement is cash collection only
+  if (!cashSettled.has(order.id)) {
+    createMockIncome({
+      date: new Date().toISOString().slice(0, 10),
+      category: 'cod_collection',
+      description: `COD settled — ${order.orderNumber} (${order.customerName})`,
+      amount: order.amount,
+      paymentMethod: 'cash',
+      accountName: 'Cash Register',
+      relatedOrderId: order.id,
+      reference: order.orderNumber,
+    });
+    cashSettled.add(order.id);
+  }
+
+  markReceivableCollectedByOrderNumber(order.orderNumber);
 }
 
-function postOrderIncome(order: OrderDetail): void {
+function postOrderRevenue(order: OrderDetail): void {
+  if (revenuePosted.has(order.id)) return;
+
+  const isCod = isCodPayment(order);
   createMockIncome({
     date: new Date().toISOString().slice(0, 10),
     category: 'order_sales',
-    description: `Order ${order.orderNumber} — ${order.customerName}`,
+    description: `Order ${order.orderNumber} — ${order.customerName}${isCod ? ' (COD delivered)' : ''}`,
     amount: order.amount,
-    paymentMethod: order.paymentStatus === 'cod' ? 'cash' : 'bkash',
-    accountName: order.paymentStatus === 'cod' ? 'Cash Register' : 'bKash Business',
+    paymentMethod: isCod ? 'cod' : 'bkash',
+    accountName: isCod ? 'Accounts Receivable' : 'bKash Business',
     relatedOrderId: order.id,
     reference: order.orderNumber,
   });
@@ -196,5 +229,5 @@ function postOrderIncome(order: OrderDetail): void {
     });
   }
 
-  moneyPosted.add(order.id);
+  revenuePosted.add(order.id);
 }

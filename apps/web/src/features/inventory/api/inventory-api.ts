@@ -30,6 +30,7 @@ import {
   MOCK_PURCHASE_RETURNS,
   MOCK_SUPPLIERS,
   previewProductionBatch,
+  receiveMockPurchase,
   runProductionBatch,
   updateMockProduct,
 } from '@/features/inventory/data/mock-inventory';
@@ -47,6 +48,7 @@ export type InventoryApi = {
   }) => Promise<{ successCount: number; failedCount: number; message?: string }>;
   listSuppliers: (search?: string) => Promise<SupplierListResponse>;
   listPurchases: (search?: string) => Promise<PurchaseListResponse>;
+  receivePurchase: (purchaseId: string) => Promise<import('@laam/types').PurchaseListItem>;
   listPurchaseReturns: () => Promise<PurchaseReturnListResponse>;
   listAdjustments: () => Promise<StockAdjustmentListResponse>;
   createAdjustment: (payload: CreateAdjustmentPayload) => Promise<void>;
@@ -100,6 +102,10 @@ export function createMockInventoryApi(): InventoryApi {
     async listPurchases(search) {
       await delay(100);
       return filterMockPurchases(search);
+    },
+    async receivePurchase(purchaseId) {
+      await delay(120);
+      return receiveMockPurchase(purchaseId);
     },
     async listPurchaseReturns() {
       await delay(80);
@@ -182,6 +188,10 @@ export function createHttpInventoryApi(): InventoryApi {
       const { apiRequest } = await import('@/lib/api/client');
       const params = search ? `?search=${encodeURIComponent(search)}` : '';
       return apiRequest<PurchaseListResponse>(`/crm/inventory/purchases${params}`);
+    },
+    async receivePurchase(purchaseId) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest(`/crm/inventory/purchases/${purchaseId}/receive`, { method: 'POST' });
     },
     async listPurchaseReturns() {
       const { apiRequest } = await import('@/lib/api/client');

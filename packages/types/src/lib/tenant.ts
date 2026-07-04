@@ -55,9 +55,39 @@ export const tenantUserSchema = z.object({
   status: tenantUserStatusSchema.default('active'),
   lastSeenAt: z.string().optional(),
   orderDistributionPercent: z.number().min(0).max(100).optional(),
+  /** Call-center / sales team this user belongs to (agents under a leader). */
+  teamId: z.string().optional(),
 });
 
 export type TenantUser = z.infer<typeof tenantUserSchema>;
+
+/** Sales / call-center team: one leader, many agents. */
+export const orgTeamSchema = z.object({
+  id: z.string(),
+  organizationId: z.string().uuid(),
+  name: z.string().min(1),
+  leaderUserId: z.string().uuid(),
+  memberUserIds: z.array(z.string().uuid()).default([]),
+  createdAt: z.string(),
+});
+
+export type OrgTeam = z.infer<typeof orgTeamSchema>;
+
+export const createOrgTeamRequestSchema = z.object({
+  name: z.string().min(1),
+  leaderUserId: z.string().uuid(),
+  memberUserIds: z.array(z.string().uuid()).default([]),
+});
+
+export type CreateOrgTeamRequest = z.infer<typeof createOrgTeamRequestSchema>;
+
+export const updateOrgTeamRequestSchema = z.object({
+  name: z.string().min(1).optional(),
+  leaderUserId: z.string().uuid().optional(),
+  memberUserIds: z.array(z.string().uuid()).optional(),
+});
+
+export type UpdateOrgTeamRequest = z.infer<typeof updateOrgTeamRequestSchema>;
 
 export const createTenantUserRequestSchema = z.object({
   name: z.string().min(1),

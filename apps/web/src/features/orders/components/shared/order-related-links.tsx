@@ -26,7 +26,7 @@ type OrderRelatedLinksProps = {
 export function OrderRelatedLinks({ order }: OrderRelatedLinksProps) {
   const links = [
     {
-      href: `/dashboard/companies?search=${encodeURIComponent(order.customerPhone)}`,
+      href: `/dashboard/customers?search=${encodeURIComponent(order.customerPhone)}`,
       icon: Building2,
       label: 'Customer profile',
       hint: order.customerName,

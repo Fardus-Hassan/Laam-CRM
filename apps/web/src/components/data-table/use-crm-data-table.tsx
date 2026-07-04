@@ -192,9 +192,13 @@ export function useCrmDataTable<T>({
     return state;
   }, [selectedIds]);
 
+  // No sticky/fixed columns on small screens — full horizontal scroll only.
   const columnPinning = React.useMemo(
-    () => buildColumnPinning(pinnedColumns, enableRowSelection),
-    [pinnedColumns, enableRowSelection],
+    () =>
+      isMobile || isTablet
+        ? { left: [] as string[], right: [] as string[] }
+        : buildColumnPinning(pinnedColumns, enableRowSelection),
+    [pinnedColumns, enableRowSelection, isMobile, isTablet],
   );
 
   const sorting = React.useMemo(

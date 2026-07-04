@@ -5,12 +5,14 @@ import * as React from 'react';
 import { EmptyState } from '@/components/layout/empty-state';
 import { Card, CardContent } from '@/components/ui/card';
 import { ORDER_CARD_CLASS } from '@/features/orders/components/create-order/section-layout';
+import { useDragToScroll } from '@/hooks/use-drag-to-scroll';
 import { cn } from '@/lib/utils';
 
 export type ResponsiveListRow = {
   id: string;
   cells: React.ReactNode[];
-  mobile: React.ReactNode;
+  /** Kept for callers; mobile uses the same table layout. */
+  mobile?: React.ReactNode;
 };
 
 type InventoryResponsiveListProps = {
@@ -30,6 +32,8 @@ export function InventoryResponsiveList({
   emptyDescription = 'Nothing to show yet.',
   className,
 }: InventoryResponsiveListProps) {
+  const scrollRef = useDragToScroll<HTMLDivElement>({ handleSelector: 'thead' });
+
   if (loading) {
     return (
       <Card className={cn(ORDER_CARD_CLASS, className)}>
@@ -54,33 +58,36 @@ export function InventoryResponsiveList({
 
   return (
     <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden', className)}>
-      <div className="divide-y md:hidden">
-        {rows.map((row) => (
-          <div key={row.id} className="p-4">
-            {row.mobile}
-          </div>
-        ))}
-      </div>
-
-      <div className="hidden min-w-0 overflow-x-auto md:block">
+      <div
+        ref={scrollRef}
+        className={cn(
+          'custom-scrollbar min-h-[16rem] min-w-0 max-w-full overflow-auto overscroll-contain',
+          'max-h-[min(62vh,34rem)] sm:max-h-[min(70vh,44rem)]',
+          '[&[data-drag-scrolling=true]]:cursor-grabbing',
+          '[&[data-drag-scrolling=true]_thead]:cursor-grabbing',
+        )}
+      >
         <table className="w-full min-w-[640px] text-sm">
-          <thead>
+          <thead className="sticky top-0 z-20 cursor-grab select-none bg-card [&_*]:select-none">
             <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
               {headers.map((h) => (
-                <th key={h} className="whitespace-nowrap px-4 py-2.5 font-medium">
+                <th
+                  key={h}
+                  className="whitespace-nowrap bg-muted/30 px-3 py-2.5 font-medium sm:px-4"
+                >
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="select-text">
             {rows.map((row) => (
               <tr
                 key={row.id}
                 className="border-b border-border/50 transition-colors hover:bg-muted/30"
               >
                 {row.cells.map((cell, j) => (
-                  <td key={j} className="px-4 py-3 align-middle">
+                  <td key={j} className="px-3 py-2.5 align-middle sm:px-4 sm:py-3">
                     {cell}
                   </td>
                 ))}

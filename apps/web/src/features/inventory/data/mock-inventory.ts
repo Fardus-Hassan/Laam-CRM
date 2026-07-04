@@ -19,6 +19,7 @@ import type {
 
 import {
   postInventoryProduction,
+  postInventoryPurchase,
   postInventoryWriteOff,
 } from '@/features/accounting/data/mock-accounting';
 
@@ -34,10 +35,11 @@ const SUPPLIER_NAMES = [
 ];
 
 function categoryForSku(sku: string): ProductCategory {
-  if (sku.startsWith('MDH') || sku.startsWith('KLM') || sku.startsWith('SDM')) return 'honey';
+  if (sku.startsWith('HKM') || sku.startsWith('MDH') || sku.startsWith('RAW-HNY')) return 'honey';
+  if (sku.startsWith('KLJ') || sku.startsWith('KLM')) return 'other';
+  if (sku.startsWith('PNK') || sku.startsWith('BTR') || sku.startsWith('MRG')) return 'other';
+  if (sku.startsWith('WLS') || sku.startsWith('RMD') || sku.startsWith('CMB')) return 'gift';
   if (sku.startsWith('KHJ') || sku.startsWith('AJW') || sku.startsWith('DKJ')) return 'dates';
-  if (sku.startsWith('CMB')) return 'combo';
-  if (sku.startsWith('RMD')) return 'gift';
   return 'other';
 }
 
@@ -82,7 +84,13 @@ function buildProduct(index: number): InventoryProductDetail {
     salePriceMin: Math.min(...prices),
     salePriceMax: Math.max(...prices),
     costPrice: variants[0].costPrice,
-    tags: index % 3 === 0 ? ['Ramadan'] : index % 4 === 0 ? ['VIP'] : [],
+    tags: base.isHero
+      ? ['Hero', 'Best seller']
+      : base.isUpsell
+        ? ['Upsell']
+        : index % 3 === 0
+          ? ['Campaign']
+          : [],
     supplierName: SUPPLIER_NAMES[index % SUPPLIER_NAMES.length],
     lastSoldAt: index % 2 === 0 ? `2026-07-0${1 + (index % 2)}T11:00:00.000Z` : undefined,
     updatedAt,
@@ -264,9 +272,11 @@ export function updateMockProduct(id: string, patch: UpdateProductPayload): Inve
 
   if (patch.stockAdjustment) {
     const delta = patch.stockAdjustment.delta;
-    variants = variants.map((v, i) =>
-      i === 0 ? { ...v, stock: Math.max(0, v.stock + delta) } : v,
-    );
+    const variantId = patch.stockAdjustment.variantId;
+    variants = variants.map((v, i) => {
+      const target = variantId ? v.id === variantId : i === 0;
+      return target ? { ...v, stock: Math.max(0, v.stock + delta) } : v;
+    });
     stock = variants.reduce((s, v) => s + v.stock, 0);
   }
 
@@ -379,6 +389,45 @@ export function filterMockPurchases(search?: string) {
   };
 }
 
+/** Receive PO stock once — updates PO status, stock, and accounting. */
+export function receiveMockPurchase(purchaseId: string): PurchaseListItem {
+  const purchase = MOCK_PURCHASES.find((p) => p.id === purchaseId);
+  if (!purchase) {
+    throw new Error('Purchase order not found');
+  }
+  if (purchase.stockStatus === 'received') {
+    throw new Error(`${purchase.purchaseNumber} already received`);
+  }
+
+  // Prefer hero mix / active catalog products for stock-in
+  const product =
+    MOCK_INVENTORY_PRODUCTS.find((p) => p.id === 'prod-hero-mix' || p.sku.startsWith('HKM')) ??
+    MOCK_INVENTORY_PRODUCTS.find((p) => p.status === 'active') ??
+    MOCK_INVENTORY_PRODUCTS[0];
+
+  if (product) {
+    updateMockProduct(product.id, {
+      stockAdjustment: {
+        delta: purchase.itemCount || 1,
+        reason: `Received ${purchase.purchaseNumber}`,
+      },
+    });
+  }
+
+  purchase.stockStatus = 'received';
+
+  postInventoryPurchase({
+    amount: purchase.totalAmount,
+    supplierName: purchase.supplierName,
+    reference: purchase.purchaseNumber,
+    paymentMethod: purchase.paymentStatus === 'paid' ? 'bank' : 'cash',
+    accountName: 'DBBL Current',
+    paidNow: purchase.paymentStatus === 'paid',
+  });
+
+  return { ...purchase };
+}
+
 // Purchase returns
 export const MOCK_PURCHASE_RETURNS: PurchaseReturnListItem[] = Array.from({ length: 8 }, (_, i) => ({
   id: `pr-${i + 1}`,
@@ -449,149 +498,195 @@ export function createMockAdjustment(payload: CreateAdjustmentPayload): StockAdj
 
 export const MOCK_PRODUCTION_RUNS: ProductionBatchResult[] = [];
 
-/** Preview how many units can be made from grams (no stock change). */
-export function previewProductionBatch(payload: RunProductionBatchPayload): {
-  maxUnits: number;
-  usedGrams: number;
-  leftoverGrams: number;
+function qtyToKg(quantity: number, unit: 'kg' | 'g') {
+  return unit === 'kg' ? quantity : quantity / 1000;
+}
+
+function qtyToGrams(quantity: number, unit: 'kg' | 'g') {
+  return unit === 'kg' ? quantity * 1000 : quantity;
+}
+
+function round3(n: number) {
+  return Math.round(n * 1000) / 1000;
+}
+
+type PreviewResult = {
+  unitsProduced: number;
   materialCost: number;
   costPerUnit: number;
   limitedBy: string;
-} {
-  const primary = getMockProductById(payload.primaryInput.productId);
+  ok: boolean;
+  inputs: ProductionBatchResult['inputs'];
+  outputs: ProductionBatchResult['outputs'];
+  perUnitRawUsage: ProductionBatchResult['perUnitRawUsage'];
+};
+
+/** Preview multi-raw production (no stock change). */
+export function previewProductionBatch(payload: RunProductionBatchPayload): PreviewResult {
   const output = getMockProductById(payload.outputProductId);
-  if (!primary || !output) {
-    return { maxUnits: 0, usedGrams: 0, leftoverGrams: 0, materialCost: 0, costPerUnit: 0, limitedBy: 'Missing product' };
+  const empty: PreviewResult = {
+    unitsProduced: 0,
+    materialCost: 0,
+    costPerUnit: 0,
+    limitedBy: 'Missing product',
+    ok: false,
+    inputs: [],
+    outputs: [],
+    perUnitRawUsage: [],
+  };
+  if (!output) return empty;
+
+  const raws = (payload.rawMaterials ?? []).filter((r) => r.name.trim() && r.quantity > 0);
+  const lines = (payload.outputs ?? []).filter((o) => o.units > 0);
+  if (!raws.length) {
+    return { ...empty, limitedBy: 'Add at least one raw material' };
+  }
+  if (!lines.length) {
+    return { ...empty, limitedBy: 'Enter units for at least one variant' };
   }
 
-  const gramsPerUnit = payload.gramsPerUnit;
-  const totalGrams = payload.primaryInput.totalGrams;
-  let maxUnits = Math.floor(totalGrams / gramsPerUnit);
-  let limitedBy = primary.name;
+  const unitsProduced = lines.reduce((s, o) => s + o.units, 0);
+  const totalFinishedGrams = lines.reduce((s, o) => s + o.units * o.gramsPerUnit, 0);
 
-  for (const extra of payload.extraInputs ?? []) {
-    const p = getMockProductById(extra.productId);
-    if (!p || extra.qtyPerUnit <= 0) continue;
-    const fromExtra = Math.floor(p.stock / extra.qtyPerUnit);
-    if (fromExtra < maxUnits) {
-      maxUnits = fromExtra;
-      limitedBy = p.name;
+  const inputs: ProductionBatchResult['inputs'] = raws.map((r) => {
+    const qtyKg = qtyToKg(r.quantity, r.unit);
+    const costPerKg =
+      r.costPerKg > 0 ? r.costPerKg : qtyKg > 0 ? r.totalCost / qtyKg : 0;
+    const totalCost = r.totalCost > 0 ? r.totalCost : Math.round(costPerKg * qtyKg);
+    const product = r.productId ? getMockProductById(r.productId) : undefined;
+    const usedUnits = product
+      ? r.unit === 'kg'
+        ? Math.ceil(r.quantity)
+        : Math.max(1, Math.ceil(r.quantity / 1000))
+      : undefined;
+    return {
+      productId: r.productId,
+      name: r.name.trim(),
+      sku: product?.sku,
+      quantity: r.quantity,
+      unit: r.unit,
+      totalCost: Math.round(totalCost),
+      costPerKg: Math.round(costPerKg * 100) / 100,
+      usedUnits,
+    };
+  });
+
+  let limitedBy = '';
+  let ok = true;
+  for (const input of inputs) {
+    if (!input.productId || input.usedUnits == null) continue;
+    const p = getMockProductById(input.productId);
+    if (p && p.stock < input.usedUnits) {
+      ok = false;
+      limitedBy = `${input.name} stock (need ${input.usedUnits}, have ${p.stock})`;
     }
   }
 
-  const units = payload.unitsToProduce
-    ? Math.min(payload.unitsToProduce, maxUnits)
-    : maxUnits;
+  const materialCost = inputs.reduce((s, i) => s + i.totalCost, 0);
+  const costPerUnit = unitsProduced > 0 ? Math.round(materialCost / unitsProduced) : 0;
 
-  const usedGrams = units * gramsPerUnit;
-  const leftoverGrams = Math.max(0, totalGrams - usedGrams);
-  const gramsPerStock = payload.primaryInput.gramsPerStockUnit || 1000;
-  const primaryUnitsUsed = usedGrams / gramsPerStock;
-  const primaryCost = primaryUnitsUsed * (primary.costPrice ?? primary.salePriceMin * 0.55);
+  // Average unit: each raw split evenly by unit count
+  const perUnitRawUsage = inputs.map((input) => ({
+    name: input.name,
+    unit: input.unit,
+    quantityPerUnit: unitsProduced > 0 ? round3(input.quantity / unitsProduced) : 0,
+    costPerUnit: unitsProduced > 0 ? Math.round(input.totalCost / unitsProduced) : 0,
+  }));
 
-  let extraCost = 0;
-  for (const extra of payload.extraInputs ?? []) {
-    const p = getMockProductById(extra.productId);
-    if (!p) continue;
-    extraCost += units * extra.qtyPerUnit * (p.costPrice ?? p.salePriceMin * 0.55);
-  }
+  // Per variant: allocate by finished weight share
+  const outputs: ProductionBatchResult['outputs'] = lines.map((line) => {
+    const lineGrams = line.units * line.gramsPerUnit;
+    const share = totalFinishedGrams > 0 ? lineGrams / totalFinishedGrams : 0;
+    const lineCost = Math.round(materialCost * share);
+    const rawUsage = inputs.map((input) => {
+      const totalRawGrams = qtyToGrams(input.quantity, input.unit);
+      const gramsForThisVariantLine = totalRawGrams * share;
+      const gramsPerOneUnit = line.units > 0 ? gramsForThisVariantLine / line.units : 0;
+      const quantityPerUnit =
+        input.unit === 'kg' ? round3(gramsPerOneUnit / 1000) : round3(gramsPerOneUnit);
+      const costPerUnit =
+        line.units > 0 ? Math.round((input.totalCost * share) / line.units) : 0;
+      return {
+        name: input.name,
+        unit: input.unit,
+        quantityPerUnit,
+        costPerUnit,
+      };
+    });
+    return {
+      variantId: line.variantId,
+      variantLabel: line.variantLabel,
+      gramsPerUnit: line.gramsPerUnit,
+      units: line.units,
+      cost: lineCost,
+      costPerUnit: line.units > 0 ? Math.round(lineCost / line.units) : 0,
+      rawUsage,
+    };
+  });
 
-  const materialCost = Math.round(primaryCost + extraCost);
-  const costPerUnit = units > 0 ? Math.round(materialCost / units) : 0;
-
-  return { maxUnits, usedGrams, leftoverGrams, materialCost, costPerUnit, limitedBy };
+  return {
+    unitsProduced,
+    materialCost,
+    costPerUnit,
+    limitedBy: limitedBy || 'OK',
+    ok,
+    inputs,
+    outputs,
+    perUnitRawUsage,
+  };
 }
 
 export function runProductionBatch(payload: RunProductionBatchPayload): ProductionBatchResult {
-  const primary = getMockProductById(payload.primaryInput.productId);
   const output = getMockProductById(payload.outputProductId);
-  if (!primary || !output) {
-    throw new Error('Product not found');
+  if (!output) {
+    throw new Error('Finished product not found');
   }
 
   const preview = previewProductionBatch(payload);
-  const units = payload.unitsToProduce
-    ? Math.min(payload.unitsToProduce, preview.maxUnits)
-    : preview.maxUnits;
-
-  if (units <= 0) {
-    throw new Error('Not enough material to produce any units');
+  if (!preview.ok || preview.unitsProduced <= 0) {
+    throw new Error(preview.limitedBy || 'Cannot run production');
   }
 
-  const usedGrams = units * payload.gramsPerUnit;
-  const leftoverGrams = Math.max(0, payload.primaryInput.totalGrams - usedGrams);
-  const gramsPerStock = payload.primaryInput.gramsPerStockUnit || 1000;
-  // Stock is integer — convert grams to whole stock units (round up so we don't under-deduct)
-  const primaryStockDelta = -Math.max(1, Math.ceil(usedGrams / gramsPerStock));
-
-  if (primary.stock < Math.abs(primaryStockDelta)) {
-    throw new Error(`Not enough stock of ${primary.name} (need ${Math.abs(primaryStockDelta)}, have ${primary.stock})`);
-  }
-
-  const inputs: ProductionBatchResult['inputs'] = [];
-
-  updateMockProduct(primary.id, {
-    stockAdjustment: {
-      delta: primaryStockDelta,
-      reason: `Production batch — ${usedGrams}g used`,
-    },
-  });
-  const primaryCost = Math.abs(primaryStockDelta) * (primary.costPrice ?? primary.salePriceMin * 0.55);
-  inputs.push({
-    productId: primary.id,
-    productName: primary.name,
-    sku: primary.sku,
-    usedGrams,
-    usedUnits: Math.abs(primaryStockDelta),
-    cost: Math.round(primaryCost),
-  });
-
-  for (const extra of payload.extraInputs ?? []) {
-    const p = getMockProductById(extra.productId);
-    if (!p) continue;
-    const usedUnits = units * extra.qtyPerUnit;
-    if (p.stock < usedUnits) {
-      throw new Error(`Not enough stock of ${p.name}`);
-    }
-    updateMockProduct(p.id, {
+  for (const input of preview.inputs) {
+    if (!input.productId || !input.usedUnits) continue;
+    updateMockProduct(input.productId, {
       stockAdjustment: {
-        delta: -usedUnits,
-        reason: `Production packaging ×${units}`,
+        delta: -input.usedUnits,
+        reason: `Production — ${input.quantity}${input.unit} ${input.name}`,
       },
     });
-    const cost = usedUnits * (p.costPrice ?? p.salePriceMin * 0.55);
-    inputs.push({
-      productId: p.id,
-      productName: p.name,
-      sku: p.sku,
-      usedUnits,
-      cost: Math.round(cost),
+  }
+
+  for (const line of preview.outputs) {
+    updateMockProduct(output.id, {
+      stockAdjustment: {
+        delta: line.units,
+        reason: `Production ${line.variantLabel} ×${line.units}`,
+        variantId: line.variantId,
+      },
     });
   }
 
-  updateMockProduct(output.id, {
-    stockAdjustment: {
-      delta: units,
-      reason: `Production output — ${payload.gramsPerUnit}g each`,
-    },
-  });
+  const units = preview.unitsProduced;
+  const materialCost = preview.materialCost;
+  const costPerUnit = preview.costPerUnit;
 
-  const materialCost = inputs.reduce((s, i) => s + i.cost, 0);
-  const costPerUnit = Math.round(materialCost / units);
-
-  // Update finished goods unit cost for COGS later
   const outIdx = MOCK_INVENTORY_PRODUCTS.findIndex((p) => p.id === output.id);
   if (outIdx >= 0) {
     const cur = MOCK_INVENTORY_PRODUCTS[outIdx];
     const prevStock = Math.max(0, cur.stock - units);
     const prevCost = cur.costPrice ?? costPerUnit;
-    const avgCost = prevStock + units > 0
-      ? Math.round((prevStock * prevCost + units * costPerUnit) / (prevStock + units))
-      : costPerUnit;
+    const avgCost =
+      prevStock + units > 0
+        ? Math.round((prevStock * prevCost + units * costPerUnit) / (prevStock + units))
+        : costPerUnit;
     MOCK_INVENTORY_PRODUCTS[outIdx] = {
       ...cur,
       costPrice: avgCost,
-      variants: cur.variants.map((v, i) => (i === 0 ? { ...v, costPrice: avgCost } : v)),
+      variants: cur.variants.map((v) => {
+        const line = preview.outputs.find((o) => o.variantId === v.id);
+        return line ? { ...v, costPrice: line.costPerUnit || avgCost } : v;
+      }),
     };
   }
 
@@ -602,13 +697,12 @@ export function runProductionBatch(payload: RunProductionBatchPayload): Producti
     outputProductId: output.id,
     outputProductName: output.name,
     outputSku: output.sku,
-    gramsPerUnit: payload.gramsPerUnit,
     unitsProduced: units,
-    usedGrams,
-    leftoverGrams,
     materialCost,
     costPerUnit,
-    inputs,
+    inputs: preview.inputs,
+    outputs: preview.outputs,
+    perUnitRawUsage: preview.perUnitRawUsage,
     note: payload.note,
     createdAt: new Date().toISOString(),
   };
@@ -617,12 +711,11 @@ export function runProductionBatch(payload: RunProductionBatchPayload): Producti
   postInventoryProduction({
     materialCost,
     unitsProduced: units,
-    outputName: output.name,
+    outputName: `${output.name} (${preview.inputs.map((i) => `${i.name} ${i.quantity}${i.unit}`).join(' + ')})`,
     batchNumber,
     costPerUnit,
   });
 
-  // Mark recipe last mixed if matching output sku
   const recipe = MOCK_MIXER_RECIPES.find((r) => r.outputSku === output.sku);
   if (recipe) recipe.lastMixedAt = result.createdAt;
 

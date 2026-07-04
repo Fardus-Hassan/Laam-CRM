@@ -111,7 +111,7 @@ export function CustomerListShell() {
   function handleClearFilters() {
     setSearch('');
     setPage(1);
-    router.replace('/dashboard/companies');
+    router.replace('/dashboard/customers');
   }
 
   async function handleNoteClick(row: CustomerListItem) {
@@ -177,7 +177,7 @@ export function CustomerListShell() {
           }}
         />
 
-        <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <CustomerSelectionBar
             selectedCount={selectedIds.size}
             selectedCustomerIds={[...selectedIds]}

@@ -5,6 +5,9 @@ export { orderStatusTypeSchema, type OrderStatusType } from './dashboard.js';
 
 export const orderSourceSchema = z.enum([
   'facebook',
+  'campaign',
+  'website',
+  'landing_page',
   'call',
   'ecommerce',
   'walk_in',

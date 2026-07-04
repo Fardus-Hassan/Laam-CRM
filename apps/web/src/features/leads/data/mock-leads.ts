@@ -88,7 +88,9 @@ function buildLead(
   overrides: Partial<LeadListItem> & Pick<LeadListItem, 'name' | 'status'>,
 ): LeadDetail {
   const leadNumber = `LD-${2000 + index}`;
-  const source = (['facebook', 'call', 'ecommerce', 'walk_in'] as const)[index % 4];
+  const source = (
+    ['facebook', 'campaign', 'website', 'landing_page', 'call'] as const
+  )[index % 5];
   const createdDay = 28 - (index % 14);
   const createdAt = `2024-05-${String(createdDay).padStart(2, '0')}T09:${String(index % 60).padStart(2, '0')}:00.000Z`;
   const assignedAgentName =

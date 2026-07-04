@@ -124,7 +124,7 @@ export function ProductListShell() {
             setPage(1);
           }}
         />
-        <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <ProductSelectionBar
             selectedCount={selectedIds.size}
             selectedProductIds={[...selectedIds]}

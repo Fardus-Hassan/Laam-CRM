@@ -129,7 +129,7 @@ function buildFollowup(index: number, queue: FollowupQueue): FollowupDetail {
     tags: index % 3 === 0 ? [TAGS_POOL[index % TAGS_POOL.length]] : [],
     smsStatus: index % 6 === 0 ? 'sent' : 'not_sent',
     assignedAgentName: CUSTOMER_AGENTS[index % CUSTOMER_AGENTS.length],
-    source: (['facebook', 'call', 'ecommerce', 'walk_in'] as const)[index % 4],
+    source: (['facebook', 'campaign', 'website', 'landing_page', 'call'] as const)[index % 5],
     createdAt,
   };
 

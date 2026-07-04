@@ -2,125 +2,96 @@
 
 import * as React from 'react';
 
-const INTERACTIVE_SELECTOR =
-  'a, button, input, textarea, select, [role="checkbox"], [data-no-drag-scroll]';
-
 /** Horizontal movement must exceed this before drag-scroll activates. */
-const DRAG_THRESHOLD_PX = 10;
+const DRAG_THRESHOLD_PX = 8;
 
 type DragState = {
   pending: boolean;
   isDragging: boolean;
+  didDrag: boolean;
   startX: number;
   startY: number;
   scrollLeft: number;
-  rightHoldTimer: ReturnType<typeof setTimeout> | null;
-  rightHoldActive: boolean;
 };
 
-export function useDragToScroll<T extends HTMLElement>() {
+type UseDragToScrollOptions = {
+  /**
+   * Only start drag when mousedown is inside this selector (within the scroll container).
+   * Defaults to `thead` so body text stays selectable.
+   */
+  handleSelector?: string;
+};
+
+export function useDragToScroll<T extends HTMLElement>(options?: UseDragToScrollOptions) {
+  const handleSelector = options?.handleSelector ?? 'thead';
   const ref = React.useRef<T>(null);
   const state = React.useRef<DragState>({
     pending: false,
     isDragging: false,
+    didDrag: false,
     startX: 0,
     startY: 0,
     scrollLeft: 0,
-    rightHoldTimer: null,
-    rightHoldActive: false,
   });
 
   const endDrag = React.useCallback(() => {
     const el = ref.current;
     const s = state.current;
-    if (s.rightHoldTimer) {
-      clearTimeout(s.rightHoldTimer);
-      s.rightHoldTimer = null;
-    }
     s.pending = false;
     s.isDragging = false;
-    s.rightHoldActive = false;
     if (el) {
       el.removeAttribute('data-drag-scrolling');
-      el.style.cursor = '';
     }
   }, []);
 
   const activateDrag = React.useCallback((clientX: number) => {
     const el = ref.current;
-    if (!el) {
-      return;
-    }
+    if (!el) return;
     const s = state.current;
     s.pending = false;
     s.isDragging = true;
+    s.didDrag = true;
     s.startX = clientX;
     s.scrollLeft = el.scrollLeft;
     el.setAttribute('data-drag-scrolling', 'true');
-    el.style.cursor = 'grabbing';
+    window.getSelection()?.removeAllRanges();
   }, []);
 
   React.useEffect(() => {
     const el = ref.current;
-    if (!el) {
-      return;
-    }
+    if (!el) return;
 
-    function isInteractiveTarget(target: EventTarget | null) {
-      return Boolean(
-        target instanceof Element && target.closest(INTERACTIVE_SELECTOR),
-      );
-    }
-
-    function hasTextSelection() {
-      const selection = window.getSelection();
-      return Boolean(selection && selection.toString().length > 0);
+    function isOnHandle(target: EventTarget | null) {
+      if (!(target instanceof Element)) return false;
+      const handle = target.closest(handleSelector);
+      return Boolean(handle && el!.contains(handle));
     }
 
     function onMouseDown(event: MouseEvent) {
-      if (isInteractiveTarget(event.target)) {
-        return;
-      }
+      if (event.button !== 0) return;
+      if (!isOnHandle(event.target)) return;
 
       const container = ref.current;
-      if (!container) {
-        return;
-      }
+      if (!container) return;
 
-      if (event.button === 0) {
-        const s = state.current;
-        s.pending = true;
-        s.startX = event.clientX;
-        s.startY = event.clientY;
-        s.scrollLeft = container.scrollLeft;
-        return;
-      }
-
-      if (event.button === 2) {
-        state.current.rightHoldTimer = setTimeout(() => {
-          state.current.rightHoldActive = true;
-          activateDrag(event.clientX);
-        }, 500);
-      }
+      const s = state.current;
+      s.pending = true;
+      s.didDrag = false;
+      s.startX = event.clientX;
+      s.startY = event.clientY;
+      s.scrollLeft = container.scrollLeft;
     }
 
     function onMouseMove(event: MouseEvent) {
       const s = state.current;
       const container = ref.current;
-      if (!container) {
-        return;
-      }
+      if (!container) return;
 
       if (s.pending && !s.isDragging) {
         const dx = Math.abs(event.clientX - s.startX);
         const dy = Math.abs(event.clientY - s.startY);
 
-        if (hasTextSelection()) {
-          s.pending = false;
-          return;
-        }
-
-        if (dx > DRAG_THRESHOLD_PX && dx > dy * 1.2) {
+        if (dx > DRAG_THRESHOLD_PX && dx > dy) {
           activateDrag(event.clientX);
         } else if (dy > DRAG_THRESHOLD_PX && dy >= dx) {
           s.pending = false;
@@ -128,9 +99,7 @@ export function useDragToScroll<T extends HTMLElement>() {
         }
       }
 
-      if (!s.isDragging) {
-        return;
-      }
+      if (!s.isDragging) return;
 
       event.preventDefault();
       const dx = event.clientX - s.startX;
@@ -141,30 +110,28 @@ export function useDragToScroll<T extends HTMLElement>() {
       endDrag();
     }
 
-    function onContextMenu(event: MouseEvent) {
-      const s = state.current;
-      if (s.isDragging || s.rightHoldActive) {
-        event.preventDefault();
-      }
-      if (s.rightHoldTimer) {
-        clearTimeout(s.rightHoldTimer);
-        s.rightHoldTimer = null;
-      }
+    /** After a header drag, block the click so sort buttons don't fire. */
+    function onClickCapture(event: MouseEvent) {
+      if (!state.current.didDrag) return;
+      if (!isOnHandle(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      state.current.didDrag = false;
     }
 
     el.addEventListener('mousedown', onMouseDown);
-    el.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-    el.addEventListener('contextmenu', onContextMenu);
+    el.addEventListener('click', onClickCapture, true);
 
     return () => {
       el.removeEventListener('mousedown', onMouseDown);
-      el.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
-      el.removeEventListener('contextmenu', onContextMenu);
+      el.removeEventListener('click', onClickCapture, true);
       endDrag();
     };
-  }, [activateDrag, endDrag]);
+  }, [activateDrag, endDrag, handleSelector]);
 
   return ref;
 }

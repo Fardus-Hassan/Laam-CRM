@@ -1,12 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import type { CreateTenantUserRequest, Permission, TenantUser } from '@laam/types';
+import type { CreateTenantUserRequest, OrgTeam, Permission, TenantUser } from '@laam/types';
 import { ROLE_LABELS } from '@laam/types';
-import { Clock, Mail, Phone, Plus, Search, UserCog, Users } from 'lucide-react';
+import { Clock, Mail, Phone, Plus, Search, UserCog, Users, UsersRound } from 'lucide-react';
 
 import { PermissionMatrix } from '@/features/rbac/components/permission-matrix';
 import { InviteUserDialog } from '@/features/rbac/components/invite-user-dialog';
+import { TeamsAdminPanel } from '@/features/rbac/components/teams-admin-panel';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { Can } from '@/components/auth/can';
@@ -42,25 +43,34 @@ export function TeamAdminShell() {
   const organizationId = organization?.id;
 
   const [users, setUsers] = React.useState<TenantUser[]>([]);
+  const [teams, setTeams] = React.useState<OrgTeam[]>([]);
   const [roles, setRoles] = React.useState<Awaited<ReturnType<typeof rbacApi.listRoles>>>([]);
   const [selectedId, setSelectedId] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [extraGrants, setExtraGrants] = React.useState<Permission[]>([]);
   const [extraDenies, setExtraDenies] = React.useState<Permission[]>([]);
   const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [tab, setTab] = React.useState<'members' | 'teams'>('teams');
 
   const selected = users.find((user) => user.id === selectedId);
 
   const refresh = React.useCallback(async () => {
     if (!organizationId) return;
-    const [nextUsers, nextRoles] = await Promise.all([
+    const [nextUsers, nextRoles, nextTeams] = await Promise.all([
       rbacApi.listUsers(organizationId),
       rbacApi.listRoles(organizationId),
+      rbacApi.listTeams(organizationId),
     ]);
     setUsers(nextUsers);
     setRoles(nextRoles);
+    setTeams(nextTeams);
     setSelectedId((current) => current || nextUsers[0]?.id || '');
   }, [organizationId]);
+
+  function teamName(teamId?: string) {
+    if (!teamId) return '—';
+    return teams.find((t) => t.id === teamId)?.name ?? '—';
+  }
 
   React.useEffect(() => {
     void refresh();
@@ -81,7 +91,6 @@ export function TeamAdminShell() {
   );
 
   const activeCount = users.filter((u) => u.status === 'active').length;
-  const invitedCount = users.filter((u) => u.status === 'invited').length;
 
   async function handleSaveOverrides() {
     if (!organizationId || !selected) return;
@@ -111,12 +120,48 @@ export function TeamAdminShell() {
           items={[
             { id: 'total', label: 'Team members', value: String(users.length) },
             { id: 'active', label: 'Active', value: String(activeCount) },
-            { id: 'invited', label: 'Invited', value: String(invitedCount) },
-            { id: 'roles', label: 'Custom roles', value: String(roles.length) },
+            { id: 'teams', label: 'Teams', value: String(teams.length) },
+            { id: 'leaders', label: 'Leaders', value: String(users.filter((u) => u.systemRole === 'team_leader').length) },
           ]}
           className="sm:grid-cols-2 lg:grid-cols-4"
         />
 
+        <div className="flex gap-1 rounded-lg border bg-muted/30 p-1">
+          <button
+            type="button"
+            className={cn(
+              'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium sm:flex-none',
+              tab === 'teams' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => setTab('teams')}
+          >
+            <UsersRound className="size-3.5" />
+            Teams & leaders
+          </button>
+          <button
+            type="button"
+            className={cn(
+              'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium sm:flex-none',
+              tab === 'members' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => setTab('members')}
+          >
+            <Users className="size-3.5" />
+            All members
+          </button>
+        </div>
+
+        {tab === 'teams' ? (
+          <TeamsAdminPanel
+            organizationId={organizationId}
+            users={users}
+            teams={teams}
+            onChanged={refresh}
+          />
+        ) : null}
+
+        {tab === 'members' ? (
+        <>
         <Card className={ORDER_CARD_CLASS}>
           <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}>
             <div className="flex items-center gap-2">
@@ -145,6 +190,7 @@ export function TeamAdminShell() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Team</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Last seen</TableHead>
                   <TableHead>Distribution</TableHead>
@@ -176,6 +222,13 @@ export function TeamAdminShell() {
                       <Badge variant="secondary" className="text-[10px]">
                         {ROLE_LABELS[user.systemRole]}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {teamName(user.teamId)}
+                      {user.teamId &&
+                      teams.find((t) => t.id === user.teamId)?.leaderUserId === user.id
+                        ? ' (leader)'
+                        : ''}
                     </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_VARIANT[user.status ?? 'active']} className="text-[10px]">
@@ -263,6 +316,8 @@ export function TeamAdminShell() {
               </div>
             </CardContent>
           </Card>
+        ) : null}
+        </>
         ) : null}
       </div>
 

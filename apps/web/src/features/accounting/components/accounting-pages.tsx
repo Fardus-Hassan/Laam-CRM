@@ -34,6 +34,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { useDragToScroll } from '@/hooks/use-drag-to-scroll';
 import { downloadCsv } from '@/lib/export-csv';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -184,72 +185,59 @@ function QuickActionCard({
 }
 
 function SimpleTxnTable({ rows }: { rows: AccountingOverview['recentTransactions'] }) {
+  const scrollRef = useDragToScroll<HTMLDivElement>({ handleSelector: 'thead' });
+
   if (!rows.length) {
     return <p className="p-4 text-center text-sm text-muted-foreground">No recent transactions.</p>;
   }
 
   return (
-    <>
-      <div className="divide-y md:hidden">
-        {rows.map((row) => (
-          <div key={row.id} className="flex items-start justify-between gap-3 p-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{row.description}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {row.date} · {PAYMENT_METHOD_LABELS[row.paymentMethod]}
-              </p>
-            </div>
-            <span
-              className={cn(
-                'shrink-0 text-sm font-medium tabular-nums',
-                row.type === 'income' ? 'text-emerald-600' : row.type === 'journal' ? 'text-foreground' : 'text-red-600',
-              )}
-            >
-              {row.type === 'income' ? '+' : row.type === 'journal' ? '' : '−'}
-              {formatCurrency(row.amount)}
-            </span>
-          </div>
-        ))}
-      </div>
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[480px] text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
-              <th className="px-4 py-2">Date</th>
-              <th className="px-4 py-2">Description</th>
-              <th className="px-4 py-2">Method</th>
-              <th className="px-4 py-2 text-right">Amount</th>
+    <div
+      ref={scrollRef}
+      className={cn(
+        'custom-scrollbar min-h-[14rem] min-w-0 max-w-full overflow-auto overscroll-contain',
+        'max-h-[min(50vh,28rem)] sm:max-h-[min(55vh,32rem)]',
+        '[&[data-drag-scrolling=true]]:cursor-grabbing',
+        '[&[data-drag-scrolling=true]_thead]:cursor-grabbing',
+      )}
+    >
+      <table className="w-full min-w-[480px] text-sm">
+        <thead className="sticky top-0 z-20 cursor-grab select-none bg-card [&_*]:select-none">
+          <tr className="border-b bg-card text-left text-xs text-muted-foreground">
+            <th className="bg-card px-3 py-2 sm:px-4">Date</th>
+            <th className="bg-card px-3 py-2 sm:px-4">Description</th>
+            <th className="bg-card px-3 py-2 sm:px-4">Method</th>
+            <th className="bg-card px-3 py-2 text-right sm:px-4">Amount</th>
+          </tr>
+        </thead>
+        <tbody className="select-text">
+          {rows.map((row) => (
+            <tr key={row.id} className="border-b border-border/50">
+              <td className="px-3 py-2.5 tabular-nums sm:px-4 sm:py-3">{row.date}</td>
+              <td className="px-3 py-2.5 sm:px-4 sm:py-3">{row.description}</td>
+              <td className="px-3 py-2.5 sm:px-4 sm:py-3">
+                <Badge variant="outline" className="text-[10px]">
+                  {PAYMENT_METHOD_LABELS[row.paymentMethod]}
+                </Badge>
+              </td>
+              <td
+                className={cn(
+                  'px-3 py-2.5 text-right font-medium tabular-nums sm:px-4 sm:py-3',
+                  row.type === 'income'
+                    ? 'text-emerald-600'
+                    : row.type === 'journal'
+                      ? 'text-foreground'
+                      : 'text-red-600',
+                )}
+              >
+                {row.type === 'income' ? '+' : row.type === 'journal' ? '' : '−'}
+                {formatCurrency(row.amount)}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-b border-border/50">
-                <td className="px-4 py-3 tabular-nums">{row.date}</td>
-                <td className="px-4 py-3">{row.description}</td>
-                <td className="px-4 py-3">
-                  <Badge variant="outline" className="text-[10px]">
-                    {PAYMENT_METHOD_LABELS[row.paymentMethod]}
-                  </Badge>
-                </td>
-                <td
-                  className={cn(
-                    'px-4 py-3 text-right font-medium tabular-nums',
-                    row.type === 'income'
-                      ? 'text-emerald-600'
-                      : row.type === 'journal'
-                        ? 'text-foreground'
-                        : 'text-red-600',
-                  )}
-                >
-                  {row.type === 'income' ? '+' : row.type === 'journal' ? '' : '−'}
-                  {formatCurrency(row.amount)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -488,6 +476,8 @@ function ReportPageShell({ title, description, children }: { title: string; desc
 }
 
 function SimpleTable({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) {
+  const scrollRef = useDragToScroll<HTMLDivElement>({ handleSelector: 'thead' });
+
   if (!rows.length) {
     return (
       <Card className={ORDER_CARD_CLASS}>
@@ -498,38 +488,35 @@ function SimpleTable({ headers, rows }: { headers: string[]; rows: React.ReactNo
 
   return (
     <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
-      {/* Mobile: stacked cards */}
-      <div className="divide-y md:hidden">
-        {rows.map((cells, i) => (
-          <div key={i} className="space-y-2 p-4">
-            {cells.map((cell, j) =>
-              headers[j] ? (
-                <div key={j} className="flex min-w-0 items-start justify-between gap-3 text-sm">
-                  <span className="shrink-0 text-xs text-muted-foreground">{headers[j]}</span>
-                  <div className="min-w-0 text-right">{cell}</div>
-                </div>
-              ) : (
-                <div key={j} className="pt-1">{cell}</div>
-              ),
-            )}
-          </div>
-        ))}
-      </div>
-      {/* Desktop table */}
-      <div className="hidden overflow-x-auto md:block">
+      <div
+        ref={scrollRef}
+        className={cn(
+          'custom-scrollbar min-h-[16rem] min-w-0 max-w-full overflow-auto overscroll-contain',
+          'max-h-[min(62vh,34rem)] sm:max-h-[min(70vh,44rem)]',
+          '[&[data-drag-scrolling=true]]:cursor-grabbing',
+          '[&[data-drag-scrolling=true]_thead]:cursor-grabbing',
+        )}
+      >
         <table className="w-full min-w-[560px] text-sm">
-          <thead>
+          <thead className="sticky top-0 z-20 cursor-grab select-none [&_*]:select-none">
             <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
               {headers.map((h) => (
-                <th key={h} className="whitespace-nowrap px-4 py-2.5 font-medium">{h || ''}</th>
+                <th
+                  key={h}
+                  className="whitespace-nowrap bg-muted/30 px-3 py-2.5 font-medium sm:px-4"
+                >
+                  {h || ''}
+                </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="select-text">
             {rows.map((cells, i) => (
               <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
                 {cells.map((cell, j) => (
-                  <td key={j} className="px-4 py-3 align-middle">{cell}</td>
+                  <td key={j} className="px-3 py-2.5 align-middle sm:px-4 sm:py-3">
+                    {cell}
+                  </td>
                 ))}
               </tr>
             ))}

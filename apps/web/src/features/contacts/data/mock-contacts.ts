@@ -81,7 +81,9 @@ function buildCustomerContact(
   const createdDay = 28 - (index % 20);
   const createdAt = `2024-05-${String(createdDay).padStart(2, '0')}T08:00:00.000Z`;
   const name = overrides.name ?? CONSUMER_NAMES[index % CONSUMER_NAMES.length];
-  const source = (['facebook', 'call', 'ecommerce', 'walk_in'] as const)[index % 4];
+  const source = (
+    ['facebook', 'campaign', 'website', 'landing_page', 'call'] as const
+  )[index % 5];
   const totalSpent = overrides.totalSpent ?? orderCount * (650 + (index % 5) * 180);
 
   const base: ContactListItem = {

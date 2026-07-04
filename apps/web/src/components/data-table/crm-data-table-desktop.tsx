@@ -40,16 +40,18 @@ export function CrmDataTableDesktop<T>({
 }: CrmDataTableDesktopProps<T>) {
   const cellPadding = density === 'compact' ? 'py-2' : 'py-3';
   const showExpand = Boolean(isTablet && hiddenOnTablet.length > 0);
-  const scrollRef = useDragToScroll<HTMLDivElement>();
+  // Drag-to-scroll only from header so body text stays selectable.
+  const scrollRef = useDragToScroll<HTMLDivElement>({ handleSelector: 'thead' });
 
   return (
     <div
       ref={scrollRef}
       className={cn(
-        // Horizontal scroll only — vertical scroll uses the page shell so the
-        // scrollbar sits flush with the screen edge (not inset by page padding).
-        'custom-scrollbar relative w-full overflow-x-auto',
+        // Fixed viewport: sticky header + body scroll (x/y). Pagination sits outside.
+        'custom-scrollbar relative min-h-[16rem] min-w-0 w-full max-w-full overflow-auto overscroll-contain',
+        'max-h-[min(62vh,34rem)] sm:max-h-[min(70vh,44rem)]',
         '[&[data-drag-scrolling=true]]:cursor-grabbing',
+        '[&[data-drag-scrolling=true]_thead]:cursor-grabbing',
       )}
     >
       <table
@@ -59,9 +61,13 @@ export function CrmDataTableDesktop<T>({
           TABLE_OUTER_BORDER,
           className,
         )}
-        style={minTableWidth ? { minWidth: minTableWidth, width: '100%' } : { width: '100%' }}
+        style={
+          minTableWidth
+            ? { minWidth: typeof minTableWidth === 'number' ? `${minTableWidth}px` : minTableWidth }
+            : { width: '100%' }
+        }
       >
-        <thead className="sticky top-14 z-30 bg-card sm:top-16">
+        <thead className="sticky top-0 z-30 cursor-grab select-none bg-card shadow-sm [&_*]:select-none">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id} className="hover:bg-transparent">
               {headerGroup.headers.map((header) => {
@@ -92,7 +98,7 @@ export function CrmDataTableDesktop<T>({
             </tr>
           ))}
         </thead>
-        <tbody>
+        <tbody className="select-text">
           {table.getRowModel().rows.map((row) => (
             <DesktopRow
               key={row.id}

@@ -10,12 +10,12 @@ export const MOCK_AGENT_DASHBOARD: AgentDashboard = {
     label: '19 May 2024 - 25 May 2024',
   },
   kpis: [
-    { id: 'assigned', label: 'Assigned Orders', value: 32, icon: 'clipboard-list' },
-    { id: 'confirmed', label: 'Confirmed Orders', value: 18, icon: 'check-circle' },
-    { id: 'delivered', label: 'Delivered Orders', value: 12, icon: 'truck' },
-    { id: 'cancelled', label: 'Cancelled Orders', value: 4, icon: 'x-circle' },
-    { id: 'hold', label: 'Hold Orders', value: 3, icon: 'pause-circle' },
-    { id: 'follow_ups', label: 'Follow Ups', value: 7, icon: 'phone' },
+    { id: 'assigned', label: 'Call queue', value: 48, icon: 'clipboard-list' },
+    { id: 'confirmed', label: 'Confirms today', value: 36, icon: 'check-circle' },
+    { id: 'attach', label: 'Upsell attach %', value: 22, icon: 'truck' },
+    { id: 'cancelled', label: 'Cancelled', value: 4, icon: 'x-circle' },
+    { id: 'hold', label: 'Hold', value: 3, icon: 'pause-circle' },
+    { id: 'follow_ups', label: 'Follow-ups due', value: 11, icon: 'phone' },
   ],
   myOrders: {
     title: 'My Orders Summary',

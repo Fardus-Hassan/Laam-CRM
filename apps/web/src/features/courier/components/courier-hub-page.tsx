@@ -229,7 +229,7 @@ export function CourierHubPage() {
           </CardHeader>
           <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-2')}>
             <p className="text-xs text-muted-foreground">
-              Mark COD-collected parcels as paid — posts income and clears receivables.
+              Cash-in only: sales already posted on deliver. Settlement clears COD receivables.
             </p>
             {(data?.inbox.filter((e) => e.type === 'cod_collected') ?? []).map((ev) => (
               <div key={ev.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">

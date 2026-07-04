@@ -79,12 +79,16 @@ export function OrderListToolbar({
     <div className={cn('space-y-2', className)}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <FormInput
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search orders by ID, phone, name, address…"
-            className="pl-9"
+            placeholder="Search…"
+            aria-label="Search orders"
+            className={cn(
+              'h-8 border-border bg-background pl-8 text-xs text-foreground',
+              'placeholder:text-muted-foreground shadow-none',
+            )}
           />
         </div>
         {onApplySavedView ? (
@@ -94,10 +98,10 @@ export function OrderListToolbar({
           type="button"
           variant={filtersOpen ? 'secondary' : 'outline'}
           size="sm"
-          className="shrink-0"
+          className="h-8 shrink-0"
           onClick={onToggleFilters}
         >
-          <Filter className="size-4" />
+          <Filter className="size-3.5" />
           Filters
           {chips.length > 0 ? (
             <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-xs tabular-nums">

@@ -13,14 +13,14 @@ import type {
 import type { ChartPoint, DualAxisPoint } from '@laam/types';
 
 const PRODUCTS = [
-  { id: 'p1', name: 'Modhu 500g', sku: 'MDH-500' },
-  { id: 'p2', name: 'Khejur 1kg', sku: 'KHJ-1K' },
-  { id: 'p3', name: 'Modhu-Khejur Combo', sku: 'COMBO-01' },
-  { id: 'p4', name: 'Ramadan Gift Box', sku: 'RAM-GFT' },
-  { id: 'p5', name: 'Organic Honey 250g', sku: 'HNY-250' },
-  { id: 'p6', name: 'Dates Premium 500g', sku: 'DAT-500' },
-  { id: 'p7', name: 'Modhu 1kg Family Pack', sku: 'MDH-1K' },
-  { id: 'p8', name: 'Khejur Paste 400g', sku: 'KHJ-PST' },
+  { id: 'p1', name: 'Honey + Kalojira Mix 500g', sku: 'HKM-500' },
+  { id: 'p2', name: 'Honey + Kalojira Mix 1kg', sku: 'HKM-1K' },
+  { id: 'p3', name: 'Pink Salt 500g', sku: 'PNK-500' },
+  { id: 'p4', name: 'Beetroot Powder 250g', sku: 'BTR-250' },
+  { id: 'p5', name: 'Pure Honey 500g', sku: 'MDH-500' },
+  { id: 'p6', name: 'Kalojira Powder 250g', sku: 'KLJ-250' },
+  { id: 'p7', name: 'Moringa Powder 100g', sku: 'MRG-100' },
+  { id: 'p8', name: 'Wellness Gift Box', sku: 'WLS-GFT' },
 ];
 
 const AGENTS = [
@@ -62,12 +62,12 @@ export function getReportSummary(period: ReportPeriod): ReportSummary {
   return {
     period,
     kpis: [
-      { id: 'orders', label: 'Total orders', value: String(Math.round(482 * m)), change: 12.4, hint: 'vs previous period' },
-      { id: 'revenue', label: 'Revenue', value: `৳${Math.round(1245000 * m).toLocaleString()}`, change: 8.2 },
-      { id: 'aov', label: 'Avg order value', value: `৳${Math.round(2580 * (1 + m * 0.02)).toLocaleString()}`, change: -2.1 },
-      { id: 'repeat', label: 'Repeat rate', value: '34%', change: 5.6 },
+      { id: 'orders', label: 'Total orders', value: String(Math.round(4820 * m)), change: 12.4, hint: 'vs previous period' },
+      { id: 'revenue', label: 'Revenue (COD)', value: `৳${Math.round(4280000 * m).toLocaleString()}`, change: 8.2 },
+      { id: 'hero', label: 'Hero mix share', value: '90%', change: 1.2, hint: 'Honey + Kalojira Mix' },
+      { id: 'attach', label: 'Upsell attach rate', value: '18%', change: 3.4, hint: 'Mix + add-on products' },
+      { id: 'confirm', label: 'Call confirm rate', value: '78%', change: 2.1 },
       { id: 'conversion', label: 'Lead conversion', value: '28%', change: 3.2 },
-      { id: 'returns', label: 'Return rate', value: '4.2%', change: -0.8 },
     ],
     revenueTrend: genTrend(7, 180000 * m, 25000),
     ordersTrend: genTrend(7, 68 * m, 12),
@@ -78,9 +78,9 @@ export function getReportSummary(period: ReportPeriod): ReportSummary {
       revenueBdt: Math.round((85000 - i * 12000) * m),
     })),
     recentHighlights: [
-      { id: 'h1', label: 'Best day', value: 'Friday — ৳42,000' },
-      { id: 'h2', label: 'Top agent', value: 'Sakib Ahmed — 89 orders' },
-      { id: 'h3', label: 'Top product', value: 'Modhu 500g — 142 units' },
+      { id: 'h1', label: 'Best day', value: 'Friday — ৳4,20,000' },
+      { id: 'h2', label: 'Top agent', value: 'Sakib Ahmed — 189 confirms' },
+      { id: 'h3', label: 'Top product', value: 'Honey + Kalojira Mix 500g — 1,420 units' },
     ],
   };
 }
@@ -94,7 +94,9 @@ export function getSalesKpis(period: ReportPeriod) {
       { id: 'delivered', label: 'Delivered', value: String(Math.round(398 * m)) },
       { id: 'cancelled', label: 'Cancelled', value: String(Math.round(24 * m)) },
       { id: 'aov', label: 'AOV', value: `৳2,580` },
-      { id: 'cod', label: 'COD %', value: '62%' },
+      { id: 'cod', label: 'COD %', value: '92%' },
+      { id: 'attach', label: 'Upsell attach', value: '18%' },
+      { id: 'confirms', label: 'Call confirms', value: String(Math.round(380 * m)) },
     ],
     trend: genTrend(7, 68 * m, 10),
   };
@@ -211,9 +213,9 @@ export function getMarketingReport(period: ReportPeriod): MarketingReport {
     orders: Math.round(186 * m),
     trend: genDualTrend(),
     campaigns: [
-      { id: 'cp1', name: 'Ramadan Modhu Boost', spendBdt: Math.round(32000 * m), revenueBdt: Math.round(168000 * m), roas: 5.25, orders: Math.round(72 * m) },
-      { id: 'cp2', name: 'Khejur Combo Retarget', spendBdt: Math.round(28000 * m), revenueBdt: Math.round(124000 * m), roas: 4.4, orders: Math.round(58 * m) },
-      { id: 'cp3', name: 'Lookalike Dhaka', spendBdt: Math.round(25000 * m), revenueBdt: Math.round(128000 * m), roas: 5.1, orders: Math.round(56 * m) },
+      { id: 'cp1', name: 'Honey+Kalojira Mix Boost', spendBdt: Math.round(85000 * m), revenueBdt: Math.round(920000 * m), roas: 10.8, orders: Math.round(820 * m) },
+      { id: 'cp2', name: 'Knock Day Landing', spendBdt: Math.round(120000 * m), revenueBdt: Math.round(1450000 * m), roas: 12.1, orders: Math.round(1280 * m) },
+      { id: 'cp3', name: 'Lookalike Dhaka', spendBdt: Math.round(45000 * m), revenueBdt: Math.round(380000 * m), roas: 8.4, orders: Math.round(340 * m) },
     ],
   };
 }
@@ -221,20 +223,20 @@ export function getMarketingReport(period: ReportPeriod): MarketingReport {
 export function getLeadSources(period: ReportPeriod): LeadSourceRow[] {
   const m = periodMultiplier(period);
   return [
-    { source: 'Facebook Ads', leads: Math.round(186 * m), orders: Math.round(98 * m), conversionRate: 52.7, revenueBdt: Math.round(252000 * m) },
-    { source: 'Phone Call', leads: Math.round(124 * m), orders: Math.round(72 * m), conversionRate: 58.1, revenueBdt: Math.round(185000 * m) },
-    { source: 'WhatsApp', leads: Math.round(98 * m), orders: Math.round(54 * m), conversionRate: 55.1, revenueBdt: Math.round(138000 * m) },
-    { source: 'Walk-in', leads: Math.round(42 * m), orders: Math.round(38 * m), conversionRate: 90.5, revenueBdt: Math.round(98000 * m) },
-    { source: 'Website', leads: Math.round(56 * m), orders: Math.round(28 * m), conversionRate: 50.0, revenueBdt: Math.round(72000 * m) },
+    { source: 'Facebook Ad', leads: Math.round(1860 * m), orders: Math.round(980 * m), conversionRate: 52.7, revenueBdt: Math.round(1252000 * m) },
+    { source: 'Facebook Campaign', leads: Math.round(1240 * m), orders: Math.round(720 * m), conversionRate: 58.1, revenueBdt: Math.round(985000 * m) },
+    { source: 'Landing Page', leads: Math.round(980 * m), orders: Math.round(540 * m), conversionRate: 55.1, revenueBdt: Math.round(738000 * m) },
+    { source: 'Website', leads: Math.round(560 * m), orders: Math.round(280 * m), conversionRate: 50.0, revenueBdt: Math.round(372000 * m) },
+    { source: 'Inbound Call', leads: Math.round(420 * m), orders: Math.round(310 * m), conversionRate: 73.8, revenueBdt: Math.round(410000 * m) },
   ];
 }
 
 export function getUpsales(period: ReportPeriod): UpsellRow[] {
   const m = periodMultiplier(period);
   return [
-    { id: 'u1', baseProduct: 'Modhu 500g', upsellProduct: 'Modhu-Khejur Combo', count: Math.round(48 * m), revenueBdt: Math.round(57600 * m), rate: 18.2 },
-    { id: 'u2', baseProduct: 'Khejur 1kg', upsellProduct: 'Ramadan Gift Box', count: Math.round(32 * m), revenueBdt: Math.round(48000 * m), rate: 14.5 },
-    { id: 'u3', baseProduct: 'Modhu 500g', upsellProduct: 'Modhu 1kg Family Pack', count: Math.round(28 * m), revenueBdt: Math.round(39200 * m), rate: 10.6 },
+    { id: 'u1', baseProduct: 'Honey + Kalojira Mix', upsellProduct: 'Pink Salt', count: Math.round(480 * m), revenueBdt: Math.round(182400 * m), rate: 12.4 },
+    { id: 'u2', baseProduct: 'Honey + Kalojira Mix', upsellProduct: 'Beetroot Powder', count: Math.round(320 * m), revenueBdt: Math.round(166400 * m), rate: 8.2 },
+    { id: 'u3', baseProduct: 'Honey + Kalojira Mix', upsellProduct: 'Pure Honey', count: Math.round(280 * m), revenueBdt: Math.round(218400 * m), rate: 7.1 },
   ];
 }
 

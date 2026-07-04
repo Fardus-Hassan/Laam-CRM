@@ -12,8 +12,6 @@ import type {
 import { RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { postInventoryPurchase } from '@/features/accounting/data/mock-accounting';
-
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -31,6 +29,7 @@ import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { InventoryResponsiveList } from '@/features/inventory/components/inventory-responsive-list';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
 import { ProductionBatchPanel } from '@/features/inventory/components/production-batch-panel';
+import { ProductionLedger } from '@/features/inventory/components/production-ledger';
 import { MOCK_INVENTORY_PRODUCTS } from '@/features/inventory/data/mock-inventory';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
 import {
@@ -192,22 +191,13 @@ export function PurchaseListShell() {
   }, [search]);
 
   async function receiveStock(p: PurchaseListItem) {
-    const product = MOCK_INVENTORY_PRODUCTS[0];
-    if (product) {
-      await inventoryApi.updateProduct(product.id, {
-        stockAdjustment: { delta: p.itemCount || 1, reason: `Received ${p.purchaseNumber}` },
-      });
+    try {
+      await inventoryApi.receivePurchase(p.id);
+      toast.success(`Stock received for ${p.purchaseNumber} — posted to accounting`);
+      setData(await inventoryApi.listPurchases(search));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not receive stock');
     }
-    postInventoryPurchase({
-      amount: p.totalAmount,
-      supplierName: p.supplierName,
-      reference: p.purchaseNumber,
-      paymentMethod: p.paymentStatus === 'paid' ? 'bank' : 'cash',
-      accountName: 'DBBL Current',
-      paidNow: p.paymentStatus === 'paid',
-    });
-    toast.success(`Stock received for ${p.purchaseNumber} — posted to accounting`);
-    setData(await inventoryApi.listPurchases(search));
   }
 
   return (
@@ -503,46 +493,11 @@ export function MixerListShell() {
   return (
     <InventoryPageLayout
       title="Mixer & production"
-      description="Bulk raw material → finished products by grams. Accounting posts automatically."
+      description="Record kg/g of raw material and how many of each variant you made — full hisab kept."
     >
       <ProductionBatchPanel onCompleted={() => load()} />
 
-      {runs.length > 0 ? (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium">Recent production runs</h3>
-          <InventoryResponsiveList
-            headers={['Batch', 'Output', 'Units', 'g/unit', 'Used', 'Leftover', 'Cost/unit', 'Total']}
-            rows={runs.map((r) => ({
-              id: r.id,
-              cells: [
-                <span key="b" className="font-mono text-xs font-medium">{r.batchNumber}</span>,
-                <span key="o" className="max-w-[10rem] truncate">{r.outputProductName}</span>,
-                r.unitsProduced,
-                `${r.gramsPerUnit}g`,
-                `${r.usedGrams.toLocaleString()}g`,
-                `${r.leftoverGrams.toLocaleString()}g`,
-                formatCurrency(r.costPerUnit),
-                formatCurrency(r.materialCost),
-              ],
-              mobile: (
-                <div className="space-y-1">
-                  <div className="flex justify-between gap-2">
-                    <p className="font-mono text-xs font-medium">{r.batchNumber}</p>
-                    <p className="font-semibold tabular-nums">{formatCurrency(r.materialCost)}</p>
-                  </div>
-                  <p className="text-sm">
-                    {r.unitsProduced}× {r.outputProductName} ({r.gramsPerUnit}g each)
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Used {r.usedGrams.toLocaleString()}g · leftover {r.leftoverGrams.toLocaleString()}g ·{' '}
-                    {formatCurrency(r.costPerUnit)}/unit
-                  </p>
-                </div>
-              ),
-            }))}
-          />
-        </div>
-      ) : null}
+      <ProductionLedger runs={runs} />
 
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Saved recipes</h3>

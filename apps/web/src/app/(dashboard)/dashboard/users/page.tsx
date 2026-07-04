@@ -5,7 +5,7 @@ export default function UsersPage() {
   return (
     <PageShell
       title="Team & Admins"
-      description="Invite teammates, assign roles, and manage per-user permissions."
+      description="Create teams, assign leaders and agents, invite members, and manage permissions."
     >
       <TeamAdminShell />
     </PageShell>

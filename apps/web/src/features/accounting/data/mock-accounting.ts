@@ -127,7 +127,8 @@ export const MOCK_RECEIVABLES: ReceivableItem[] = Array.from({ length: 14 }, (_,
   id: `ar-${i + 1}`,
   customerName: ['Fatema Akter', 'Karim Hassan', 'Nusrat Jahan', 'Kabir Hossain'][i % 4],
   customerPhone: `017${String(10000000 + i * 111111).slice(0, 8)}`,
-  orderNumber: `ORD-${12500 + i}`,
+  // Align with live order numbers (MH-…) so COD settlement can match
+  orderNumber: `MH-${8800 + i}`,
   amount: 2500 + i * 800,
   dueDate: `2026-07-${String(3 + (i % 10)).padStart(2, '0')}`,
   status: (['pending', 'partial', 'overdue', 'collected'] as const)[i % 4],
@@ -152,6 +153,40 @@ export function markReceivableCollected(id: string): ReceivableItem | undefined 
   item.status = 'collected';
   item.collectedAmount = item.amount;
   return { ...item };
+}
+
+export function markReceivableCollectedByOrderNumber(
+  orderNumber: string,
+): ReceivableItem | undefined {
+  const item = MOCK_RECEIVABLES.find((r) => r.orderNumber === orderNumber);
+  if (!item) return undefined;
+  return markReceivableCollected(item.id);
+}
+
+/** Open COD receivable when order is delivered (cash not yet settled). */
+export function ensureReceivableForOrder(opts: {
+  orderNumber: string;
+  customerName: string;
+  customerPhone?: string;
+  amount: number;
+}): ReceivableItem {
+  const existing = MOCK_RECEIVABLES.find((r) => r.orderNumber === opts.orderNumber);
+  if (existing) return existing;
+
+  const item: ReceivableItem = {
+    id: `ar-${Date.now()}`,
+    customerName: opts.customerName,
+    customerPhone: opts.customerPhone,
+    orderNumber: opts.orderNumber,
+    amount: opts.amount,
+    dueDate: new Date().toISOString().slice(0, 10),
+    status: 'pending',
+    collectedAmount: 0,
+    note: 'COD — awaiting courier settlement',
+  };
+  MOCK_RECEIVABLES.unshift(item);
+  adjustCoa('1100', opts.amount);
+  return item;
 }
 
 export function markPayablePaid(id: string): PayableItem | undefined {

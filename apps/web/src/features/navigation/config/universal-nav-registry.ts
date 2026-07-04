@@ -14,7 +14,6 @@ import {
   Contact,
   CreditCard,
   GitBranch,
-  Handshake,
   LayoutDashboard,
   Megaphone,
   MessageSquare,
@@ -88,24 +87,6 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
         icon: Target,
         url: '/dashboard/leads',
         permissions: pv('leads.view'),
-      },
-      {
-        id: 'pipeline',
-        title: 'Pipeline',
-        icon: GitBranch,
-        url: '/dashboard/pipeline',
-        permissions: pv('pipeline.view'),
-      },
-      {
-        id: 'deals',
-        title: 'Deals',
-        icon: Handshake,
-        permissions: pv('deals.view'),
-        children: [
-          { id: 'deals-all', title: 'All Deals', url: '/dashboard/deals', permissions: pv('deals.view') },
-          { id: 'deals-won', title: 'Won', url: '/dashboard/deals?stage=won', permissions: pv('deals.view') },
-          { id: 'deals-negotiation', title: 'Negotiation', url: '/dashboard/deals?stage=negotiation', permissions: pv('deals.view') },
-        ],
       },
       {
         id: 'customers',

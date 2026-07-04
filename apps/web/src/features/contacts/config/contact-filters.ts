@@ -39,9 +39,12 @@ export const CONTACT_SOURCE_FILTERS: {
 ];
 
 export const CONTACT_SOURCE_LABELS: Record<OrderSource, string> = {
-  facebook: 'Facebook',
+  facebook: 'Facebook Ad',
+  campaign: 'Facebook Campaign',
+  website: 'Website',
+  landing_page: 'Landing Page',
   call: 'Phone',
-  ecommerce: 'Online',
+  ecommerce: 'Online Store',
   walk_in: 'Walk-in',
 };
 

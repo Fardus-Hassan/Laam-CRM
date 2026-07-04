@@ -175,7 +175,7 @@ export function OrderListShell({ queue }: OrderListShellProps) {
       description="Manage orders, queues, and fulfillment workflows."
       breadcrumbs={createOrdersListBreadcrumbs(queue.title)}
     >
-      <div className={cn(ORDER_PAGE_GAP)}>
+      <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
         <OrderWorkspaceHeader
           queueSlug={queue.queueSlug}
           title={queue.title}
@@ -231,7 +231,7 @@ export function OrderListShell({ queue }: OrderListShellProps) {
           />
         ) : null}
 
-        <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <OrderSelectionBar
             selectedCount={selectedIds.size}
             selectedOrderIds={[...selectedIds]}
