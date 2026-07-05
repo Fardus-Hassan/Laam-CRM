@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import type { CreateTenantUserRequest, OrgTeam, Permission, TenantUser } from '@laam/types';
 import { ROLE_LABELS } from '@laam/types';
 import { Clock, Mail, Phone, Plus, Search, UserCog, Users, UsersRound } from 'lucide-react';
@@ -39,6 +41,9 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'secondary'> = {
 };
 
 export function TeamAdminShell() {
+  const searchParams = useSearchParams();
+  const agentsMode = searchParams.get('view') === 'team';
+
   const { organization, switchRole, canSwitchRole } = useAuth();
   const organizationId = organization?.id;
 
@@ -47,10 +52,11 @@ export function TeamAdminShell() {
   const [roles, setRoles] = React.useState<Awaited<ReturnType<typeof rbacApi.listRoles>>>([]);
   const [selectedId, setSelectedId] = React.useState('');
   const [search, setSearch] = React.useState('');
+  const [teamFilter, setTeamFilter] = React.useState('');
   const [extraGrants, setExtraGrants] = React.useState<Permission[]>([]);
   const [extraDenies, setExtraDenies] = React.useState<Permission[]>([]);
   const [inviteOpen, setInviteOpen] = React.useState(false);
-  const [tab, setTab] = React.useState<'members' | 'teams'>('teams');
+  const [tab, setTab] = React.useState<'members' | 'teams'>(agentsMode ? 'members' : 'teams');
 
   const selected = users.find((user) => user.id === selectedId);
 
@@ -64,8 +70,16 @@ export function TeamAdminShell() {
     setUsers(nextUsers);
     setRoles(nextRoles);
     setTeams(nextTeams);
-    setSelectedId((current) => current || nextUsers[0]?.id || '');
-  }, [organizationId]);
+    setSelectedId((current) => {
+      const roster = agentsMode
+        ? nextUsers.filter((user) => user.systemRole === 'sales_rep')
+        : nextUsers;
+      if (current && roster.some((user) => user.id === current)) {
+        return current;
+      }
+      return roster[0]?.id ?? '';
+    });
+  }, [agentsMode, organizationId]);
 
   function teamName(teamId?: string) {
     if (!teamId) return '—';
@@ -83,14 +97,41 @@ export function TeamAdminShell() {
     }
   }, [selected]);
 
-  const filtered = users.filter(
-    (u) =>
-      !search ||
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase()),
+  React.useEffect(() => {
+    setTab(agentsMode ? 'members' : 'teams');
+    setTeamFilter('');
+  }, [agentsMode]);
+
+  const roster = React.useMemo(
+    () =>
+      agentsMode ? users.filter((user) => user.systemRole === 'sales_rep') : users,
+    [agentsMode, users],
   );
 
-  const activeCount = users.filter((u) => u.status === 'active').length;
+  const filtered = roster.filter((user) => {
+    if (teamFilter && user.teamId !== teamFilter) {
+      return false;
+    }
+
+    if (!search) {
+      return true;
+    }
+
+    const query = search.toLowerCase();
+    return (
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query)
+    );
+  });
+
+  const activeCount = roster.filter((user) => user.status === 'active').length;
+  const avgDistribution =
+    roster.length > 0
+      ? Math.round(
+          roster.reduce((sum, user) => sum + (user.orderDistributionPercent ?? 0), 0) /
+            roster.length,
+        )
+      : 0;
 
   async function handleSaveOverrides() {
     if (!organizationId || !selected) return;
@@ -116,40 +157,80 @@ export function TeamAdminShell() {
   return (
     <>
       <div className={ORDER_PAGE_GAP}>
+        <p className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          {agentsMode ? (
+            <>
+              Showing <strong>sales agents only</strong> — order distribution and call-center roster.{' '}
+              <Link href="/dashboard/users" className="font-medium text-primary hover:underline">
+                Open full team admin
+              </Link>
+            </>
+          ) : (
+            <>
+              Full org roster — admins, leaders, and agents. Manage teams and permissions here.{' '}
+              <Link
+                href="/dashboard/users?view=team"
+                className="font-medium text-primary hover:underline"
+              >
+                View agents only
+              </Link>
+            </>
+          )}
+        </p>
+
         <CrmSummaryStrip
-          items={[
-            { id: 'total', label: 'Team members', value: String(users.length) },
-            { id: 'active', label: 'Active', value: String(activeCount) },
-            { id: 'teams', label: 'Teams', value: String(teams.length) },
-            { id: 'leaders', label: 'Leaders', value: String(users.filter((u) => u.systemRole === 'team_leader').length) },
-          ]}
+          items={
+            agentsMode
+              ? [
+                  { id: 'agents', label: 'Sales agents', value: String(roster.length) },
+                  { id: 'active', label: 'Active', value: String(activeCount) },
+                  {
+                    id: 'assigned',
+                    label: 'On a team',
+                    value: String(roster.filter((user) => user.teamId).length),
+                  },
+                  { id: 'dist', label: 'Avg distribution', value: `${avgDistribution}%` },
+                ]
+              : [
+                  { id: 'total', label: 'All members', value: String(users.length) },
+                  { id: 'active', label: 'Active', value: String(activeCount) },
+                  { id: 'teams', label: 'Teams', value: String(teams.length) },
+                  {
+                    id: 'leaders',
+                    label: 'Leaders',
+                    value: String(users.filter((user) => user.systemRole === 'team_leader').length),
+                  },
+                ]
+          }
           className="sm:grid-cols-2 lg:grid-cols-4"
         />
 
-        <div className="flex gap-1 rounded-lg border bg-muted/30 p-1">
-          <button
-            type="button"
-            className={cn(
-              'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium sm:flex-none',
-              tab === 'teams' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
-            )}
-            onClick={() => setTab('teams')}
-          >
-            <UsersRound className="size-3.5" />
-            Teams & leaders
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium sm:flex-none',
-              tab === 'members' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
-            )}
-            onClick={() => setTab('members')}
-          >
-            <Users className="size-3.5" />
-            All members
-          </button>
-        </div>
+        {!agentsMode ? (
+          <div className="flex gap-1 rounded-lg border bg-muted/30 p-1">
+            <button
+              type="button"
+              className={cn(
+                'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium sm:flex-none',
+                tab === 'teams' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+              onClick={() => setTab('teams')}
+            >
+              <UsersRound className="size-3.5" />
+              Teams & leaders
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium sm:flex-none',
+                tab === 'members' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+              onClick={() => setTab('members')}
+            >
+              <Users className="size-3.5" />
+              All members
+            </button>
+          </div>
+        ) : null}
 
         {tab === 'teams' ? (
           <TeamsAdminPanel
@@ -160,40 +241,58 @@ export function TeamAdminShell() {
           />
         ) : null}
 
-        {tab === 'members' ? (
+        {tab === 'members' || agentsMode ? (
         <>
         <Card className={ORDER_CARD_CLASS}>
           <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}>
             <div className="flex items-center gap-2">
               <Users className="size-4 text-primary" />
-              <CardTitle className="text-sm">Team members</CardTitle>
+              <CardTitle className="text-sm">
+                {agentsMode ? 'Sales agents' : 'All members'}
+              </CardTitle>
             </div>
             <Can permission="users.manage">
               <Button type="button" size="sm" onClick={() => setInviteOpen(true)}>
                 <Plus className="size-4" />
-                Invite
+                {agentsMode ? 'Invite agent' : 'Invite'}
               </Button>
             </Can>
           </CardHeader>
           <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-4')}>
-            <div className="relative max-w-sm">
-              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm"
-                placeholder="Search by name or email…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="flex flex-wrap gap-3">
+              <div className="relative min-w-[200px] flex-1 max-w-sm">
+                <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm"
+                  placeholder="Search by name or email…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              {agentsMode ? (
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  value={teamFilter}
+                  onChange={(event) => setTeamFilter(event.target.value)}
+                >
+                  <option value="">All teams</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
             </div>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Role</TableHead>
+                  {!agentsMode ? <TableHead>Role</TableHead> : null}
                   <TableHead>Team</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Last seen</TableHead>
-                  <TableHead>Distribution</TableHead>
+                  <TableHead>{agentsMode ? 'Lead %' : 'Distribution'}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -218,11 +317,13 @@ export function TeamAdminShell() {
                         ) : null}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-[10px]">
-                        {ROLE_LABELS[user.systemRole]}
-                      </Badge>
-                    </TableCell>
+                    {!agentsMode ? (
+                      <TableCell>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {ROLE_LABELS[user.systemRole]}
+                        </Badge>
+                      </TableCell>
+                    ) : null}
                     <TableCell className="text-xs text-muted-foreground">
                       {teamName(user.teamId)}
                       {user.teamId &&
@@ -248,12 +349,22 @@ export function TeamAdminShell() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={agentsMode ? 5 : 6}
+                      className="py-8 text-center text-sm text-muted-foreground"
+                    >
+                      {agentsMode ? 'No sales agents match this filter.' : 'No members match this search.'}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
 
-        {selected ? (
+        {selected && (!agentsMode || selected.systemRole === 'sales_rep') ? (
           <Card className={ORDER_CARD_CLASS}>
             <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}>
               <div className="flex items-center gap-2">

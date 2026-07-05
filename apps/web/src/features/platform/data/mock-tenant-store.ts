@@ -71,7 +71,69 @@ type OrgStore = {
   users: TenantUser[];
   teams: OrgTeam[];
   presetRoleIds: Record<string, string>;
+  customPresets: PermissionPreset[];
 };
+
+const RBAC_STORAGE_KEY = 'laam:org-rbac-v1';
+const hydratedOrgIds = new Set<string>();
+
+type OrgRbacPersist = {
+  roles?: CustomRole[];
+  customPresets?: PermissionPreset[];
+};
+
+function loadOrgRbacPersist(organizationId: string): OrgRbacPersist | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = localStorage.getItem(`${RBAC_STORAGE_KEY}:${organizationId}`);
+    return raw ? (JSON.parse(raw) as OrgRbacPersist) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistOrgRbac(organizationId: string, store: OrgStore) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const payload: OrgRbacPersist = {
+    roles: store.roles,
+    customPresets: store.customPresets,
+  };
+  localStorage.setItem(`${RBAC_STORAGE_KEY}:${organizationId}`, JSON.stringify(payload));
+}
+
+function ensureOrgStoreHydrated(organizationId: string) {
+  if (hydratedOrgIds.has(organizationId)) {
+    return;
+  }
+
+  const store = orgStores.get(organizationId);
+  if (!store) {
+    return;
+  }
+
+  const persisted = loadOrgRbacPersist(organizationId);
+  if (persisted?.roles?.length) {
+    store.roles = persisted.roles;
+  }
+  if (persisted?.customPresets?.length) {
+    store.customPresets = persisted.customPresets;
+  }
+
+  hydratedOrgIds.add(organizationId);
+}
+
+function touchOrgStore(organizationId: string) {
+  const store = orgStores.get(organizationId);
+  if (store) {
+    persistOrgRbac(organizationId, store);
+  }
+}
 
 function buildDefaultRoles(organizationId: string): {
   roles: CustomRole[];
@@ -265,6 +327,7 @@ const orgStores = new Map<string, OrgStore>([
       users: buildLaamSeedUsers(laamOrgId, laamBootstrap.presetRoleIds),
       teams: buildLaamSeedTeams(laamOrgId),
       presetRoleIds: laamBootstrap.presetRoleIds,
+      customPresets: [],
     },
   ],
 ]);
@@ -337,6 +400,7 @@ export function createTenant(input: CreateTenantRequest): Tenant {
     users: [owner],
     teams: [],
     presetRoleIds,
+    customPresets: [],
   });
 
   tenants = [tenant, ...tenants];
@@ -344,7 +408,52 @@ export function createTenant(input: CreateTenantRequest): Tenant {
 }
 
 export function listRoles(organizationId: string): CustomRole[] {
+  ensureOrgStoreHydrated(organizationId);
   return [...(orgStores.get(organizationId)?.roles ?? [])];
+}
+
+export function listCustomPresets(organizationId: string): PermissionPreset[] {
+  ensureOrgStoreHydrated(organizationId);
+  return [...(orgStores.get(organizationId)?.customPresets ?? [])];
+}
+
+export function saveCustomPreset(
+  organizationId: string,
+  input: { name: string; description?: string; permissions: Permission[] },
+): PermissionPreset {
+  ensureOrgStoreHydrated(organizationId);
+  const store = orgStores.get(organizationId);
+  if (!store) {
+    throw new Error(`Organization not found: ${organizationId}`);
+  }
+
+  const preset: PermissionPreset = {
+    id: `custom_${crypto.randomUUID()}`,
+    name: input.name.trim(),
+    description: input.description?.trim() || undefined,
+    permissions: [...input.permissions],
+  };
+
+  store.customPresets = [...store.customPresets, preset];
+  touchOrgStore(organizationId);
+  return preset;
+}
+
+export function deleteCustomPreset(organizationId: string, presetId: string): boolean {
+  ensureOrgStoreHydrated(organizationId);
+  const store = orgStores.get(organizationId);
+  if (!store) {
+    return false;
+  }
+
+  const next = store.customPresets.filter((preset) => preset.id !== presetId);
+  if (next.length === store.customPresets.length) {
+    return false;
+  }
+
+  store.customPresets = next;
+  touchOrgStore(organizationId);
+  return true;
 }
 
 export function getRole(organizationId: string, roleId: string): CustomRole | undefined {
@@ -402,6 +511,7 @@ export function createRole(
   };
 
   store.roles = [...store.roles, role];
+  touchOrgStore(organizationId);
   return role;
 }
 
@@ -420,8 +530,9 @@ export function updateRole(
     return undefined;
   }
 
-  const next = { ...store.roles[index], ...patch };
+  const next = { ...store.roles[index], ...patch, updatedAt: new Date().toISOString() };
   store.roles = [...store.roles.slice(0, index), next, ...store.roles.slice(index + 1)];
+  touchOrgStore(organizationId);
   return next;
 }
 
@@ -437,6 +548,7 @@ export function deleteRole(organizationId: string, roleId: string): boolean {
   }
 
   store.roles = store.roles.filter((item) => item.id !== roleId);
+  touchOrgStore(organizationId);
   return true;
 }
 

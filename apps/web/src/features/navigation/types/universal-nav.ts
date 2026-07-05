@@ -7,6 +7,7 @@ export type NavChildDefinition = {
   url: string;
   permissions: Permission[];
   badge?: number;
+  children?: NavChildDefinition[];
 };
 
 export type UniversalNavItem = {

@@ -39,6 +39,7 @@ function createInitialState(): CreateOrderFormState {
     name: '',
     email: '',
     address: '',
+    customerNote: '',
     district: '',
     pathaoLocation: null,
     orderSource: '',

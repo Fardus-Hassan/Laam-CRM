@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Plug,
   Settings2,
+  Tags,
   Trash2,
   UserCog,
   Users,
@@ -28,6 +29,12 @@ const SETTINGS_LINKS = [
     description: 'Couriers, bKash, Facebook leads, email SMTP, and WooCommerce.',
     href: '/dashboard/settings/integrations',
     icon: Plug,
+  },
+  {
+    title: 'Categories',
+    description: 'Product, income, expense, and knowledge categories per organization.',
+    href: '/dashboard/settings/categories',
+    icon: Tags,
   },
   {
     title: 'Order Statuses',

@@ -6,6 +6,7 @@ import { FormField } from '@/components/form/form-field';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetFooter,
   SheetHeader,
@@ -43,15 +44,17 @@ export function OrderAssignSheet({ open, onOpenChange, onAssign }: OrderAssignSh
         <SheetHeader>
           <SheetTitle>Assign agent</SheetTitle>
         </SheetHeader>
-        <FormField label="Employee" className="mt-4">
-          <FormSearchSelect
-            value={employee}
-            onChange={setEmployee}
-            options={EMPLOYEES.map((name) => ({ value: name, label: name }))}
-            placeholder="Search employee"
-          />
-        </FormField>
-        <SheetFooter className="mt-6">
+        <SheetBody>
+          <FormField label="Employee">
+            <FormSearchSelect
+              value={employee}
+              onChange={setEmployee}
+              options={EMPLOYEES.map((name) => ({ value: name, label: name }))}
+              placeholder="Search employee"
+            />
+          </FormField>
+        </SheetBody>
+        <SheetFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

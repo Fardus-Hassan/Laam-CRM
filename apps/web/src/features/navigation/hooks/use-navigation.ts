@@ -8,17 +8,23 @@ import {
   ORDER_QUEUE_FAVORITES_CHANGED,
   sortNavChildrenByFavorites,
 } from '@/features/orders/lib/order-queue-favorites';
+import { ORDER_STATUSES_CHANGED } from '@/features/orders/data/order-status-store';
 
 export function useNavigation() {
   const { permissions } = usePermissions();
-  const [favoritesVersion, setFavoritesVersion] = React.useState(0);
+  const [navVersion, setNavVersion] = React.useState(0);
 
   React.useEffect(() => {
-    function onFavoritesChanged() {
-      setFavoritesVersion((v) => v + 1);
+    function refresh() {
+      setNavVersion((value) => value + 1);
     }
-    window.addEventListener(ORDER_QUEUE_FAVORITES_CHANGED, onFavoritesChanged);
-    return () => window.removeEventListener(ORDER_QUEUE_FAVORITES_CHANGED, onFavoritesChanged);
+
+    window.addEventListener(ORDER_QUEUE_FAVORITES_CHANGED, refresh);
+    window.addEventListener(ORDER_STATUSES_CHANGED, refresh);
+    return () => {
+      window.removeEventListener(ORDER_QUEUE_FAVORITES_CHANGED, refresh);
+      window.removeEventListener(ORDER_STATUSES_CHANGED, refresh);
+    };
   }, []);
 
   return React.useMemo(() => {
@@ -37,5 +43,5 @@ export function useNavigation() {
         };
       }),
     }));
-  }, [permissions, favoritesVersion]);
+  }, [permissions, navVersion]);
 }

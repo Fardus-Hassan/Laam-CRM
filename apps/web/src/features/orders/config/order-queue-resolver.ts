@@ -1,11 +1,12 @@
 import type { BulkActionId, OrderStatusType } from '@laam/types';
 
 import {
+  getQueueChildStatusSlugs,
   getQueuePageBySlug,
   getStatusConfigBySlug,
   MOCK_ORDER_QUEUE_PAGES,
-  MOCK_ORDER_STATUSES,
 } from '@/features/orders/data/mock-status-config';
+import { getOrderStatuses } from '@/features/orders/data/order-status-store';
 
 export type OrderQueueContext = {
   queueSlug: string;
@@ -110,17 +111,17 @@ export function resolveOrderQueueFromPath(
   }
 
   if (pathname.includes('/orders/statuses')) {
-    const page = getQueuePageBySlug('more_statuses')!;
+    const allPage = getQueuePageBySlug('all')!;
     return {
-      queueSlug: 'more_statuses',
-      kind: 'more',
-      title: page.title,
-      description: page.description,
-      href: page.href,
-      bulkActions: [],
-      showGroupByStatus: false,
-      showFilterPanel: false,
-      showSalesSummary: false,
+      queueSlug: 'all',
+      kind: 'all',
+      title: allPage.title,
+      description: allPage.description,
+      href: allPage.href,
+      bulkActions: DEFAULT_LIST_CONTEXT.bulkActions,
+      showGroupByStatus: true,
+      showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
+      showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
     };
   }
 
@@ -140,11 +141,12 @@ export function resolveOrderQueueFromPath(
         followUpDue: true,
       };
     }
-    if (page?.childStatusSlugs?.length) {
+    const childStatusSlugs = page ? getQueueChildStatusSlugs(page.slug) : [];
+    if (childStatusSlugs.length > 0 && page) {
       const activeChild =
         (statusParam as OrderStatusType | undefined) ??
         page.defaultChildSlug ??
-        page.childStatusSlugs[0];
+        childStatusSlugs[0];
       const statusConfig = getStatusConfigBySlug(activeChild);
 
       return {
@@ -155,7 +157,7 @@ export function resolveOrderQueueFromPath(
         href: page.href,
         statusFilter: activeChild,
         parentSlug: page.slug,
-        childStatusSlugs: page.childStatusSlugs,
+        childStatusSlugs,
         defaultChildSlug: page.defaultChildSlug,
         bulkActions: statusConfig?.bulkActions ?? DEFAULT_LIST_CONTEXT.bulkActions,
         showGroupByStatus: false,
@@ -198,7 +200,7 @@ export function resolveOrderQueueFromPath(
 }
 
 export function getAllStatusConfigs() {
-  return MOCK_ORDER_STATUSES;
+  return getOrderStatuses();
 }
 
 export function getAllQueuePages() {

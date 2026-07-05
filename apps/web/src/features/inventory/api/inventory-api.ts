@@ -3,7 +3,6 @@ import type {
   CreateProductPayload,
   InventoryProductDetail,
   MixerRecipeListResponse,
-  ProductCategory,
   ProductListQuery,
   ProductListResponse,
   ProductStatus,
@@ -43,7 +42,7 @@ export type InventoryApi = {
   bulkProductAction: (payload: {
     productIds: string[];
     status?: ProductStatus;
-    category?: ProductCategory;
+    category?: string;
     stockDelta?: number;
   }) => Promise<{ successCount: number; failedCount: number; message?: string }>;
   listSuppliers: (search?: string) => Promise<SupplierListResponse>;

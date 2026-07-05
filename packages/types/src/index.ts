@@ -29,3 +29,4 @@ export * from './lib/campaigns.js';
 export * from './lib/data-import.js';
 export * from './lib/knowledge.js';
 export * from './lib/deals.js';
+export * from './lib/org-categories.js';

@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { FormSelect } from '@/components/form/form-select';
 import {
-  PRODUCT_CATEGORY_LABELS,
+  resolveProductCategoryLabel,
   PRODUCT_STATUS_LABELS,
 } from '@/features/inventory/config/product-filters';
 import { StockStatusBadge } from '@/features/inventory/components/shared/stock-status-badge';
@@ -64,7 +64,7 @@ export function ProductTableMobileCard({
           <p className="font-mono text-xs text-muted-foreground">{row.sku}</p>
           <div className="flex flex-wrap gap-1">
             <Badge variant="outline" className="text-[10px]">
-              {PRODUCT_CATEGORY_LABELS[row.category]}
+              {resolveProductCategoryLabel(row.category)}
             </Badge>
             <StockStatusBadge status={row.stockStatus} />
           </div>

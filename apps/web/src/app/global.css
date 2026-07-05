@@ -35,6 +35,8 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --animate-nav-collapsible-down: nav-collapsible-down 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-nav-collapsible-up: nav-collapsible-up 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 :root {
@@ -144,6 +146,26 @@
     color: var(--sidebar-accent-foreground);
   }
 
+  [data-sidebar='menu-sub-button'][data-active='true'] {
+    background-color: var(--sidebar-primary) !important;
+    color: var(--sidebar-primary-foreground) !important;
+    font-weight: 500;
+  }
+
+  [data-sidebar='menu-sub-button'][data-active='true'] .nav-sub-dot {
+    background-color: var(--sidebar-primary-foreground);
+    opacity: 1;
+  }
+
+  [data-sidebar='menu-sub-button']:not([data-active='true']):hover {
+    background-color: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+  }
+
+  [data-sidebar='menu-sub-button']:not([data-active='true']):hover .nav-sub-dot {
+    opacity: 0.85;
+  }
+
   /*
    * Site-wide slim scrollbars (same look as dashboard).
    * Thin track, thumb appears on hover of the scrollable area.
@@ -248,5 +270,27 @@
     box-shadow: none !important;
     padding: 0 !important;
     transform: none !important;
+  }
+}
+
+@keyframes nav-collapsible-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes nav-collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
   }
 }

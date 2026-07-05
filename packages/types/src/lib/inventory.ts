@@ -34,7 +34,7 @@ export const inventoryProductListItemSchema = z.object({
   name: z.string(),
   sku: z.string(),
   imageUrl: z.string().optional(),
-  category: productCategorySchema,
+  category: z.string().min(1),
   status: productStatusSchema,
   stock: z.number().int(),
   reorderLevel: z.number().int(),
@@ -82,7 +82,7 @@ export type ProductFilter = z.infer<typeof productFilterSchema>;
 
 export const productListQuerySchema = z.object({
   filter: productFilterSchema.optional(),
-  category: productCategorySchema.optional(),
+  category: z.string().optional(),
   search: z.string().optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().default(20),
@@ -122,7 +122,7 @@ export type ProductListResponse = z.infer<typeof productListResponseSchema>;
 export const createProductPayloadSchema = z.object({
   name: z.string().min(1),
   sku: z.string().min(1),
-  category: productCategorySchema.default('other'),
+  category: z.string().default('other'),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
   status: productStatusSchema.default('active'),
@@ -138,7 +138,7 @@ export type CreateProductPayload = z.infer<typeof createProductPayloadSchema>;
 export const updateProductPayloadSchema = z.object({
   name: z.string().optional(),
   sku: z.string().optional(),
-  category: productCategorySchema.optional(),
+  category: z.string().optional(),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
   status: productStatusSchema.optional(),

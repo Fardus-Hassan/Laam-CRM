@@ -24,12 +24,12 @@ import {
   getBalanceSheetReport,
   getProfitLossReport,
   MOCK_CASH_BANK,
-  MOCK_CHART_OF_ACCOUNTS,
   MOCK_PAYABLES,
   markPayablePaid,
   markReceivableCollected,
   MOCK_RECEIVABLES,
 } from '@/features/accounting/data/mock-accounting';
+import { getChartOfAccounts } from '@/features/accounting/data/chart-of-accounts-store';
 
 export type AccountingApi = {
   getOverview: () => Promise<AccountingOverview>;
@@ -104,7 +104,7 @@ export function createMockAccountingApi(): AccountingApi {
     },
     async listChartOfAccounts() {
       await delay(80);
-      return { items: MOCK_CHART_OF_ACCOUNTS };
+      return { items: getChartOfAccounts() };
     },
     async getProfitLoss() {
       await delay(80);

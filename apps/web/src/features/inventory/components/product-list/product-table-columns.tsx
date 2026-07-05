@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FormSelect } from '@/components/form/form-select';
 import {
-  PRODUCT_CATEGORY_LABELS,
+  resolveProductCategoryLabel,
   PRODUCT_STATUS_LABELS,
 } from '@/features/inventory/config/product-filters';
 import { StockStatusBadge } from '@/features/inventory/components/shared/stock-status-badge';
@@ -77,7 +77,7 @@ export function buildProductTableColumns(options?: {
             </button>
             <p className="font-mono text-[10px] text-muted-foreground">{row.original.sku}</p>
             <Badge variant="outline" className="text-[10px]">
-              {PRODUCT_CATEGORY_LABELS[row.original.category]}
+              {resolveProductCategoryLabel(row.original.category)}
             </Badge>
           </div>
         </div>

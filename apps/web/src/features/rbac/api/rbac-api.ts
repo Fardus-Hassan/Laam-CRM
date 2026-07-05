@@ -4,6 +4,7 @@ import type {
   CustomRole,
   OrgTeam,
   Permission,
+  PermissionPreset,
   TenantUser,
   UpdateOrgTeamRequest,
   UpdateTenantUserAcl,
@@ -13,14 +14,17 @@ import {
   createRole,
   createTeam,
   createUser,
+  deleteCustomPreset,
   deleteRole,
   deleteTeam,
   getPresetById,
   getRolePermissions,
+  listCustomPresets,
   listRoles,
   listTeams,
   listUsers,
   PERMISSION_PRESETS,
+  saveCustomPreset,
   updateRole,
   updateTeam,
   updateUserAcl,
@@ -37,6 +41,7 @@ export type RbacApi = {
       description?: string;
       permissions: Permission[];
       presetId?: string;
+      dashboardTemplate?: CustomRole['dashboardTemplate'];
     },
   ) => Promise<CustomRole>;
   updateRole: (
@@ -45,6 +50,12 @@ export type RbacApi = {
     patch: Partial<Pick<CustomRole, 'name' | 'description' | 'permissions' | 'dashboardTemplate'>>,
   ) => Promise<CustomRole | null>;
   deleteRole: (organizationId: string, roleId: string) => Promise<boolean>;
+  listCustomPresets: (organizationId: string) => Promise<PermissionPreset[]>;
+  saveCustomPreset: (
+    organizationId: string,
+    input: { name: string; description?: string; permissions: Permission[] },
+  ) => Promise<PermissionPreset>;
+  deleteCustomPreset: (organizationId: string, presetId: string) => Promise<boolean>;
   listUsers: (organizationId: string) => Promise<TenantUser[]>;
   createUser: (organizationId: string, input: CreateTenantUserRequest) => Promise<TenantUser>;
   updateUserAcl: (
@@ -79,6 +90,15 @@ export function createMockRbacApi(): RbacApi {
     },
     async deleteRole(organizationId, roleId) {
       return deleteRole(organizationId, roleId);
+    },
+    async listCustomPresets(organizationId) {
+      return listCustomPresets(organizationId);
+    },
+    async saveCustomPreset(organizationId, input) {
+      return saveCustomPreset(organizationId, input);
+    },
+    async deleteCustomPreset(organizationId, presetId) {
+      return deleteCustomPreset(organizationId, presetId);
     },
     async listUsers(organizationId) {
       return listUsers(organizationId);

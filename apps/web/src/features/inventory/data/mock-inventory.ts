@@ -317,7 +317,7 @@ export function updateMockProduct(id: string, patch: UpdateProductPayload): Inve
 export function bulkUpdateMockProducts(payload: {
   productIds: string[];
   status?: InventoryProductListItem['status'];
-  category?: ProductCategory;
+  category?: string;
   stockDelta?: number;
 }): { successCount: number; failedCount: number } {
   let successCount = 0;

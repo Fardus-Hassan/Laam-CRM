@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -100,7 +101,7 @@ export function OnboardTenantWizard({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4">
+        <SheetBody className="flex-1 space-y-4 overflow-y-auto">
           {step === 0 ? (
             <>
               <div className="space-y-2">
@@ -198,7 +199,7 @@ export function OnboardTenantWizard({
               </p>
             </div>
           ) : null}
-        </div>
+        </SheetBody>
 
         <SheetFooter className="flex-row justify-between sm:justify-between">
           <Button

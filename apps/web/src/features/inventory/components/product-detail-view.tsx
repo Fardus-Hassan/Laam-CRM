@@ -5,16 +5,16 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, Minus, Package, Plus } from 'lucide-react';
 
+import { FormField } from '@/components/form/form-field';
+import { FormSearchSelect } from '@/components/form/form-search-select';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
 import { StockStatusBadge } from '@/features/inventory/components/shared/stock-status-badge';
-import {
-  PRODUCT_CATEGORY_LABELS,
-  PRODUCT_STATUS_LABELS,
-} from '@/features/inventory/config/product-filters';
+import { PRODUCT_STATUS_LABELS } from '@/features/inventory/config/product-filters';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
 import {
@@ -33,6 +33,7 @@ type ProductDetailViewProps = {
 
 export function ProductDetailView({ productId }: ProductDetailViewProps) {
   const { updateProduct } = useProductMutations();
+  const categoryOptions = useOrgCategoryOptions('product');
   const [product, setProduct] = React.useState<InventoryProductDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -52,6 +53,12 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
     await updateProduct(product.id, {
       stockAdjustment: { delta, reason: 'Quick adjust from detail' },
     });
+    void load();
+  }
+
+  async function changeCategory(category: string) {
+    if (!product || category === product.category) return;
+    await updateProduct(product.id, { category });
     void load();
   }
 
@@ -103,12 +110,19 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                     </div>
                   )}
                 </div>
-                <div className="min-w-0 space-y-2 text-center sm:text-left">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">{PRODUCT_CATEGORY_LABELS[product.category]}</Badge>
+                <div className="min-w-0 space-y-3 text-center sm:text-left">
+                  <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
                     <Badge variant="secondary">{PRODUCT_STATUS_LABELS[product.status]}</Badge>
                     <StockStatusBadge status={product.stockStatus} />
                   </div>
+                  <FormField label="Category" className="max-w-xs mx-auto sm:mx-0">
+                    <FormSearchSelect
+                      value={product.category}
+                      onChange={(v) => void changeCategory(v)}
+                      options={categoryOptions}
+                      searchable={false}
+                    />
+                  </FormField>
                   {product.description ? (
                     <p className="text-sm text-muted-foreground">{product.description}</p>
                   ) : null}

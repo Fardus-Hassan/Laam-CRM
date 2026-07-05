@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import type { AccountingFilterCount, CreateExpensePayload, CreateIncomePayload } from '@laam/types';
+import Link from 'next/link';
+import type { AccountingFilterCount, CreateIncomePayload } from '@laam/types';
 import { Download, Plus, RefreshCw, Search } from 'lucide-react';
 
 import { FormField } from '@/components/form/form-field';
@@ -27,13 +28,10 @@ import {
   ORDER_SECTION_BODY_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { TransactionDataTable } from '@/features/accounting/components/transaction-list/transaction-data-table';
-import {
-  EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
-  PAYMENT_METHOD_LABELS,
-} from '@/features/accounting/config/accounting-filters';
+import { PAYMENT_METHOD_LABELS } from '@/features/accounting/config/accounting-filters';
 import { useAccountingMutations } from '@/features/accounting/hooks/use-accounting-mutations';
 import { useTransactionList } from '@/features/accounting/hooks/use-transaction-list';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import type { TransactionListResponse } from '@laam/types';
 import type { TransactionListQuery } from '@laam/types';
 import { downloadCsv } from '@/lib/export-csv';
@@ -65,6 +63,9 @@ export function TransactionListShell({
   createLabel,
 }: TransactionListShellProps) {
   const { createIncome, createExpense, isLoading: saving } = useAccountingMutations();
+  const incomeCategoryOptions = useOrgCategoryOptions('income');
+  const expenseCategoryOptions = useOrgCategoryOptions('expense');
+  const categoryOptions = mode === 'income' ? incomeCategoryOptions : expenseCategoryOptions;
   const [search, setSearch] = React.useState('');
   const [filter, setFilter] = React.useState('all');
   const [page, setPage] = React.useState(1);
@@ -106,20 +107,15 @@ export function TransactionListShell({
       reference: draft.reference.trim() || undefined,
     };
     if (mode === 'income') {
-      await createIncome({ ...base, category: draft.category as CreateIncomePayload['category'], relatedOrderId: draft.reference.trim() || undefined });
+      await createIncome({ ...base, category: draft.category, relatedOrderId: draft.reference.trim() || undefined });
     } else if (mode === 'expense') {
-      await createExpense({ ...base, category: draft.category as CreateExpensePayload['category'], relatedSupplier: undefined });
+      await createExpense({ ...base, category: draft.category, relatedSupplier: undefined });
     }
     setCreateOpen(false);
     setDraft((d) => ({ ...d, description: '', amount: '', reference: '' }));
     setListVersion((v) => v + 1);
     void refresh();
   }
-
-  const categoryOptions =
-    mode === 'income'
-      ? INCOME_CATEGORIES.map((c) => ({ value: c.id, label: c.label }))
-      : EXPENSE_CATEGORIES.map((c) => ({ value: c.id, label: c.label }));
 
   return (
     <PageShell title="Accounting" description={description}>
@@ -222,6 +218,11 @@ export function TransactionListShell({
             </FormField>
             <FormField label="Category">
               <FormSearchSelect value={draft.category} onChange={(v) => setDraft((d) => ({ ...d, category: v }))} options={categoryOptions} searchable={false} />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                <Link href="/dashboard/settings/categories" className="font-medium text-primary hover:underline">
+                  Manage categories
+                </Link>
+              </p>
             </FormField>
             <FormField label="Description" required>
               <FormTextarea rows={2} value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} placeholder="What was this for?" />

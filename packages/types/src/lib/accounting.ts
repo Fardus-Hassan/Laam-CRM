@@ -74,14 +74,14 @@ export type LedgerEntry = z.infer<typeof ledgerEntrySchema>;
 
 export const incomeListItemSchema = ledgerEntrySchema.extend({
   type: z.literal('income'),
-  category: incomeCategorySchema,
+  category: z.string(),
 });
 
 export type IncomeListItem = z.infer<typeof incomeListItemSchema>;
 
 export const expenseListItemSchema = ledgerEntrySchema.extend({
   type: z.literal('expense'),
-  category: expenseCategorySchema,
+  category: z.string(),
 });
 
 export type ExpenseListItem = z.infer<typeof expenseListItemSchema>;
@@ -214,7 +214,7 @@ export type BalanceSheetReport = z.infer<typeof balanceSheetReportSchema>;
 
 export const createIncomePayloadSchema = z.object({
   date: z.string(),
-  category: incomeCategorySchema,
+  category: z.string().min(1),
   description: z.string().min(1),
   amount: z.number().positive(),
   paymentMethod: paymentMethodSchema,
@@ -227,7 +227,7 @@ export type CreateIncomePayload = z.infer<typeof createIncomePayloadSchema>;
 
 export const createExpensePayloadSchema = z.object({
   date: z.string(),
-  category: expenseCategorySchema,
+  category: z.string().min(1),
   description: z.string().min(1),
   amount: z.number().positive(),
   paymentMethod: paymentMethodSchema,

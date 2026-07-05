@@ -8,9 +8,11 @@ import { ChevronRight } from 'lucide-react';
 import { useNavigation } from '@/features/navigation/hooks/use-navigation';
 import {
   isNavItemBranchActive,
+  isNavItemBranchOpenByPath,
   isNavUrlActive,
 } from '@/features/navigation/lib/nav-active';
-import type { ResolvedNavItem } from '@/features/navigation/types/universal-nav';
+import type { ResolvedNavChild, ResolvedNavItem } from '@/features/navigation/types/universal-nav';
+import { cn } from '@/lib/utils';
 import {
   Collapsible,
   CollapsibleContent,
@@ -28,6 +30,157 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar';
+
+function NavCountBadge({ count }: { count: number }) {
+  const label = count > 9999 ? '9999+' : String(count);
+  const isHigh = count >= 100;
+
+  return (
+    <span
+      className={cn(
+        'ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none',
+        isHigh
+          ? 'bg-amber-400/95 text-amber-950 ring-1 ring-amber-300/40'
+          : 'bg-white/12 text-sidebar-foreground/90 ring-1 ring-white/10',
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function NavSubDot({ active }: { active: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'nav-sub-dot size-1.5 shrink-0 rounded-full bg-sidebar-foreground/35 transition-opacity duration-150',
+        active && 'bg-sidebar-primary-foreground opacity-100',
+      )}
+    />
+  );
+}
+
+function NavSubLeaf({
+  item,
+  pathname,
+  searchParams,
+  depth = 0,
+}: {
+  item: ResolvedNavChild;
+  pathname: string;
+  searchParams: URLSearchParams;
+  depth?: number;
+}) {
+  const active = isNavUrlActive(pathname, searchParams, item.url);
+
+  return (
+    <SidebarMenuSubItem>
+      <SidebarMenuSubButton asChild isActive={active} data-depth={depth}>
+        <Link href={item.url}>
+          <NavSubDot active={active} />
+          <span className="min-w-0 flex-1 truncate">{item.title}</span>
+          {item.badge != null && item.badge > 0 ? <NavCountBadge count={item.badge} /> : null}
+        </Link>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
+  );
+}
+
+function NavSubBranch({
+  item,
+  pathname,
+  searchParams,
+  depth = 0,
+}: {
+  item: ResolvedNavChild;
+  pathname: string;
+  searchParams: URLSearchParams;
+  depth?: number;
+}) {
+  const branchActive = isNavItemBranchActive(pathname, searchParams, item);
+  const branchOpenByPath = isNavItemBranchOpenByPath(pathname, item);
+  const shouldExpand = branchActive || branchOpenByPath;
+  const selfActive = isNavUrlActive(pathname, searchParams, item.url);
+  const [open, setOpen] = React.useState(shouldExpand);
+
+  React.useEffect(() => {
+    if (shouldExpand) {
+      setOpen(true);
+    }
+  }, [shouldExpand, pathname, searchParams.toString()]);
+
+  React.useEffect(() => {
+    if (!branchOpenByPath && !branchActive) {
+      setOpen(false);
+    }
+  }, [pathname, branchOpenByPath, branchActive]);
+
+  return (
+    <SidebarMenuSubItem>
+      <Collapsible open={open} onOpenChange={setOpen} className="group/subcollapsible">
+        <div className="flex items-center gap-0.5">
+          <SidebarMenuSubButton asChild isActive={selfActive} data-depth={depth} className="min-w-0 flex-1">
+            <Link href={item.url}>
+              <NavSubDot active={selfActive || branchActive} />
+              <span className="min-w-0 flex-1 truncate">{item.title}</span>
+              {item.badge != null && item.badge > 0 ? <NavCountBadge count={item.badge} /> : null}
+            </Link>
+          </SidebarMenuSubButton>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-white/[0.06] hover:text-sidebar-foreground"
+              aria-label={`Toggle ${item.title} sub-menu`}
+            >
+              <ChevronRight className="size-3.5 transition-transform duration-200 ease-out group-data-[state=open]/subcollapsible:rotate-90" />
+            </button>
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent>
+          <SidebarMenuSub className="ml-2 border-l border-sidebar-border/60 pl-1">
+            {item.children?.map((child) => (
+              <NavSubTree
+                key={child.id}
+                item={child}
+                pathname={pathname}
+                searchParams={searchParams}
+                depth={depth + 1}
+              />
+            ))}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </Collapsible>
+    </SidebarMenuSubItem>
+  );
+}
+
+function NavSubTree({
+  item,
+  pathname,
+  searchParams,
+  depth = 0,
+}: {
+  item: ResolvedNavChild;
+  pathname: string;
+  searchParams: URLSearchParams;
+  depth?: number;
+}) {
+  if (item.children?.length) {
+    return (
+      <NavSubBranch
+        item={item}
+        pathname={pathname}
+        searchParams={searchParams}
+        depth={depth}
+      />
+    );
+  }
+
+  return (
+    <NavSubLeaf item={item} pathname={pathname} searchParams={searchParams} depth={depth} />
+  );
+}
 
 function NavLeafItem({
   item,
@@ -48,16 +201,12 @@ function NavLeafItem({
         asChild
         isActive={isNavUrlActive(pathname, searchParams, item.url)}
         tooltip={item.title}
-        className="h-8 rounded px-3 text-sidebar-foreground"
+        className="h-9 rounded-lg px-3 text-sidebar-foreground transition-colors duration-150"
       >
         <Link href={item.url}>
           <item.icon className="size-[18px]" />
           <span className="flex-1 truncate">{item.title}</span>
-          {item.badge != null && item.badge > 0 ? (
-            <span className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-950">
-              {item.badge > 9999 ? '9999+' : item.badge}
-            </span>
-          ) : null}
+          {item.badge != null && item.badge > 0 ? <NavCountBadge count={item.badge} /> : null}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -73,12 +222,25 @@ function NavBranchItem({
   pathname: string;
   searchParams: URLSearchParams;
 }) {
-  const isActive = isNavItemBranchActive(pathname, searchParams, item);
-  const [open, setOpen] = React.useState(isActive);
+  const branchActive = isNavItemBranchActive(pathname, searchParams, item);
+  const branchOpenByPath = isNavItemBranchOpenByPath(pathname, item);
+  const shouldExpand = branchActive || branchOpenByPath;
+  const parentActive = item.url
+    ? isNavUrlActive(pathname, searchParams, item.url)
+    : false;
+  const [open, setOpen] = React.useState(shouldExpand);
 
   React.useEffect(() => {
-    setOpen(isActive);
-  }, [isActive]);
+    if (shouldExpand) {
+      setOpen(true);
+    }
+  }, [shouldExpand, pathname, searchParams.toString()]);
+
+  React.useEffect(() => {
+    if (!branchOpenByPath && !branchActive) {
+      setOpen(false);
+    }
+  }, [pathname, branchOpenByPath, branchActive]);
 
   return (
     <Collapsible
@@ -91,32 +253,23 @@ function NavBranchItem({
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
             tooltip={item.title}
-            isActive={isActive}
-            className="h-8 rounded px-3 text-sidebar-foreground"
+            isActive={parentActive}
+            className="h-9 rounded-lg px-3 text-sidebar-foreground transition-colors duration-150 group-data-[state=open]/collapsible:bg-white/[0.06] data-[active=true]:group-data-[state=open]/collapsible:bg-sidebar-primary"
           >
-            <item.icon className="size-[18px]" />
-            <span>{item.title}</span>
-            <ChevronRight className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+            <item.icon className="size-[18px] shrink-0" />
+            <span className="flex-1 truncate">{item.title}</span>
+            <ChevronRight className="ml-auto size-4 shrink-0 opacity-70 transition-transform duration-200 ease-out group-data-[state=open]/collapsible:rotate-90" />
           </SidebarMenuButton>
         </CollapsibleTrigger>
-        <CollapsibleContent>
+        <CollapsibleContent className="pb-1">
           <SidebarMenuSub>
             {item.children?.map((child) => (
-              <SidebarMenuSubItem key={child.id}>
-                <SidebarMenuSubButton
-                  asChild
-                  isActive={isNavUrlActive(pathname, searchParams, child.url)}
-                >
-                  <Link href={child.url}>
-                    <span className="flex-1 truncate">{child.title}</span>
-                    {child.badge != null && child.badge > 0 ? (
-                      <span className="ml-auto shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-950">
-                        {child.badge > 9999 ? '9999+' : child.badge}
-                      </span>
-                    ) : null}
-                  </Link>
-                </SidebarMenuSubButton>
-              </SidebarMenuSubItem>
+              <NavSubTree
+                key={child.id}
+                item={child}
+                pathname={pathname}
+                searchParams={searchParams}
+              />
             ))}
           </SidebarMenuSub>
         </CollapsibleContent>

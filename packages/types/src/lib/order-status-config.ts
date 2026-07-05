@@ -6,6 +6,7 @@ export const orderStatusDisplayModeSchema = z.enum([
   'sidebar',
   'nested_tab',
   'filter_only',
+  'sidebar_and_tab',
 ]);
 
 export type OrderStatusDisplayMode = z.infer<typeof orderStatusDisplayModeSchema>;
@@ -54,6 +55,10 @@ export const orderStatusConfigSchema = z.object({
   group: orderWorkflowGroupSchema,
   parentSlug: z.string().optional(),
   displayMode: orderStatusDisplayModeSchema,
+  /** Explicit override — when set, wins over displayMode for sidebar link visibility. */
+  showInSidebar: z.boolean().optional(),
+  /** Explicit override — when set, wins over displayMode for in-page tab visibility. */
+  showInNestedTabs: z.boolean().optional(),
   sidebarOrder: z.number().optional(),
   isTerminal: z.boolean().default(false),
   isDefault: z.boolean().default(false),

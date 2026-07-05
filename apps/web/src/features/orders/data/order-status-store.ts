@@ -25,11 +25,22 @@ export function saveOrderStatusOverrides(statuses: OrderStatusConfig[]): OrderSt
 }
 
 export function getOrderStatuses(): OrderStatusConfig[] {
-  return [...MOCK_ORDER_STATUSES, ...loadOrderStatusOverrides()];
+  const overrides = loadOrderStatusOverrides();
+  const overrideBySlug = new Map(overrides.map((status) => [status.slug, status]));
+
+  return MOCK_ORDER_STATUSES.map((status) => overrideBySlug.get(status.slug) ?? status).concat(
+    overrides.filter(
+      (status) => !MOCK_ORDER_STATUSES.some((seed) => seed.slug === status.slug),
+    ),
+  );
+}
+
+export function upsertOrderStatusOverride(status: OrderStatusConfig): OrderStatusConfig[] {
+  const overrides = loadOrderStatusOverrides();
+  const next = [...overrides.filter((item) => item.slug !== status.slug), status];
+  return saveOrderStatusOverrides(next);
 }
 
 export function appendOrderStatus(status: OrderStatusConfig): OrderStatusConfig[] {
-  const overrides = loadOrderStatusOverrides();
-  const next = [...overrides.filter((s) => s.slug !== status.slug), status];
-  return saveOrderStatusOverrides(next);
+  return upsertOrderStatusOverride(status);
 }

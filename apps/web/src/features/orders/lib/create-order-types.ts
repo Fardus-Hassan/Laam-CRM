@@ -32,6 +32,7 @@ export type CreateOrderFormState = {
   name: string;
   email: string;
   address: string;
+  customerNote: string;
   district: string;
   pathaoLocation: PathaoLocation | null;
   orderSource: OrderSource | '';

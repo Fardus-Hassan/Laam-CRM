@@ -120,51 +120,67 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
             </FormField>
           </div>
 
-          <FormField
-            label="Address"
-            htmlFor="address"
-            required
-            error={errors.address}
-            className="col-span-full"
-            labelAction={
-              <div className="flex items-center gap-1.5">
-                {state.pathaoLocation ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => setPathaoLocation(null)}
-                  >
-                    Clear
-                  </Button>
-                ) : null}
-                <Button type="button" size="sm" className="h-7 text-xs" onClick={() => setPathaoOpen(true)}>
-                  {state.pathaoLocation ? 'Change Pathao' : 'Select Pathao Location'}
-                </Button>
-              </div>
-            }
-            hint={
-              state.pathaoLocation
-                ? state.pathaoLocation.label
-                : 'Use Pathao location to auto-fill delivery address.'
-            }
+          <div
+            className={cn(
+              'col-span-full grid lg:grid-cols-2',
+              ORDER_SECTION_GRID_GAP,
+            )}
           >
-            <FormTextarea
-              id="address"
-              rows={3}
-              value={state.address}
-              readOnly={Boolean(state.pathaoLocation)}
-              onChange={(event) => {
-                patch({ address: event.target.value });
-                clearFieldError('address');
-              }}
-              className={cn(
-                errors.address && 'border-destructive',
-                state.pathaoLocation && 'bg-muted/40',
-              )}
-            />
-          </FormField>
+            <FormField
+              label="Address"
+              htmlFor="address"
+              required
+              error={errors.address}
+              labelAction={
+                <div className="flex items-center gap-1.5">
+                  {state.pathaoLocation ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setPathaoLocation(null)}
+                    >
+                      Clear
+                    </Button>
+                  ) : null}
+                  <Button type="button" size="sm" className="h-7 text-xs" onClick={() => setPathaoOpen(true)}>
+                    {state.pathaoLocation ? 'Change Pathao' : 'Select Pathao Location'}
+                  </Button>
+                </div>
+              }
+              hint={
+                state.pathaoLocation
+                  ? state.pathaoLocation.label
+                  : 'Use Pathao location to auto-fill delivery address.'
+              }
+            >
+              <FormTextarea
+                id="address"
+                rows={3}
+                value={state.address}
+                readOnly={Boolean(state.pathaoLocation)}
+                onChange={(event) => {
+                  patch({ address: event.target.value });
+                  clearFieldError('address');
+                }}
+                className={cn(
+                  errors.address && 'border-destructive',
+                  state.pathaoLocation && 'bg-muted/40',
+                )}
+              />
+            </FormField>
+
+            <FormField label="Customer Note" htmlFor="customerNote">
+              <FormTextarea
+                id="customerNote"
+                rows={3}
+                value={state.customerNote}
+                onChange={(event) => patch({ customerNote: event.target.value })}
+                placeholder="Customer preferences, allergies, delivery instructions…"
+              />
+            </FormField>
+          </div>
 
           {state.customerStats ? (
             <div className="col-span-full flex flex-wrap items-center gap-2">

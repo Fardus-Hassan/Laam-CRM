@@ -6,6 +6,10 @@ import type {
 } from '@laam/types';
 
 import { getOrderStatuses } from '@/features/orders/data/order-status-store';
+import {
+  statusShowsInNestedTabs,
+  statusShowsInSidebar,
+} from '@/features/orders/lib/order-status-visibility';
 
 const DEFAULT_BULK: BulkActionId[] = [
   'print_selected',
@@ -55,7 +59,7 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     color: 'hsl(174 58% 42%)',
     group: 'intake',
     parentSlug: 'pendings',
-    displayMode: 'nested_tab',
+    displayMode: 'sidebar_and_tab',
     isDefault: true,
     allowedTransitions: ['pending_2', 'pending_3', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
@@ -66,7 +70,7 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     color: 'hsl(174 48% 38%)',
     group: 'intake',
     parentSlug: 'pendings',
-    displayMode: 'nested_tab',
+    displayMode: 'sidebar_and_tab',
     allowedTransitions: ['pending', 'pending_3', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
   }),
@@ -76,7 +80,7 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     color: 'hsl(174 38% 34%)',
     group: 'intake',
     parentSlug: 'pendings',
-    displayMode: 'sidebar',
+    displayMode: 'sidebar_and_tab',
     sidebarOrder: 12,
     allowedTransitions: ['pending', 'pending_2', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
@@ -325,7 +329,7 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
     sidebarOrder: 60,
     title: 'All Statuses',
     description: 'Browse and open any order status queue.',
-    showInNav: true,
+    showInNav: false,
   },
 ];
 
@@ -338,9 +342,24 @@ export function getQueuePageBySlug(slug: string): OrderQueuePage | undefined {
 }
 
 export function getSidebarStatuses(): OrderStatusConfig[] {
-  return getOrderStatuses().filter((item) => item.displayMode === 'sidebar').sort(
-    (a, b) => (a.sidebarOrder ?? 99) - (b.sidebarOrder ?? 99),
-  );
+  return getOrderStatuses()
+    .filter((item) => statusShowsInSidebar(item))
+    .sort((a, b) => (a.sidebarOrder ?? 99) - (b.sidebarOrder ?? 99));
+}
+
+export function getNestedTabStatusesForParent(parentSlug: string): OrderStatusConfig[] {
+  return getOrderStatuses()
+    .filter((item) => item.parentSlug === parentSlug && statusShowsInNestedTabs(item))
+    .sort((a, b) => (a.sidebarOrder ?? 99) - (b.sidebarOrder ?? 99));
+}
+
+export function getQueueChildStatusSlugs(queueSlug: string): OrderStatusType[] {
+  const dynamic = getNestedTabStatusesForParent(queueSlug).map((item) => item.slug);
+  if (dynamic.length > 0) {
+    return dynamic;
+  }
+
+  return getQueuePageBySlug(queueSlug)?.childStatusSlugs ?? [];
 }
 
 export function getGroupByStatusItems(): OrderStatusConfig[] {

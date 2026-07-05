@@ -1,5 +1,5 @@
-import { OrderStatusesPage } from '@/features/orders/components/order-statuses-page';
+import { redirect } from 'next/navigation';
 
-export default function OrderStatusesRoute() {
-  return <OrderStatusesPage />;
+export default function OrderStatusesPage() {
+  redirect('/dashboard/orders');
 }

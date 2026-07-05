@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { ProductCategory, ProductStatus, ProductVariant } from '@laam/types';
+import type { ProductStatus, ProductVariant } from '@laam/types';
 import {
   ArrowLeft,
   ImagePlus,
@@ -25,18 +25,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
 import {
-  PRODUCT_CATEGORY_LABELS,
   PRODUCT_STATUS_LABELS,
 } from '@/features/inventory/config/product-filters';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import { MOCK_SUPPLIERS } from '@/features/inventory/data/mock-inventory';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
 import { ORDER_CARD_CLASS } from '@/features/orders/components/create-order/section-layout';
 import { cn } from '@/lib/utils';
-
-const CATEGORY_OPTIONS = (Object.keys(PRODUCT_CATEGORY_LABELS) as ProductCategory[]).map((v) => ({
-  value: v,
-  label: PRODUCT_CATEGORY_LABELS[v],
-}));
 
 const STATUS_OPTIONS = (Object.keys(PRODUCT_STATUS_LABELS) as ProductStatus[]).map((v) => ({
   value: v,
@@ -251,10 +246,11 @@ function ProductImageField({
 export function CreateProductPage() {
   const router = useRouter();
   const { createProduct, isLoading } = useProductMutations();
+  const categoryOptions = useOrgCategoryOptions('product');
   const [draft, setDraft] = React.useState({
     name: '',
     sku: '',
-    category: 'honey' as ProductCategory,
+    category: 'honey',
     status: 'active' as ProductStatus,
     description: '',
     imageUrl: '',
@@ -360,10 +356,15 @@ export function CreateProductPage() {
                 <FormField label="Category">
                   <FormSearchSelect
                     value={draft.category}
-                    onChange={(v) => patch({ category: v as ProductCategory })}
-                    options={CATEGORY_OPTIONS}
+                    onChange={(v) => patch({ category: v })}
+                    options={categoryOptions}
                     searchable={false}
                   />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    <Link href="/dashboard/settings/categories" className="font-medium text-primary hover:underline">
+                      Manage categories
+                    </Link>
+                  </p>
                 </FormField>
                 <FormField label="Status">
                   <FormSearchSelect
