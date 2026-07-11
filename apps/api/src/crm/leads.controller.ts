@@ -1,9 +1,11 @@
 import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { Public } from '../common/decorators';
 import * as fixtures from './data/crm-fixtures';
 
 @ApiTags('CRM — Leads')
+@Public()
 @Controller('crm/leads')
 export class LeadsController {
   @Get()

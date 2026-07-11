@@ -22,6 +22,9 @@ module.exports = {
     'class-transformer': 'commonjs class-transformer',
     'class-validator': 'commonjs class-validator',
     'express': 'commonjs express',
+    '@prisma/client': 'commonjs @prisma/client',
+    'bcryptjs': 'commonjs bcryptjs',
+    'nodemailer': 'commonjs nodemailer',
   },
   plugins: [
     new NxAppWebpackPlugin({

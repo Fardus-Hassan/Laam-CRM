@@ -7,8 +7,73 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      String
+  status    String   @default("active") // active | suspended | onboarding
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+}
+
+model User {
+  id               String        @id @default(uuid())
+  email            String        @unique
+  passwordHash        String
+  inviteTempPassword  String?
+  name                String
+  systemRole       String
+  status           String        @default("active") // active | invited | suspended
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customRoleId     String?
+  permissionGrants String[]      @default([])
+  permissionDenies String[]      @default([])
+  lastSeenAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  otpChallenges    OtpChallenge[]
+  trustedDevices   TrustedDevice[]
+
+  @@index([organizationId])
+}
+
+model OtpChallenge {
+  id             String    @id @default(uuid())
+  purpose        String
+  email          String
+  userId         String?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String?
+  codeHash       String
+  relayCode      String?
+  expiresAt      DateTime
+  resendAfter    DateTime
+  attempts       Int       @default(0)
+  consumedAt     DateTime?
+  delivery       String    // email | admin_inbox
+  createdAt      DateTime  @default(now())
+
+  @@index([email, purpose])
+  @@index([organizationId, delivery])
+}
+
+model TrustedDevice {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String
+  label     String?
+  trustedAt DateTime @default(now())
+
+  @@unique([userId, deviceId])
+}
+
 model Lead {
   id                String   @id @default(cuid())
+  organizationId    String?
   leadNumber        String   @unique
   name              String
   phone             String
@@ -27,6 +92,7 @@ model Lead {
 
 model Contact {
   id                String   @id @default(cuid())
+  organizationId    String?
   name              String
   phone             String
   email             String?
@@ -43,6 +109,7 @@ model Contact {
 
 model Company {
   id                String   @id @default(cuid())
+  organizationId    String?
   name              String
   industry          String?
   status            String
@@ -62,6 +129,7 @@ model Company {
 
 model Deal {
   id                String    @id @default(cuid())
+  organizationId    String?
   dealNumber        String    @unique
   title             String
   companyName       String
@@ -78,6 +146,7 @@ model Deal {
 
 model Order {
   id                String   @id @default(cuid())
+  organizationId    String?
   orderNumber       String   @unique
   status            String
   customerName      String

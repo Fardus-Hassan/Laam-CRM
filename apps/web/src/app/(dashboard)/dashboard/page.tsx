@@ -4,6 +4,8 @@ import { RoleDashboard } from '@/features/dashboard/components/role-dashboard';
 import { getDefaultDateRange, toISODateRange } from '@/lib/date-range';
 import { siteConfig } from '@/config/site';
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardPage() {
   const isoRange = toISODateRange(getDefaultDateRange());
   const dashboard = await fetchDashboard('org_admin', isoRange ?? undefined);

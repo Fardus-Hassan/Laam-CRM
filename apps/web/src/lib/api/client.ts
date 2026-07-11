@@ -1,5 +1,6 @@
 import { env } from '@/config/env';
 import { ApiError } from '@/lib/api/errors';
+import { getTenantSlugFromHost } from '@/lib/tenant';
 
 export type ApiRequestOptions = RequestInit & {
   /** Skip JSON Content-Type for FormData uploads. */
@@ -30,6 +31,11 @@ async function buildHeaders(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
+  const tenantSlug = getTenantSlugFromHost();
+  if (tenantSlug) {
+    headers.set('X-Tenant-Slug', tenantSlug);
+  }
+
   return headers;
 }
 
@@ -41,6 +47,7 @@ export async function apiRequest<T>(
   const response = await fetch(`${env.apiUrl}${path}`, {
     ...fetchOptions,
     headers: await buildHeaders(options),
+    credentials: 'include',
   });
 
   if (!response.ok) {

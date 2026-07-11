@@ -2,21 +2,29 @@
 
 import * as React from 'react';
 import type { AuthSession, Permission, UserRole } from '@laam/types';
-import {
-  resolveUserPermissions,
-} from '@laam/types';
+import { resolveUserPermissions } from '@laam/types';
 import { env } from '@/config/env';
 import {
   createHttpAuthApi,
   createMockAuthApi,
 } from '@/features/auth/api/auth-api';
+import type { AuthLoginResult } from '@/features/auth/types';
 import {
   getDemoCustomRoleIdForUserRole,
   getRolePermissions,
 } from '@/features/platform/data/mock-tenant-store';
+import { getStoredAccessToken, setStoredAccessToken } from '@/lib/auth-token';
 import { setAccessTokenGetter } from '@/lib/api/client';
 
 function resolveSessionPermissions(user: AuthSession['user']): Permission[] {
+  if (env.useApi) {
+    return resolveUserPermissions({
+      role: user.role,
+      permissionGrants: user.permissionGrants,
+      permissionDenies: user.permissionDenies,
+    });
+  }
+
   const customRolePermissions = user.customRoleId
     ? getRolePermissions(user.organizationId, user.customRoleId)
     : getRolePermissions(
@@ -41,11 +49,11 @@ type AuthContextValue = {
   user: AuthSession['user'] | null;
   organization: AuthSession['organization'] | null;
   permissions: Permission[];
+  login: (email: string, password: string) => Promise<AuthLoginResult>;
+  loginVerifyDevice: (email: string, code: string) => Promise<AuthSession>;
   refreshSession: () => Promise<void>;
   logout: () => Promise<void>;
-  /** Dev/demo only — swap mock role without backend. */
   switchRole: (role: UserRole) => Promise<void>;
-  /** Dev/demo only — preview as a tenant org admin after onboarding. */
   previewAsTenantOwner: (tenantId: string) => Promise<boolean>;
   canSwitchRole: boolean;
 };
@@ -54,40 +62,63 @@ const AuthContext = React.createContext<AuthContextValue | null>(null);
 
 const mockAuthApi = createMockAuthApi('org_admin');
 const httpAuthApi = createHttpAuthApi();
-const authApi =
-  env.isDev || env.enableRoleSwitch ? mockAuthApi : httpAuthApi;
+
+function pickAuthApi() {
+  if (env.useApi) {
+    return httpAuthApi;
+  }
+  if (env.isDev || env.enableRoleSwitch) {
+    return mockAuthApi;
+  }
+  return httpAuthApi;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<AuthStatus>('loading');
   const [session, setSession] = React.useState<AuthSession | null>(null);
+  const authApi = React.useMemo(() => pickAuthApi(), []);
 
   const refreshSession = React.useCallback(async () => {
     setStatus('loading');
     const nextSession = await authApi.getSession();
     setSession(nextSession);
     setStatus(nextSession ? 'authenticated' : 'unauthenticated');
-  }, []);
+  }, [authApi]);
+
+  const login = React.useCallback(
+    async (email: string, password: string) => {
+      return authApi.login(email, password);
+    },
+    [authApi],
+  );
+
+  const loginVerifyDevice = React.useCallback(
+    async (email: string, code: string) => {
+      const nextSession = await authApi.loginVerifyDevice(email, code);
+      setSession(nextSession);
+      setStatus('authenticated');
+      return nextSession;
+    },
+    [authApi],
+  );
 
   React.useEffect(() => {
     void refreshSession();
   }, [refreshSession]);
 
-  // API-ready: attach bearer token for HTTP mode (mock token until real JWT exists)
   React.useEffect(() => {
-    setAccessTokenGetter(() =>
-      session ? `mock.${session.user.id}.${session.organization.id}` : null,
-    );
+    setAccessTokenGetter(() => getStoredAccessToken());
   }, [session]);
 
   const logout = React.useCallback(async () => {
     await authApi.logout();
-    if (env.isDev) {
-      await refreshSession();
-      return;
-    }
+    setStoredAccessToken(null);
     setSession(null);
     setStatus('unauthenticated');
-  }, [refreshSession]);
+    if (env.useApi && typeof window !== 'undefined') {
+      window.location.assign('/login');
+    }
+  }, [authApi]);
 
   const switchRole = React.useCallback(
     async (role: UserRole) => {
@@ -98,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authApi.setRole(role);
       await refreshSession();
     },
-    [refreshSession],
+    [authApi, refreshSession],
   );
 
   const previewAsTenantOwner = React.useCallback(
@@ -117,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return ok;
     },
-    [refreshSession],
+    [authApi, refreshSession],
   );
 
   const permissions = React.useMemo(
@@ -132,13 +163,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user: session?.user ?? null,
       organization: session?.organization ?? null,
       permissions,
+      login,
+      loginVerifyDevice,
       refreshSession,
       logout,
       switchRole,
       previewAsTenantOwner,
-      canSwitchRole: env.isDev || env.enableRoleSwitch,
+      canSwitchRole: !env.useApi && (env.isDev || env.enableRoleSwitch),
     }),
-    [status, session, permissions, refreshSession, logout, switchRole, previewAsTenantOwner],
+    [status, session, permissions, login, loginVerifyDevice, refreshSession, logout, switchRole, previewAsTenantOwner],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

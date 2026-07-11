@@ -1,9 +1,11 @@
 import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { Public } from '../common/decorators';
 import * as fixtures from './data/crm-fixtures';
 
 @ApiTags('CRM — Deals')
+@Public()
 @Controller('crm/deals')
 export class DealsController {
   @Get()
@@ -32,6 +34,7 @@ export class DealsController {
 }
 
 @ApiTags('CRM — Pipeline')
+@Public()
 @Controller('crm/pipeline')
 export class PipelineController {
   @Get()

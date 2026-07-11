@@ -3,4 +3,5 @@ export const siteConfig = {
   description: 'Enterprise SaaS CRM for modern teams',
   defaultRoute: '/dashboard',
   dashboardRoute: '/dashboard',
+  loginRoute: '/login',
 } as const;

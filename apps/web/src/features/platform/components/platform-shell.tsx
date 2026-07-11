@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { BillingPlanOption, PlatformBillingTenant } from '@laam/types';
 import { Activity, Building2, CreditCard, Layers, Server, Shield } from 'lucide-react';
 
@@ -41,15 +42,26 @@ type PlatformShellProps = {
 };
 
 export function PlatformShell({ activeTab = 'tenants' }: PlatformShellProps) {
-  const tab = (TABS.some((t) => t.id === activeTab) ? activeTab : 'tenants') as TabId;
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab') ?? activeTab;
+  const tab = (TABS.some((t) => t.id === tabParam) ? tabParam : 'tenants') as TabId;
+
+  const navigateTab = React.useCallback(
+    (nextTab: TabId) => {
+      router.replace(`/dashboard/platform?tab=${nextTab}`, { scroll: false });
+    },
+    [router],
+  );
 
   return (
     <div className={ORDER_PAGE_GAP}>
       <div className="flex flex-wrap gap-1 border-b pb-2">
         {TABS.map((t) => (
-          <a
+          <button
             key={t.id}
-            href={`/dashboard/platform?tab=${t.id}`}
+            type="button"
+            onClick={() => navigateTab(t.id)}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
               tab === t.id
@@ -59,7 +71,7 @@ export function PlatformShell({ activeTab = 'tenants' }: PlatformShellProps) {
           >
             <t.icon className="size-4" />
             {t.label}
-          </a>
+          </button>
         ))}
       </div>
 

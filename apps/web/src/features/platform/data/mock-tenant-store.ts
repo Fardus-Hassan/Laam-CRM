@@ -8,6 +8,7 @@ import type {
   Permission,
   PermissionPreset,
   Tenant,
+  TenantStatus,
   TenantUser,
   UpdateOrgTeamRequest,
   UpdateTenantUserAcl,
@@ -344,6 +345,27 @@ export function listTenants(): Tenant[] {
 
 export function getTenant(id: string): Tenant | undefined {
   return tenants.find((tenant) => tenant.id === id);
+}
+
+export function updateTenantStatus(tenantId: string, status: TenantStatus): Tenant {
+  const index = tenants.findIndex((tenant) => tenant.id === tenantId);
+  if (index === -1) {
+    throw new Error('Tenant not found');
+  }
+
+  tenants[index] = { ...tenants[index], status };
+  return tenants[index];
+}
+
+export function deleteTenant(tenantId: string): boolean {
+  const index = tenants.findIndex((tenant) => tenant.id === tenantId);
+  if (index === -1) {
+    return false;
+  }
+
+  tenants = tenants.filter((tenant) => tenant.id !== tenantId);
+  orgStores.delete(tenantId);
+  return true;
 }
 
 export function getOrganization(id: string): Organization | undefined {

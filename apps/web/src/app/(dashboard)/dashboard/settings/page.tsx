@@ -5,6 +5,7 @@ import {
   BookOpen,
   FileUp,
   GitBranch,
+  LockKeyhole,
   MessageSquare,
   Plug,
   Settings2,
@@ -47,6 +48,12 @@ const SETTINGS_LINKS = [
     description: 'Bulk SMS message templates for order notifications.',
     href: '/dashboard/settings/sms-templates',
     icon: MessageSquare,
+  },
+  {
+    title: 'Security',
+    description: 'Change password, device verification, and staff OTP inbox.',
+    href: '/dashboard/settings/security',
+    icon: LockKeyhole,
   },
   {
     title: 'Roles & Permissions',

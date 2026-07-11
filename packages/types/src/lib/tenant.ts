@@ -61,6 +61,13 @@ export const tenantUserSchema = z.object({
 
 export type TenantUser = z.infer<typeof tenantUserSchema>;
 
+export const tenantListItemSchema = tenantSchema.extend({
+  owner: tenantUserSchema.nullable().optional(),
+  ownerTempPassword: z.string().nullable().optional(),
+});
+
+export type TenantListItem = z.infer<typeof tenantListItemSchema>;
+
 /** Sales / call-center team: one leader, many agents. */
 export const orgTeamSchema = z.object({
   id: z.string(),

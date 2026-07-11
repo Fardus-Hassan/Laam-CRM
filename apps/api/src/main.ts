@@ -1,15 +1,52 @@
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app/app.module';
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return true;
+    }
+    if (host.endsWith('.localhost')) {
+      return true;
+    }
+    if (host === 'laamcrm.com' || host.endsWith('.laamcrm.com')) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  );
   app.enableCors({
-    origin: process.env['WEB_URL'] ?? 'http://localhost:3000',
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
   });
 
   const swaggerConfig = new DocumentBuilder()
