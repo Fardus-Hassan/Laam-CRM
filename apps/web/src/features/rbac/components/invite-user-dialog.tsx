@@ -73,7 +73,9 @@ export function InviteUserDialog({
       await onSubmit({
         name: name.trim(),
         email: email.trim(),
-        systemRole: 'sales_rep',
+        systemRole: (customRoleId.startsWith('system:')
+          ? customRoleId.slice('system:'.length)
+          : 'sales_rep') as CreateTenantUserRequest['systemRole'],
         customRoleId,
         permissionGrants,
         permissionDenies,

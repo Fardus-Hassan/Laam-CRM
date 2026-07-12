@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import type { AuthSession, Permission, UserRole } from '@laam/types';
-import { resolveUserPermissions } from '@laam/types';
+import { resolveUserPermissions, TENANT_PERMISSIONS } from '@laam/types';
 import { env } from '@/config/env';
 import {
   createHttpAuthApi,
@@ -18,11 +18,16 @@ import { setAccessTokenGetter } from '@/lib/api/client';
 
 function resolveSessionPermissions(user: AuthSession['user']): Permission[] {
   if (env.useApi) {
-    return resolveUserPermissions({
-      role: user.role,
-      permissionGrants: user.permissionGrants,
-      permissionDenies: user.permissionDenies,
-    });
+    // Temporary: all tenant users get full module access until role-wise permissions ship.
+    // Super admin keeps platform + tenant permissions via resolveUserPermissions.
+    if (user.role === 'super_admin') {
+      return resolveUserPermissions({
+        role: user.role,
+        permissionGrants: user.permissionGrants,
+        permissionDenies: user.permissionDenies,
+      });
+    }
+    return [...TENANT_PERMISSIONS];
   }
 
   const customRolePermissions = user.customRoleId

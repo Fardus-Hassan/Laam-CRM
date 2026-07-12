@@ -343,10 +343,16 @@ export class AuthService {
   private async issueLoginSession(user: UserWithOrg): Promise<LoginSuccess> {
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastSeenAt: new Date() },
+      data: {
+        lastSeenAt: new Date(),
+        status: user.status === 'invited' ? 'active' : undefined,
+      },
     });
 
-    const session = this.toSession(user);
+    const session = this.toSession({
+      ...user,
+      status: user.status === 'invited' ? 'active' : user.status,
+    });
     const accessToken = this.signToken(user);
     return { ...session, accessToken };
   }

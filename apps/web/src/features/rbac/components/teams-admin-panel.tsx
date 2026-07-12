@@ -56,7 +56,7 @@ export function TeamsAdminPanel({
 
   const leaders = users.filter(
     (u) =>
-      u.status === 'active' &&
+      (u.status === 'active' || u.status === 'invited') &&
       (u.systemRole === 'team_leader' ||
         u.systemRole === 'sales_rep' ||
         u.systemRole === 'sales_manager' ||
@@ -65,7 +65,7 @@ export function TeamsAdminPanel({
 
   const agentCandidates = users.filter(
     (u) =>
-      u.status === 'active' &&
+      (u.status === 'active' || u.status === 'invited') &&
       u.id !== leaderUserId &&
       (u.systemRole === 'sales_rep' ||
         u.systemRole === 'team_leader' ||

@@ -16,6 +16,7 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   users     User[]
+  teams     Team[]
 }
 
 model User {
@@ -31,6 +32,9 @@ model User {
   customRoleId     String?
   permissionGrants String[]      @default([])
   permissionDenies String[]      @default([])
+  teamId           String?
+  team             Team?         @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
+  ledTeams         Team[]        @relation("TeamLeader")
   lastSeenAt       DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -38,6 +42,22 @@ model User {
   trustedDevices   TrustedDevice[]
 
   @@index([organizationId])
+  @@index([teamId])
+}
+
+model Team {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  leaderUserId   String
+  leader         User         @relation("TeamLeader", fields: [leaderUserId], references: [id], onDelete: Restrict)
+  members        User[]       @relation("TeamMembers")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([leaderUserId])
 }
 
 model OtpChallenge {

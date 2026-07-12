@@ -24,4 +24,7 @@ export const crmEndpoints = {
   orders: '/crm/orders',
   deals: '/crm/deals',
   pipeline: '/crm/pipeline',
+  users: '/crm/users',
+  roles: '/crm/roles',
+  teams: '/crm/teams',
 } as const;
