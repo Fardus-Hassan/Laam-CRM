@@ -65,8 +65,22 @@ export type RbacApi = {
   updateUserAcl: (
     organizationId: string,
     userId: string,
-    patch: UpdateTenantUserAcl & { customRoleId?: string; systemRole?: UserRole; teamId?: string | null },
+    patch: UpdateTenantUserAcl,
   ) => Promise<TenantUser | null>;
+  updateUserStatus: (
+    organizationId: string,
+    userId: string,
+    status: 'active' | 'suspended',
+  ) => Promise<TenantUser>;
+  deleteUser: (organizationId: string, userId: string) => Promise<boolean>;
+  bulkUsers: (
+    organizationId: string,
+    input: {
+      userIds: string[];
+      action: 'suspend' | 'activate' | 'delete' | 'set_role';
+      customRoleId?: string;
+    },
+  ) => Promise<{ processed: number }>;
   getRolePermissions: (
     organizationId: string,
     roleId: string | undefined,
@@ -93,23 +107,43 @@ export function createHttpRbacApi(): RbacApi {
     async listRoles() {
       return apiRequest<CustomRole[]>(crmEndpoints.roles);
     },
-    async createRole() {
-      throw new Error('Custom roles API coming soon — use system roles for now');
+    async createRole(_organizationId, input) {
+      return apiRequest<CustomRole>(crmEndpoints.roles, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: input.name,
+          description: input.description,
+          permissions: input.permissions,
+        }),
+      });
     },
-    async updateRole() {
-      throw new Error('Custom roles API coming soon');
+    async updateRole(_organizationId, roleId, patch) {
+      return apiRequest<CustomRole>(`${crmEndpoints.roles}/${roleId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
     },
-    async deleteRole() {
-      throw new Error('Custom roles API coming soon');
+    async deleteRole(_organizationId, roleId) {
+      const result = await apiRequest<{ deleted: boolean }>(`${crmEndpoints.roles}/${roleId}`, {
+        method: 'DELETE',
+      });
+      return result.deleted;
     },
     async listCustomPresets() {
-      return [];
+      return apiRequest<PermissionPreset[]>(crmEndpoints.permissionPresets);
     },
-    async saveCustomPreset() {
-      throw new Error('Custom presets API coming soon');
+    async saveCustomPreset(_organizationId, input) {
+      return apiRequest<PermissionPreset>(crmEndpoints.permissionPresets, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
     },
-    async deleteCustomPreset() {
-      throw new Error('Custom presets API coming soon');
+    async deleteCustomPreset(_organizationId, presetId) {
+      const result = await apiRequest<{ deleted: boolean }>(
+        `${crmEndpoints.permissionPresets}/${presetId}`,
+        { method: 'DELETE' },
+      );
+      return result.deleted;
     },
     async listUsers() {
       return apiRequest<TenantUser[]>(crmEndpoints.users);
@@ -131,6 +165,24 @@ export function createHttpRbacApi(): RbacApi {
           ...patch,
           systemRole: systemRoleFromCustomRoleId(patch.customRoleId) ?? patch.systemRole,
         }),
+      });
+    },
+    async updateUserStatus(_organizationId, userId, status) {
+      return apiRequest<TenantUser>(`${crmEndpoints.users}/${userId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+    },
+    async deleteUser(_organizationId, userId) {
+      const result = await apiRequest<{ deleted: boolean }>(`${crmEndpoints.users}/${userId}`, {
+        method: 'DELETE',
+      });
+      return result.deleted;
+    },
+    async bulkUsers(_organizationId, input) {
+      return apiRequest<{ processed: number }>(`${crmEndpoints.users}/bulk`, {
+        method: 'POST',
+        body: JSON.stringify(input),
       });
     },
     async getRolePermissions(_organizationId, roleId) {
@@ -195,6 +247,62 @@ export function createMockRbacApi(): RbacApi {
     },
     async updateUserAcl(organizationId, userId, patch) {
       return updateUserAcl(organizationId, userId, patch) ?? null;
+    },
+    async updateUserStatus(organizationId, userId, status) {
+      const updated = updateUserAcl(organizationId, userId, {});
+      if (!updated) {
+        throw new Error('User not found');
+      }
+      const list = await listUsers(organizationId);
+      const user = list.find((item) => item.id === userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+      user.status = status;
+      return user;
+    },
+    async deleteUser(organizationId, userId) {
+      const list = await listUsers(organizationId);
+      const idx = list.findIndex((item) => item.id === userId);
+      if (idx < 0) {
+        return false;
+      }
+      list.splice(idx, 1);
+      return true;
+    },
+    async bulkUsers(organizationId, input) {
+      let processed = 0;
+      for (const userId of input.userIds) {
+        if (input.action === 'delete') {
+          const list = await listUsers(organizationId);
+          const idx = list.findIndex((item) => item.id === userId);
+          if (idx >= 0) {
+            list.splice(idx, 1);
+            processed += 1;
+          }
+        } else if (input.action === 'suspend') {
+          const list = await listUsers(organizationId);
+          const user = list.find((item) => item.id === userId);
+          if (user) {
+            user.status = 'suspended';
+            processed += 1;
+          }
+        } else if (input.action === 'activate') {
+          const list = await listUsers(organizationId);
+          const user = list.find((item) => item.id === userId);
+          if (user) {
+            user.status = 'active';
+            processed += 1;
+          }
+        } else if (input.action === 'set_role' && input.customRoleId) {
+          await updateUserAcl(organizationId, userId, {
+            customRoleId: input.customRoleId,
+            systemRole: systemRoleFromCustomRoleId(input.customRoleId),
+          });
+          processed += 1;
+        }
+      }
+      return { processed };
     },
     async getRolePermissions(organizationId, roleId) {
       return getRolePermissions(organizationId, roleId);

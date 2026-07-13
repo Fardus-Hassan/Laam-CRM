@@ -8,41 +8,79 @@ datasource db {
 }
 
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  plan      String
-  status    String   @default("active") // active | suspended | onboarding
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users     User[]
-  teams     Team[]
+  id                 String             @id @default(uuid())
+  name               String
+  slug               String             @unique
+  plan               String
+  status             String             @default("active") // active | suspended | onboarding
+  phone              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  users              User[]
+  teams              Team[]
+  customRoles        CustomRole[]
+  permissionPresets  PermissionPreset[]
 }
 
 model User {
-  id               String        @id @default(uuid())
-  email            String        @unique
+  id                  String         @id @default(uuid())
+  email               String         @unique
   passwordHash        String
   inviteTempPassword  String?
   name                String
-  systemRole       String
-  status           String        @default("active") // active | invited | suspended
-  organizationId   String?
-  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customRoleId     String?
-  permissionGrants String[]      @default([])
-  permissionDenies String[]      @default([])
-  teamId           String?
-  team             Team?         @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
-  ledTeams         Team[]        @relation("TeamLeader")
-  lastSeenAt       DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  otpChallenges    OtpChallenge[]
-  trustedDevices   TrustedDevice[]
+  systemRole          String
+  status              String         @default("active") // active | invited | suspended
+  organizationId      String?
+  organization        Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customRoleId        String?
+  customRole          CustomRole?    @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  permissionGrants    String[]       @default([])
+  permissionDenies    String[]       @default([])
+  teamId              String?
+  team                Team?          @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
+  ledTeams            Team[]         @relation("TeamLeader")
+  invitedByUserId     String?
+  invitedBy           User?          @relation("UserInvites", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+  invitedUsers        User[]         @relation("UserInvites")
+  lastSeenAt          DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  otpChallenges       OtpChallenge[]
+  trustedDevices      TrustedDevice[]
 
   @@index([organizationId])
   @@index([teamId])
+  @@index([customRoleId])
+  @@index([invitedByUserId])
+}
+
+model CustomRole {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  permissions    String[]     @default([])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  users          User[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model PermissionPreset {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  permissions    String[]     @default([])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model Team {

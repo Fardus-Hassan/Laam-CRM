@@ -412,6 +412,7 @@ export function createTenant(input: CreateTenantRequest): Tenant {
     slug: input.slug,
     plan: input.plan,
     status: 'active',
+    phone: input.owner.phone ?? null,
     ownerUserId,
     createdAt: new Date().toISOString(),
   };
@@ -610,7 +611,7 @@ export function createUser(
 export function updateUserAcl(
   organizationId: string,
   userId: string,
-  patch: UpdateTenantUserAcl & { customRoleId?: string },
+  patch: UpdateTenantUserAcl,
 ): TenantUser | undefined {
   const store = orgStores.get(organizationId);
   if (!store) {
@@ -626,6 +627,8 @@ export function updateUserAcl(
   const next: TenantUser = {
     ...current,
     customRoleId: patch.customRoleId ?? current.customRoleId,
+    systemRole: patch.systemRole ?? current.systemRole,
+    teamId: patch.teamId === undefined ? current.teamId : patch.teamId ?? undefined,
     permissionGrants: patch.permissionGrants ?? current.permissionGrants,
     permissionDenies: patch.permissionDenies ?? current.permissionDenies,
   };

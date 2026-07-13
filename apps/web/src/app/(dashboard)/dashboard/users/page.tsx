@@ -7,15 +7,15 @@ type UsersPageProps = {
 
 export default async function UsersPage({ searchParams }: UsersPageProps) {
   const params = searchParams ? await searchParams : undefined;
-  const agentsMode = params?.view === 'team';
+  const focusUsers = params?.view === 'team';
 
   return (
     <PageShell
-      title={agentsMode ? 'Team agents' : 'Team & admins'}
+      title="Users"
       description={
-        agentsMode
-          ? 'Sales agents — call center staff who confirm orders and receive lead distribution.'
-          : 'Create teams, assign leaders, invite all members, and manage permissions.'
+        focusUsers
+          ? 'Invite users for any role, control permissions, and manage access in bulk.'
+          : 'Invite users, manage teams, and control role permissions.'
       }
     >
       <TeamAdminShell />

@@ -51,6 +51,9 @@ export function PlatformTenantsPanel({ initialTab }: PlatformTenantsPanelProps) 
   const [busyTenantId, setBusyTenantId] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<TenantListItem | null>(null);
   const [deleteConfirm, setDeleteConfirm] = React.useState('');
+  const [addAdminTarget, setAddAdminTarget] = React.useState<TenantListItem | null>(null);
+  const [adminName, setAdminName] = React.useState('');
+  const [adminEmail, setAdminEmail] = React.useState('');
 
   const refresh = React.useCallback(async () => {
     const nextTenants = await tenantApi.listTenants();
@@ -65,6 +68,7 @@ export function PlatformTenantsPanel({ initialTab }: PlatformTenantsPanelProps) 
     input: Parameters<typeof tenantApi.createTenant>[0],
   ) => {
     const result = await tenantApi.createTenant(input);
+    const extraCount = input.additionalAdmins?.length ?? 0;
 
     if (result.emailSent === false) {
       toast.warning(
@@ -77,11 +81,44 @@ export function PlatformTenantsPanel({ initialTab }: PlatformTenantsPanelProps) 
       );
     } else {
       setSuccessMessage(
-        `${result.tenant.name} created. Owner: ${result.ownerEmail ?? input.owner.email} (Org Admin) — invite email sent`,
+        `${result.tenant.name} created. Primary admin: ${result.ownerEmail ?? input.owner.email}${
+          extraCount ? ` (+${extraCount} more admin${extraCount === 1 ? '' : 's'})` : ''
+        } — invite email(s) sent`,
       );
     }
 
     await refresh();
+  };
+
+  const handleAddAdmin = async () => {
+    if (!addAdminTarget) {
+      return;
+    }
+    if (!adminName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail.trim())) {
+      toast.error('Enter a valid admin name and email');
+      return;
+    }
+
+    setBusyTenantId(addAdminTarget.id);
+    try {
+      const result = await tenantApi.addAdmin(addAdminTarget.id, {
+        name: adminName.trim(),
+        email: adminEmail.trim(),
+      });
+      if (result.emailSent === false) {
+        toast.warning(result.emailWarning ?? 'Admin created but invite email failed');
+      } else {
+        toast.success(`Admin ${result.email} invited`);
+      }
+      setAddAdminTarget(null);
+      setAdminName('');
+      setAdminEmail('');
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not add admin');
+    } finally {
+      setBusyTenantId(null);
+    }
   };
 
   const handleStatusChange = async (tenant: TenantListItem, status: TenantStatus) => {
@@ -142,15 +179,20 @@ export function PlatformTenantsPanel({ initialTab }: PlatformTenantsPanelProps) 
             <TableHeader>
               <TableRow>
                 <TableHead>Company</TableHead>
+                <TableHead>Phone</TableHead>
                 <TableHead>Plan</TableHead>
-                <TableHead>Owner</TableHead>
+                <TableHead>Admins</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tenants.map((tenant) => {
-                const owner = tenant.owner;
+                const admins = tenant.admins?.length
+                  ? tenant.admins
+                  : tenant.owner
+                    ? [tenant.owner]
+                    : [];
                 const isBusy = busyTenantId === tenant.id;
 
                 return (
@@ -161,12 +203,19 @@ export function PlatformTenantsPanel({ initialTab }: PlatformTenantsPanelProps) 
                         <p className="text-xs text-muted-foreground">{tenant.slug}</p>
                       </div>
                     </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {tenant.phone || '—'}
+                    </TableCell>
                     <TableCell>{tenant.plan}</TableCell>
                     <TableCell>
-                      {owner ? (
-                        <div className="text-sm">
-                          <p className="font-medium">{owner.name}</p>
-                          <p className="text-xs text-muted-foreground">{owner.email}</p>
+                      {admins.length ? (
+                        <div className="space-y-1 text-sm">
+                          {admins.map((admin) => (
+                            <div key={admin.id}>
+                              <p className="font-medium">{admin.name}</p>
+                              <p className="text-xs text-muted-foreground">{admin.email}</p>
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
@@ -211,6 +260,17 @@ export function PlatformTenantsPanel({ initialTab }: PlatformTenantsPanelProps) 
                                 Open dashboard
                               </a>
                             </DropdownMenuItem>
+                            <Can permission="platform.manage">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setAddAdminTarget(tenant);
+                                  setAdminName('');
+                                  setAdminEmail('');
+                                }}
+                              >
+                                Add admin
+                              </DropdownMenuItem>
+                            </Can>
                             {tenant.status === 'active' ? (
                               <DropdownMenuItem
                                 onClick={() => void handleStatusChange(tenant, 'suspended')}
@@ -261,6 +321,57 @@ export function PlatformTenantsPanel({ initialTab }: PlatformTenantsPanelProps) 
         onOpenChange={setWizardOpen}
         onSubmit={handleCreate}
       />
+
+      <Dialog
+        open={addAdminTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddAdminTarget(null);
+            setAdminName('');
+            setAdminEmail('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add org admin</DialogTitle>
+            <DialogDescription>
+              {addAdminTarget
+                ? `Invite another Org Admin for ${addAdminTarget.name}.`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-3">
+            <Input
+              value={adminName}
+              onChange={(event) => setAdminName(event.target.value)}
+              placeholder="Full name"
+            />
+            <Input
+              type="email"
+              value={adminEmail}
+              onChange={(event) => setAdminEmail(event.target.value)}
+              placeholder="email@company.com"
+            />
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setAddAdminTarget(null);
+                setAdminName('');
+                setAdminEmail('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleAddAdmin()}>
+              Invite admin
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={deleteTarget !== null}

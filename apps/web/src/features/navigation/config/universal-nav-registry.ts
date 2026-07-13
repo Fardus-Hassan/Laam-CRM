@@ -417,15 +417,9 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
             },
             {
               id: 'users',
-              title: 'Team',
-              url: '/dashboard/users',
-              permissions: ['users.view', 'users.manage'],
-            },
-            {
-              id: 'team-agents',
-              title: 'Team agents',
+              title: 'Users',
               url: '/dashboard/users?view=team',
-              permissions: pv('users.view'),
+              permissions: ['users.view', 'users.manage'],
             },
             {
               id: 'roles',

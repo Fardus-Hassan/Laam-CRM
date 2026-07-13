@@ -1,7 +1,7 @@
 'use client';
 
 import type { Permission } from '@laam/types';
-import { PERMISSION_GROUPS, PERMISSION_LABELS } from '@laam/types';
+import { PERMISSION_LABELS, TENANT_PERMISSION_GROUPS } from '@laam/types';
 
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
@@ -45,7 +45,7 @@ export function PermissionMatrix({
 
   return (
     <div className={cn('space-y-6', className)}>
-      {PERMISSION_GROUPS.map((group) => {
+      {TENANT_PERMISSION_GROUPS.map((group) => {
         const allSelected = group.permissions.every((p) => selected.has(p));
         const someSelected = group.permissions.some((p) => selected.has(p));
 

@@ -2,7 +2,11 @@
 
 import * as React from 'react';
 import type { AuthSession, Permission, UserRole } from '@laam/types';
-import { resolveUserPermissions, TENANT_PERMISSIONS } from '@laam/types';
+import {
+  isPlatformOnlyPermission,
+  isValidPermission,
+  resolveUserPermissions,
+} from '@laam/types';
 import { env } from '@/config/env';
 import {
   createHttpAuthApi,
@@ -16,18 +20,30 @@ import {
 import { getStoredAccessToken, setStoredAccessToken } from '@/lib/auth-token';
 import { setAccessTokenGetter } from '@/lib/api/client';
 
+function stripNonSuperAdminPlatformAccess(
+  role: UserRole,
+  permissions: Permission[],
+): Permission[] {
+  if (role === 'super_admin') {
+    return permissions;
+  }
+  return permissions.filter((permission) => !isPlatformOnlyPermission(permission));
+}
+
 function resolveSessionPermissions(user: AuthSession['user']): Permission[] {
+  // API sessions include server-resolved effective permissions.
   if (env.useApi) {
-    // Temporary: all tenant users get full module access until role-wise permissions ship.
-    // Super admin keeps platform + tenant permissions via resolveUserPermissions.
-    if (user.role === 'super_admin') {
-      return resolveUserPermissions({
-        role: user.role,
-        permissionGrants: user.permissionGrants,
-        permissionDenies: user.permissionDenies,
-      });
+    if (user.permissions?.length) {
+      return stripNonSuperAdminPlatformAccess(
+        user.role,
+        user.permissions.filter(isValidPermission),
+      );
     }
-    return [...TENANT_PERMISSIONS];
+    return resolveUserPermissions({
+      role: user.role,
+      permissionGrants: user.permissionGrants,
+      permissionDenies: user.permissionDenies,
+    });
   }
 
   const customRolePermissions = user.customRoleId

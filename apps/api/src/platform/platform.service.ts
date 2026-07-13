@@ -36,13 +36,13 @@ export class PlatformService {
         users: {
           where: { systemRole: 'org_admin' },
           orderBy: { createdAt: 'asc' },
-          take: 1,
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     return rows.map((row) => {
+      const admins = row.users.map((u) => this.toTenantUser(u));
       const ownerUser = row.users[0];
       const owner = ownerUser ? this.toTenantUser(ownerUser) : null;
       return {
@@ -51,6 +51,7 @@ export class PlatformService {
           ownerUserId: owner?.id,
         }),
         owner,
+        admins,
         ownerTempPassword: ownerUser?.inviteTempPassword ?? null,
       };
     });
@@ -63,7 +64,6 @@ export class PlatformService {
         users: {
           where: { systemRole: 'org_admin' },
           orderBy: { createdAt: 'asc' },
-          take: 1,
         },
       },
     });
@@ -100,12 +100,21 @@ export class PlatformService {
       throw new BadRequestException('Slug already in use');
     }
 
-    const tempPassword = randomBytes(4).toString('hex') + 'A1!';
     const ownerEmail = input.owner.email.trim().toLowerCase();
+    const additionalAdmins = input.additionalAdmins ?? [];
+    const allEmails = [
+      ownerEmail,
+      ...additionalAdmins.map((a) => a.email.trim().toLowerCase()),
+    ];
+    if (new Set(allEmails).size !== allEmails.length) {
+      throw new BadRequestException('Duplicate admin emails in request');
+    }
 
-    const emailTaken = await this.prisma.user.findUnique({ where: { email: ownerEmail } });
-    if (emailTaken) {
-      throw new BadRequestException('Owner email already registered');
+    for (const email of allEmails) {
+      const taken = await this.prisma.user.findUnique({ where: { email } });
+      if (taken) {
+        throw new BadRequestException(`Email already registered: ${email}`);
+      }
     }
 
     const organization = await this.prisma.organization.create({
@@ -114,52 +123,53 @@ export class PlatformService {
         slug,
         plan: input.plan,
         status: 'onboarding',
+        phone: input.owner.phone?.trim() || null,
       },
     });
 
-    const owner = await this.prisma.user.create({
-      data: {
-        email: ownerEmail,
-        name: input.owner.name.trim(),
-        passwordHash: await bcrypt.hash(tempPassword, 12),
-        inviteTempPassword: tempPassword,
-        systemRole: 'org_admin',
-        status: 'invited',
-        organizationId: organization.id,
-      },
+    const owner = await this.createOrgAdminUser({
+      organizationId: organization.id,
+      name: input.owner.name.trim(),
+      email: ownerEmail,
+      companyName: input.name.trim(),
+      slug,
     });
+
+    const extraAdmins = [];
+    for (const admin of additionalAdmins) {
+      const created = await this.createOrgAdminUser({
+        organizationId: organization.id,
+        name: admin.name.trim(),
+        email: admin.email.trim().toLowerCase(),
+        companyName: input.name.trim(),
+        slug,
+      });
+      extraAdmins.push(created);
+    }
 
     await this.prisma.organization.update({
       where: { id: organization.id },
       data: { status: 'active' },
     });
 
-    const loginUrl = `${tenantWebUrl(slug)}/login`;
-
-    if (isEmailMockMode()) {
-      this.logger.warn(
-        `[Tenant provisioned] ${input.name} (${slug})\n  URL: ${loginUrl}\n  Email: ${ownerEmail}\n  Temp password: ${tempPassword}`,
-      );
-    }
-
-    const emailResult = await this.email.sendTenantInviteEmail({
-      to: ownerEmail,
-      ownerName: input.owner.name.trim(),
-      companyName: input.name.trim(),
-      loginUrl,
-      email: ownerEmail,
-      tempPassword,
-      roleLabel: 'Organization Admin',
-    });
-
     return {
-      tenant: this.toTenant({ ...organization, status: 'active', ownerUserId: owner.id }),
+      tenant: this.toTenant({
+        ...organization,
+        status: 'active',
+        phone: organization.phone,
+        ownerUserId: owner.userId,
+      }),
       provision: {
-        loginUrl,
-        email: ownerEmail,
-        tempPassword,
-        emailSent: emailResult.sent,
-        emailWarning: emailResult.error,
+        loginUrl: owner.loginUrl,
+        email: owner.email,
+        tempPassword: owner.tempPassword,
+        emailSent: owner.emailSent,
+        emailWarning: owner.emailWarning,
+        additionalAdmins: extraAdmins.map((a) => ({
+          email: a.email,
+          emailSent: a.emailSent,
+          emailWarning: a.emailWarning,
+        })),
       },
     };
   }
@@ -194,45 +204,21 @@ export class PlatformService {
       throw new BadRequestException('Email already registered');
     }
 
-    const tempPassword = randomBytes(4).toString('hex') + 'A1!';
-
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        name: input.name.trim(),
-        passwordHash: await bcrypt.hash(tempPassword, 12),
-        inviteTempPassword: tempPassword,
-        systemRole: 'org_admin',
-        status: 'invited',
-        organizationId: org.id,
-      },
-    });
-
-    const loginUrl = `${tenantWebUrl(org.slug)}/login`;
-
-    if (isEmailMockMode()) {
-      this.logger.warn(
-        `[Admin added] ${org.slug} — ${email} / temp: ${tempPassword} — ${loginUrl}`,
-      );
-    }
-
-    const emailResult = await this.email.sendTenantInviteEmail({
-      to: email,
-      ownerName: input.name.trim(),
-      companyName: org.name,
-      loginUrl,
+    const created = await this.createOrgAdminUser({
+      organizationId: org.id,
+      name: input.name.trim(),
       email,
-      tempPassword,
-      roleLabel: 'Organization Admin',
+      companyName: org.name,
+      slug: org.slug,
     });
 
     return {
-      userId: user.id,
-      email,
-      tempPassword,
-      loginUrl,
-      emailSent: emailResult.sent,
-      emailWarning: emailResult.error,
+      userId: created.userId,
+      email: created.email,
+      tempPassword: created.tempPassword,
+      loginUrl: created.loginUrl,
+      emailSent: created.emailSent,
+      emailWarning: created.emailWarning,
     };
   }
 
@@ -267,12 +253,64 @@ export class PlatformService {
       await tx.company.deleteMany({ where: { organizationId: id } });
       await tx.deal.deleteMany({ where: { organizationId: id } });
       await tx.order.deleteMany({ where: { organizationId: id } });
+      await tx.user.updateMany({ where: { organizationId: id }, data: { teamId: null, customRoleId: null } });
+      await tx.team.deleteMany({ where: { organizationId: id } });
+      await tx.permissionPreset.deleteMany({ where: { organizationId: id } });
+      await tx.customRole.deleteMany({ where: { organizationId: id } });
       await tx.user.deleteMany({ where: { organizationId: id } });
       await tx.organization.delete({ where: { id } });
     });
 
     this.logger.log(`Deleted tenant ${org.name} (${org.slug})`);
     return { deleted: true as const, id };
+  }
+
+  private async createOrgAdminUser(input: {
+    organizationId: string;
+    name: string;
+    email: string;
+    companyName: string;
+    slug: string;
+  }) {
+    const tempPassword = randomBytes(4).toString('hex') + 'A1!';
+    const user = await this.prisma.user.create({
+      data: {
+        email: input.email,
+        name: input.name,
+        passwordHash: await bcrypt.hash(tempPassword, 12),
+        inviteTempPassword: tempPassword,
+        systemRole: 'org_admin',
+        status: 'invited',
+        organizationId: input.organizationId,
+      },
+    });
+
+    const loginUrl = `${tenantWebUrl(input.slug)}/login`;
+
+    if (isEmailMockMode()) {
+      this.logger.warn(
+        `[Admin provisioned] ${input.slug} — ${input.email} / temp: ${tempPassword} — ${loginUrl}`,
+      );
+    }
+
+    const emailResult = await this.email.sendTenantInviteEmail({
+      to: input.email,
+      ownerName: input.name,
+      companyName: input.companyName,
+      loginUrl,
+      email: input.email,
+      tempPassword,
+      roleLabel: 'Organization Admin',
+    });
+
+    return {
+      userId: user.id,
+      email: input.email,
+      tempPassword,
+      loginUrl,
+      emailSent: emailResult.sent,
+      emailWarning: emailResult.error,
+    };
   }
 
   private toTenantUser(user: {
@@ -307,6 +345,7 @@ export class PlatformService {
     slug: string;
     plan: string;
     status: string;
+    phone?: string | null;
     createdAt: Date;
     ownerUserId?: string;
   }): Tenant {
@@ -316,6 +355,7 @@ export class PlatformService {
       slug: row.slug,
       plan: row.plan as Tenant['plan'],
       status: row.status as Tenant['status'],
+      phone: row.phone ?? null,
       ownerUserId: row.ownerUserId ?? '00000000-0000-4000-8000-000000000000',
       createdAt: row.createdAt.toISOString(),
     };

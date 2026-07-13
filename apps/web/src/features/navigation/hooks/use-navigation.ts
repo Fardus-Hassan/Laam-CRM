@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { filterNavigation } from '@/features/navigation/lib/filter-navigation';
 import {
@@ -9,8 +10,10 @@ import {
   sortNavChildrenByFavorites,
 } from '@/features/orders/lib/order-queue-favorites';
 import { ORDER_STATUSES_CHANGED } from '@/features/orders/data/order-status-store';
+import { isPlatformHost } from '@/lib/tenant';
 
 export function useNavigation() {
+  const { user } = useAuth();
   const { permissions } = usePermissions();
   const [navVersion, setNavVersion] = React.useState(0);
 
@@ -28,7 +31,8 @@ export function useNavigation() {
   }, []);
 
   return React.useMemo(() => {
-    const groups = filterNavigation(permissions);
+    const includePlatform = user?.role === 'super_admin' && isPlatformHost();
+    const groups = filterNavigation(permissions, { includePlatform });
     const favorites = loadOrderQueueFavorites();
 
     return groups.map((group) => ({
@@ -43,5 +47,5 @@ export function useNavigation() {
         };
       }),
     }));
-  }, [permissions, navVersion]);
+  }, [permissions, navVersion, user?.role]);
 }

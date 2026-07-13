@@ -16,6 +16,7 @@ module.exports = {
     },
   },
   externals: {
+    '@laam/types': 'commonjs @laam/types',
     '@nestjs/swagger': 'commonjs @nestjs/swagger',
     'swagger-ui-express': 'commonjs swagger-ui-express',
     'swagger-ui-dist': 'commonjs swagger-ui-dist',

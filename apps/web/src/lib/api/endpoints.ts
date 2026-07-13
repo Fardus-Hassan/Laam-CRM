@@ -26,5 +26,6 @@ export const crmEndpoints = {
   pipeline: '/crm/pipeline',
   users: '/crm/users',
   roles: '/crm/roles',
+  permissionPresets: '/crm/permission-presets',
   teams: '/crm/teams',
 } as const;

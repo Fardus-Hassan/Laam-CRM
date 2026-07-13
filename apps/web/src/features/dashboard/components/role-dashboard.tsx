@@ -21,13 +21,14 @@ import {
 import { DashboardSkeleton } from '@/features/dashboard/components/dashboard-skeleton';
 
 type RoleDashboardProps = {
-  initialData: DashboardResponse;
+  initialData?: DashboardResponse;
 };
 
 export function RoleDashboard({ initialData }: RoleDashboardProps) {
   const { user, status } = useAuth();
   const { isoRange } = useDashboardDate();
-  const [data, setData] = React.useState(initialData);
+  const [data, setData] = React.useState<DashboardResponse | null>(initialData ?? null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!user) {
@@ -38,19 +39,38 @@ export function RoleDashboard({ initialData }: RoleDashboardProps) {
     const dashboardRole = getDashboardRoleForTemplate(template);
 
     let cancelled = false;
+    setLoadError(null);
 
-    void fetchDashboard(dashboardRole, isoRange ?? undefined).then((next) => {
-      if (!cancelled) {
-        setData(next);
-      }
-    });
+    void fetchDashboard(dashboardRole, isoRange ?? undefined)
+      .then((next) => {
+        if (!cancelled) {
+          setData(next);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard');
+        }
+      });
 
     return () => {
       cancelled = true;
     };
   }, [user, isoRange?.from, isoRange?.to]);
 
-  if (status === 'loading') {
+  if (status === 'loading' || (status === 'authenticated' && !data && !loadError)) {
+    return <DashboardSkeleton />;
+  }
+
+  if (loadError) {
+    return (
+      <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        {loadError}
+      </p>
+    );
+  }
+
+  if (!data) {
     return <DashboardSkeleton />;
   }
 

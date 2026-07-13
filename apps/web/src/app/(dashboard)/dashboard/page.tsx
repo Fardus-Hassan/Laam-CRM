@@ -1,37 +1,18 @@
 import { DashboardHeader } from '@/components/layout/dashboard-header';
-import { fetchDashboard } from '@/features/dashboard/api/dashboard-api';
 import { RoleDashboard } from '@/features/dashboard/components/role-dashboard';
-import { getDefaultDateRange, toISODateRange } from '@/lib/date-range';
 import { siteConfig } from '@/config/site';
 
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardPage() {
-  const isoRange = toISODateRange(getDefaultDateRange());
-  const dashboard = await fetchDashboard('org_admin', isoRange ?? undefined);
-
-  const title =
-    dashboard.kind === 'sales_head' ||
-    dashboard.kind === 'agent' ||
-    dashboard.kind === 'marketing_head'
-      ? dashboard.data.title
-      : 'Dashboard';
-
-  const description =
-    dashboard.kind === 'marketing_head'
-      ? dashboard.data.welcomeMessage ?? dashboard.data.subtitle
-      : dashboard.kind === 'sales_head' || dashboard.kind === 'agent'
-        ? dashboard.data.subtitle
-        : 'Overview of your CRM workspace';
-
+export default function DashboardPage() {
   return (
     <>
       <DashboardHeader
-        title={title}
-        description={description}
+        title="Dashboard"
+        description="Overview of your CRM workspace"
         breadcrumbs={[{ label: 'Dashboard', href: siteConfig.dashboardRoute }]}
       />
-      <RoleDashboard initialData={dashboard} />
+      <RoleDashboard />
     </>
   );
 }

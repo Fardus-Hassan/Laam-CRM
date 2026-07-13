@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import type { AuthSession, OtpChallengeResponse } from '@laam/types';
 
+import { PermissionResolverService } from '../common/permission-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { OtpChallengeResult } from './otp.service';
 import { OtpService } from './otp.service';
@@ -24,6 +25,7 @@ type UserWithOrg = {
   customRoleId: string | null;
   permissionGrants: string[];
   permissionDenies: string[];
+  customRole?: { permissions: string[] } | null;
   organization: {
     id: string;
     name: string;
@@ -49,6 +51,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
+    private readonly permissionResolver: PermissionResolverService,
   ) {}
 
   async login(
@@ -349,7 +352,7 @@ export class AuthService {
       },
     });
 
-    const session = this.toSession({
+    const session = await this.toSession({
       ...user,
       status: user.status === 'invited' ? 'active' : user.status,
     });
@@ -379,14 +382,14 @@ export class AuthService {
   private async findUserWithOrg(email: string): Promise<UserWithOrg | null> {
     return this.prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
-      include: { organization: true },
+      include: { organization: true, customRole: true },
     });
   }
 
   private async findUserWithOrgById(userId: string): Promise<UserWithOrg | null> {
     return this.prisma.user.findUnique({
       where: { id: userId },
-      include: { organization: true },
+      include: { organization: true, customRole: true },
     });
   }
 
@@ -418,13 +421,15 @@ export class AuthService {
     return 'admin_inbox';
   }
 
-  private toSession(user: UserWithOrg): AuthSession {
+  private async toSession(user: UserWithOrg): Promise<AuthSession> {
     const organization = user.organization ?? {
       id: '00000000-0000-4000-8000-000000000001',
       name: 'Laam Platform',
       slug: 'platform',
       plan: 'Enterprise',
     };
+
+    const permissions = await this.permissionResolver.resolveFromUserRow(user);
 
     return {
       user: {
@@ -436,6 +441,7 @@ export class AuthService {
         customRoleId: user.customRoleId ?? undefined,
         permissionGrants: user.permissionGrants as AuthSession['user']['permissionGrants'],
         permissionDenies: user.permissionDenies as AuthSession['user']['permissionDenies'],
+        permissions,
       },
       organization: {
         id: organization.id,

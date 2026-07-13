@@ -20,6 +20,15 @@ export type CreateTenantResult = {
   ownerEmail?: string;
 };
 
+export type AddAdminResult = {
+  userId: string;
+  email: string;
+  tempPassword?: string;
+  loginUrl?: string;
+  emailSent?: boolean;
+  emailWarning?: string;
+};
+
 export type TenantApi = {
   listTenants: () => Promise<TenantListItem[]>;
   getTenant: (id: string) => Promise<Tenant | null>;
@@ -27,6 +36,10 @@ export type TenantApi = {
   getTenantOwner: (tenantId: string) => Promise<TenantUser | undefined>;
   updateTenantStatus: (tenantId: string, status: TenantStatus) => Promise<Tenant>;
   deleteTenant: (tenantId: string) => Promise<{ deleted: true; id: string }>;
+  addAdmin: (
+    tenantId: string,
+    input: { name: string; email: string },
+  ) => Promise<AddAdminResult>;
 };
 
 type CreateTenantResponse = {
@@ -76,6 +89,12 @@ export function createHttpTenantApi(): TenantApi {
         method: 'DELETE',
       });
     },
+    addAdmin(tenantId, input) {
+      return apiRequest<AddAdminResult>(`/platform/tenants/${tenantId}/admins`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
   };
 }
 
@@ -87,6 +106,7 @@ export function createMockTenantApi(): TenantApi {
         items.map(async (tenant) => ({
           ...tenant,
           owner: (await getTenantOwner(tenant.id)) ?? null,
+          admins: [],
         })),
       );
     },
@@ -109,6 +129,9 @@ export function createMockTenantApi(): TenantApi {
         throw new Error('Tenant not found');
       }
       return { deleted: true as const, id: tenantId };
+    },
+    async addAdmin() {
+      throw new Error('Add admin is only available with the live API');
     },
   };
 }

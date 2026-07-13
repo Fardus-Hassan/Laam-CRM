@@ -10,6 +10,7 @@ type CreateTenantBody = {
   slug?: string;
   plan?: string;
   owner?: { name?: string; email?: string; phone?: string };
+  additionalAdmins?: { name?: string; email?: string }[];
 };
 
 function parseCreateTenantBody(body: CreateTenantBody): CreateTenantRequest {
@@ -32,6 +33,19 @@ function parseCreateTenantBody(body: CreateTenantBody): CreateTenantRequest {
     throw new BadRequestException('Invalid owner email');
   }
 
+  const additionalAdmins = (body.additionalAdmins ?? [])
+    .map((admin) => ({
+      name: admin.name?.trim() ?? '',
+      email: admin.email?.trim() ?? '',
+    }))
+    .filter((admin) => admin.name && admin.email);
+
+  for (const admin of additionalAdmins) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(admin.email)) {
+      throw new BadRequestException(`Invalid admin email: ${admin.email}`);
+    }
+  }
+
   return {
     name,
     slug,
@@ -41,6 +55,7 @@ function parseCreateTenantBody(body: CreateTenantBody): CreateTenantRequest {
       email: ownerEmail,
       phone: body.owner?.phone?.trim() || undefined,
     },
+    additionalAdmins,
   };
 }
 

@@ -83,8 +83,12 @@ function filterNavItem(
 
 export function filterNavigation(
   userPermissions: readonly Permission[],
+  options?: { includePlatform?: boolean },
 ): ResolvedNavGroup[] {
+  const includePlatform = options?.includePlatform === true;
+
   return getUniversalNavRegistry()
+    .filter((group) => includePlatform || group.id !== 'platform')
     .map((group) => {
       const items = group.items
         .map((item) => filterNavItem(item, userPermissions))

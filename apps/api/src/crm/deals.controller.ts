@@ -1,12 +1,12 @@
 import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import { Public } from '../common/decorators';
+import { RequirePermissions } from '../common/decorators';
 import * as fixtures from './data/crm-fixtures';
 
 @ApiTags('CRM — Deals')
-@Public()
 @Controller('crm/deals')
+@RequirePermissions('deals.view')
 export class DealsController {
   @Get()
   @ApiOperation({ summary: 'List deals' })
@@ -34,8 +34,8 @@ export class DealsController {
 }
 
 @ApiTags('CRM — Pipeline')
-@Public()
 @Controller('crm/pipeline')
+@RequirePermissions('pipeline.view')
 export class PipelineController {
   @Get()
   @ApiOperation({ summary: 'Get pipeline board data' })

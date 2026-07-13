@@ -346,7 +346,18 @@ export function isValidPermission(value: string): value is Permission {
   return PERMISSIONS.includes(value as Permission);
 }
 
+/** Super-admin / platform-host only — never assignable on tenant roles or grants. */
+export function isPlatformOnlyPermission(value: string): boolean {
+  return value.startsWith('platform.') || value === 'dashboard.widget.platform';
+}
+
 /** All tenant-scoped permissions (excludes platform-only). */
 export const TENANT_PERMISSIONS: Permission[] = PERMISSIONS.filter(
-  (p) => !p.startsWith('platform.'),
+  (p) => !isPlatformOnlyPermission(p),
 );
+
+/** Permission groups shown in tenant RBAC UIs (no Platform / super-admin access). */
+export const TENANT_PERMISSION_GROUPS: PermissionGroup[] = PERMISSION_GROUPS.map((group) => ({
+  ...group,
+  permissions: group.permissions.filter((p) => !isPlatformOnlyPermission(p)),
+})).filter((group) => group.permissions.length > 0);

@@ -1,10 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import type { CreateTenantUserRequest, CustomRole, Permission } from '@laam/types';
+import type { CreateTenantUserRequest, CustomRole, Permission, PermissionPreset } from '@laam/types';
 import Link from 'next/link';
 
 import { PermissionMatrix } from '@/features/rbac/components/permission-matrix';
+import { PERMISSION_PRESETS } from '@/features/rbac/api/rbac-api';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -26,6 +27,7 @@ type InviteUserDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roles: CustomRole[];
+  presets?: PermissionPreset[];
   onSubmit: (input: CreateTenantUserRequest) => Promise<void>;
 };
 
@@ -33,21 +35,32 @@ export function InviteUserDialog({
   open,
   onOpenChange,
   roles,
+  presets = [],
   onSubmit,
 }: InviteUserDialogProps) {
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [customRoleId, setCustomRoleId] = React.useState('');
+  const [presetId, setPresetId] = React.useState('');
   const [extraOpen, setExtraOpen] = React.useState(false);
   const [permissionGrants, setPermissionGrants] = React.useState<Permission[]>([]);
   const [permissionDenies, setPermissionDenies] = React.useState<Permission[]>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const allPresets = React.useMemo(
+    () => [...PERMISSION_PRESETS, ...presets.filter((p) => !PERMISSION_PRESETS.some((b) => b.id === p.id))],
+    [presets],
+  );
+
+  const selectedRole = roles.find((role) => role.id === customRoleId);
+  const rolePermissions = selectedRole?.permissions ?? [];
 
   React.useEffect(() => {
     if (!open) {
       setName('');
       setEmail('');
       setCustomRoleId(roles[0]?.id ?? '');
+      setPresetId('');
       setExtraOpen(false);
       setPermissionGrants([]);
       setPermissionDenies([]);
@@ -61,6 +74,19 @@ export function InviteUserDialog({
     name.trim().length > 0 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
     customRoleId.length > 0;
+
+  const handlePresetChange = (nextPresetId: string) => {
+    setPresetId(nextPresetId);
+    if (!nextPresetId) {
+      return;
+    }
+    const preset = allPresets.find((item) => item.id === nextPresetId);
+    if (!preset) {
+      return;
+    }
+    setPermissionGrants([...preset.permissions]);
+    setExtraOpen(true);
+  };
 
   const handleSubmit = async () => {
     if (!canSubmit) {
@@ -90,9 +116,9 @@ export function InviteUserDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Invite User</DialogTitle>
+          <DialogTitle>Invite user</DialogTitle>
           <DialogDescription>
-            Add a team member and assign a role. You can grant extra permissions below the role.
+            Assign a role, optionally apply a permission preset, then add extra access if needed.
           </DialogDescription>
         </DialogHeader>
 
@@ -142,6 +168,26 @@ export function InviteUserDialog({
             </select>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="invite-preset">Apply preset (optional)</Label>
+            <select
+              id="invite-preset"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              value={presetId}
+              onChange={(event) => handlePresetChange(event.target.value)}
+            >
+              <option value="">None</option>
+              {allPresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Preset permissions are added as extra grants on top of the selected role.
+            </p>
+          </div>
+
           <Collapsible open={extraOpen} onOpenChange={setExtraOpen}>
             <CollapsibleTrigger asChild>
               <Button type="button" variant="ghost" size="sm" className="px-0">
@@ -149,6 +195,24 @@ export function InviteUserDialog({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-2">
+              <div>
+                <p className="mb-2 text-xs font-medium">
+                  Role permissions — {selectedRole?.name ?? 'selected role'} (read-only)
+                </p>
+                {rolePermissions.length ? (
+                  <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/20 p-2">
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      {rolePermissions.map((permission) => (
+                        <li key={permission} className="font-mono">
+                          {permission}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No permissions on this role.</p>
+                )}
+              </div>
               <div>
                 <p className="mb-2 text-xs font-medium">Extra grants</p>
                 <PermissionMatrix value={permissionGrants} onChange={setPermissionGrants} />
@@ -166,7 +230,7 @@ export function InviteUserDialog({
             Cancel
           </Button>
           <Button type="button" disabled={!canSubmit || isSubmitting} onClick={() => void handleSubmit()}>
-            {isSubmitting ? 'Saving…' : 'Invite User'}
+            {isSubmitting ? 'Saving…' : 'Invite user'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -14,12 +14,17 @@ import type {
   CustomRole,
   OrgTeam,
   Permission,
+  PermissionPreset,
   TenantUser,
   UpdateOrgTeamRequest,
   UpdateTenantUserAcl,
   UserRole,
 } from '@laam/types';
 
+import {
+  getPermissionsForRole,
+  isValidPermission,
+} from '../common/effective-permissions';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantWebUrl } from '../common/tenant.util';
@@ -54,6 +59,19 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: 'Viewer',
 };
 
+function normalizePermissions(values: string[] | undefined): Permission[] {
+  if (!values?.length) {
+    return [];
+  }
+  // Platform / super-admin access is never stored on tenant users or roles.
+  return values.filter(
+    (value): value is Permission =>
+      isValidPermission(value) &&
+      !value.startsWith('platform.') &&
+      value !== 'dashboard.widget.platform',
+  );
+}
+
 @Injectable()
 export class RbacService {
   private readonly logger = new Logger(RbacService.name);
@@ -72,12 +90,17 @@ export class RbacService {
   async listUsers(organizationId: string): Promise<TenantUser[]> {
     const rows = await this.prisma.user.findMany({
       where: { organizationId },
+      include: { invitedBy: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map((row) => this.toTenantUser(row));
   }
 
-  async createUser(organizationId: string, input: CreateTenantUserRequest): Promise<TenantUser> {
+  async createUser(
+    organizationId: string,
+    input: CreateTenantUserRequest,
+    invitedByUserId?: string | null,
+  ): Promise<TenantUser> {
     const org = await this.prisma.organization.findFirst({
       where: { id: organizationId, slug: { not: 'platform' } },
     });
@@ -92,6 +115,16 @@ export class RbacService {
     }
 
     const systemRole = this.resolveSystemRole(input);
+    const customRole = await this.resolveCustomRole(organizationId, input.customRoleId);
+    const customRoleId = customRole?.id ?? null;
+
+    let inviterId: string | null = null;
+    if (invitedByUserId) {
+      const inviter = await this.prisma.user.findFirst({
+        where: { id: invitedByUserId, organizationId },
+      });
+      inviterId = inviter?.id ?? null;
+    }
 
     const tempPassword = randomBytes(4).toString('hex') + 'A1!';
     const user = await this.prisma.user.create({
@@ -103,14 +136,16 @@ export class RbacService {
         systemRole,
         status: 'invited',
         organizationId,
-        customRoleId: input.customRoleId || null,
-        permissionGrants: input.permissionGrants ?? [],
-        permissionDenies: input.permissionDenies ?? [],
+        customRoleId,
+        invitedByUserId: inviterId,
+        permissionGrants: normalizePermissions(input.permissionGrants),
+        permissionDenies: normalizePermissions(input.permissionDenies),
       },
+      include: { invitedBy: { select: { id: true, name: true } } },
     });
 
     const loginUrl = `${tenantWebUrl(org.slug)}/login`;
-    const roleLabel = ROLE_LABELS[systemRole] ?? systemRole;
+    const roleLabel = customRole?.name ?? ROLE_LABELS[systemRole] ?? systemRole;
 
     const emailResult = await this.email.sendTenantInviteEmail({
       to: email,
@@ -123,7 +158,7 @@ export class RbacService {
     });
 
     this.logger.log(
-      `Invited ${email} to ${org.slug} as ${systemRole} (emailSent=${emailResult.sent})`,
+      `Invited ${email} to ${org.slug} as ${roleLabel} (emailSent=${emailResult.sent})`,
     );
 
     return this.toTenantUser(user);
@@ -154,7 +189,8 @@ export class RbacService {
       }
     }
 
-    let nextRole: TenantRole | undefined = patch.systemRole;
+    let nextRole: TenantRole | undefined =
+      patch.systemRole && isTenantRole(patch.systemRole) ? patch.systemRole : undefined;
     if (patch.customRoleId?.startsWith('system:')) {
       const role = patch.customRoleId.slice('system:'.length);
       if (isTenantRole(role)) {
@@ -162,16 +198,28 @@ export class RbacService {
       }
     }
 
+    const customRoleId =
+      patch.customRoleId === undefined
+        ? undefined
+        : (await this.resolveCustomRole(organizationId, patch.customRoleId))?.id ?? null;
+
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: {
         name: patch.name?.trim() ?? undefined,
         systemRole: nextRole ?? undefined,
-        customRoleId: patch.customRoleId === undefined ? undefined : patch.customRoleId || null,
-        permissionGrants: patch.permissionGrants ?? undefined,
-        permissionDenies: patch.permissionDenies ?? undefined,
+        customRoleId,
+        permissionGrants:
+          patch.permissionGrants === undefined
+            ? undefined
+            : normalizePermissions(patch.permissionGrants),
+        permissionDenies:
+          patch.permissionDenies === undefined
+            ? undefined
+            : normalizePermissions(patch.permissionDenies),
         teamId: patch.teamId === undefined ? undefined : patch.teamId,
       },
+      include: { invitedBy: { select: { id: true, name: true } } },
     });
 
     return this.toTenantUser(updated);
@@ -186,19 +234,301 @@ export class RbacService {
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { status },
+      include: { invitedBy: { select: { id: true, name: true } } },
     });
     return this.toTenantUser(updated);
   }
 
-  listRoles(organizationId: string): CustomRole[] {
-    return TENANT_ROLES.map((role) => ({
+  async deleteUser(
+    organizationId: string,
+    userId: string,
+    actorUserId: string,
+  ): Promise<boolean> {
+    if (userId === actorUserId) {
+      throw new BadRequestException('You cannot delete your own account');
+    }
+
+    const user = await this.requireOrgUser(organizationId, userId);
+
+    if (user.systemRole === 'org_admin') {
+      const adminCount = await this.prisma.user.count({
+        where: { organizationId, systemRole: 'org_admin', status: { not: 'suspended' } },
+      });
+      if (adminCount <= 1) {
+        throw new BadRequestException('Cannot delete the last organization admin');
+      }
+    }
+
+    if (user.status !== 'invited') {
+      throw new BadRequestException(
+        'Only invited users who never activated can be permanently deleted. Suspend active users instead.',
+      );
+    }
+
+    const ledTeams = await this.prisma.team.findMany({
+      where: { organizationId, leaderUserId: userId },
+    });
+    if (ledTeams.length) {
+      throw new BadRequestException('Reassign or delete teams this user leads before deleting them');
+    }
+
+    await this.prisma.user.delete({ where: { id: userId } });
+    return true;
+  }
+
+  async bulkUsers(
+    organizationId: string,
+    actorUserId: string,
+    input: {
+      userIds: string[];
+      action: 'suspend' | 'activate' | 'delete' | 'set_role';
+      customRoleId?: string;
+    },
+  ): Promise<{ processed: number }> {
+    const uniqueIds = [...new Set(input.userIds.filter(Boolean))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('No users selected');
+    }
+
+    let processed = 0;
+
+    if (input.action === 'set_role') {
+      if (!input.customRoleId) {
+        throw new BadRequestException('customRoleId is required for set_role');
+      }
+      for (const userId of uniqueIds) {
+        await this.updateUser(organizationId, userId, {
+          customRoleId: input.customRoleId,
+          systemRole: input.customRoleId.startsWith('system:')
+            ? (input.customRoleId.slice('system:'.length) as UserRole)
+            : undefined,
+        });
+        processed += 1;
+      }
+      return { processed };
+    }
+
+    for (const userId of uniqueIds) {
+      if (input.action === 'suspend') {
+        await this.updateUserStatus(organizationId, userId, 'suspended');
+        processed += 1;
+      } else if (input.action === 'activate') {
+        await this.updateUserStatus(organizationId, userId, 'active');
+        processed += 1;
+      } else if (input.action === 'delete') {
+        await this.deleteUser(organizationId, userId, actorUserId);
+        processed += 1;
+      }
+    }
+
+    return { processed };
+  }
+
+  async listRoles(organizationId: string): Promise<CustomRole[]> {
+    const systemRoles: CustomRole[] = TENANT_ROLES.map((role) => ({
       id: `system:${role}`,
       organizationId,
       name: ROLE_LABELS[role] ?? role,
       description: `System role — ${ROLE_LABELS[role] ?? role}`,
-      permissions: [] as Permission[],
+      permissions: [...getPermissionsForRole(role)],
       isSystem: true,
     }));
+
+    const custom = await this.prisma.customRole.findMany({
+      where: { organizationId },
+      orderBy: { name: 'asc' },
+    });
+
+    return [
+      ...systemRoles,
+      ...custom.map((row) => this.toCustomRole(row)),
+    ];
+  }
+
+  async createRole(
+    organizationId: string,
+    input: {
+      name: string;
+      description?: string;
+      permissions: string[];
+    },
+  ): Promise<CustomRole> {
+    const name = input.name.trim();
+    if (!name) {
+      throw new BadRequestException('Role name is required');
+    }
+
+    const existing = await this.prisma.customRole.findFirst({
+      where: { organizationId, name },
+    });
+    if (existing) {
+      throw new BadRequestException('A role with this name already exists');
+    }
+
+    const row = await this.prisma.customRole.create({
+      data: {
+        organizationId,
+        name,
+        description: input.description?.trim() || null,
+        permissions: normalizePermissions(input.permissions),
+      },
+    });
+
+    return this.toCustomRole(row);
+  }
+
+  async updateRole(
+    organizationId: string,
+    roleId: string,
+    patch: {
+      name?: string;
+      description?: string;
+      permissions?: string[];
+    },
+  ): Promise<CustomRole> {
+    if (roleId.startsWith('system:')) {
+      throw new BadRequestException('System roles cannot be edited');
+    }
+
+    const role = await this.prisma.customRole.findFirst({
+      where: { id: roleId, organizationId },
+    });
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+
+    if (patch.name?.trim() && patch.name.trim() !== role.name) {
+      const clash = await this.prisma.customRole.findFirst({
+        where: { organizationId, name: patch.name.trim(), NOT: { id: roleId } },
+      });
+      if (clash) {
+        throw new BadRequestException('A role with this name already exists');
+      }
+    }
+
+    const updated = await this.prisma.customRole.update({
+      where: { id: roleId },
+      data: {
+        name: patch.name?.trim() ?? undefined,
+        description:
+          patch.description === undefined ? undefined : patch.description.trim() || null,
+        permissions:
+          patch.permissions === undefined
+            ? undefined
+            : normalizePermissions(patch.permissions),
+      },
+    });
+
+    return this.toCustomRole(updated);
+  }
+
+  async deleteRole(organizationId: string, roleId: string): Promise<boolean> {
+    if (roleId.startsWith('system:')) {
+      throw new BadRequestException('System roles cannot be deleted');
+    }
+
+    const role = await this.prisma.customRole.findFirst({
+      where: { id: roleId, organizationId },
+    });
+    if (!role) {
+      return false;
+    }
+
+    const assigned = await this.prisma.user.count({
+      where: { organizationId, customRoleId: roleId },
+    });
+    if (assigned > 0) {
+      throw new BadRequestException(
+        `Cannot delete role — ${assigned} user(s) still assigned. Reassign them first.`,
+      );
+    }
+
+    await this.prisma.customRole.delete({ where: { id: roleId } });
+    return true;
+  }
+
+  async listPresets(organizationId: string): Promise<PermissionPreset[]> {
+    const rows = await this.prisma.permissionPreset.findMany({
+      where: { organizationId },
+      orderBy: { name: 'asc' },
+    });
+    return rows.map((row) => this.toPreset(row));
+  }
+
+  async createPreset(
+    organizationId: string,
+    input: { name: string; description?: string; permissions: string[] },
+  ): Promise<PermissionPreset> {
+    const name = input.name.trim();
+    if (!name) {
+      throw new BadRequestException('Preset name is required');
+    }
+
+    const existing = await this.prisma.permissionPreset.findFirst({
+      where: { organizationId, name },
+    });
+    if (existing) {
+      throw new BadRequestException('A preset with this name already exists');
+    }
+
+    const row = await this.prisma.permissionPreset.create({
+      data: {
+        organizationId,
+        name,
+        description: input.description?.trim() || null,
+        permissions: normalizePermissions(input.permissions),
+      },
+    });
+
+    return this.toPreset(row);
+  }
+
+  async updatePreset(
+    organizationId: string,
+    presetId: string,
+    input: { name?: string; description?: string; permissions?: string[] },
+  ): Promise<PermissionPreset> {
+    const preset = await this.prisma.permissionPreset.findFirst({
+      where: { id: presetId, organizationId },
+    });
+    if (!preset) {
+      throw new NotFoundException('Preset not found');
+    }
+
+    if (input.name?.trim() && input.name.trim() !== preset.name) {
+      const clash = await this.prisma.permissionPreset.findFirst({
+        where: { organizationId, name: input.name.trim(), NOT: { id: presetId } },
+      });
+      if (clash) {
+        throw new BadRequestException('A preset with this name already exists');
+      }
+    }
+
+    const updated = await this.prisma.permissionPreset.update({
+      where: { id: presetId },
+      data: {
+        name: input.name?.trim() ?? undefined,
+        description:
+          input.description === undefined ? undefined : input.description.trim() || null,
+        permissions:
+          input.permissions === undefined
+            ? undefined
+            : normalizePermissions(input.permissions),
+      },
+    });
+
+    return this.toPreset(updated);
+  }
+
+  async deletePreset(organizationId: string, presetId: string): Promise<boolean> {
+    const preset = await this.prisma.permissionPreset.findFirst({
+      where: { id: presetId, organizationId },
+    });
+    if (!preset) {
+      return false;
+    }
+    await this.prisma.permissionPreset.delete({ where: { id: presetId } });
+    return true;
   }
 
   async listTeams(organizationId: string): Promise<OrgTeam[]> {
@@ -317,6 +647,24 @@ export class RbacService {
     return 'sales_rep';
   }
 
+  /** System role ids are not FKs — only real CustomRole UUIDs are stored. */
+  private async resolveCustomRole(
+    organizationId: string,
+    customRoleId: string | undefined | null,
+  ): Promise<{ id: string; name: string } | null> {
+    if (!customRoleId || customRoleId.startsWith('system:')) {
+      return null;
+    }
+
+    const role = await this.prisma.customRole.findFirst({
+      where: { id: customRoleId, organizationId },
+    });
+    if (!role) {
+      throw new BadRequestException('Custom role not found in this organization');
+    }
+    return { id: role.id, name: role.name };
+  }
+
   private async requireOrgUser(organizationId: string, userId: string) {
     const user = await this.prisma.user.findFirst({
       where: { id: userId, organizationId },
@@ -389,6 +737,48 @@ export class RbacService {
     }
   }
 
+  private toCustomRole(row: {
+    id: string;
+    organizationId: string;
+    name: string;
+    description: string | null;
+    permissions: string[];
+    createdAt: Date;
+    updatedAt: Date;
+  }): CustomRole {
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      name: row.name,
+      description: row.description ?? undefined,
+      permissions: normalizePermissions(row.permissions),
+      isSystem: false,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private toPreset(row: {
+    id: string;
+    organizationId: string;
+    name: string;
+    description: string | null;
+    permissions: string[];
+    createdAt: Date;
+    updatedAt: Date;
+  }): PermissionPreset {
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      name: row.name,
+      description: row.description ?? undefined,
+      permissions: normalizePermissions(row.permissions),
+      isSystem: false,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
   private toTenantUser(row: {
     id: string;
     email: string;
@@ -401,6 +791,8 @@ export class RbacService {
     permissionDenies: string[];
     teamId: string | null;
     lastSeenAt: Date | null;
+    invitedByUserId?: string | null;
+    invitedBy?: { id: string; name: string } | null;
   }): TenantUser {
     return {
       id: row.id,
@@ -409,11 +801,13 @@ export class RbacService {
       email: row.email,
       systemRole: row.systemRole as TenantUser['systemRole'],
       customRoleId: row.customRoleId ?? undefined,
-      permissionGrants: row.permissionGrants as TenantUser['permissionGrants'],
-      permissionDenies: row.permissionDenies as TenantUser['permissionDenies'],
+      permissionGrants: normalizePermissions(row.permissionGrants),
+      permissionDenies: normalizePermissions(row.permissionDenies),
       status: row.status as TenantUser['status'],
       lastSeenAt: row.lastSeenAt?.toISOString(),
       teamId: row.teamId ?? undefined,
+      invitedByUserId: row.invitedByUserId ?? undefined,
+      invitedBy: row.invitedBy ?? null,
     };
   }
 }

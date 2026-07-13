@@ -1,44 +1,98 @@
-import type { UserRole } from './roles.js';
-import {
-  isValidPermission,
-  isPlatformOnlyPermission,
-  PERMISSIONS,
-  permissionSchema,
-  type Permission,
-  TENANT_PERMISSIONS,
-  TENANT_PERMISSION_GROUPS,
-  PERMISSION_CATALOG,
-  PERMISSION_GROUPS,
-  PERMISSION_LABELS,
-} from './permission-catalog.js';
+/**
+ * Runtime permission helpers for the API.
+ * Value imports from @laam/types break the Nest webpack rootDir — keep helpers local.
+ */
+import type { Permission, UserRole } from '@laam/types';
 
-export {
-  permissionSchema,
-  PERMISSIONS,
-  PERMISSION_CATALOG,
-  PERMISSION_GROUPS,
-  PERMISSION_LABELS,
-  TENANT_PERMISSIONS,
-  TENANT_PERMISSION_GROUPS,
-  isValidPermission,
-  isPlatformOnlyPermission,
-  type Permission,
-};
+const PERMISSION_CATALOG = [
+  'dashboard.view',
+  'dashboard.widget.revenue',
+  'dashboard.widget.orders',
+  'dashboard.widget.leads',
+  'dashboard.widget.team',
+  'dashboard.widget.marketing',
+  'dashboard.widget.platform',
+  'contacts.view',
+  'contacts.create',
+  'contacts.edit',
+  'contacts.delete',
+  'companies.view',
+  'companies.create',
+  'companies.edit',
+  'companies.delete',
+  'leads.view',
+  'leads.create',
+  'leads.edit',
+  'leads.assign',
+  'leads.convert',
+  'leads.export',
+  'deals.view',
+  'deals.create',
+  'deals.edit',
+  'deals.delete',
+  'pipeline.view',
+  'orders.view',
+  'orders.create',
+  'orders.confirm',
+  'orders.cancel',
+  'orders.assign',
+  'orders.export',
+  'campaigns.view',
+  'campaigns.create',
+  'campaigns.edit',
+  'campaigns.manage_budget',
+  'tasks.view',
+  'tasks.create',
+  'tasks.edit',
+  'tasks.assign',
+  'activities.view',
+  'activities.create',
+  'activities.edit',
+  'inventory.view',
+  'inventory.create',
+  'inventory.edit',
+  'inventory.adjust',
+  'inventory.purchase',
+  'inventory.export',
+  'accounting.view',
+  'accounting.create',
+  'accounting.edit',
+  'accounting.export',
+  'accounting.manage',
+  'reports.view',
+  'reports.export',
+  'users.view',
+  'users.invite',
+  'users.manage',
+  'roles.view',
+  'roles.manage',
+  'settings.view',
+  'settings.manage',
+  'billing.view',
+  'billing.manage',
+  'security.view',
+  'security.manage',
+  'courier.view',
+  'courier.manage',
+  'support.view',
+  'support.create',
+  'support.manage',
+  'coupons.view',
+  'coupons.manage',
+  'recycle.view',
+  'recycle.manage',
+  'knowledge.view',
+  'knowledge.manage',
+  'platform.view',
+  'platform.manage',
+  'permissions.manage',
+] as const satisfies readonly Permission[];
 
-export type UserPermissionInput = {
-  role: UserRole;
-  /** Permissions from assigned custom role (tenant). */
-  customRolePermissions?: readonly Permission[];
-  /** Extra grants on top of role. */
-  permissionGrants?: readonly string[];
-  /** Explicit denies (wins over grants). */
-  permissionDenies?: readonly string[];
-  /** @deprecated Use permissionGrants — kept for backward compatibility. */
-  permissions?: readonly string[];
-};
+const TENANT_PERMISSIONS = PERMISSION_CATALOG.filter(
+  (p) => !p.startsWith('platform.') && p !== 'dashboard.widget.platform',
+);
 
-/** Preset permission sets for system/demo roles. */
-export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
+const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   super_admin: [
     'dashboard.view',
     'dashboard.widget.platform',
@@ -253,45 +307,39 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   viewer: ['dashboard.view', 'reports.view'],
 };
 
+const PERMISSION_SET = new Set<string>(PERMISSION_CATALOG);
+
+export function isValidPermission(value: string): value is Permission {
+  return PERMISSION_SET.has(value);
+}
+
 export function getPermissionsForRole(role: UserRole): Permission[] {
-  return [...ROLE_PERMISSIONS[role]];
+  return [...(ROLE_PERMISSIONS[role] ?? [])];
 }
 
-function normalizePermissionList(values: readonly string[] | undefined): Permission[] {
-  if (!values?.length) {
-    return [];
-  }
+export function resolveUserPermissions(user: {
+  role: UserRole;
+  customRolePermissions?: readonly Permission[];
+  permissionGrants?: readonly string[];
+  permissionDenies?: readonly string[];
+  permissions?: readonly string[];
+}): Permission[] {
+  const stripPlatform =
+    user.role === 'super_admin'
+      ? (list: Permission[]) => list
+      : (list: Permission[]) =>
+          list.filter((p) => !p.startsWith('platform.') && p !== 'dashboard.widget.platform');
 
-  return values.filter(isValidPermission);
-}
-
-function stripPlatformOnly(permissions: readonly Permission[], role: UserRole): Permission[] {
-  if (role === 'super_admin') {
-    return [...permissions];
-  }
-  return permissions.filter((p) => !isPlatformOnlyPermission(p));
-}
-
-/**
- * Effective permissions: (customRole | presetRole) ∪ grants − denies
- * Platform access is never granted via tenant roles/grants — only super_admin.
- */
-export function resolveUserPermissions(user: UserPermissionInput): Permission[] {
-  const base = stripPlatformOnly(
+  const base = stripPlatform(
     user.customRolePermissions?.length
       ? [...user.customRolePermissions]
       : getPermissionsForRole(user.role),
-    user.role,
   );
 
-  const grants = stripPlatformOnly(
-    normalizePermissionList([
-      ...(user.permissionGrants ?? []),
-      ...(user.permissions ?? []),
-    ]),
-    user.role,
+  const grants = stripPlatform(
+    [...(user.permissionGrants ?? []), ...(user.permissions ?? [])].filter(isValidPermission),
   );
-  const denies = new Set(normalizePermissionList(user.permissionDenies));
+  const denies = new Set((user.permissionDenies ?? []).filter(isValidPermission));
 
   const effective = new Set<Permission>(base);
   for (const grant of grants) {
@@ -310,14 +358,8 @@ export function hasPermission(
   match: 'any' | 'all' = 'any',
 ): boolean {
   const requiredList = Array.isArray(required) ? required : [required];
-
   if (match === 'all') {
     return requiredList.every((permission) => userPermissions.includes(permission));
   }
-
   return requiredList.some((permission) => userPermissions.includes(permission));
-}
-
-export function hasAllTenantPermissions(userPermissions: readonly Permission[]): boolean {
-  return TENANT_PERMISSIONS.every((p) => userPermissions.includes(p));
 }
