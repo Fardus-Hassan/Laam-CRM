@@ -25,11 +25,38 @@ import {
   getPermissionsForRole,
   isValidPermission,
 } from '../common/effective-permissions';
+import {
+  dashboardTemplateForSystemRole,
+  seedDefaultPermissionPresets,
+} from '../common/default-permission-presets';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantWebUrl } from '../common/tenant.util';
 
 type TenantRole = Exclude<UserRole, 'super_admin'>;
+
+const DASHBOARD_TEMPLATES = [
+  'platform',
+  'executive',
+  'sales_head',
+  'team_leader',
+  'agent',
+  'marketing',
+  'support',
+  'finance',
+  'default',
+] as const;
+
+function normalizeDashboardTemplate(
+  value: string | null | undefined,
+): CustomRole['dashboardTemplate'] | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return (DASHBOARD_TEMPLATES as readonly string[]).includes(value)
+    ? (value as CustomRole['dashboardTemplate'])
+    : undefined;
+}
 
 const TENANT_ROLES: TenantRole[] = [
   'org_admin',
@@ -162,6 +189,64 @@ export class RbacService {
     );
 
     return this.toTenantUser(user);
+  }
+
+  async resendInvite(organizationId: string, userId: string): Promise<TenantUser> {
+    const org = await this.prisma.organization.findFirst({
+      where: { id: organizationId, slug: { not: 'platform' } },
+    });
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, organizationId },
+      include: {
+        invitedBy: { select: { id: true, name: true } },
+        customRole: { select: { name: true } },
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (user.status !== 'invited') {
+      throw new BadRequestException('Only invited users can be resent an invite');
+    }
+
+    const tempPassword = randomBytes(4).toString('hex') + 'A1!';
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await bcrypt.hash(tempPassword, 12),
+        inviteTempPassword: tempPassword,
+      },
+      include: {
+        invitedBy: { select: { id: true, name: true } },
+        customRole: { select: { name: true } },
+      },
+    });
+
+    const loginUrl = `${tenantWebUrl(org.slug)}/login`;
+    const roleLabel =
+      updated.customRole?.name ??
+      ROLE_LABELS[updated.systemRole as UserRole] ??
+      updated.systemRole;
+
+    const emailResult = await this.email.sendTenantInviteEmail({
+      to: updated.email,
+      ownerName: updated.name,
+      companyName: org.name,
+      loginUrl,
+      email: updated.email,
+      tempPassword,
+      roleLabel,
+    });
+
+    this.logger.log(
+      `Resent invite to ${updated.email} on ${org.slug} (emailSent=${emailResult.sent})`,
+    );
+
+    return this.toTenantUser(updated);
   }
 
   async updateUser(
@@ -331,6 +416,7 @@ export class RbacService {
       name: ROLE_LABELS[role] ?? role,
       description: `System role — ${ROLE_LABELS[role] ?? role}`,
       permissions: [...getPermissionsForRole(role)],
+      dashboardTemplate: dashboardTemplateForSystemRole(role),
       isSystem: true,
     }));
 
@@ -351,6 +437,7 @@ export class RbacService {
       name: string;
       description?: string;
       permissions: string[];
+      dashboardTemplate?: string;
     },
   ): Promise<CustomRole> {
     const name = input.name.trim();
@@ -371,6 +458,7 @@ export class RbacService {
         name,
         description: input.description?.trim() || null,
         permissions: normalizePermissions(input.permissions),
+        dashboardTemplate: normalizeDashboardTemplate(input.dashboardTemplate) ?? null,
       },
     });
 
@@ -384,6 +472,7 @@ export class RbacService {
       name?: string;
       description?: string;
       permissions?: string[];
+      dashboardTemplate?: string | null;
     },
   ): Promise<CustomRole> {
     if (roleId.startsWith('system:')) {
@@ -416,6 +505,10 @@ export class RbacService {
           patch.permissions === undefined
             ? undefined
             : normalizePermissions(patch.permissions),
+        dashboardTemplate:
+          patch.dashboardTemplate === undefined
+            ? undefined
+            : normalizeDashboardTemplate(patch.dashboardTemplate) ?? null,
       },
     });
 
@@ -448,6 +541,7 @@ export class RbacService {
   }
 
   async listPresets(organizationId: string): Promise<PermissionPreset[]> {
+    await seedDefaultPermissionPresets(this.prisma, organizationId);
     const rows = await this.prisma.permissionPreset.findMany({
       where: { organizationId },
       orderBy: { name: 'asc' },
@@ -457,7 +551,12 @@ export class RbacService {
 
   async createPreset(
     organizationId: string,
-    input: { name: string; description?: string; permissions: string[] },
+    input: {
+      name: string;
+      description?: string;
+      permissions: string[];
+      dashboardTemplate?: string;
+    },
   ): Promise<PermissionPreset> {
     const name = input.name.trim();
     if (!name) {
@@ -477,6 +576,7 @@ export class RbacService {
         name,
         description: input.description?.trim() || null,
         permissions: normalizePermissions(input.permissions),
+        dashboardTemplate: normalizeDashboardTemplate(input.dashboardTemplate) ?? null,
       },
     });
 
@@ -486,7 +586,12 @@ export class RbacService {
   async updatePreset(
     organizationId: string,
     presetId: string,
-    input: { name?: string; description?: string; permissions?: string[] },
+    input: {
+      name?: string;
+      description?: string;
+      permissions?: string[];
+      dashboardTemplate?: string | null;
+    },
   ): Promise<PermissionPreset> {
     const preset = await this.prisma.permissionPreset.findFirst({
       where: { id: presetId, organizationId },
@@ -514,6 +619,10 @@ export class RbacService {
           input.permissions === undefined
             ? undefined
             : normalizePermissions(input.permissions),
+        dashboardTemplate:
+          input.dashboardTemplate === undefined
+            ? undefined
+            : normalizeDashboardTemplate(input.dashboardTemplate) ?? null,
       },
     });
 
@@ -743,6 +852,7 @@ export class RbacService {
     name: string;
     description: string | null;
     permissions: string[];
+    dashboardTemplate?: string | null;
     createdAt: Date;
     updatedAt: Date;
   }): CustomRole {
@@ -752,6 +862,7 @@ export class RbacService {
       name: row.name,
       description: row.description ?? undefined,
       permissions: normalizePermissions(row.permissions),
+      dashboardTemplate: normalizeDashboardTemplate(row.dashboardTemplate),
       isSystem: false,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -764,6 +875,7 @@ export class RbacService {
     name: string;
     description: string | null;
     permissions: string[];
+    dashboardTemplate?: string | null;
     createdAt: Date;
     updatedAt: Date;
   }): PermissionPreset {
@@ -773,6 +885,7 @@ export class RbacService {
       name: row.name,
       description: row.description ?? undefined,
       permissions: normalizePermissions(row.permissions),
+      dashboardTemplate: normalizeDashboardTemplate(row.dashboardTemplate),
       isSystem: false,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),

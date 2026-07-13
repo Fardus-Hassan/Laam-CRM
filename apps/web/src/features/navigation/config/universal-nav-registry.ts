@@ -419,7 +419,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               id: 'users',
               title: 'Users',
               url: '/dashboard/users?view=team',
-              permissions: ['users.view', 'users.manage'],
+              permissions: ['users.view', 'users.manage', 'users.invite'],
             },
             {
               id: 'roles',

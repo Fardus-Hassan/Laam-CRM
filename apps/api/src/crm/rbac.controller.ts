@@ -153,6 +153,20 @@ class CreateRoleDto {
   @IsArray()
   @IsString({ each: true })
   permissions!: string[];
+
+  @IsOptional()
+  @IsIn([
+    'platform',
+    'executive',
+    'sales_head',
+    'team_leader',
+    'agent',
+    'marketing',
+    'support',
+    'finance',
+    'default',
+  ])
+  dashboardTemplate?: string;
 }
 
 class UpdateRoleDto {
@@ -169,6 +183,20 @@ class UpdateRoleDto {
   @IsArray()
   @IsString({ each: true })
   permissions?: string[];
+
+  @IsOptional()
+  @IsIn([
+    'platform',
+    'executive',
+    'sales_head',
+    'team_leader',
+    'agent',
+    'marketing',
+    'support',
+    'finance',
+    'default',
+  ])
+  dashboardTemplate?: string | null;
 }
 
 class CreatePresetDto {
@@ -183,6 +211,20 @@ class CreatePresetDto {
   @IsArray()
   @IsString({ each: true })
   permissions!: string[];
+
+  @IsOptional()
+  @IsIn([
+    'platform',
+    'executive',
+    'sales_head',
+    'team_leader',
+    'agent',
+    'marketing',
+    'support',
+    'finance',
+    'default',
+  ])
+  dashboardTemplate?: string;
 }
 
 class UpdatePresetDto {
@@ -199,6 +241,20 @@ class UpdatePresetDto {
   @IsArray()
   @IsString({ each: true })
   permissions?: string[];
+
+  @IsOptional()
+  @IsIn([
+    'platform',
+    'executive',
+    'sales_head',
+    'team_leader',
+    'agent',
+    'marketing',
+    'support',
+    'finance',
+    'default',
+  ])
+  dashboardTemplate?: string | null;
 }
 
 @Controller('crm')
@@ -213,7 +269,7 @@ export class RbacController {
   }
 
   @Post('users')
-  @RequirePermissions('users.manage')
+  @RequirePermissions('users.manage', 'users.invite')
   createUser(@CurrentUser() user: AuthUserPayload, @Body() body: CreateUserDto) {
     this.rbac.assertOrgAccess(user.organizationId);
     return this.rbac.createUser(
@@ -228,6 +284,13 @@ export class RbacController {
       },
       user.userId,
     );
+  }
+
+  @Post('users/:id/resend-invite')
+  @RequirePermissions('users.manage', 'users.invite')
+  resendInvite(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.rbac.assertOrgAccess(user.organizationId);
+    return this.rbac.resendInvite(user.organizationId, id);
   }
 
   @Post('users/bulk')

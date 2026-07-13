@@ -145,6 +145,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'reports.export',
     'users.view',
     'users.manage',
+    'users.invite',
     'roles.view',
     'settings.view',
     'settings.manage',

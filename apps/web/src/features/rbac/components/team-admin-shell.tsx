@@ -221,6 +221,16 @@ export function TeamAdminShell() {
     toast.success(`Invited ${created.name}`);
   }
 
+  async function handleResendInvite(userId: string) {
+    if (!organizationId) return;
+    try {
+      const user = await rbacApi.resendInvite(organizationId, userId);
+      toast.success(`Invite resent to ${user.email}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to resend invite');
+    }
+  }
+
   async function handleBulk(action: 'suspend' | 'activate' | 'delete' | 'set_role') {
     if (!organizationId || !selectedIds.length) {
       return;
@@ -362,7 +372,7 @@ export function TeamAdminShell() {
                       </Button>
                     </>
                   ) : null}
-                  <Can permission="users.manage">
+                  <Can permission={['users.manage', 'users.invite']}>
                     <Button type="button" size="sm" onClick={() => setInviteOpen(true)}>
                       <Plus className="size-4" />
                       Invite user
@@ -521,11 +531,26 @@ export function TeamAdminShell() {
                     <UserCog className="size-4 text-primary" />
                     <CardTitle className="text-sm">Access — {selected.name}</CardTitle>
                   </div>
-                  <Can permission="users.manage">
-                    <Button type="button" size="sm" onClick={() => void handleSaveOverrides()}>
-                      Save overrides
-                    </Button>
-                  </Can>
+                  <div className="flex items-center gap-2">
+                    {selected.status === 'invited' ? (
+                      <Can permission={['users.manage', 'users.invite']}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleResendInvite(selected.id)}
+                        >
+                          <Mail className="size-4" />
+                          Resend invite
+                        </Button>
+                      </Can>
+                    ) : null}
+                    <Can permission="users.manage">
+                      <Button type="button" size="sm" onClick={() => void handleSaveOverrides()}>
+                        Save overrides
+                      </Button>
+                    </Can>
+                  </div>
                 </CardHeader>
                 <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-6')}>
                   <div className="grid gap-4 sm:grid-cols-2">

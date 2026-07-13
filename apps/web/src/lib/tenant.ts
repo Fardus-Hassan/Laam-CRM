@@ -1,19 +1,9 @@
-const TOKEN_KEY = 'laam_access_token';
 const DEVICE_KEY = 'laam_device_id';
 
-export function getStoredAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setStoredAccessToken(token: string | null) {
-  if (typeof window === 'undefined') return;
-  if (!token) {
-    localStorage.removeItem(TOKEN_KEY);
-    return;
-  }
-  localStorage.setItem(TOKEN_KEY, token);
-}
+export {
+  getStoredAccessToken,
+  setStoredAccessToken,
+} from '@/lib/auth-token';
 
 export function getOrCreateDeviceId(): string {
   if (typeof window === 'undefined') return 'server';

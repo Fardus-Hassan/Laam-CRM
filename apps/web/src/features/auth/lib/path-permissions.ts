@@ -28,6 +28,19 @@ function collectUrlPermissions(
   }
 }
 
+/** Known dashboard routes not always listed as top-level nav URLs. */
+const EXTRA_DASHBOARD_PATH_PERMISSIONS: Record<string, Permission[]> = {
+  '/dashboard/deals': ['deals.view'],
+  '/dashboard/pipeline': ['pipeline.view'],
+  '/dashboard/companies': ['companies.view'],
+  '/dashboard/orders': ['orders.view'],
+  '/dashboard/activities': ['activities.view'],
+  '/dashboard/inventory': ['inventory.view'],
+  '/dashboard/accounting': ['accounting.view'],
+  '/dashboard/settings/security': ['security.view'],
+  '/dashboard/users': ['users.view', 'users.manage', 'users.invite'],
+};
+
 let cachedMap: Map<string, Permission[]> | null = null;
 
 function pathPermissionMap(): Map<string, Permission[]> {
@@ -35,6 +48,10 @@ function pathPermissionMap(): Map<string, Permission[]> {
     cachedMap = new Map();
     for (const group of getUniversalNavRegistry()) {
       collectUrlPermissions(group.items, cachedMap);
+    }
+    for (const [path, permissions] of Object.entries(EXTRA_DASHBOARD_PATH_PERMISSIONS)) {
+      const existing = cachedMap.get(path) ?? [];
+      cachedMap.set(path, [...new Set([...existing, ...permissions])]);
     }
   }
   return cachedMap;
@@ -66,9 +83,16 @@ export function canAccessPath(
   pathname: string,
   userPermissions: readonly Permission[],
 ): boolean {
+  const path = normalizePath(pathname);
   const required = requiredPermissionsForPath(pathname);
+
+  // Unmapped /dashboard/* routes are denied (nav + extras are the allowlist).
   if (!required?.length) {
+    if (path === '/dashboard' || path.startsWith('/dashboard/')) {
+      return false;
+    }
     return true;
   }
+
   return hasPermission(userPermissions, required, 'any');
 }

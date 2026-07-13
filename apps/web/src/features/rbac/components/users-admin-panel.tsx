@@ -77,6 +77,13 @@ export function UsersAdminPanel() {
     setSelectedId(created.id);
   };
 
+  const handleResendInvite = async (userId: string) => {
+    if (!organizationId) {
+      return;
+    }
+    await rbacApi.resendInvite(organizationId, userId);
+  };
+
   if (!organizationId) {
     return <p className="text-sm text-muted-foreground">Organization not loaded.</p>;
   }
@@ -87,7 +94,7 @@ export function UsersAdminPanel() {
         <Card className="gap-0 py-0 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between border-b px-4 py-3">
             <CardTitle className="text-sm">Team Members</CardTitle>
-            <Can permission="users.manage">
+            <Can permission={['users.manage', 'users.invite']}>
               <Button type="button" size="sm" onClick={() => setInviteOpen(true)}>
                 <Plus className="size-4" />
                 Invite
@@ -124,16 +131,30 @@ export function UsersAdminPanel() {
         <Card className="gap-0 py-0 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between border-b px-4 py-3">
             <CardTitle className="text-sm">User Access</CardTitle>
-            <Can permission="users.manage">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void handleSaveOverrides()}
-                disabled={!selected}
-              >
-                Save overrides
-              </Button>
-            </Can>
+            <div className="flex items-center gap-2">
+              {selected?.status === 'invited' ? (
+                <Can permission={['users.manage', 'users.invite']}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleResendInvite(selected.id)}
+                  >
+                    Resend invite
+                  </Button>
+                </Can>
+              ) : null}
+              <Can permission="users.manage">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void handleSaveOverrides()}
+                  disabled={!selected}
+                >
+                  Save overrides
+                </Button>
+              </Can>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6 p-4">
             {selected ? (

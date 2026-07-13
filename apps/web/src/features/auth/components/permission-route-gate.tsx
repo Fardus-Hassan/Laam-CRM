@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { canAccessPath } from '@/features/auth/lib/path-permissions';
+import { SessionBootScreen } from '@/features/auth/components/session-boot-screen';
 import { Button } from '@/components/ui/button';
 import { isPlatformHost } from '@/lib/tenant';
 
@@ -23,7 +24,7 @@ export function PermissionRouteGate({ children }: { children: React.ReactNode })
     (isPlatformRoute ? platformAllowed : canAccessPath(pathname, permissions));
 
   if (status === 'loading') {
-    return children;
+    return <SessionBootScreen />;
   }
 
   if (!allowed) {

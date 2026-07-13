@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Fingerprint, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -16,10 +16,15 @@ import { passwordApi } from '@/features/auth/api/password-api';
 import { OtpCountdown } from '@/features/auth/components/otp-countdown';
 import { OtpDeliveryHint } from '@/features/auth/components/otp-delivery-hint';
 import { OtpInput } from '@/features/auth/components/otp-input';
+import { SessionBootScreen } from '@/features/auth/components/session-boot-screen';
+import {
+  defaultPostLoginPath,
+  safeNextPath,
+} from '@/features/auth/lib/auth-redirect';
 import { isDeviceOtpChallenge } from '@/features/auth/types';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { parseApiErrorMessage } from '@/lib/api/parse-api-error';
-import { setStoredAccessToken } from '@/lib/auth-token';
+import { navigateAfterAuth, setStoredAccessToken } from '@/lib/auth-token';
 import { getTenantSlugFromHost, isPlatformHost } from '@/lib/tenant';
 import type { DeviceOtpChallenge } from '@/features/auth/types';
 
@@ -28,8 +33,8 @@ const STEPS = [
   { id: 'device', label: 'Verify device' },
 ];
 
-export default function LoginPage() {
-  const router = useRouter();
+function LoginPageContent() {
+  const searchParams = useSearchParams();
   const { login, loginVerifyDevice, status, user, isAuthenticated } = useAuth();
   const [step, setStep] = React.useState(1);
   const [email, setEmail] = React.useState('');
@@ -37,20 +42,30 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = React.useState('');
   const [deviceChallenge, setDeviceChallenge] = React.useState<DeviceOtpChallenge | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [leaving, setLeaving] = React.useState(false);
   const tenantSlug = getTenantSlugFromHost();
   const platform = isPlatformHost();
+  const nextPath = safeNextPath(searchParams.get('next'));
+  const redirected = React.useRef(false);
+
+  const redirectAfterLogin = React.useCallback(
+    (role: string) => {
+      if (redirected.current) {
+        return;
+      }
+      redirected.current = true;
+      setLeaving(true);
+      navigateAfterAuth(nextPath ?? defaultPostLoginPath(role));
+    },
+    [nextPath],
+  );
 
   React.useEffect(() => {
     if (!env.useApi || status === 'loading' || !isAuthenticated || !user || step > 1) {
       return;
     }
-    router.replace(user.role === 'super_admin' ? '/dashboard/platform' : '/dashboard');
-  }, [status, isAuthenticated, user, router, step]);
-
-  function redirectAfterLogin(role: string) {
-    router.replace(role === 'super_admin' ? '/dashboard/platform' : '/dashboard');
-    router.refresh();
-  }
+    redirectAfterLogin(user.role);
+  }, [status, isAuthenticated, user, step, redirectAfterLogin]);
 
   async function handleCredentials(event: React.FormEvent) {
     event.preventDefault();
@@ -120,12 +135,8 @@ export default function LoginPage() {
     );
   }
 
-  if (status === 'loading') {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        Checking session…
-      </div>
-    );
+  if (status === 'loading' || leaving || (isAuthenticated && step === 1)) {
+    return <SessionBootScreen message="Loading your workspace…" />;
   }
 
   return (
@@ -239,5 +250,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <React.Suspense fallback={<SessionBootScreen />}>
+      <LoginPageContent />
+    </React.Suspense>
   );
 }

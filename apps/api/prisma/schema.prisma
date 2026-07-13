@@ -55,29 +55,31 @@ model User {
 }
 
 model CustomRole {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  permissions    String[]     @default([])
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  users          User[]
+  id                String       @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  permissions       String[]     @default([])
+  dashboardTemplate String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  users             User[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
 }
 
 model PermissionPreset {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  permissions    String[]     @default([])
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                String       @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  permissions       String[]     @default([])
+  dashboardTemplate String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   @@unique([organizationId, name])
   @@index([organizationId])

@@ -73,6 +73,7 @@ export type RbacApi = {
     status: 'active' | 'suspended',
   ) => Promise<TenantUser>;
   deleteUser: (organizationId: string, userId: string) => Promise<boolean>;
+  resendInvite: (organizationId: string, userId: string) => Promise<TenantUser>;
   bulkUsers: (
     organizationId: string,
     input: {
@@ -114,6 +115,7 @@ export function createHttpRbacApi(): RbacApi {
           name: input.name,
           description: input.description,
           permissions: input.permissions,
+          dashboardTemplate: input.dashboardTemplate,
         }),
       });
     },
@@ -178,6 +180,11 @@ export function createHttpRbacApi(): RbacApi {
         method: 'DELETE',
       });
       return result.deleted;
+    },
+    async resendInvite(_organizationId, userId) {
+      return apiRequest<TenantUser>(`${crmEndpoints.users}/${userId}/resend-invite`, {
+        method: 'POST',
+      });
     },
     async bulkUsers(_organizationId, input) {
       return apiRequest<{ processed: number }>(`${crmEndpoints.users}/bulk`, {
@@ -263,6 +270,10 @@ export function createMockRbacApi(): RbacApi {
     },
     async deleteUser(organizationId, userId) {
       const list = await listUsers(organizationId);
+      const user = list.find((item) => item.id === userId);
+      if (!user || user.status !== 'invited') {
+        return false;
+      }
       const idx = list.findIndex((item) => item.id === userId);
       if (idx < 0) {
         return false;
@@ -270,12 +281,22 @@ export function createMockRbacApi(): RbacApi {
       list.splice(idx, 1);
       return true;
     },
+    async resendInvite(organizationId, userId) {
+      const list = await listUsers(organizationId);
+      const user = list.find((item) => item.id === userId);
+      if (!user || user.status !== 'invited') {
+        throw new Error('Only invited users can be resent an invite');
+      }
+      return user;
+    },
     async bulkUsers(organizationId, input) {
       let processed = 0;
       for (const userId of input.userIds) {
         if (input.action === 'delete') {
           const list = await listUsers(organizationId);
-          const idx = list.findIndex((item) => item.id === userId);
+          const idx = list.findIndex(
+            (item) => item.id === userId && item.status === 'invited',
+          );
           if (idx >= 0) {
             list.splice(idx, 1);
             processed += 1;

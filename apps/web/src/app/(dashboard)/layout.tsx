@@ -1,7 +1,9 @@
-import { AppProviders } from '@/components/providers/app-providers';
+import { Suspense } from 'react';
+
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { AuthGate } from '@/features/auth/components/auth-gate';
 import { PermissionRouteGate } from '@/features/auth/components/permission-route-gate';
+import { SessionBootScreen } from '@/features/auth/components/session-boot-screen';
 
 export default function DashboardLayout({
   children,
@@ -9,12 +11,12 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <AppProviders>
+    <Suspense fallback={<SessionBootScreen />}>
       <AuthGate>
         <DashboardShell>
           <PermissionRouteGate>{children}</PermissionRouteGate>
         </DashboardShell>
       </AuthGate>
-    </AppProviders>
+    </Suspense>
   );
 }

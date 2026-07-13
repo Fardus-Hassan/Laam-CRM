@@ -1,5 +1,6 @@
 import { env } from '@/config/env';
 import { ApiError } from '@/lib/api/errors';
+import { getStoredAccessToken } from '@/lib/auth-token';
 import { getTenantSlugFromHost } from '@/lib/tenant';
 
 export type ApiRequestOptions = RequestInit & {
@@ -9,7 +10,8 @@ export type ApiRequestOptions = RequestInit & {
 
 type TokenGetter = () => string | null | Promise<string | null>;
 
-let getAccessToken: TokenGetter = () => null;
+/** Default to localStorage so session bootstrap never races the AuthProvider effect. */
+let getAccessToken: TokenGetter = () => getStoredAccessToken();
 
 /** Wire this from auth once JWT/session cookies are implemented. */
 export function setAccessTokenGetter(getter: TokenGetter) {

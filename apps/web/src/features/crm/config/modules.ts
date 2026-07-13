@@ -98,7 +98,7 @@ export const CRM_MODULES = {
     id: 'users',
     title: 'Team',
     description: 'Invite teammates and manage role-based access.',
-    permissions: ['users.view', 'users.manage'],
+    permissions: ['users.view', 'users.manage', 'users.invite'],
     apiPath: '/crm/users',
   },
   settings: {

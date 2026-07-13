@@ -17,8 +17,14 @@ import {
   getDemoCustomRoleIdForUserRole,
   getRolePermissions,
 } from '@/features/platform/data/mock-tenant-store';
-import { getStoredAccessToken, setStoredAccessToken } from '@/lib/auth-token';
+import {
+  getStoredAccessToken,
+  setStoredAccessToken,
+  syncSessionCookieFromStorage,
+} from '@/lib/auth-token';
 import { setAccessTokenGetter } from '@/lib/api/client';
+
+setAccessTokenGetter(() => getStoredAccessToken());
 
 function stripNonSuperAdminPlatformAccess(
   role: UserRole,
@@ -72,7 +78,7 @@ type AuthContextValue = {
   permissions: Permission[];
   login: (email: string, password: string) => Promise<AuthLoginResult>;
   loginVerifyDevice: (email: string, code: string) => Promise<AuthSession>;
-  refreshSession: () => Promise<void>;
+  refreshSession: (options?: { silent?: boolean }) => Promise<void>;
   logout: () => Promise<void>;
   switchRole: (role: UserRole) => Promise<void>;
   previewAsTenantOwner: (tenantId: string) => Promise<boolean>;
@@ -98,17 +104,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<AuthStatus>('loading');
   const [session, setSession] = React.useState<AuthSession | null>(null);
   const authApi = React.useMemo(() => pickAuthApi(), []);
+  const bootstrapped = React.useRef(false);
 
-  const refreshSession = React.useCallback(async () => {
-    setStatus('loading');
-    const nextSession = await authApi.getSession();
-    setSession(nextSession);
-    setStatus(nextSession ? 'authenticated' : 'unauthenticated');
-  }, [authApi]);
+  const refreshSession = React.useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent === true && bootstrapped.current;
+      if (!silent) {
+        setStatus('loading');
+      }
+
+      syncSessionCookieFromStorage();
+      const nextSession = await authApi.getSession();
+      setSession(nextSession);
+      setStatus(nextSession ? 'authenticated' : 'unauthenticated');
+      bootstrapped.current = true;
+
+      if (nextSession) {
+        syncSessionCookieFromStorage();
+      } else if (!getStoredAccessToken()) {
+        syncSessionCookieFromStorage();
+      } else {
+        // Token present but session invalid — clear stale credentials.
+        setStoredAccessToken(null);
+      }
+    },
+    [authApi],
+  );
 
   const login = React.useCallback(
     async (email: string, password: string) => {
-      return authApi.login(email, password);
+      const result = await authApi.login(email, password);
+      if ('user' in result && result.user) {
+        setSession(result);
+        setStatus('authenticated');
+        bootstrapped.current = true;
+        syncSessionCookieFromStorage();
+      }
+      return result;
     },
     [authApi],
   );
@@ -118,24 +150,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const nextSession = await authApi.loginVerifyDevice(email, code);
       setSession(nextSession);
       setStatus('authenticated');
+      bootstrapped.current = true;
+      syncSessionCookieFromStorage();
       return nextSession;
     },
     [authApi],
   );
 
   React.useEffect(() => {
+    syncSessionCookieFromStorage();
     void refreshSession();
   }, [refreshSession]);
-
-  React.useEffect(() => {
-    setAccessTokenGetter(() => getStoredAccessToken());
-  }, [session]);
 
   const logout = React.useCallback(async () => {
     await authApi.logout();
     setStoredAccessToken(null);
     setSession(null);
     setStatus('unauthenticated');
+    bootstrapped.current = true;
     if (env.useApi && typeof window !== 'undefined') {
       window.location.assign('/login');
     }
@@ -148,7 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       authApi.setRole(role);
-      await refreshSession();
+      await refreshSession({ silent: true });
     },
     [authApi, refreshSession],
   );
@@ -164,7 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const ok = authApi.previewAsTenantOwner(tenantId);
       if (ok) {
-        await refreshSession();
+        await refreshSession({ silent: true });
       }
 
       return ok;
@@ -192,7 +224,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       previewAsTenantOwner,
       canSwitchRole: !env.useApi && (env.isDev || env.enableRoleSwitch),
     }),
-    [status, session, permissions, login, loginVerifyDevice, refreshSession, logout, switchRole, previewAsTenantOwner],
+    [
+      status,
+      session,
+      permissions,
+      login,
+      loginVerifyDevice,
+      refreshSession,
+      logout,
+      switchRole,
+      previewAsTenantOwner,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

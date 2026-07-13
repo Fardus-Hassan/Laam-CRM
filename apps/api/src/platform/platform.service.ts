@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import type { CreateTenantRequest, Tenant, TenantListItem, TenantUser } from '@laam/types';
 
 import type { AuthUserPayload } from '../common/decorators';
+import { seedDefaultPermissionPresets } from '../common/default-permission-presets';
 import { isEmailMockMode, tenantWebUrl } from '../common/tenant.util';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -126,6 +127,8 @@ export class PlatformService {
         phone: input.owner.phone?.trim() || null,
       },
     });
+
+    await seedDefaultPermissionPresets(this.prisma, organization.id);
 
     const owner = await this.createOrgAdminUser({
       organizationId: organization.id,
