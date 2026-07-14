@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import type { TenantListItem, TenantStatus } from '@laam/types';
 import { Building2, ExternalLink, MoreHorizontal, Plus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -261,6 +262,11 @@ export function PlatformTenantsPanel({ initialTab }: PlatformTenantsPanelProps) 
                               </a>
                             </DropdownMenuItem>
                             <Can permission="platform.manage">
+                              <DropdownMenuItem asChild>
+                                <Link href={`/dashboard/platform/tenants/${tenant.id}/brand`}>
+                                  Edit brand
+                                </Link>
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => {
                                   setAddAdminTarget(tenant);

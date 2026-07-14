@@ -68,6 +68,8 @@ const PERMISSION_CATALOG = [
   'roles.manage',
   'settings.view',
   'settings.manage',
+  'brand.view',
+  'brand.manage',
   'billing.view',
   'billing.manage',
   'security.view',
@@ -149,6 +151,8 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'roles.view',
     'settings.view',
     'settings.manage',
+    'brand.view',
+    'brand.manage',
     'billing.view',
     'billing.manage',
     'security.view',
@@ -331,11 +335,20 @@ export function resolveUserPermissions(user: {
       : (list: Permission[]) =>
           list.filter((p) => !p.startsWith('platform.') && p !== 'dashboard.widget.platform');
 
-  const base = stripPlatform(
-    user.customRolePermissions?.length
-      ? [...user.customRolePermissions]
-      : getPermissionsForRole(user.role),
-  );
+  const roleBase = getPermissionsForRole(user.role);
+  const customBase = user.customRolePermissions?.length
+    ? [...user.customRolePermissions]
+    : [];
+
+  // org_admin must not lose newly-added catalog permissions via stale custom roles.
+  const mergedBase =
+    user.role === 'org_admin'
+      ? [...new Set<Permission>([...roleBase, ...customBase])]
+      : customBase.length
+        ? customBase
+        : roleBase;
+
+  const base = stripPlatform(mergedBase);
 
   const grants = stripPlatform(
     [...(user.permissionGrants ?? []), ...(user.permissions ?? [])].filter(isValidPermission),

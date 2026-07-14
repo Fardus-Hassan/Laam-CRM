@@ -110,15 +110,24 @@ export function MonthlyLeadsChart({ data, className }: MonthlyLeadsChartProps) {
 
       <ul className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t border-border/70 pt-3 text-[11px] sm:text-xs">
         <li className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-[#3B82F6]" />
+          <span
+            className="size-2 rounded-full"
+            style={{ backgroundColor: CHART_COLORS.blue }}
+          />
           <span className="text-muted-foreground">Leads</span>
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-[#127A3B]" />
+          <span
+            className="size-2 rounded-full"
+            style={{ backgroundColor: CHART_COLORS.primary }}
+          />
           <span className="text-muted-foreground">Converted</span>
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-[#F59E0B]" />
+          <span
+            className="size-2 rounded-full"
+            style={{ backgroundColor: CHART_COLORS.accent }}
+          />
           <span className="text-muted-foreground">Conv. Rate</span>
         </li>
       </ul>

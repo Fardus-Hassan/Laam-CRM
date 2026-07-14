@@ -32,7 +32,15 @@ export function PermissionRouteGate({ children }: { children: React.ReactNode })
       <div className="mx-auto flex max-w-lg flex-col items-start gap-4 py-16">
         <h1 className="text-xl font-semibold">Access denied</h1>
         <p className="text-sm text-muted-foreground">
-          Your role ({user?.role ?? 'unknown'}) does not have permission to view this page.
+          Your role ({user?.role ?? 'unknown'}) does not have permission to view this page
+          {pathname ? (
+            <>
+              {' '}
+              (<code className="rounded bg-muted px-1 text-xs">{pathname}</code>).
+            </>
+          ) : (
+            '.'
+          )}
         </p>
         <Button type="button" onClick={() => router.replace('/dashboard')}>
           Go to dashboard

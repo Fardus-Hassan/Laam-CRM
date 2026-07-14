@@ -99,7 +99,7 @@ export const MOCK_SALES_HEAD_DASHBOARD: SalesHeadDashboard = {
       {
         id: 'orders',
         label: 'Orders',
-        color: '#127A3B',
+        color: 'var(--brand-primary)',
         data: [
           { label: 'Mon', value: 320 },
           { label: 'Tue', value: 380 },
@@ -113,7 +113,7 @@ export const MOCK_SALES_HEAD_DASHBOARD: SalesHeadDashboard = {
       {
         id: 'revenue',
         label: 'Revenue (৳)',
-        color: '#3B82F6',
+        color: 'var(--brand-chart-blue)',
         data: [
           { label: 'Mon', value: 320000 },
           { label: 'Tue', value: 380000 },
@@ -127,7 +127,7 @@ export const MOCK_SALES_HEAD_DASHBOARD: SalesHeadDashboard = {
       {
         id: 'delivered',
         label: 'Delivered',
-        color: '#8CC63F',
+        color: 'var(--brand-sidebar-active-bg)',
         data: [
           { label: 'Mon', value: 210 },
           { label: 'Tue', value: 250 },
@@ -255,11 +255,11 @@ export const MOCK_SALES_HEAD_DASHBOARD: SalesHeadDashboard = {
     title: 'Order Status Distribution',
     totalSales: 2482,
     segments: [
-      { id: 'confirmed', label: 'Confirmed', value: 1842, percent: 74.2, color: '#127A3B' },
-      { id: 'delivered', label: 'Delivered', value: 1264, percent: 50.9, color: '#8CC63F' },
+      { id: 'confirmed', label: 'Confirmed', value: 1842, percent: 74.2, color: 'var(--brand-primary)' },
+      { id: 'delivered', label: 'Delivered', value: 1264, percent: 50.9, color: 'var(--brand-sidebar-active-bg)' },
       { id: 'cancelled', label: 'Cancelled', value: 152, percent: 6.1, color: '#EF4444' },
-      { id: 'hold', label: 'Hold', value: 78, percent: 3.1, color: '#F59E0B' },
-      { id: 'follow_ups', label: 'Follow Ups', value: 320, percent: 12.9, color: '#3B82F6' },
+      { id: 'hold', label: 'Hold', value: 78, percent: 3.1, color: 'var(--brand-accent)' },
+      { id: 'follow_ups', label: 'Follow Ups', value: 320, percent: 12.9, color: 'var(--brand-chart-blue)' },
       { id: 'others', label: 'Others', value: 86, percent: 3.5, color: '#94A3B8' },
     ],
   },

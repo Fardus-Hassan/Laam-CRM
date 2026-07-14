@@ -77,7 +77,13 @@ export function createHttpAuthApi(): AuthApi {
       try {
         const data = await apiRequest<unknown>(authEndpoints.session);
         return authSessionSchema.parse(data);
-      } catch {
+      } catch (error) {
+        // Expired/missing session is normal after storage clear — never throw.
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          setStoredAccessToken(null);
+          return null;
+        }
+        setStoredAccessToken(null);
         return null;
       }
     },

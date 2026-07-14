@@ -32,6 +32,7 @@ type UserWithOrg = {
     slug: string;
     plan: string;
     status: string;
+    branding?: unknown;
   } | null;
 };
 
@@ -448,6 +449,18 @@ export class AuthService {
         name: organization.name,
         slug: organization.slug,
         plan: organization.plan,
+        branding: (() => {
+          const raw =
+            'branding' in organization ? organization.branding : undefined;
+          if (!raw || typeof raw !== 'object') {
+            return undefined;
+          }
+          const branding = raw as NonNullable<AuthSession['organization']['branding']>;
+          if (!branding.colors && !branding.logos?.light && !branding.logos?.dark) {
+            return undefined;
+          }
+          return branding;
+        })(),
       },
     };
   }

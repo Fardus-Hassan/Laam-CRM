@@ -3,8 +3,8 @@ import type { SystemHealthItem } from '@laam/types';
 import { cn } from '@/lib/utils';
 
 const STATUS_DOT = {
-  operational: 'bg-emerald-500',
-  degraded: 'bg-amber-500',
+  operational: 'bg-primary',
+  degraded: 'bg-[var(--brand-accent,#FFD700)]',
   down: 'bg-red-500',
 } as const;
 

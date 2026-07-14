@@ -14,9 +14,9 @@ export function IncentiveSummaryCard({ data, className }: IncentiveSummaryCardPr
   return (
     <div className={cn('flex flex-col gap-4 sm:gap-5', className)}>
       <div className="flex items-center justify-center gap-3 sm:gap-4">
-        <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/60 sm:size-16">
+        <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/15 sm:size-16">
           <Wallet
-            className="size-7 text-emerald-600 dark:text-emerald-400 sm:size-8"
+            className="size-7 text-primary sm:size-8"
             aria-hidden
           />
         </div>
@@ -28,7 +28,7 @@ export function IncentiveSummaryCard({ data, className }: IncentiveSummaryCardPr
           <p className="text-2xl font-bold leading-tight text-foreground sm:text-3xl">
             {formatCurrency(data.totalEarned)}
           </p>
-          <p className="mt-0.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+          <p className="mt-0.5 text-sm font-medium text-primary">
             Earned
           </p>
         </div>

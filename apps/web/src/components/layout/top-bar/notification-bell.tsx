@@ -22,7 +22,11 @@ export function NotificationBell() {
   const unread = items.filter((n) => !n.isRead).length;
 
   const refresh = React.useCallback(async () => {
-    setItems(await notificationsApi.list());
+    try {
+      setItems(await notificationsApi.list());
+    } catch {
+      setItems([]);
+    }
   }, []);
 
   React.useEffect(() => {

@@ -11,10 +11,10 @@ const INSIGHT_ICONS = {
 } as const;
 
 const INSIGHT_STYLES = {
-  success: 'text-emerald-600 dark:text-emerald-400',
-  info: 'text-blue-600 dark:text-blue-400',
-  warning: 'text-amber-600 dark:text-amber-400',
-  trend: 'text-violet-600 dark:text-violet-400',
+  success: 'text-primary',
+  info: 'text-[var(--brand-chart-blue,#3B82F6)]',
+  warning: 'text-[var(--brand-accent,#FFD700)]',
+  trend: 'text-[var(--brand-chart-purple,#8B5CF6)]',
 } as const;
 
 type InsightListProps = {

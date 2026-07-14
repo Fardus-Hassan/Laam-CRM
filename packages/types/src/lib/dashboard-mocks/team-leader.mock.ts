@@ -74,7 +74,7 @@ export const MOCK_TEAM_LEADER_DASHBOARD: TeamLeaderDashboard = {
       {
         id: 'assigned',
         label: 'Assigned',
-        color: '#3B82F6',
+        color: 'var(--brand-chart-blue)',
         data: [
           { label: '19 May', value: 16 },
           { label: '20 May', value: 18 },
@@ -88,7 +88,7 @@ export const MOCK_TEAM_LEADER_DASHBOARD: TeamLeaderDashboard = {
       {
         id: 'confirmed',
         label: 'Confirmed',
-        color: '#127A3B',
+        color: 'var(--brand-primary)',
         data: [
           { label: '19 May', value: 10 },
           { label: '20 May', value: 11 },
@@ -102,7 +102,7 @@ export const MOCK_TEAM_LEADER_DASHBOARD: TeamLeaderDashboard = {
       {
         id: 'delivered',
         label: 'Delivered',
-        color: '#8B5CF6',
+        color: 'var(--brand-chart-purple)',
         data: [
           { label: '19 May', value: 7 },
           { label: '20 May', value: 8 },
@@ -281,11 +281,11 @@ export const MOCK_TEAM_LEADER_DASHBOARD: TeamLeaderDashboard = {
     title: 'Order Status Distribution',
     totalOrders: 132,
     segments: [
-      { id: 'confirmed', label: 'Confirmed', value: 78, percent: 59.1, color: '#127A3B' },
-      { id: 'delivered', label: 'Delivered', value: 54, percent: 40.9, color: '#8CC63F' },
+      { id: 'confirmed', label: 'Confirmed', value: 78, percent: 59.1, color: 'var(--brand-primary)' },
+      { id: 'delivered', label: 'Delivered', value: 54, percent: 40.9, color: 'var(--brand-sidebar-active-bg)' },
       { id: 'cancelled', label: 'Cancelled', value: 8, percent: 6.1, color: '#EF4444' },
-      { id: 'hold', label: 'Hold', value: 6, percent: 4.5, color: '#F59E0B' },
-      { id: 'follow_up', label: 'Follow Ups', value: 23, percent: 17.4, color: '#3B82F6' },
+      { id: 'hold', label: 'Hold', value: 6, percent: 4.5, color: 'var(--brand-accent)' },
+      { id: 'follow_up', label: 'Follow Ups', value: 23, percent: 17.4, color: 'var(--brand-chart-blue)' },
     ],
   },
   followUpOverview: {
@@ -293,9 +293,9 @@ export const MOCK_TEAM_LEADER_DASHBOARD: TeamLeaderDashboard = {
     totalFollowUps: 23,
     segments: [
       { id: 'not_contacted', label: 'Not Contacted', value: 6, percent: 26.1, color: '#EF4444' },
-      { id: 'in_progress', label: 'In Progress', value: 8, percent: 34.8, color: '#F59E0B' },
-      { id: 'contacted', label: 'Contacted', value: 5, percent: 21.7, color: '#3B82F6' },
-      { id: 'completed', label: 'Completed', value: 4, percent: 17.4, color: '#22C55E' },
+      { id: 'in_progress', label: 'In Progress', value: 8, percent: 34.8, color: 'var(--brand-accent)' },
+      { id: 'contacted', label: 'Contacted', value: 5, percent: 21.7, color: 'var(--brand-chart-blue)' },
+      { id: 'completed', label: 'Completed', value: 4, percent: 17.4, color: 'var(--brand-sidebar-active-bg)' },
     ],
   },
   teamTargets: {

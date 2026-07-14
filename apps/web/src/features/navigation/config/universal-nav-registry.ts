@@ -392,6 +392,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               permissions: pv('settings.view'),
             },
             {
+              id: 'settings-brand',
+              title: 'Brand',
+              url: '/dashboard/settings/brand',
+              permissions: ['brand.view', 'brand.manage', 'settings.manage'],
+            },
+            {
               id: 'settings-integrations',
               title: 'Integrations',
               url: '/dashboard/settings/integrations',
@@ -471,6 +477,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               title: 'Overview',
               url: '/dashboard/platform',
               permissions: pv('platform.view'),
+            },
+            {
+              id: 'platform-brand',
+              title: 'Brand',
+              url: '/dashboard/platform/brand',
+              permissions: ['platform.view', 'platform.manage'],
             },
             {
               id: 'orgs-all',

@@ -7,6 +7,7 @@ import {
   GitBranch,
   LockKeyhole,
   MessageSquare,
+  Palette,
   Plug,
   Settings2,
   Tags,
@@ -24,6 +25,12 @@ const SETTINGS_LINKS = [
     description: 'Company profile, order prefix, courier defaults, and timezone.',
     href: '/dashboard/settings/organization',
     icon: Settings2,
+  },
+  {
+    title: 'Brand',
+    description: 'Colors and light/dark logos for CRM and login screens.',
+    href: '/dashboard/settings/brand',
+    icon: Palette,
   },
   {
     title: 'Integrations',

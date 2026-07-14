@@ -40,9 +40,17 @@ function NavCountBadge({ count }: { count: number }) {
       className={cn(
         'ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none',
         isHigh
-          ? 'bg-amber-400/95 text-amber-950 ring-1 ring-amber-300/40'
+          ? 'ring-1 ring-black/10'
           : 'bg-white/12 text-sidebar-foreground/90 ring-1 ring-white/10',
       )}
+      style={
+        isHigh
+          ? {
+              backgroundColor: 'var(--brand-accent, #FFD700)',
+              color: 'var(--brand-accent-fg, #1a1a1a)',
+            }
+          : undefined
+      }
     >
       {label}
     </span>

@@ -23,7 +23,7 @@ export function StarRating({ rating, max = 5, className }: StarRatingProps) {
             className={cn(
               'size-3.5 sm:size-4',
               filled
-                ? 'fill-amber-400 text-amber-400'
+                ? 'fill-[var(--brand-accent,#FFD700)] text-[var(--brand-accent,#FFD700)]'
                 : 'fill-transparent text-muted-foreground/40',
             )}
           />

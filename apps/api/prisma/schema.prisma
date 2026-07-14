@@ -14,6 +14,8 @@ model Organization {
   plan               String
   status             String             @default("active") // active | suspended | onboarding
   phone              String?
+  // Tenant brand colors + light/dark logo URLs
+  branding           Json?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   users              User[]

@@ -22,7 +22,7 @@ import {
   setStoredAccessToken,
   syncSessionCookieFromStorage,
 } from '@/lib/auth-token';
-import { setAccessTokenGetter } from '@/lib/api/client';
+import { setAccessTokenGetter, setSessionInvalidationHandler } from '@/lib/api/client';
 
 setAccessTokenGetter(() => getStoredAccessToken());
 
@@ -38,12 +38,14 @@ function stripNonSuperAdminPlatformAccess(
 
 function resolveSessionPermissions(user: AuthSession['user']): Permission[] {
   // API sessions include server-resolved effective permissions.
+  // Trust the API list (only drop platform-only for non–super-admin) so a
+  // slightly stale @laam/types catalog cannot strip new perms like brand.*.
   if (env.useApi) {
     if (user.permissions?.length) {
-      return stripNonSuperAdminPlatformAccess(
-        user.role,
-        user.permissions.filter(isValidPermission),
+      const fromApi = user.permissions.filter(
+        (p): p is Permission => typeof p === 'string' && (isValidPermission(p) || p.includes('.')),
       );
+      return stripNonSuperAdminPlatformAccess(user.role, fromApi);
     }
     return resolveUserPermissions({
       role: user.role,
@@ -113,19 +115,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setStatus('loading');
       }
 
-      syncSessionCookieFromStorage();
-      const nextSession = await authApi.getSession();
-      setSession(nextSession);
-      setStatus(nextSession ? 'authenticated' : 'unauthenticated');
-      bootstrapped.current = true;
+      try {
+        syncSessionCookieFromStorage();
+        // Cleared storage: skip /auth/session (would 401) and settle immediately.
+        if (env.useApi && !getStoredAccessToken()) {
+          setSession(null);
+          setStatus('unauthenticated');
+          bootstrapped.current = true;
+          syncSessionCookieFromStorage();
+          return;
+        }
 
-      if (nextSession) {
-        syncSessionCookieFromStorage();
-      } else if (!getStoredAccessToken()) {
-        syncSessionCookieFromStorage();
-      } else {
-        // Token present but session invalid — clear stale credentials.
+        const nextSession = await authApi.getSession();
+        setSession(nextSession);
+        setStatus(nextSession ? 'authenticated' : 'unauthenticated');
+        bootstrapped.current = true;
+
+        if (nextSession) {
+          syncSessionCookieFromStorage();
+        } else if (!getStoredAccessToken()) {
+          syncSessionCookieFromStorage();
+        } else {
+          // Token present but session invalid — clear stale credentials.
+          setStoredAccessToken(null);
+        }
+      } catch {
         setStoredAccessToken(null);
+        setSession(null);
+        setStatus('unauthenticated');
+        bootstrapped.current = true;
       }
     },
     [authApi],
@@ -157,13 +175,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [authApi],
   );
 
-  React.useEffect(() => {
-    syncSessionCookieFromStorage();
-    void refreshSession();
-  }, [refreshSession]);
-
   const logout = React.useCallback(async () => {
-    await authApi.logout();
+    try {
+      await authApi.logout();
+    } catch {
+      // Session may already be invalid (suspended/deleted).
+    }
     setStoredAccessToken(null);
     setSession(null);
     setStatus('unauthenticated');
@@ -172,6 +189,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.location.assign('/login');
     }
   }, [authApi]);
+
+  React.useEffect(() => {
+    setSessionInvalidationHandler((reason) => {
+      setStoredAccessToken(null);
+      setSession(null);
+      setStatus('unauthenticated');
+      bootstrapped.current = true;
+      if (typeof window === 'undefined') {
+        return;
+      }
+      // Soft landing on login — BrandProvider shows suspended/unknown when applicable.
+      const next = reason.code === 'ORG_SUSPENDED' || reason.code === 'ORG_DELETED'
+        ? '/login'
+        : '/login';
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.assign(next);
+      }
+    });
+    return () => setSessionInvalidationHandler(null);
+  }, []);
+
+  React.useEffect(() => {
+    syncSessionCookieFromStorage();
+    void refreshSession();
+  }, [refreshSession]);
 
   const switchRole = React.useCallback(
     async (role: UserRole) => {

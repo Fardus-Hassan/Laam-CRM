@@ -82,7 +82,7 @@ export const MOCK_MARKETING_HEAD_DASHBOARD: MarketingHeadDashboard = {
       {
         id: 'total',
         label: 'Total Leads',
-        color: '#3B82F6',
+        color: 'var(--brand-chart-blue)',
         data: [
           { label: 'Mon', value: 720 },
           { label: 'Tue', value: 810 },
@@ -96,7 +96,7 @@ export const MOCK_MARKETING_HEAD_DASHBOARD: MarketingHeadDashboard = {
       {
         id: 'qualified',
         label: 'Qualified Leads',
-        color: '#8CC63F',
+        color: 'var(--brand-sidebar-active-bg)',
         data: [
           { label: 'Mon', value: 248 },
           { label: 'Tue', value: 276 },
@@ -110,7 +110,7 @@ export const MOCK_MARKETING_HEAD_DASHBOARD: MarketingHeadDashboard = {
       {
         id: 'converted',
         label: 'Converted Leads',
-        color: '#127A3B',
+        color: 'var(--brand-primary)',
         data: [
           { label: 'Mon', value: 118 },
           { label: 'Tue', value: 132 },
@@ -136,10 +136,10 @@ export const MOCK_MARKETING_HEAD_DASHBOARD: MarketingHeadDashboard = {
   leadSources: {
     title: 'Top Lead Sources',
     segments: [
-      { id: 'facebook', label: 'Facebook Ads', value: 1842, percent: 34.2, color: '#3B82F6' },
-      { id: 'google', label: 'Google Ads', value: 1256, percent: 23.3, color: '#22C55E' },
-      { id: 'website', label: 'Website', value: 912, percent: 16.9, color: '#F59E0B' },
-      { id: 'referral', label: 'Referrals', value: 684, percent: 12.7, color: '#8B5CF6' },
+      { id: 'facebook', label: 'Facebook Ads', value: 1842, percent: 34.2, color: 'var(--brand-chart-blue)' },
+      { id: 'google', label: 'Google Ads', value: 1256, percent: 23.3, color: 'var(--brand-sidebar-active-bg)' },
+      { id: 'website', label: 'Website', value: 912, percent: 16.9, color: 'var(--brand-accent)' },
+      { id: 'referral', label: 'Referrals', value: 684, percent: 12.7, color: 'var(--brand-chart-purple)' },
       { id: 'email', label: 'Email Campaign', value: 398, percent: 7.4, color: '#EC4899' },
       { id: 'others', label: 'Others', value: 300, percent: 5.5, color: '#94A3B8' },
     ],

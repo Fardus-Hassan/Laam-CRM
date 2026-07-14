@@ -24,6 +24,7 @@ import {
 import { DualAxisComboChart } from '@/components/charts/dual-axis-combo-chart';
 import { PerformanceGaugeChart } from '@/components/charts/performance-gauge-chart';
 import { DonutChart } from '@/components/charts/donut-chart';
+import { CHART_COLORS } from '@/components/charts/chart-theme';
 import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardDate } from '@/features/dashboard/providers/dashboard-date-provider';
@@ -74,7 +75,7 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
         label: 'Achieved',
         value: data.goalAchievement.breakdown.achieved,
         percent: data.goalAchievement.overallPercent,
-        color: '#22C55E',
+        color: CHART_COLORS.secondary,
       },
       {
         id: 'remaining',
@@ -83,7 +84,7 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
           data.goalAchievement.breakdown.total -
           data.goalAchievement.breakdown.achieved,
         percent: 100 - data.goalAchievement.overallPercent,
-        color: '#E2E8F0',
+        color: CHART_COLORS.track,
       },
     ],
     [data.goalAchievement],

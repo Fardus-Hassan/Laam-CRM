@@ -21,6 +21,7 @@ export * from './lib/accounting.js';
 export * from './lib/billing.js';
 export * from './lib/security.js';
 export * from './lib/org-settings.js';
+export * from './lib/branding.js';
 export * from './lib/reports.js';
 export * from './lib/courier.js';
 export * from './lib/support.js';

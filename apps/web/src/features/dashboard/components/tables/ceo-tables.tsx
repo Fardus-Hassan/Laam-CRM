@@ -17,7 +17,7 @@ function GrowthCell({ value, trend }: { value: number; trend: CeoDepartmentRow['
     <span
       className={cn(
         'inline-flex items-center gap-0.5 text-sm font-medium',
-        trend === 'up' && 'text-emerald-600 dark:text-emerald-400',
+        trend === 'up' && 'text-primary',
         trend === 'down' && 'text-red-600 dark:text-red-400',
         trend === 'neutral' && 'text-muted-foreground',
       )}

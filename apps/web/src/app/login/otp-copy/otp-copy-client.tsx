@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { env } from '@/config/env';
+import { AuthBrandShell } from '@/features/auth/components/auth-brand-shell';
 import { apiRequest } from '@/lib/api/client';
 import { authEndpoints } from '@/lib/api/endpoints';
 import { parseApiErrorMessage } from '@/lib/api/parse-api-error';
@@ -80,16 +81,13 @@ export default function OtpCopyPageClient() {
   }, [token, copyToClipboard]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-muted/50 to-background p-4">
-      <Card className="w-full max-w-md shadow-lg">
+    <AuthBrandShell subtitle="Your OTP is ready to paste on the login page.">
+      <Card className="w-full border-border/70 shadow-xl backdrop-blur-sm">
         <CardHeader className="space-y-3 text-center">
           <div className="mx-auto flex size-11 items-center justify-center rounded-xl bg-primary/10">
             <KeyRound className="size-5 text-primary" />
           </div>
           <CardTitle className="text-xl">Copy verification code</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Your OTP is ready to paste on the login page.
-          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
@@ -138,6 +136,6 @@ export default function OtpCopyPageClient() {
           </Button>
         </CardContent>
       </Card>
-    </div>
+    </AuthBrandShell>
   );
 }

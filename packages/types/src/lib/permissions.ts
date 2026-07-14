@@ -95,6 +95,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'roles.view',
     'settings.view',
     'settings.manage',
+    'brand.view',
+    'brand.manage',
     'billing.view',
     'billing.manage',
     'security.view',
@@ -276,14 +278,23 @@ function stripPlatformOnly(permissions: readonly Permission[], role: UserRole): 
 /**
  * Effective permissions: (customRole | presetRole) ∪ grants − denies
  * Platform access is never granted via tenant roles/grants — only super_admin.
+ * org_admin always keeps the full tenant catalog so a stale custom-role
+ * snapshot cannot drop new permissions (e.g. brand.*).
  */
 export function resolveUserPermissions(user: UserPermissionInput): Permission[] {
-  const base = stripPlatformOnly(
-    user.customRolePermissions?.length
-      ? [...user.customRolePermissions]
-      : getPermissionsForRole(user.role),
-    user.role,
-  );
+  const roleBase = getPermissionsForRole(user.role);
+  const customBase = user.customRolePermissions?.length
+    ? [...user.customRolePermissions]
+    : [];
+
+  const mergedBase =
+    user.role === 'org_admin'
+      ? [...new Set<Permission>([...roleBase, ...customBase])]
+      : customBase.length
+        ? customBase
+        : roleBase;
+
+  const base = stripPlatformOnly(mergedBase, user.role);
 
   const grants = stripPlatformOnly(
     normalizePermissionList([

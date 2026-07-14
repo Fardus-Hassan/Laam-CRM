@@ -16,6 +16,8 @@ import { passwordApi } from '@/features/auth/api/password-api';
 import { OtpCountdown } from '@/features/auth/components/otp-countdown';
 import { OtpDeliveryHint } from '@/features/auth/components/otp-delivery-hint';
 import { OtpInput } from '@/features/auth/components/otp-input';
+import { AuthBrandShell } from '@/features/auth/components/auth-brand-shell';
+import { useBrand } from '@/features/brand/providers/brand-provider';
 import { parseApiErrorMessage } from '@/lib/api/parse-api-error';
 import { getTenantSlugFromHost, isPlatformHost } from '@/lib/tenant';
 import type { OtpChallengeResponse } from '@laam/types';
@@ -39,6 +41,7 @@ export default function ForgotPasswordPage() {
 
   const tenantSlug = getTenantSlugFromHost();
   const platform = isPlatformHost();
+  const brand = useBrand();
 
   async function handleRequestOtp(event: React.FormEvent) {
     event.preventDefault();
@@ -126,8 +129,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-muted/50 to-background p-4">
-      <Card className="w-full max-w-md shadow-lg">
+    <AuthBrandShell subtitle={`Reset password for ${brand.name}`}>
+      <Card className="w-full border-border/70 shadow-xl backdrop-blur-sm">
         <CardHeader className="space-y-4">
           <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10">
             <KeyRound className="size-5 text-primary" />
@@ -234,6 +237,6 @@ export default function ForgotPasswordPage() {
           </Button>
         </CardContent>
       </Card>
-    </div>
+    </AuthBrandShell>
   );
 }

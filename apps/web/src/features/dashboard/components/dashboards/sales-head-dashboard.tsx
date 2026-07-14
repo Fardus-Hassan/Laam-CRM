@@ -13,6 +13,7 @@ import { PeriodFilter } from '@/components/dashboard/period-filter';
 import { MultiLineChart } from '@/components/charts/multi-line-chart';
 import { SimpleBarChart } from '@/components/charts/simple-bar-chart';
 import { DonutChart } from '@/components/charts/donut-chart';
+import { CHART_COLORS } from '@/components/charts/chart-theme';
 import { useChartTheme } from '@/components/charts/use-chart-theme';
 import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { useDashboardDate } from '@/features/dashboard/providers/dashboard-date-provider';
@@ -173,7 +174,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
                       label: 'Achieved',
                       value: summary.achieved,
                       percent: summary.achievementPercent,
-                      color: '#127A3B',
+                      color: CHART_COLORS.primary,
                     },
                     {
                       id: 'remaining',
@@ -233,7 +234,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
                 data={achievementData}
                 size="sm"
                 valueFormatter={(value) => `${value}%`}
-                color="#8CC63F"
+                color={CHART_COLORS.secondary}
               />
             </div>
           </div>

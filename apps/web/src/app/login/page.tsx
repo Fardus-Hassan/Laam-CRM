@@ -17,6 +17,8 @@ import { OtpCountdown } from '@/features/auth/components/otp-countdown';
 import { OtpDeliveryHint } from '@/features/auth/components/otp-delivery-hint';
 import { OtpInput } from '@/features/auth/components/otp-input';
 import { SessionBootScreen } from '@/features/auth/components/session-boot-screen';
+import { AuthBrandShell } from '@/features/auth/components/auth-brand-shell';
+import { useBrand } from '@/features/brand/providers/brand-provider';
 import {
   defaultPostLoginPath,
   safeNextPath,
@@ -45,6 +47,7 @@ function LoginPageContent() {
   const [leaving, setLeaving] = React.useState(false);
   const tenantSlug = getTenantSlugFromHost();
   const platform = isPlatformHost();
+  const brand = useBrand();
   const nextPath = safeNextPath(searchParams.get('next'));
   const redirected = React.useRef(false);
 
@@ -140,8 +143,16 @@ function LoginPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-muted/50 to-background p-4">
-      <Card className="w-full max-w-md shadow-lg">
+    <AuthBrandShell
+      subtitle={
+        step === 1
+          ? platform
+            ? 'Super admin — sign in at localhost (not a company subdomain).'
+            : `Sign in to ${brand.name}`
+          : 'New device detected — enter the verification code'
+      }
+    >
+      <Card className="w-full border-border/70 shadow-xl backdrop-blur-sm">
         <CardHeader className="space-y-3">
           <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10">
             {step === 1 ? (
@@ -151,13 +162,11 @@ function LoginPageContent() {
             )}
           </div>
           <div>
-            <CardTitle className="text-xl">{platform ? 'Laam Platform' : `${tenantSlug} CRM`}</CardTitle>
+            <CardTitle className="text-xl">
+              {step === 1 ? 'Welcome back' : 'Verify device'}
+            </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              {step === 1
-                ? platform
-                  ? 'Super admin — sign in at localhost (not a company subdomain).'
-                  : `Company sign in — ${tenantSlug}.localhost`
-                : 'New device detected — enter the verification code'}
+              {platform ? 'Laam Platform' : `${tenantSlug}.localhost`}
             </p>
           </div>
           <Stepper steps={STEPS} currentStep={step} />
@@ -249,7 +258,7 @@ function LoginPageContent() {
           ) : null}
         </CardContent>
       </Card>
-    </div>
+    </AuthBrandShell>
   );
 }
 

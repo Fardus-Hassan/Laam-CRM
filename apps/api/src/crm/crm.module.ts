@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { BrandingController } from './branding.controller';
+import { BrandingService } from './branding.service';
 import { CompaniesController } from './companies.controller';
 import { ContactsController } from './contacts.controller';
 import { DashboardController } from './dashboard.controller';
@@ -19,8 +21,9 @@ import { RbacService } from './rbac.service';
     PipelineController,
     OrdersController,
     RbacController,
+    BrandingController,
   ],
-  providers: [RbacService],
-  exports: [RbacService],
+  providers: [RbacService, BrandingService],
+  exports: [RbacService, BrandingService],
 })
 export class CrmModule {}

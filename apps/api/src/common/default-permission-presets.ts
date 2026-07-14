@@ -74,12 +74,40 @@ export async function seedDefaultPermissionPresets(
 ): Promise<number> {
   const existing = await prisma.permissionPreset.count({ where: { organizationId } });
   if (existing > 0) {
+    await syncBuiltInPresetPermissions(prisma, organizationId);
     return 0;
   }
 
   const rows = getDefaultPermissionPresetRows(organizationId);
   const result = await prisma.permissionPreset.createMany({ data: rows });
   return result.count;
+}
+
+/** Adds newly catalogued permissions (e.g. brand.*) onto known built-in presets. */
+export async function syncBuiltInPresetPermissions(
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<number> {
+  let updated = 0;
+  for (const def of DEFAULT_PRESET_DEFS) {
+    const nextPermissions = [...getPermissionsForRole(def.role)];
+    const rows = await prisma.permissionPreset.findMany({
+      where: { organizationId, name: def.name },
+    });
+    for (const row of rows) {
+      const current = new Set(row.permissions);
+      const missing = nextPermissions.filter((p) => !current.has(p));
+      if (!missing.length) {
+        continue;
+      }
+      await prisma.permissionPreset.update({
+        where: { id: row.id },
+        data: { permissions: [...current, ...missing] },
+      });
+      updated += 1;
+    }
+  }
+  return updated;
 }
 
 export function dashboardTemplateForSystemRole(role: UserRole): DashboardTemplate | undefined {

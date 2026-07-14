@@ -51,3 +51,6 @@ out
 .env
 .env.local
 .env.*.local
+
+# Tenant logo uploads (served from API /api/uploads)
+uploads
