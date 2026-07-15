@@ -1,6 +1,7 @@
 'use client';
 
 import { CommandPaletteTrigger } from '@/components/command-palette/command-palette-trigger';
+import { Can } from '@/components/auth/can';
 import { CreateOrderButton } from '@/components/layout/top-bar/create-order-button';
 import { FullscreenToggle } from '@/components/layout/top-bar/fullscreen-toggle';
 import { DateBadge } from '@/components/layout/top-bar/date-badge';
@@ -14,7 +15,9 @@ export function TopBarActions() {
       <CommandPaletteTrigger />
       <CreateOrderButton />
       <DateBadge />
-      <NotificationBell />
+      <Can permission="notifications.view">
+        <NotificationBell />
+      </Can>
       <FullscreenToggle />
       <ThemeToggle />
       <TopBarUser />

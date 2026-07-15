@@ -39,6 +39,7 @@ const EXTRA_DASHBOARD_PATH_PERMISSIONS: Record<string, Permission[]> = {
   '/dashboard/accounting': ['accounting.view'],
   '/dashboard/settings/security': ['security.view'],
   '/dashboard/settings/brand': ['brand.view', 'brand.manage', 'settings.manage'],
+  '/dashboard/notifications': ['notifications.view'],
   '/dashboard/platform/brand': ['platform.view', 'platform.manage'],
   '/dashboard/platform/tenants': ['platform.view', 'platform.manage'],
   '/dashboard/users': ['users.view', 'users.manage', 'users.invite'],

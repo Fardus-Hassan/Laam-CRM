@@ -251,6 +251,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
             'courier.view',
             'support.view',
             'coupons.view',
+            'notifications.view',
           ],
           children: [
             {
@@ -259,6 +260,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               url: '/dashboard/followups',
               permissions: pv('activities.view'),
               badge: badges.followups,
+            },
+            {
+              id: 'notifications',
+              title: 'Notifications',
+              url: '/dashboard/notifications',
+              permissions: pv('notifications.view'),
             },
             {
               id: 'tasks',

@@ -24,3 +24,14 @@ export function markNotificationRead(id: string): void {
 export function markAllNotificationsRead(): void {
   notifications = notifications.map((n) => ({ ...n, isRead: true }));
 }
+
+export function deleteNotification(id: string): void {
+  notifications = notifications.filter((n) => n.id !== id);
+}
+
+export function deleteNotifications(ids: string[]): number {
+  const set = new Set(ids);
+  const before = notifications.length;
+  notifications = notifications.filter((n) => !set.has(n.id));
+  return before - notifications.length;
+}

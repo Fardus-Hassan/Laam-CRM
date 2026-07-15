@@ -16,6 +16,7 @@ import type {
 import { normalizeBrandColorInput } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from './notifications.service';
 
 export const DEFAULT_BRAND_COLORS: BrandColors = {
   primary: '#127A3B',
@@ -70,7 +71,10 @@ function mergeColors(partial?: Partial<BrandColors> | null): BrandColors {
 
 @Injectable()
 export class BrandingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   resolvePublicBrand(input: {
     name: string;
@@ -188,6 +192,18 @@ export class BrandingService {
       where: { id: organizationId },
       data: { branding: next },
     });
+
+    if (updated.slug !== 'platform') {
+      void this.notifications
+        .notifyUsersWithPermission({
+          organizationId,
+          type: 'system',
+          title: 'Brand settings updated',
+          body: `${updated.name} brand colors or logos were changed.`,
+          href: '/dashboard/settings/brand',
+        })
+        .catch(() => undefined);
+    }
 
     return this.resolvePublicBrand({
       name: updated.name,

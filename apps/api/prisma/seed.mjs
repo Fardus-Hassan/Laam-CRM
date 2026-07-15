@@ -84,9 +84,63 @@ async function seedCrmDemo() {
   console.log('CRM demo seed complete');
 }
 
+async function seedNotifications() {
+  const admin = await prisma.user.findFirst({
+    where: {
+      systemRole: 'org_admin',
+      status: 'active',
+      organization: { slug: { not: 'platform' } },
+    },
+    include: { organization: true },
+  });
+
+  if (!admin?.organizationId || !admin.organization) {
+    console.log('Skip notification seed: no tenant org_admin found');
+    return;
+  }
+
+  await prisma.notification.deleteMany({ where: { userId: admin.id } });
+
+  const orgId = admin.organizationId;
+  await prisma.notification.createMany({
+    data: [
+      {
+        organizationId: orgId,
+        userId: admin.id,
+        type: 'failed_login',
+        title: 'Failed login attempt',
+        body: `Someone tried to sign in as ${admin.email} with an incorrect password.`,
+        href: '/dashboard/users',
+        isRead: false,
+      },
+      {
+        organizationId: orgId,
+        userId: admin.id,
+        type: 'system',
+        title: 'Team invite sent',
+        body: 'A teammate was invited to your organization.',
+        href: '/dashboard/users',
+        isRead: false,
+      },
+      {
+        organizationId: orgId,
+        userId: admin.id,
+        type: 'system',
+        title: 'Brand settings updated',
+        body: `${admin.organization.name} brand colors or logos were changed.`,
+        href: '/dashboard/settings/brand',
+        isRead: true,
+      },
+    ],
+  });
+
+  console.log(`Notification samples ready for ${admin.email} @ ${admin.organization.slug}`);
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedCrmDemo();
+  await seedNotifications();
 }
 
 main()

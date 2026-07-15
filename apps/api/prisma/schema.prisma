@@ -22,6 +22,7 @@ model Organization {
   teams              Team[]
   customRoles        CustomRole[]
   permissionPresets  PermissionPreset[]
+  notifications      Notification[]
 }
 
 model User {
@@ -49,6 +50,7 @@ model User {
   updatedAt           DateTime       @updatedAt
   otpChallenges       OtpChallenge[]
   trustedDevices      TrustedDevice[]
+  notifications       Notification[]
 
   @@index([organizationId])
   @@index([teamId])
@@ -131,6 +133,25 @@ model TrustedDevice {
   trustedAt DateTime @default(now())
 
   @@unique([userId, deviceId])
+}
+
+model Notification {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String
+  title          String
+  body           String
+  href           String?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
+  @@index([organizationId, createdAt])
+  @@index([createdAt])
 }
 
 model Lead {

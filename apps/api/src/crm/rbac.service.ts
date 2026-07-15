@@ -32,6 +32,7 @@ import {
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantWebUrl } from '../common/tenant.util';
+import { NotificationsService } from './notifications.service';
 
 type TenantRole = Exclude<UserRole, 'super_admin'>;
 
@@ -106,7 +107,12 @@ export class RbacService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  private emitSafe(task: Promise<unknown>) {
+    void task.catch(() => undefined);
+  }
 
   assertOrgAccess(organizationId: string | null | undefined): asserts organizationId is string {
     if (!organizationId) {
@@ -186,6 +192,17 @@ export class RbacService {
 
     this.logger.log(
       `Invited ${email} to ${org.slug} as ${roleLabel} (emailSent=${emailResult.sent})`,
+    );
+
+    this.emitSafe(
+      this.notifications.notifyUsersWithPermission({
+        organizationId,
+        type: 'system',
+        title: 'Team invite sent',
+        body: `${input.name.trim()} (${email}) was invited as ${roleLabel}.`,
+        href: '/dashboard/users',
+        excludeUserId: user.id,
+      }),
     );
 
     return this.toTenantUser(user);
@@ -321,6 +338,32 @@ export class RbacService {
       data: { status },
       include: { invitedBy: { select: { id: true, name: true } } },
     });
+
+    const verb = status === 'suspended' ? 'suspended' : 'reactivated';
+    this.emitSafe(
+      this.notifications.create({
+        organizationId,
+        userId: updated.id,
+        type: 'system',
+        title: `Account ${verb}`,
+        body:
+          status === 'suspended'
+            ? 'Your account was suspended. Contact an organization admin if this is unexpected.'
+            : 'Your account was reactivated. You can sign in again.',
+        href: '/dashboard/settings/security',
+      }),
+    );
+    this.emitSafe(
+      this.notifications.notifyUsersWithPermission({
+        organizationId,
+        type: 'system',
+        title: `User ${verb}`,
+        body: `${updated.name} (${updated.email}) was ${verb}.`,
+        href: '/dashboard/users',
+        excludeUserId: updated.id,
+      }),
+    );
+
     return this.toTenantUser(updated);
   }
 

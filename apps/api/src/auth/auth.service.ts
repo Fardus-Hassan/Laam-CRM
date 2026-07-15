@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import type { AuthSession, OtpChallengeResponse } from '@laam/types';
 
 import { PermissionResolverService } from '../common/permission-resolver.service';
+import { NotificationsService } from '../crm/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { OtpChallengeResult } from './otp.service';
 import { OtpService } from './otp.service';
@@ -48,12 +50,23 @@ export type LoginResult = LoginSuccess | LoginDeviceOtpRequired;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
     private readonly permissionResolver: PermissionResolverService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  private emitSafe(task: Promise<unknown>) {
+    void task.catch((error) => {
+      this.logger.warn(
+        `Notification emit failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  }
 
   async login(
     email: string,
@@ -72,6 +85,21 @@ export class AuthService {
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
+      if (user.organizationId) {
+        try {
+          await this.notifications.notifyUsersWithPermission({
+            organizationId: user.organizationId,
+            type: 'failed_login',
+            title: 'Failed login attempt',
+            body: `Someone tried to sign in as ${user.email} with an incorrect password.`,
+            href: '/dashboard/users',
+          });
+        } catch (error) {
+          this.logger.warn(
+            `Failed-login notify failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -92,6 +120,19 @@ export class AuthService {
       organizationId: user.organizationId,
       delivery,
     });
+
+    if (user.organizationId) {
+      this.emitSafe(
+        this.notifications.create({
+          organizationId: user.organizationId,
+          userId: user.id,
+          type: 'system',
+          title: 'New device verification',
+          body: 'A sign-in from a new device needs your verification code.',
+          href: '/dashboard/settings/security',
+        }),
+      );
+    }
 
     return {
       requiresDeviceOtp: true,
@@ -153,6 +194,19 @@ export class AuthService {
       organizationId: user.organizationId,
       delivery: this.otpDeliveryForUser(user),
     });
+
+    if (user.organizationId) {
+      this.emitSafe(
+        this.notifications.create({
+          organizationId: user.organizationId,
+          userId: user.id,
+          type: 'system',
+          title: 'Password reset requested',
+          body: 'A verification code was sent to reset your password. If this was not you, contact an admin.',
+          href: '/dashboard/settings/security',
+        }),
+      );
+    }
 
     return {
       found: true as const,
