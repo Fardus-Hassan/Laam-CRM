@@ -62,4 +62,5 @@ export const PURCHASE_STOCK_LABELS = {
   pending: 'Pending',
   received: 'Received',
   partial: 'Partial',
+  cancelled: 'Cancelled',
 } as const;

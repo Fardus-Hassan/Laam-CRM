@@ -56,6 +56,11 @@ class VariantDto {
   @MaxLength(120)
   sku!: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  barcode?: string;
+
   @Type(() => Number)
   @IsNumber()
   @Min(0)
@@ -287,6 +292,7 @@ export class ProductsController {
       id: v.id ?? `tmp-${v.sku}`,
       label: v.label,
       sku: v.sku,
+      barcode: v.barcode?.trim() || undefined,
       salePrice: v.salePrice,
       costPrice: v.costPrice,
       stock: v.stock ?? 0,

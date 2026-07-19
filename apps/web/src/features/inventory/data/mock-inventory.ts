@@ -1,20 +1,40 @@
 import type {
   CreateAdjustmentPayload,
+  CreateMixerRecipePayload,
   CreateProductPayload,
+  CreatePurchasePayload,
+  CreatePurchaseReturnPayload,
+  CreateSupplierPayload,
+  CreateWarehousePayload,
+  InventoryLot,
+  InventoryLotListResponse,
   InventoryProductDetail,
   InventoryProductListItem,
+  InventoryReconciliationResponse,
   MixerRecipeListItem,
   ProductCategory,
   ProductFilterCount,
   ProductListQuery,
   ProductListResponse,
   ProductionBatchResult,
+  InventoryReportsQuery,
+  PurchaseDetail,
   PurchaseListItem,
+  PurchasePaymentStatus,
+  PurchaseReturnDetail,
   PurchaseReturnListItem,
   RunProductionBatchPayload,
   StockAdjustmentListItem,
+  StockMovement,
+  StockMovementListQuery,
+  StockMovementListResponse,
   SupplierListItem,
+  TransferStockPayload,
+  UpdateMixerRecipePayload,
   UpdateProductPayload,
+  UpdateSupplierPayload,
+  UpdateWarehousePayload,
+  Warehouse,
 } from '@laam/types';
 
 import {
@@ -368,6 +388,58 @@ export const MOCK_SUPPLIERS: SupplierListItem[] = SUPPLIER_NAMES.map((name, i) =
   tags: i === 0 ? ['Primary'] : [],
 }));
 
+export function createMockSupplier(payload: CreateSupplierPayload): SupplierListItem {
+  const name = payload.name.trim();
+  if (MOCK_SUPPLIERS.some((s) => s.name.toLowerCase() === name.toLowerCase())) {
+    throw new Error('A supplier with this name already exists');
+  }
+  const item: SupplierListItem = {
+    id: `sup-${Date.now()}`,
+    name,
+    contactPerson: payload.contactPerson?.trim() || undefined,
+    phone: payload.phone.trim(),
+    email: payload.email?.trim() || undefined,
+    address: payload.address?.trim() || undefined,
+    balance: 0,
+    productCount: 0,
+    status: payload.status ?? 'active',
+    tags: payload.tags ?? [],
+  };
+  MOCK_SUPPLIERS.unshift(item);
+  return { ...item };
+}
+
+export function updateMockSupplier(
+  id: string,
+  payload: UpdateSupplierPayload,
+): SupplierListItem {
+  const item = MOCK_SUPPLIERS.find((s) => s.id === id);
+  if (!item) throw new Error('Supplier not found');
+  if (payload.name !== undefined) {
+    const name = payload.name.trim();
+    if (MOCK_SUPPLIERS.some((s) => s.id !== id && s.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error('A supplier with this name already exists');
+    }
+    item.name = name;
+  }
+  if (payload.contactPerson !== undefined) item.contactPerson = payload.contactPerson.trim() || undefined;
+  if (payload.phone !== undefined) item.phone = payload.phone.trim();
+  if (payload.email !== undefined) item.email = payload.email.trim() || undefined;
+  if (payload.address !== undefined) item.address = payload.address.trim() || undefined;
+  if (payload.status !== undefined) item.status = payload.status;
+  if (payload.tags !== undefined) item.tags = payload.tags;
+  return { ...item };
+}
+
+export function deleteMockSupplier(id: string): void {
+  const index = MOCK_SUPPLIERS.findIndex((s) => s.id === id);
+  if (index < 0) throw new Error('Supplier not found');
+  if (MOCK_PURCHASES.some((p) => p.supplierId === id)) {
+    throw new Error('Supplier has purchase history — mark inactive instead of deleting');
+  }
+  MOCK_SUPPLIERS.splice(index, 1);
+}
+
 // Purchases
 export const MOCK_PURCHASES: PurchaseListItem[] = Array.from({ length: 18 }, (_, i) => {
   const supplier = MOCK_SUPPLIERS[i % MOCK_SUPPLIERS.length];
@@ -400,10 +472,65 @@ export function filterMockPurchases(search?: string) {
     items,
     total: items.length,
     summary: {
-      unpaidTotal: items.filter((p) => p.paymentStatus !== 'paid').reduce((s, p) => s + p.totalAmount, 0),
-      pendingReceipt: items.filter((p) => p.stockStatus !== 'received').length,
+      unpaidTotal: items
+        .filter((p) => p.paymentStatus !== 'paid' && p.stockStatus !== 'cancelled')
+        .reduce((s, p) => s + p.totalAmount, 0),
+      pendingReceipt: items.filter((p) => p.stockStatus === 'pending').length,
     },
   };
+}
+
+export function getMockPurchase(purchaseId: string): PurchaseDetail {
+  const purchase = MOCK_PURCHASES.find((p) => p.id === purchaseId);
+  if (!purchase) throw new Error('Purchase order not found');
+  const product = MOCK_INVENTORY_PRODUCTS[0];
+  const variant = product?.variants[0];
+  const quantity = Math.max(1, purchase.itemCount);
+  const unitCost = variant?.costPrice ?? Math.round(purchase.totalAmount / quantity);
+  return {
+    ...purchase,
+    lines: [
+      {
+        id: `${purchase.id}-line-1`,
+        productId: product?.id ?? 'prod-1',
+        productName: product?.name ?? 'Demo product',
+        productSku: product?.sku ?? 'DEMO',
+        variantId: variant?.id ?? 'var-1',
+        variantLabel: variant?.label ?? 'Standard',
+        variantSku: variant?.sku ?? 'DEMO-STD',
+        quantity,
+        unitCost,
+        lineTotal: quantity * unitCost,
+      },
+    ],
+  };
+}
+
+export function updateMockPurchasePayment(
+  purchaseId: string,
+  paymentStatus: PurchasePaymentStatus,
+): PurchaseListItem {
+  const purchase = MOCK_PURCHASES.find((p) => p.id === purchaseId);
+  if (!purchase) throw new Error('Purchase order not found');
+  if (purchase.stockStatus === 'cancelled') {
+    throw new Error('Cannot update payment on a cancelled purchase');
+  }
+  purchase.paymentStatus = paymentStatus;
+  return { ...purchase };
+}
+
+export function cancelMockPurchase(purchaseId: string): PurchaseListItem {
+  const purchase = MOCK_PURCHASES.find((p) => p.id === purchaseId);
+  if (!purchase) throw new Error('Purchase order not found');
+  if (purchase.stockStatus !== 'pending') {
+    throw new Error(
+      purchase.stockStatus === 'cancelled'
+        ? `${purchase.purchaseNumber} is already cancelled`
+        : `Only pending purchases can be cancelled (${purchase.purchaseNumber} is ${purchase.stockStatus})`,
+    );
+  }
+  purchase.stockStatus = 'cancelled';
+  return { ...purchase };
 }
 
 /** Receive PO stock once — updates PO status, stock, and accounting. */
@@ -414,6 +541,9 @@ export function receiveMockPurchase(purchaseId: string): PurchaseListItem {
   }
   if (purchase.stockStatus === 'received') {
     throw new Error(`${purchase.purchaseNumber} already received`);
+  }
+  if (purchase.stockStatus === 'cancelled') {
+    throw new Error(`${purchase.purchaseNumber} is cancelled`);
   }
 
   // Prefer hero mix / active catalog products for stock-in
@@ -445,6 +575,32 @@ export function receiveMockPurchase(purchaseId: string): PurchaseListItem {
   return { ...purchase };
 }
 
+export function createMockPurchase(payload: CreatePurchasePayload): PurchaseListItem {
+  const supplier = MOCK_SUPPLIERS.find((s) => s.id === payload.supplierId);
+  if (!supplier || supplier.status !== 'active') {
+    throw new Error('Invalid or inactive supplier');
+  }
+  const purchaseNumber = payload.purchaseNumber.trim().toUpperCase();
+  if (MOCK_PURCHASES.some((p) => p.purchaseNumber === purchaseNumber)) {
+    throw new Error('A purchase with this number already exists');
+  }
+  const item: PurchaseListItem = {
+    id: `pur-${Date.now()}`,
+    purchaseNumber,
+    supplierName: supplier.name,
+    supplierId: supplier.id,
+    itemCount: payload.lines.reduce((sum, line) => sum + line.quantity, 0),
+    totalAmount: payload.lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0),
+    paymentStatus: payload.paymentStatus ?? 'unpaid',
+    stockStatus: 'pending',
+    purchaseDate: payload.purchaseDate,
+    dueDate: payload.dueDate,
+    notes: payload.notes,
+  };
+  MOCK_PURCHASES.unshift(item);
+  return { ...item };
+}
+
 // Purchase returns
 export const MOCK_PURCHASE_RETURNS: PurchaseReturnListItem[] = Array.from({ length: 8 }, (_, i) => ({
   id: `pr-${i + 1}`,
@@ -457,6 +613,81 @@ export const MOCK_PURCHASE_RETURNS: PurchaseReturnListItem[] = Array.from({ leng
   returnDate: `2026-06-${String(18 + i).padStart(2, '0')}`,
   reason: ['Damaged jars', 'Wrong quantity', 'Expired batch', 'Quality issue'][i % 4],
 }));
+
+export function createMockPurchaseReturn(
+  payload: CreatePurchaseReturnPayload,
+): PurchaseReturnListItem {
+  const returnNumber = payload.returnNumber.trim().toUpperCase();
+  if (MOCK_PURCHASE_RETURNS.some((r) => r.returnNumber === returnNumber)) {
+    throw new Error('A purchase return with this number already exists');
+  }
+  const item: PurchaseReturnListItem = {
+    id: `pr-${Date.now()}`,
+    returnNumber,
+    purchaseNumber: payload.purchaseNumber.trim().toUpperCase(),
+    supplierName: payload.supplierName.trim(),
+    itemCount: payload.lines.reduce((sum, line) => sum + line.quantity, 0),
+    totalAmount: payload.lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0),
+    status: 'pending',
+    returnDate: payload.returnDate,
+    reason: payload.reason,
+  };
+  MOCK_PURCHASE_RETURNS.unshift(item);
+  return { ...item };
+}
+
+export function completeMockPurchaseReturn(returnId: string): void {
+  const item = MOCK_PURCHASE_RETURNS.find((r) => r.id === returnId);
+  if (!item) throw new Error('Purchase return not found');
+  if (item.status === 'completed') {
+    throw new Error(`${item.returnNumber} is already completed`);
+  }
+  if (item.status !== 'pending' && item.status !== 'approved') {
+    throw new Error(`${item.returnNumber} cannot be completed from status ${item.status}`);
+  }
+  item.status = 'completed';
+}
+
+export function approveMockPurchaseReturn(returnId: string): PurchaseReturnListItem {
+  const item = MOCK_PURCHASE_RETURNS.find((r) => r.id === returnId);
+  if (!item) throw new Error('Purchase return not found');
+  if (item.status === 'completed') {
+    throw new Error(`${item.returnNumber} is already completed`);
+  }
+  if (item.status === 'approved') {
+    throw new Error(`${item.returnNumber} is already approved`);
+  }
+  item.status = 'approved';
+  return { ...item };
+}
+
+export function getMockPurchaseReturn(returnId: string): PurchaseReturnDetail {
+  const item = MOCK_PURCHASE_RETURNS.find((r) => r.id === returnId);
+  if (!item) throw new Error('Purchase return not found');
+  const product = MOCK_INVENTORY_PRODUCTS[0];
+  const variant = product?.variants[0];
+  const quantity = Math.max(1, item.itemCount);
+  const unitCost = variant?.costPrice ?? Math.round(item.totalAmount / quantity);
+  return {
+    ...item,
+    createdAt: `${item.returnDate}T10:00:00.000Z`,
+    completedAt: item.status === 'completed' ? `${item.returnDate}T16:00:00.000Z` : undefined,
+    lines: [
+      {
+        id: `${item.id}-line-1`,
+        productId: product?.id ?? 'prod-1',
+        productName: product?.name ?? 'Demo product',
+        productSku: product?.sku ?? 'DEMO',
+        variantId: variant?.id ?? 'var-1',
+        variantLabel: variant?.label ?? 'Standard',
+        variantSku: variant?.sku ?? 'DEMO-STD',
+        quantity,
+        unitCost,
+        lineTotal: quantity * unitCost,
+      },
+    ],
+  };
+}
 
 // Stock adjustments
 export const MOCK_ADJUSTMENTS: StockAdjustmentListItem[] = Array.from({ length: 22 }, (_, i) => {
@@ -744,6 +975,7 @@ export const MOCK_MIXER_RECIPES: MixerRecipeListItem[] = [
   {
     id: 'mix-1',
     name: 'Modhu + Khejur Combo — Small',
+    outputProductId: 'prod-combo-1',
     outputProductName: 'Modhu + Khejur Combo',
     outputSku: 'CMB-01',
     outputQty: 1,
@@ -758,6 +990,7 @@ export const MOCK_MIXER_RECIPES: MixerRecipeListItem[] = [
   {
     id: 'mix-2',
     name: 'Ramadan Gift Box — Standard',
+    outputProductId: 'prod-gift-1',
     outputProductName: 'Ramadan Gift Box',
     outputSku: 'RMD-GFT',
     outputQty: 1,
@@ -774,6 +1007,7 @@ export const MOCK_MIXER_RECIPES: MixerRecipeListItem[] = [
   {
     id: 'mix-3',
     name: 'Family Combo Pack',
+    outputProductId: 'prod-combo-1',
     outputProductName: 'Modhu + Khejur Combo',
     outputSku: 'CMB-01',
     outputQty: 1,
@@ -786,3 +1020,438 @@ export const MOCK_MIXER_RECIPES: MixerRecipeListItem[] = [
     status: 'draft',
   },
 ];
+export function createMockMixerRecipe(payload: CreateMixerRecipePayload): MixerRecipeListItem {
+  const output = getMockProductById(payload.outputProductId);
+  if (!output) throw new Error('Invalid or deleted product');
+  const inputs = payload.inputs.map((input) => {
+    const product = getMockProductById(input.productId);
+    if (!product) throw new Error('A recipe input references an invalid product');
+    return {
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      quantity: input.quantity,
+      unit: input.unit,
+    };
+  });
+  const item: MixerRecipeListItem = {
+    id: `mix-${Date.now()}`,
+    name: payload.name.trim(),
+    outputProductId: output.id,
+    outputProductName: output.name,
+    outputSku: output.sku,
+    outputQty: payload.outputQty,
+    inputCount: inputs.length,
+    inputs,
+    status: payload.status ?? 'draft',
+  };
+  MOCK_MIXER_RECIPES.unshift(item);
+  return { ...item };
+}
+
+export function updateMockMixerRecipe(
+  id: string,
+  payload: UpdateMixerRecipePayload,
+): MixerRecipeListItem {
+  const item = MOCK_MIXER_RECIPES.find((r) => r.id === id);
+  if (!item) throw new Error('Mixer recipe not found');
+  if (payload.name !== undefined) item.name = payload.name.trim();
+  if (payload.outputQty !== undefined) item.outputQty = payload.outputQty;
+  if (payload.status !== undefined) item.status = payload.status;
+  if (payload.outputProductId !== undefined) {
+    const output = getMockProductById(payload.outputProductId);
+    if (!output) throw new Error('Invalid or deleted product');
+    item.outputProductId = output.id;
+    item.outputProductName = output.name;
+    item.outputSku = output.sku;
+  }
+  if (payload.inputs !== undefined) {
+    item.inputs = payload.inputs.map((input) => {
+      const product = getMockProductById(input.productId);
+      if (!product) throw new Error('A recipe input references an invalid product');
+      return {
+        productId: product.id,
+        productName: product.name,
+        sku: product.sku,
+        quantity: input.quantity,
+        unit: input.unit,
+      };
+    });
+    item.inputCount = item.inputs.length;
+  }
+  return { ...item };
+}
+
+export function deleteMockMixerRecipe(id: string): void {
+  const index = MOCK_MIXER_RECIPES.findIndex((r) => r.id === id);
+  if (index < 0) throw new Error('Mixer recipe not found');
+  MOCK_MIXER_RECIPES.splice(index, 1);
+}
+
+export function getMockInventoryReports(
+  query: InventoryReportsQuery = {},
+): import('@laam/types').InventoryReportsResponse {
+  const lowStock = MOCK_INVENTORY_PRODUCTS.flatMap((product) =>
+    product.variants
+      .filter((variant) => variant.stock <= variant.reorderLevel)
+      .map((variant) => ({
+        productId: product.id,
+        productName: product.name,
+        variantId: variant.id,
+        sku: variant.sku,
+        variantLabel: variant.label,
+        stock: variant.stock,
+        reorderLevel: variant.reorderLevel,
+        status: (variant.stock <= 0 ? 'out_of_stock' : 'low_stock') as 'low_stock' | 'out_of_stock',
+        unitCost: variant.costPrice,
+        stockValueAtCost: variant.stock * (variant.costPrice ?? 0),
+      })),
+  ).slice(0, 20);
+
+  const allVariants = MOCK_INVENTORY_PRODUCTS.flatMap((product) =>
+    product.variants.map((variant) => ({ product, variant })),
+  );
+  const totalStockUnits = allVariants.reduce((sum, row) => sum + row.variant.stock, 0);
+  const inventoryValuationAtCost = allVariants.reduce(
+    (sum, row) => sum + row.variant.stock * (row.variant.costPrice ?? 0),
+    0,
+  );
+
+  const inRange = (isoDate: string) => {
+    const day = isoDate.slice(0, 10);
+    if (query.dateFrom && day < query.dateFrom) return false;
+    if (query.dateTo && day > query.dateTo) return false;
+    return true;
+  };
+
+  const purchases = MOCK_PURCHASES.filter((p) => inRange(p.purchaseDate)).slice(0, 8);
+  const returns = MOCK_PURCHASE_RETURNS.filter((r) => inRange(r.returnDate)).slice(0, 8);
+  const production = MOCK_PRODUCTION_RUNS.filter((run) => inRange(run.createdAt)).slice(0, 8);
+  const movements = MOCK_ADJUSTMENTS.filter((adj) => inRange(adj.adjustedAt)).slice(0, 12).map((adj) => {
+    const product = MOCK_INVENTORY_PRODUCTS.find((p) => p.id === adj.productId);
+    const variant = product?.variants[0];
+    return {
+      id: adj.id,
+      productId: adj.productId,
+      productName: adj.productName,
+      productSku: adj.sku,
+      variantId: variant?.id ?? `${adj.productId}-v1`,
+      variantLabel: variant?.label ?? 'Standard',
+      variantSku: variant?.sku ?? adj.sku,
+      delta: adj.delta,
+      previousStock: adj.previousStock,
+      newStock: adj.newStock,
+      reason: adj.reason,
+      note: adj.note,
+      actorName: adj.adjustedBy,
+      occurredAt: adj.adjustedAt,
+    };
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    period: {
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+    },
+    summary: {
+      skuCount: allVariants.length,
+      totalStockUnits,
+      inventoryValuationAtCost,
+      uncostedSkuCount: 0,
+      lowStockCount: lowStock.length,
+      pendingPurchases: MOCK_PURCHASES.filter((p) => p.stockStatus === 'pending' || p.stockStatus === 'partial').length,
+      pendingReturns: MOCK_PURCHASE_RETURNS.filter((r) => r.status !== 'completed').length,
+    },
+    lowStock,
+    recent: {
+      purchases: purchases.map((p) => ({
+        id: p.id,
+        purchaseNumber: p.purchaseNumber,
+        supplierName: p.supplierName,
+        stockStatus: p.stockStatus,
+        paymentStatus: p.paymentStatus,
+        itemCount: p.itemCount,
+        totalAmount: p.totalAmount,
+        occurredAt: `${p.purchaseDate}T00:00:00.000Z`,
+      })),
+      returns: returns.map((r) => ({
+        id: r.id,
+        returnNumber: r.returnNumber,
+        supplierName: r.supplierName,
+        status: r.status,
+        itemCount: r.itemCount,
+        totalAmount: r.totalAmount,
+        occurredAt: `${r.returnDate}T00:00:00.000Z`,
+      })),
+      production: production.map((run) => ({
+        id: run.id,
+        batchNumber: run.batchNumber,
+        productId: run.outputProductId,
+        productName: run.outputProductName,
+        unitsProduced: run.unitsProduced,
+        materialCost: run.materialCost,
+        occurredAt: run.createdAt,
+      })),
+      movements,
+    },
+    valuationBreakdown: {
+      categories: [
+        { label: 'Honey', units: Math.round(totalStockUnits * 0.4), valueAtCost: Math.round(inventoryValuationAtCost * 0.45) },
+        { label: 'Dates', units: Math.round(totalStockUnits * 0.25), valueAtCost: Math.round(inventoryValuationAtCost * 0.25) },
+        { label: 'Other', units: Math.round(totalStockUnits * 0.35), valueAtCost: Math.round(inventoryValuationAtCost * 0.3) },
+      ],
+      brands: [
+        { label: "Laam Demo", units: Math.round(totalStockUnits * 0.6), valueAtCost: Math.round(inventoryValuationAtCost * 0.55) },
+        { label: "Unbranded", units: Math.round(totalStockUnits * 0.4), valueAtCost: Math.round(inventoryValuationAtCost * 0.45) },
+      ],
+    },
+  };
+}
+
+// ---- Warehouses, org-wide stock ledger, lots, reconciliation ----
+
+export const MOCK_WAREHOUSES: Warehouse[] = [
+  {
+    id: 'wh-main',
+    code: 'MAIN',
+    name: 'Main warehouse',
+    address: 'Tejgaon, Dhaka',
+    isDefault: true,
+    isActive: true,
+    skuCount: 24,
+    totalUnits: 860,
+  },
+  {
+    id: 'wh-ctg',
+    code: 'CTG',
+    name: 'Chittagong depot',
+    address: 'Agrabad, Chittagong',
+    isDefault: false,
+    isActive: true,
+    skuCount: 9,
+    totalUnits: 210,
+  },
+];
+
+export function createMockWarehouse(payload: CreateWarehousePayload): Warehouse {
+  const warehouse: Warehouse = {
+    id: `wh-${Date.now()}`,
+    code: payload.code.trim().toUpperCase(),
+    name: payload.name.trim(),
+    address: payload.address?.trim() || undefined,
+    isDefault: payload.isDefault ?? false,
+    isActive: true,
+    skuCount: 0,
+    totalUnits: 0,
+  };
+  if (warehouse.isDefault) {
+    MOCK_WAREHOUSES.forEach((w) => (w.isDefault = false));
+  }
+  MOCK_WAREHOUSES.push(warehouse);
+  return warehouse;
+}
+
+export function updateMockWarehouse(id: string, payload: UpdateWarehousePayload): Warehouse {
+  const warehouse = MOCK_WAREHOUSES.find((w) => w.id === id);
+  if (!warehouse) throw new Error('Warehouse not found');
+  if (payload.code !== undefined) warehouse.code = payload.code.trim().toUpperCase();
+  if (payload.name !== undefined) warehouse.name = payload.name.trim();
+  if (payload.address !== undefined) warehouse.address = payload.address.trim() || undefined;
+  if (payload.isActive !== undefined) warehouse.isActive = payload.isActive;
+  if (payload.isDefault) {
+    MOCK_WAREHOUSES.forEach((w) => (w.isDefault = w.id === id));
+  }
+  return warehouse;
+}
+
+const MOCK_ORG_MOVEMENTS: StockMovement[] = MOCK_ADJUSTMENTS.map((adj, i) => {
+  const product = MOCK_INVENTORY_PRODUCTS.find((p) => p.id === adj.productId);
+  const variant = product?.variants[0];
+  const warehouse = MOCK_WAREHOUSES[i % MOCK_WAREHOUSES.length];
+  return {
+    id: `mov-${i + 1}`,
+    productId: adj.productId,
+    productName: adj.productName,
+    productSku: adj.sku,
+    variantId: variant?.id ?? `${adj.productId}-v1`,
+    variantLabel: variant?.label ?? 'Standard',
+    variantSku: variant?.sku ?? adj.sku,
+    warehouseId: warehouse.id,
+    warehouseName: warehouse.name,
+    delta: adj.delta,
+    previousStock: adj.previousStock,
+    newStock: adj.newStock,
+    unitCost: variant?.costPrice,
+    valueDelta: adj.delta * (variant?.costPrice ?? 0),
+    reason: adj.reason,
+    note: adj.note,
+    actorName: adj.adjustedBy,
+    createdAt: adj.adjustedAt,
+  };
+});
+
+export function transferMockStock(payload: TransferStockPayload): void {
+  const product = getMockProductById(payload.productId);
+  if (!product) throw new Error('Product not found');
+  const variant = product.variants.find((v) => v.id === payload.variantId);
+  if (!variant) throw new Error('Variant not found');
+  const from = MOCK_WAREHOUSES.find((w) => w.id === payload.fromWarehouseId);
+  const to = MOCK_WAREHOUSES.find((w) => w.id === payload.toWarehouseId);
+  if (!from || !to) throw new Error('Warehouse not found');
+  if (from.id === to.id) throw new Error('Source and destination must differ');
+  const now = new Date().toISOString();
+  const base = {
+    productId: product.id,
+    productName: product.name,
+    productSku: product.sku,
+    variantId: variant.id,
+    variantLabel: variant.label,
+    variantSku: variant.sku,
+    unitCost: variant.costPrice,
+    note: payload.note,
+    actorName: 'Sakib Ahmed',
+    createdAt: now,
+  };
+  MOCK_ORG_MOVEMENTS.unshift(
+    {
+      ...base,
+      id: `mov-out-${Date.now()}`,
+      warehouseId: from.id,
+      warehouseName: from.name,
+      delta: -payload.quantity,
+      previousStock: variant.stock,
+      newStock: variant.stock,
+      valueDelta: -payload.quantity * (variant.costPrice ?? 0),
+      reason: 'warehouse_transfer_out',
+    },
+    {
+      ...base,
+      id: `mov-in-${Date.now()}`,
+      warehouseId: to.id,
+      warehouseName: to.name,
+      delta: payload.quantity,
+      previousStock: 0,
+      newStock: payload.quantity,
+      valueDelta: payload.quantity * (variant.costPrice ?? 0),
+      reason: 'warehouse_transfer_in',
+    },
+  );
+  from.totalUnits = Math.max(0, (from.totalUnits ?? 0) - payload.quantity);
+  to.totalUnits = (to.totalUnits ?? 0) + payload.quantity;
+}
+
+export function listMockOrgStockMovements(
+  query: StockMovementListQuery = {},
+): StockMovementListResponse {
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 50;
+  const q = query.search?.trim().toLowerCase() ?? '';
+  const filtered = MOCK_ORG_MOVEMENTS.filter((m) => {
+    if (query.productId && m.productId !== query.productId) return false;
+    if (query.variantId && m.variantId !== query.variantId) return false;
+    if (query.warehouseId && m.warehouseId !== query.warehouseId) return false;
+    if (query.reason && m.reason !== query.reason) return false;
+    if (query.direction === 'in' && m.delta <= 0) return false;
+    if (query.direction === 'out' && m.delta >= 0) return false;
+    const day = m.createdAt.slice(0, 10);
+    if (query.dateFrom && day < query.dateFrom) return false;
+    if (query.dateTo && day > query.dateTo) return false;
+    if (
+      q &&
+      !(
+        m.productName?.toLowerCase().includes(q) ||
+        m.productSku?.toLowerCase().includes(q) ||
+        m.variantSku?.toLowerCase().includes(q) ||
+        m.reason.toLowerCase().includes(q) ||
+        (m.note?.toLowerCase().includes(q) ?? false)
+      )
+    ) {
+      return false;
+    }
+    return true;
+  });
+  const start = (page - 1) * pageSize;
+  return {
+    items: filtered.slice(start, start + pageSize),
+    total: filtered.length,
+    page,
+    pageSize,
+  };
+}
+
+export const MOCK_LOTS: InventoryLot[] = MOCK_INVENTORY_PRODUCTS.slice(0, 8).map((product, i) => {
+  const variant = product.variants[0];
+  const warehouse = MOCK_WAREHOUSES[i % MOCK_WAREHOUSES.length];
+  const daysToExpiry = [12, 30, 55, 90, 180, 240, 300, 360][i % 8];
+  const expiresAt = new Date(Date.now() + daysToExpiry * 86_400_000).toISOString();
+  return {
+    id: `lot-${i + 1}`,
+    variantId: variant.id,
+    productId: product.id,
+    productName: product.name,
+    variantLabel: variant.label,
+    variantSku: variant.sku,
+    warehouseId: warehouse.id,
+    warehouseName: warehouse.name,
+    lotNumber: `LOT-2026-${String(i + 1).padStart(3, '0')}`,
+    receivedAt: `2026-0${1 + (i % 6)}-10T09:00:00.000Z`,
+    expiresAt,
+    quantity: 10 + i * 4,
+    unitCost: variant.costPrice,
+    status: 'active',
+    daysToExpiry,
+  };
+});
+
+export function listMockLots(expiringWithinDays?: number): InventoryLotListResponse {
+  const items = expiringWithinDays
+    ? MOCK_LOTS.filter(
+        (lot) => lot.daysToExpiry !== undefined && lot.daysToExpiry <= expiringWithinDays,
+      )
+    : MOCK_LOTS;
+  return { items, total: items.length };
+}
+
+export function getMockReconciliation(): InventoryReconciliationResponse {
+  const valuation = MOCK_INVENTORY_PRODUCTS.reduce(
+    (sum, product) =>
+      sum +
+      product.variants.reduce((s, v) => s + v.stock * (v.costPrice ?? 0), 0),
+    0,
+  );
+  const glBalance = Math.round(valuation);
+  return {
+    generatedAt: new Date().toISOString(),
+    inventoryValuationAtCost: valuation,
+    inventoryGlBalance: glBalance,
+    difference: valuation - glBalance,
+    isBalanced: Math.abs(valuation - glBalance) < 1,
+    accounts: [
+      {
+        accountCode: '1400',
+        accountName: 'Inventory',
+        debit: glBalance,
+        credit: 0,
+        balance: glBalance,
+      },
+      {
+        accountCode: '5000',
+        accountName: 'Cost of goods sold',
+        debit: Math.round(valuation * 0.4),
+        credit: 0,
+        balance: Math.round(valuation * 0.4),
+      },
+    ],
+    recentJournals: MOCK_PURCHASES.slice(0, 5).map((p, i) => ({
+      id: `jrn-${i + 1}`,
+      entryDate: p.purchaseDate,
+      description: `Stock received — ${p.purchaseNumber}`,
+      reference: p.purchaseNumber,
+      sourceType: 'purchase',
+      sourceId: p.id,
+      amount: p.totalAmount,
+    })),
+    expiringLots: listMockLots(60).items,
+  };
+}

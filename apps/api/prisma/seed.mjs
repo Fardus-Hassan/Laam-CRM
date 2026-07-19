@@ -213,6 +213,115 @@ async function seedInventoryCatalog(organizationId) {
     });
   }
 
+  const purchase = await prisma.inventoryPurchase.findFirst({
+    where: { organizationId, purchaseNumber },
+  });
+
+  let rawProduct = await prisma.product.findFirst({
+    where: { organizationId, sku: 'SEED-RAW-HONEY' },
+  });
+  if (!rawProduct) {
+    rawProduct = await prisma.product.create({
+      data: {
+        organizationId,
+        name: 'Raw Honey Drum',
+        sku: 'SEED-RAW-HONEY',
+        brandId: brand.id,
+        categoryId: honeyCategory?.id ?? null,
+        description: 'Seeded raw material for mixer',
+        status: 'active',
+        reorderLevel: 2,
+        tags: ['seed', 'raw'],
+      },
+    });
+  }
+  let rawVariant = await prisma.productVariant.findFirst({
+    where: { organizationId, sku: 'SEED-RAW-HONEY-KG' },
+  });
+  if (!rawVariant) {
+    rawVariant = await prisma.productVariant.create({
+      data: {
+        organizationId,
+        productId: rawProduct.id,
+        label: '1kg bulk',
+        sku: 'SEED-RAW-HONEY-KG',
+        salePrice: 400,
+        costPrice: 280,
+        stock: 50,
+        reorderLevel: 5,
+      },
+    });
+  }
+
+  const returnNumber = 'PR-SEED-001';
+  const existingReturn = await prisma.inventoryPurchaseReturn.findFirst({
+    where: { organizationId, returnNumber },
+  });
+  if (!existingReturn && variant) {
+    await prisma.inventoryPurchaseReturn.create({
+      data: {
+        organizationId,
+        purchaseId: purchase?.id ?? null,
+        returnNumber,
+        purchaseNumber,
+        supplierName: supplier.name,
+        status: 'pending',
+        returnDate: new Date('2026-07-18T00:00:00.000Z'),
+        reason: 'Damaged jars',
+        lines: {
+          create: {
+            productId: product.id,
+            variantId: variant.id,
+            quantity: 2,
+            unitCost: 320,
+          },
+        },
+      },
+    });
+  }
+
+  const recipeName = 'Seed Honey Jar Mix';
+  const existingRecipe = await prisma.mixerRecipe.findFirst({
+    where: { organizationId, name: recipeName },
+  });
+  if (!existingRecipe) {
+    await prisma.mixerRecipe.create({
+      data: {
+        organizationId,
+        name: recipeName,
+        outputProductId: product.id,
+        outputQty: 20,
+        status: 'active',
+        inputs: [
+          {
+            productId: rawProduct.id,
+            productName: 'Raw Honey Drum',
+            sku: 'SEED-RAW-HONEY',
+            quantity: 10,
+            unit: 'kg',
+          },
+        ],
+      },
+    });
+  } else {
+    await prisma.mixerRecipe.update({
+      where: { id: existingRecipe.id },
+      data: {
+        outputProductId: product.id,
+        outputQty: 20,
+        inputs: [
+          {
+            productId: rawProduct.id,
+            productName: 'Raw Honey Drum',
+            sku: 'SEED-RAW-HONEY',
+            quantity: 10,
+            unit: 'kg',
+          },
+        ],
+      },
+    });
+  }
+
   console.log(`Inventory catalog seed ready for org ${organizationId} (${productSku})`);
 }
 

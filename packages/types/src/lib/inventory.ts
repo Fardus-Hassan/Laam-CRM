@@ -21,6 +21,7 @@ export const productVariantSchema = z.object({
   id: z.string(),
   label: z.string(),
   sku: z.string(),
+  barcode: z.string().optional(),
   salePrice: z.number(),
   costPrice: z.number().optional(),
   stock: z.number().int().default(0),
@@ -33,6 +34,7 @@ export type ProductVariant = z.infer<typeof productVariantSchema>;
 export const productVariantInputSchema = productVariantSchema.extend({
   label: z.string().min(1).max(120),
   sku: z.string().min(1).max(120),
+  barcode: z.string().max(64).optional(),
   salePrice: z.number().nonnegative(),
   costPrice: z.number().nonnegative().optional(),
   stock: z.number().int().nonnegative().default(0),
@@ -228,11 +230,27 @@ export const supplierListResponseSchema = z.object({
 
 export type SupplierListResponse = z.infer<typeof supplierListResponseSchema>;
 
+export const createSupplierPayloadSchema = z.object({
+  name: z.string().min(1).max(200),
+  contactPerson: z.string().max(200).optional(),
+  phone: z.string().min(1).max(40),
+  email: z.string().email().optional().or(z.literal('')),
+  address: z.string().max(500).optional(),
+  status: z.enum(['active', 'inactive']).default('active'),
+  tags: z.array(z.string().max(40)).max(20).optional(),
+});
+
+export type CreateSupplierPayload = z.infer<typeof createSupplierPayloadSchema>;
+
+export const updateSupplierPayloadSchema = createSupplierPayloadSchema.partial();
+
+export type UpdateSupplierPayload = z.infer<typeof updateSupplierPayloadSchema>;
+
 // Purchases
 export const purchasePaymentStatusSchema = z.enum(['unpaid', 'partial', 'paid']);
 export type PurchasePaymentStatus = z.infer<typeof purchasePaymentStatusSchema>;
 
-export const purchaseStockStatusSchema = z.enum(['pending', 'received', 'partial']);
+export const purchaseStockStatusSchema = z.enum(['pending', 'received', 'partial', 'cancelled']);
 export type PurchaseStockStatus = z.infer<typeof purchaseStockStatusSchema>;
 
 export const purchaseListItemSchema = z.object({
@@ -261,6 +279,35 @@ export const purchaseListResponseSchema = z.object({
 });
 
 export type PurchaseListResponse = z.infer<typeof purchaseListResponseSchema>;
+
+export const purchaseDetailLineSchema = z.object({
+  id: z.string(),
+  productId: z.string(),
+  productName: z.string(),
+  productSku: z.string(),
+  variantId: z.string(),
+  variantLabel: z.string(),
+  variantSku: z.string(),
+  quantity: z.number().int(),
+  unitCost: z.number(),
+  lineTotal: z.number(),
+});
+
+export type PurchaseDetailLine = z.infer<typeof purchaseDetailLineSchema>;
+
+export const purchaseDetailSchema = purchaseListItemSchema.extend({
+  receivedAt: z.string().optional(),
+  receivedByName: z.string().optional(),
+  lines: z.array(purchaseDetailLineSchema),
+});
+
+export type PurchaseDetail = z.infer<typeof purchaseDetailSchema>;
+
+export const updatePurchasePaymentPayloadSchema = z.object({
+  paymentStatus: purchasePaymentStatusSchema,
+});
+
+export type UpdatePurchasePaymentPayload = z.infer<typeof updatePurchasePaymentPayloadSchema>;
 
 export const createPurchasePayloadSchema = z.object({
   supplierId: z.string().min(1),
@@ -305,6 +352,52 @@ export const purchaseReturnListResponseSchema = z.object({
 });
 
 export type PurchaseReturnListResponse = z.infer<typeof purchaseReturnListResponseSchema>;
+
+export const createPurchaseReturnPayloadSchema = z.object({
+  returnNumber: z.string().min(1).max(64),
+  purchaseId: z.string().optional(),
+  purchaseNumber: z.string().min(1).max(64),
+  supplierName: z.string().min(1).max(200),
+  returnDate: z.string(),
+  reason: z.string().max(500).optional(),
+  lines: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        variantId: z.string().min(1),
+        quantity: z.number().int().positive(),
+        unitCost: z.number().nonnegative(),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+
+export type CreatePurchaseReturnPayload = z.infer<typeof createPurchaseReturnPayloadSchema>;
+
+export const purchaseReturnDetailLineSchema = z.object({
+  id: z.string(),
+  productId: z.string(),
+  productName: z.string(),
+  productSku: z.string(),
+  variantId: z.string(),
+  variantLabel: z.string(),
+  variantSku: z.string(),
+  quantity: z.number().int(),
+  unitCost: z.number(),
+  lineTotal: z.number(),
+});
+
+export type PurchaseReturnDetailLine = z.infer<typeof purchaseReturnDetailLineSchema>;
+
+export const purchaseReturnDetailSchema = purchaseReturnListItemSchema.extend({
+  purchaseId: z.string().optional(),
+  completedAt: z.string().optional(),
+  createdAt: z.string(),
+  lines: z.array(purchaseReturnDetailLineSchema),
+});
+
+export type PurchaseReturnDetail = z.infer<typeof purchaseReturnDetailSchema>;
 
 // Stock adjustments
 export const adjustmentReasonSchema = z.enum([
@@ -354,12 +447,14 @@ export type CreateAdjustmentPayload = z.infer<typeof createAdjustmentPayloadSche
 export const mixerRecipeListItemSchema = z.object({
   id: z.string(),
   name: z.string(),
+  outputProductId: z.string(),
   outputProductName: z.string(),
   outputSku: z.string(),
   outputQty: z.number(),
   inputCount: z.number().int(),
   inputs: z.array(
     z.object({
+      productId: z.string().optional(),
       productName: z.string(),
       sku: z.string(),
       quantity: z.number(),
@@ -378,6 +473,30 @@ export const mixerRecipeListResponseSchema = z.object({
 });
 
 export type MixerRecipeListResponse = z.infer<typeof mixerRecipeListResponseSchema>;
+
+export const mixerRecipeInputSchema = z.object({
+  productId: z.string().min(1),
+  productName: z.string().min(1).optional(),
+  sku: z.string().min(1).optional(),
+  quantity: z.number().positive(),
+  unit: z.enum(['kg', 'g']),
+});
+
+export type MixerRecipeInput = z.infer<typeof mixerRecipeInputSchema>;
+
+export const createMixerRecipePayloadSchema = z.object({
+  name: z.string().min(1).max(200),
+  outputProductId: z.string().min(1),
+  outputQty: z.number().int().positive(),
+  status: z.enum(['active', 'draft']).default('draft'),
+  inputs: z.array(mixerRecipeInputSchema).min(1).max(50),
+});
+
+export type CreateMixerRecipePayload = z.infer<typeof createMixerRecipePayloadSchema>;
+
+export const updateMixerRecipePayloadSchema = createMixerRecipePayloadSchema.partial();
+
+export type UpdateMixerRecipePayload = z.infer<typeof updateMixerRecipePayloadSchema>;
 
 /** One raw material line in a production batch (own qty unit + cost). */
 export const productionRawMaterialSchema = z.object({
@@ -476,3 +595,157 @@ export const productionBatchListResponseSchema = z.object({
 });
 
 export type ProductionBatchListResponse = z.infer<typeof productionBatchListResponseSchema>;
+
+export const productionPreviewResultSchema = z.object({
+  unitsProduced: z.number().int(),
+  materialCost: z.number(),
+  costPerUnit: z.number(),
+  limitedBy: z.string(),
+  ok: z.boolean(),
+  inputs: z.array(
+    z.object({
+      productId: z.string().optional(),
+      name: z.string(),
+      sku: z.string().optional(),
+      quantity: z.number(),
+      unit: z.enum(['kg', 'g']),
+      totalCost: z.number(),
+      costPerKg: z.number(),
+      usedUnits: z.number().optional(),
+    }),
+  ),
+  outputs: z.array(
+    z.object({
+      variantId: z.string(),
+      variantLabel: z.string(),
+      gramsPerUnit: z.number(),
+      units: z.number().int(),
+      cost: z.number(),
+      costPerUnit: z.number(),
+      rawUsage: z.array(productionRawUsageSchema),
+    }),
+  ),
+  perUnitRawUsage: z.array(productionRawUsageSchema),
+});
+
+export type ProductionPreviewResult = z.infer<typeof productionPreviewResultSchema>;
+
+// Inventory reports dashboard
+export const inventoryReportLowStockItemSchema = z.object({
+  productId: z.string(),
+  productName: z.string(),
+  variantId: z.string(),
+  sku: z.string(),
+  variantLabel: z.string(),
+  stock: z.number().int(),
+  reorderLevel: z.number().int(),
+  status: z.enum(['low_stock', 'out_of_stock']),
+  unitCost: z.number().optional(),
+  stockValueAtCost: z.number(),
+});
+
+export type InventoryReportLowStockItem = z.infer<typeof inventoryReportLowStockItemSchema>;
+
+export const inventoryReportPurchaseItemSchema = z.object({
+  id: z.string(),
+  purchaseNumber: z.string(),
+  supplierName: z.string(),
+  stockStatus: z.string(),
+  paymentStatus: z.string(),
+  itemCount: z.number().int(),
+  totalAmount: z.number(),
+  occurredAt: z.string(),
+});
+
+export type InventoryReportPurchaseItem = z.infer<typeof inventoryReportPurchaseItemSchema>;
+
+export const inventoryReportReturnItemSchema = z.object({
+  id: z.string(),
+  returnNumber: z.string(),
+  supplierName: z.string(),
+  status: z.string(),
+  itemCount: z.number().int(),
+  totalAmount: z.number(),
+  occurredAt: z.string(),
+});
+
+export type InventoryReportReturnItem = z.infer<typeof inventoryReportReturnItemSchema>;
+
+export const inventoryReportProductionItemSchema = z.object({
+  id: z.string(),
+  batchNumber: z.string(),
+  productId: z.string(),
+  productName: z.string(),
+  unitsProduced: z.number(),
+  materialCost: z.number(),
+  occurredAt: z.string(),
+});
+
+export type InventoryReportProductionItem = z.infer<typeof inventoryReportProductionItemSchema>;
+
+export const inventoryReportMovementItemSchema = z.object({
+  id: z.string(),
+  productId: z.string(),
+  productName: z.string(),
+  productSku: z.string(),
+  variantId: z.string(),
+  variantLabel: z.string(),
+  variantSku: z.string(),
+  delta: z.number().int(),
+  previousStock: z.number().int(),
+  newStock: z.number().int(),
+  reason: z.string(),
+  note: z.string().optional(),
+  actorName: z.string().optional(),
+  occurredAt: z.string(),
+});
+
+export type InventoryReportMovementItem = z.infer<typeof inventoryReportMovementItemSchema>;
+
+export const inventoryReportBreakdownItemSchema = z.object({
+  id: z.string().optional(),
+  label: z.string(),
+  units: z.number().int(),
+  valueAtCost: z.number(),
+});
+
+export type InventoryReportBreakdownItem = z.infer<typeof inventoryReportBreakdownItemSchema>;
+
+export const inventoryReportsQuerySchema = z.object({
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+});
+
+export type InventoryReportsQuery = z.infer<typeof inventoryReportsQuerySchema>;
+
+export const inventoryReportsResponseSchema = z.object({
+  generatedAt: z.string(),
+  period: z
+    .object({
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    })
+    .optional(),
+  summary: z.object({
+    skuCount: z.number().int(),
+    totalStockUnits: z.number().int(),
+    inventoryValuationAtCost: z.number(),
+    uncostedSkuCount: z.number().int(),
+    lowStockCount: z.number().int(),
+    pendingPurchases: z.number().int(),
+    pendingReturns: z.number().int(),
+  }),
+  lowStock: z.array(inventoryReportLowStockItemSchema),
+  recent: z.object({
+    purchases: z.array(inventoryReportPurchaseItemSchema),
+    returns: z.array(inventoryReportReturnItemSchema),
+    production: z.array(inventoryReportProductionItemSchema),
+    movements: z.array(inventoryReportMovementItemSchema),
+  }),
+  valuationBreakdown: z.object({
+    categories: z.array(inventoryReportBreakdownItemSchema),
+    brands: z.array(inventoryReportBreakdownItemSchema),
+  }),
+});
+
+export type InventoryReportsResponse = z.infer<typeof inventoryReportsResponseSchema>;

@@ -554,6 +554,15 @@ export function CreateProductPage() {
                         onChange={(e) => updateVariant(index, { sku: e.target.value })}
                       />
                     </FormField>
+                    <FormField label="Barcode">
+                      <FormInput
+                        value={variant.barcode ?? ''}
+                        onChange={(e) =>
+                          updateVariant(index, { barcode: e.target.value || undefined })
+                        }
+                        placeholder="EAN / UPC (optional)"
+                      />
+                    </FormField>
                     <FormField label="Sale price (৳)" required>
                       <FormInput
                         type="number"

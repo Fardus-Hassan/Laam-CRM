@@ -1,13 +1,17 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   ArrowLeftRight,
+  BarChart3,
   Blend,
   FolderTree,
+  History,
   Package,
   RotateCcw,
+  Scale,
   ShoppingBag,
   Tag,
   Truck,
+  Warehouse,
 } from 'lucide-react';
 
 export type InventorySubNavItem = {
@@ -18,6 +22,25 @@ export type InventorySubNavItem = {
 };
 
 export const INVENTORY_SUB_NAV: InventorySubNavItem[] = [
+  { id: 'reports', title: 'Reports', href: '/dashboard/inventory/reports', icon: BarChart3 },
+  {
+    id: 'stock-movements',
+    title: 'Stock ledger',
+    href: '/dashboard/inventory/stock-movements',
+    icon: History,
+  },
+  {
+    id: 'warehouses',
+    title: 'Warehouses',
+    href: '/dashboard/inventory/warehouses',
+    icon: Warehouse,
+  },
+  {
+    id: 'reconciliation',
+    title: 'Reconciliation',
+    href: '/dashboard/inventory/reconciliation',
+    icon: Scale,
+  },
   { id: 'products', title: 'Products', href: '/dashboard/inventory/products', icon: Package },
   { id: 'brands', title: 'Brands', href: '/dashboard/inventory/brands', icon: Tag },
   {

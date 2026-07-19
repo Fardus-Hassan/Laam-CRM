@@ -4,6 +4,7 @@ import * as React from 'react';
 import type {
   InventoryProductDetail,
   InventoryProductListItem,
+  MixerRecipeListItem,
   ProductionBatchResult,
   ProductVariant,
 } from '@laam/types';
@@ -44,7 +45,16 @@ type VariantPlan = {
 
 type ProductionBatchPanelProps = {
   onCompleted?: (result: ProductionBatchResult) => void;
+  guideRecipe?: MixerRecipeListItem | null;
+  /** Bumps when the same recipe is re-applied. */
+  guideNonce?: number;
 };
+
+function normalizeGuideUnit(unit: string): 'kg' | 'g' {
+  const u = unit.trim().toLowerCase();
+  if (u === 'g' || u === 'gram' || u === 'grams') return 'g';
+  return 'kg';
+}
 
 export function parseGramsFromLabel(label: string): number {
   const kg = label.match(/([\d.]+)\s*kg/i);
@@ -79,7 +89,11 @@ function qtyToKg(quantity: number, unit: 'kg' | 'g') {
   return unit === 'kg' ? quantity : quantity / 1000;
 }
 
-export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps) {
+export function ProductionBatchPanel({
+  onCompleted,
+  guideRecipe,
+  guideNonce = 0,
+}: ProductionBatchPanelProps) {
   const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
   const [outputDetail, setOutputDetail] = React.useState<InventoryProductDetail | null>(null);
   const [outputProductId, setOutputProductId] = React.useState('');
@@ -90,10 +104,58 @@ export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps)
   const [preview, setPreview] = React.useState<Awaited<
     ReturnType<typeof inventoryApi.previewProduction>
   > | null>(null);
+  const pendingGuideUnits = React.useRef<number | null>(null);
+  const appliedGuideNonce = React.useRef(0);
 
   React.useEffect(() => {
     void inventoryApi.listProducts({ page: 1, pageSize: 100, filter: 'active' }).then((r) => setProducts(r.items));
   }, []);
+
+  React.useEffect(() => {
+    if (!guideRecipe || !guideNonce) return;
+    if (!products.length) return;
+    if (appliedGuideNonce.current === guideNonce) return;
+    appliedGuideNonce.current = guideNonce;
+
+    const matchedOutput =
+      products.find((p) => p.id === guideRecipe.outputProductId) ??
+      products.find((p) => p.sku === guideRecipe.outputSku);
+
+    if (matchedOutput) {
+      pendingGuideUnits.current = guideRecipe.outputQty;
+      setOutputProductId(matchedOutput.id);
+    } else if (guideRecipe.outputProductId) {
+      pendingGuideUnits.current = guideRecipe.outputQty;
+      setOutputProductId(guideRecipe.outputProductId);
+    }
+
+    const nextRows: RawRow[] = guideRecipe.inputs.map((input) => {
+      const matched =
+        (input.productId ? products.find((p) => p.id === input.productId) : undefined) ??
+        products.find((p) => p.sku === input.sku);
+      const unit = normalizeGuideUnit(input.unit);
+      const quantity = String(input.quantity);
+      const costPerKg = matched?.costPrice != null ? String(matched.costPrice) : '';
+      const qtyKg = unit === 'kg' ? Number(input.quantity) : Number(input.quantity) / 1000;
+      const totalCost =
+        costPerKg && Number.isFinite(qtyKg) && qtyKg > 0
+          ? String(Math.round(Number(costPerKg) * qtyKg))
+          : '';
+      return {
+        key: `raw-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        productId: matched?.id ?? input.productId ?? '',
+        name: matched?.name ?? input.productName,
+        quantity,
+        unit,
+        totalCost,
+        costPerKg,
+      };
+    });
+
+    setRawRows(nextRows.length ? nextRows : [emptyRawRow()]);
+    setNote(`Guide: ${guideRecipe.name}`);
+    setPreview(null);
+  }, [guideRecipe, guideNonce, products]);
 
   React.useEffect(() => {
     if (!outputProductId) {
@@ -103,7 +165,13 @@ export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps)
     }
     void inventoryApi.getProduct(outputProductId).then((p) => {
       setOutputDetail(p);
-      setVariantPlans(p?.variants?.length ? plansFromVariants(p.variants) : []);
+      const plans = p?.variants?.length ? plansFromVariants(p.variants) : [];
+      const guideUnits = pendingGuideUnits.current;
+      if (guideUnits != null && plans.length) {
+        plans[0] = { ...plans[0], units: String(guideUnits) };
+        pendingGuideUnits.current = null;
+      }
+      setVariantPlans(plans);
     });
   }, [outputProductId]);
 

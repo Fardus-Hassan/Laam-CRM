@@ -144,6 +144,7 @@ type VariantRow = {
   id: string;
   label: string;
   sku: string;
+  barcode?: string | null;
   salePrice: unknown;
   costPrice: unknown;
   stock: number;
@@ -770,12 +771,14 @@ export class InventoryCatalogService {
         });
 
         for (const v of input.variants) {
+          const barcode = v.barcode?.trim() || null;
           const variant = await tx.productVariant.create({
             data: {
               organizationId,
               productId: product.id,
               label: v.label.trim() || 'Standard',
               sku: v.sku.trim().toUpperCase(),
+              barcode,
               salePrice: new Prisma.Decimal(v.salePrice),
               costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
               stock: v.stock ?? 0,
@@ -783,14 +786,42 @@ export class InventoryCatalogService {
             },
           });
           if (variant.stock > 0) {
+            let warehouse = await tx.warehouse.findFirst({
+              where: { organizationId, isDefault: true },
+            });
+            if (!warehouse) {
+              warehouse = await tx.warehouse.create({
+                data: {
+                  organizationId,
+                  code: 'MAIN',
+                  name: 'Main warehouse',
+                  isDefault: true,
+                  isActive: true,
+                },
+              });
+            }
+            await tx.inventoryStockLevel.create({
+              data: {
+                organizationId,
+                warehouseId: warehouse.id,
+                variantId: variant.id,
+                quantity: variant.stock,
+              },
+            });
             await tx.inventoryStockMovement.create({
               data: {
                 organizationId,
                 productId: product.id,
                 variantId: variant.id,
+                warehouseId: warehouse.id,
                 delta: variant.stock,
                 previousStock: 0,
                 newStock: variant.stock,
+                unitCost: variant.costPrice,
+                valueDelta:
+                  variant.costPrice == null
+                    ? null
+                    : new Prisma.Decimal(variant.stock).mul(variant.costPrice),
                 reason: 'initial_stock',
                 note: 'Opening stock on product creation',
                 actorUserId: actor?.userId ?? null,
@@ -907,6 +938,7 @@ export class InventoryCatalogService {
                 data: {
                   label: v.label.trim() || 'Standard',
                   sku: v.sku.trim().toUpperCase(),
+                  barcode: v.barcode?.trim() || null,
                   salePrice: new Prisma.Decimal(v.salePrice),
                   costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
                   reorderLevel: v.reorderLevel ?? existing.reorderLevel,
@@ -949,6 +981,7 @@ export class InventoryCatalogService {
                   productId: existing.id,
                   label: v.label.trim() || 'Standard',
                   sku: v.sku.trim().toUpperCase(),
+                  barcode: v.barcode?.trim() || null,
                   salePrice: new Prisma.Decimal(v.salePrice),
                   costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
                   stock,
@@ -1838,6 +1871,7 @@ export class InventoryCatalogService {
       id: v.id,
       label: v.label,
       sku: v.sku,
+      barcode: v.barcode ?? undefined,
       salePrice: toNumber(v.salePrice),
       costPrice: toNullableNumber(v.costPrice) ?? undefined,
       stock: v.stock,

@@ -29,8 +29,14 @@ model Organization {
   productVariants    ProductVariant[]
   stockMovements     InventoryStockMovement[]
   catalogActivities  CatalogActivity[]
-  inventorySuppliers InventorySupplier[]
-  inventoryPurchases InventoryPurchase[]
+  inventorySuppliers       InventorySupplier[]
+  inventoryPurchases       InventoryPurchase[]
+  inventoryPurchaseReturns InventoryPurchaseReturn[]
+  mixerRecipes             MixerRecipe[]
+  productionBatches        ProductionBatch[]
+  warehouses               Warehouse[]
+  inventoryLots            InventoryLot[]
+  accountingJournalEntries AccountingJournalEntry[]
 }
 
 model User {
@@ -317,9 +323,12 @@ model Product {
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
   variants       ProductVariant[]
-  stockMovements InventoryStockMovement[]
-  activities     CatalogActivity[]
-  purchaseLines  InventoryPurchaseLine[]
+  stockMovements   InventoryStockMovement[]
+  activities       CatalogActivity[]
+  purchaseLines    InventoryPurchaseLine[]
+  returnLines      InventoryPurchaseReturnLine[]
+  mixerRecipes     MixerRecipe[]
+  productionBatches ProductionBatch[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -338,6 +347,7 @@ model ProductVariant {
   product        Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
   label          String
   sku            String
+  barcode        String?
   salePrice      Decimal                  @db.Decimal(12, 2)
   costPrice      Decimal?                 @db.Decimal(12, 2)
   stock          Int                      @default(0)
@@ -346,34 +356,140 @@ model ProductVariant {
   updatedAt      DateTime                 @updatedAt
   stockMovements InventoryStockMovement[]
   purchaseLines  InventoryPurchaseLine[]
+  returnLines    InventoryPurchaseReturnLine[]
+  stockLevels    InventoryStockLevel[]
+  lots           InventoryLot[]
 
   @@unique([organizationId, sku])
   @@unique([productId, sku])
+  @@unique([organizationId, barcode])
   @@index([productId])
   @@index([organizationId])
 }
 
 /// Immutable stock ledger for catalog variants.
 model InventoryStockMovement {
-  id             String         @id @default(uuid())
-  organizationId String
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  productId      String
-  product        Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  variantId      String
-  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  delta          Int
-  previousStock  Int
-  newStock       Int
-  reason         String
-  note           String?
-  actorUserId    String?
-  actorName      String?
-  createdAt      DateTime       @default(now())
+  id              String          @id @default(uuid())
+  organizationId  String
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId       String
+  variant         ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouseId     String?
+  warehouse       Warehouse?      @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  lotId           String?
+  lot             InventoryLot?   @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  delta           Int
+  previousStock   Int
+  newStock        Int
+  unitCost        Decimal?        @db.Decimal(12, 2)
+  valueDelta      Decimal?        @db.Decimal(14, 2)
+  reason          String
+  note            String?
+  sourceType      String?
+  sourceId        String?
+  transferGroupId String?
+  actorUserId     String?
+  actorName       String?
+  createdAt       DateTime        @default(now())
 
   @@index([organizationId, createdAt])
   @@index([productId, createdAt])
   @@index([variantId, createdAt])
+  @@index([organizationId, reason, createdAt])
+  @@index([organizationId, warehouseId, createdAt])
+  @@index([organizationId, sourceType, sourceId])
+}
+
+model Warehouse {
+  id             String                  @id @default(uuid())
+  organizationId String
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String
+  name           String
+  address        String?
+  isDefault      Boolean                 @default(false)
+  isActive       Boolean                 @default(true)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  stockLevels    InventoryStockLevel[]
+  lots           InventoryLot[]
+  stockMovements InventoryStockMovement[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+}
+
+model InventoryStockLevel {
+  id             String         @id @default(uuid())
+  organizationId String
+  warehouseId    String
+  warehouse      Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity       Int            @default(0)
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([warehouseId, variantId])
+  @@index([organizationId, variantId])
+}
+
+model InventoryLot {
+  id              String                   @id @default(uuid())
+  organizationId  String
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variantId       String
+  variant         ProductVariant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  warehouseId     String?
+  warehouse       Warehouse?               @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  lotNumber       String
+  barcode         String?
+  manufacturedAt  DateTime?
+  expiresAt       DateTime?
+  receivedAt      DateTime                 @default(now())
+  quantity        Int                      @default(0)
+  unitCost        Decimal?                 @db.Decimal(12, 2)
+  status          String                   @default("active")
+  createdAt       DateTime                 @default(now())
+  stockMovements  InventoryStockMovement[]
+
+  @@unique([organizationId, variantId, lotNumber])
+  @@index([organizationId, expiresAt])
+  @@index([variantId, expiresAt])
+  @@index([warehouseId])
+}
+
+model AccountingJournalEntry {
+  id             String                  @id @default(uuid())
+  organizationId String
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entryDate      DateTime                @default(now())
+  description    String
+  reference      String?
+  sourceType     String
+  sourceId       String
+  eventKey       String
+  status         String                  @default("posted")
+  postedAt       DateTime                @default(now())
+  lines          AccountingJournalLine[]
+
+  @@unique([organizationId, eventKey])
+  @@index([organizationId, entryDate])
+  @@index([organizationId, sourceType, sourceId])
+}
+
+model AccountingJournalLine {
+  id             String                 @id @default(uuid())
+  journalEntryId String
+  journalEntry   AccountingJournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountCode    String
+  accountName    String
+  debit          Decimal                @default(0) @db.Decimal(14, 2)
+  credit         Decimal                @default(0) @db.Decimal(14, 2)
+
+  @@index([journalEntryId])
+  @@index([accountCode])
 }
 
 model InventorySupplier {
@@ -413,6 +529,7 @@ model InventoryPurchase {
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
   lines          InventoryPurchaseLine[]
+  returns        InventoryPurchaseReturn[]
 
   @@unique([organizationId, purchaseNumber])
   @@index([organizationId, purchaseDate])
@@ -435,6 +552,81 @@ model InventoryPurchaseLine {
   @@index([purchaseId])
   @@index([productId])
   @@index([variantId])
+}
+
+model InventoryPurchaseReturn {
+  id             String                       @id @default(uuid())
+  organizationId String
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseId     String?
+  purchase       InventoryPurchase?           @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  returnNumber   String
+  purchaseNumber String
+  supplierName   String
+  status         String                       @default("pending") // pending | approved | completed
+  returnDate     DateTime                     @default(now())
+  reason         String?
+  completedAt    DateTime?
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+  lines          InventoryPurchaseReturnLine[]
+
+  @@unique([organizationId, returnNumber])
+  @@index([organizationId, returnDate])
+  @@index([organizationId, status])
+  @@index([purchaseId])
+}
+
+model InventoryPurchaseReturnLine {
+  id         String                  @id @default(uuid())
+  returnId   String
+  return     InventoryPurchaseReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variantId  String
+  variant    ProductVariant          @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantity   Int
+  unitCost   Decimal                 @db.Decimal(12, 2)
+  createdAt  DateTime                @default(now())
+
+  @@index([returnId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model MixerRecipe {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  outputProductId  String
+  outputProduct    Product      @relation(fields: [outputProductId], references: [id], onDelete: Restrict)
+  outputQty        Int          @default(1)
+  status           String       @default("active") // active | draft
+  inputs           Json
+  lastMixedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([outputProductId])
+}
+
+model ProductionBatch {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batchNumber     String
+  outputProductId String
+  outputProduct   Product      @relation(fields: [outputProductId], references: [id], onDelete: Restrict)
+  result          Json
+  actorUserId     String?
+  actorName       String?
+  createdAt       DateTime     @default(now())
+
+  @@unique([organizationId, batchNumber])
+  @@index([organizationId, createdAt])
+  @@index([outputProductId])
 }
 
 model CatalogActivity {

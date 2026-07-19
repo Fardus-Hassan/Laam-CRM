@@ -131,6 +131,30 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
           permissions: pv('inventory.view'),
           children: [
             {
+              id: 'inv-reports',
+              title: 'Reports',
+              url: '/dashboard/inventory/reports',
+              permissions: pv('inventory.view'),
+            },
+            {
+              id: 'inv-stock-movements',
+              title: 'Stock ledger',
+              url: '/dashboard/inventory/stock-movements',
+              permissions: pv('inventory.view'),
+            },
+            {
+              id: 'inv-warehouses',
+              title: 'Warehouses',
+              url: '/dashboard/inventory/warehouses',
+              permissions: pv('inventory.view'),
+            },
+            {
+              id: 'inv-reconciliation',
+              title: 'Reconciliation',
+              url: '/dashboard/inventory/reconciliation',
+              permissions: pv('inventory.view'),
+            },
+            {
               id: 'inv-products',
               title: 'Products',
               url: '/dashboard/inventory/products',

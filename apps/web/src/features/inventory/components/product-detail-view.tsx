@@ -602,7 +602,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                 {draft.variants.map((variant, index) => (
                   <div
                     key={variant.id}
-                    className="grid gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-2 lg:grid-cols-6"
+                    className="grid gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-2 lg:grid-cols-7"
                   >
                     <FormField label="Label">
                       <FormInput
@@ -615,6 +615,14 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         value={variant.sku}
                         onChange={(e) =>
                           patchVariant(index, { sku: e.target.value.toUpperCase() })
+                        }
+                      />
+                    </FormField>
+                    <FormField label="Barcode">
+                      <FormInput
+                        value={variant.barcode ?? ''}
+                        onChange={(e) =>
+                          patchVariant(index, { barcode: e.target.value || undefined })
                         }
                       />
                     </FormField>
