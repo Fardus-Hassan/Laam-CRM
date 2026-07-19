@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
+import { Can } from '@/components/auth/can';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { FormTextarea } from '@/components/form/form-textarea';
@@ -28,10 +29,12 @@ import {
   PRODUCT_STATUS_LABELS,
 } from '@/features/inventory/config/product-filters';
 import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
+import { productBrandsApi } from '@/features/settings/api/product-brands-api';
 import { MOCK_SUPPLIERS } from '@/features/inventory/data/mock-inventory';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
 import { ORDER_CARD_CLASS } from '@/features/orders/components/create-order/section-layout';
 import { cn } from '@/lib/utils';
+import { ApiError } from '@/lib/api/errors';
 
 const STATUS_OPTIONS = (Object.keys(PRODUCT_STATUS_LABELS) as ProductStatus[]).map((v) => ({
   value: v,
@@ -52,12 +55,14 @@ function emptyVariant(sku: string): ProductVariant {
   };
 }
 
-function ProductImageField({
+export function ProductImageField({
   imageUrl,
   onChange,
+  onFileChange,
 }: {
   imageUrl: string;
   onChange: (url: string) => void;
+  onFileChange?: (file: File | null) => void;
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [mode, setMode] = React.useState<'upload' | 'url'>('upload');
@@ -83,6 +88,7 @@ function ProductImageField({
     reader.onload = () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
       if (result) {
+        onFileChange?.(file);
         onChange(result);
         setMode('upload');
         toast.success('Image ready');
@@ -95,6 +101,7 @@ function ProductImageField({
   function applyUrl() {
     const next = urlDraft.trim();
     if (!next) {
+      onFileChange?.(null);
       onChange('');
       return;
     }
@@ -102,6 +109,7 @@ function ProductImageField({
       toast.error('Enter a valid http(s) image URL');
       return;
     }
+    onFileChange?.(null);
     onChange(next);
     toast.success('Image URL applied');
   }
@@ -151,6 +159,7 @@ function ProductImageField({
               variant="secondary"
               className="absolute right-2 top-2 size-7 shadow-sm"
               onClick={() => {
+                onFileChange?.(null);
                 onChange('');
                 setUrlDraft('');
                 if (inputRef.current) inputRef.current.value = '';
@@ -245,12 +254,16 @@ function ProductImageField({
 
 export function CreateProductPage() {
   const router = useRouter();
-  const { createProduct, isLoading } = useProductMutations();
+  const { createProduct, uploadProductImage, isLoading } = useProductMutations();
   const categoryOptions = useOrgCategoryOptions('product');
+  const [brandOptions, setBrandOptions] = React.useState<{ value: string; label: string }[]>([]);
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const [skuError, setSkuError] = React.useState<string | undefined>();
   const [draft, setDraft] = React.useState({
     name: '',
     sku: '',
-    category: 'honey',
+    category: '',
+    brandId: '',
     status: 'active' as ProductStatus,
     description: '',
     imageUrl: '',
@@ -259,6 +272,22 @@ export function CreateProductPage() {
     notes: '',
     variants: [emptyVariant('SKU')],
   });
+
+  React.useEffect(() => {
+    void productBrandsApi.list().then((brands) => {
+      setBrandOptions(
+        brands
+          .filter((b) => b.isActive)
+          .map((b) => ({ value: b.id, label: b.name })),
+      );
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!draft.category && categoryOptions[0]) {
+      setDraft((c) => ({ ...c, category: categoryOptions[0]!.value }));
+    }
+  }, [categoryOptions, draft.category]);
 
   function patch(values: Partial<typeof draft>) {
     setDraft((c) => ({ ...c, ...values }));
@@ -275,26 +304,50 @@ export function CreateProductPage() {
     draft.name.trim() && draft.sku.trim() && draft.variants.every((v) => v.salePrice > 0);
 
   async function handleSubmit() {
+    setSkuError(undefined);
     if (!canSubmit) {
       toast.error('Name, SKU, and sale price are required');
       return;
     }
-    await createProduct({
-      name: draft.name.trim(),
-      sku: draft.sku.trim().toUpperCase(),
-      category: draft.category,
-      status: draft.status,
-      description: draft.description.trim() || undefined,
-      imageUrl: draft.imageUrl.trim() || undefined,
-      supplierName: draft.supplierName || undefined,
-      reorderLevel: draft.reorderLevel,
-      notes: draft.notes.trim() || undefined,
-      variants: draft.variants.map((v) => ({
-        ...v,
-        sku: v.sku || `${draft.sku.trim()}-${v.label.slice(0, 3).toUpperCase()}`,
-      })),
-    });
-    router.push('/dashboard/inventory/products');
+    const normalizedSkus = draft.variants.map((variant) => variant.sku.trim().toUpperCase());
+    if (normalizedSkus.some((sku) => !sku)) {
+      setSkuError('Every variant needs a SKU');
+      toast.error('Every variant needs a SKU');
+      return;
+    }
+    if (new Set(normalizedSkus).size !== normalizedSkus.length) {
+      setSkuError('Variant SKUs must be unique');
+      toast.error('Variant SKUs must be unique');
+      return;
+    }
+    const selectedCategory = categoryOptions.find((c) => c.value === draft.category);
+    try {
+      const product = await createProduct({
+        name: draft.name.trim(),
+        sku: draft.sku.trim().toUpperCase(),
+        category: draft.category || undefined,
+        categoryId: selectedCategory?.id,
+        brandId: draft.brandId || undefined,
+        status: draft.status,
+        description: draft.description.trim() || undefined,
+        imageUrl: draft.imageUrl.startsWith('data:') ? undefined : draft.imageUrl.trim() || undefined,
+        supplierName: draft.supplierName || undefined,
+        reorderLevel: draft.reorderLevel,
+        notes: draft.notes.trim() || undefined,
+        variants: draft.variants.map((v) => ({
+          ...v,
+          sku: v.sku.trim().toUpperCase(),
+        })),
+      });
+      if (pendingFile) {
+        await uploadProductImage(product.id, pendingFile);
+      }
+      router.push('/dashboard/inventory/products');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setSkuError('A product or variant with this SKU already exists');
+      }
+    }
   }
 
   return (
@@ -346,12 +399,26 @@ export function CreateProductPage() {
               </FormField>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="SKU" required>
+                <FormField label="SKU" required error={skuError}>
                   <FormInput
                     value={draft.sku}
                     onChange={(e) => patch({ sku: e.target.value.toUpperCase() })}
                     placeholder="MDH-500"
                   />
+                </FormField>
+                <FormField label="Brand">
+                  <FormSearchSelect
+                    value={draft.brandId}
+                    onChange={(v) => patch({ brandId: v })}
+                    options={brandOptions}
+                    placeholder="Select brand…"
+                    searchable={false}
+                  />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    <Link href="/dashboard/inventory/brands" className="font-medium text-primary hover:underline">
+                      Manage brands
+                    </Link>
+                  </p>
                 </FormField>
                 <FormField label="Category">
                   <FormSearchSelect
@@ -415,6 +482,7 @@ export function CreateProductPage() {
               <ProductImageField
                 imageUrl={draft.imageUrl}
                 onChange={(imageUrl) => patch({ imageUrl })}
+                onFileChange={setPendingFile}
               />
             </CardContent>
           </Card>
@@ -480,7 +548,7 @@ export function CreateProductPage() {
                         placeholder="Standard / 500g"
                       />
                     </FormField>
-                    <FormField label="Variant SKU">
+                    <FormField label="Variant SKU" error={skuError}>
                       <FormInput
                         value={variant.sku}
                         onChange={(e) => updateVariant(index, { sku: e.target.value })}
@@ -535,9 +603,11 @@ export function CreateProductPage() {
             <Button type="button" variant="outline" asChild>
               <Link href="/dashboard/inventory/products">Cancel</Link>
             </Button>
-            <Button type="submit" disabled={!canSubmit || isLoading}>
-              {isLoading ? 'Creating…' : 'Create product'}
-            </Button>
+            <Can permission="inventory.create">
+              <Button type="submit" disabled={!canSubmit || isLoading}>
+                {isLoading ? 'Creating…' : 'Create product'}
+              </Button>
+            </Can>
           </div>
 
           {/* Mobile sticky actions — sits above quick-action FAB */}
@@ -546,9 +616,11 @@ export function CreateProductPage() {
               <Button type="button" variant="outline" className="flex-1" asChild>
                 <Link href="/dashboard/inventory/products">Cancel</Link>
               </Button>
-              <Button type="submit" className="flex-1" disabled={!canSubmit || isLoading}>
-                {isLoading ? 'Creating…' : 'Create product'}
-              </Button>
+              <Can permission="inventory.create">
+                <Button type="submit" className="flex-1" disabled={!canSubmit || isLoading}>
+                  {isLoading ? 'Creating…' : 'Create product'}
+                </Button>
+              </Can>
             </div>
           </div>
         </form>

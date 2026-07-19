@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Plus, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Can } from '@/components/auth/can';
 import { cn } from '@/lib/utils';
 
 type ProductWorkspaceHeaderProps = {
@@ -48,12 +49,14 @@ export function ProductWorkspaceHeader({
             Refresh
           </Button>
         ) : null}
-        <Button type="button" size="sm" className="h-8" asChild>
-          <Link href="/dashboard/inventory/products/new">
-            <Plus className="size-3.5" />
-            New product
-          </Link>
-        </Button>
+        <Can permission="inventory.create">
+          <Button type="button" size="sm" className="h-8" asChild>
+            <Link href="/dashboard/inventory/products/new">
+              <Plus className="size-3.5" />
+              New product
+            </Link>
+          </Button>
+        </Can>
       </div>
     </div>
   );

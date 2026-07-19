@@ -2,10 +2,12 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { Pencil, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { OrgCategory, OrgCategoryKind } from '@laam/types';
 
 import { FormField } from '@/components/form/form-field';
+import { Can } from '@/components/auth/can';
 import { FormInput } from '@/components/form/form-input';
 import { FormTextarea } from '@/components/form/form-textarea';
 import { PageShell } from '@/components/layout/page-shell';
@@ -13,21 +15,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_GRID_GAP,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import {
-  ORG_CATEGORY_KIND_LABELS,
-} from '@/features/settings/data/mock-org-category-seeds';
-import {
-  deleteOrgCategory,
-  getOrgCategories,
-  ORG_CATEGORIES_CHANGED,
-  setOrgCategoryActive,
-  upsertOrgCategory,
-} from '@/features/settings/data/org-categories-store';
+import { orgCategoriesApi } from '@/features/settings/api/org-categories-api';
+import { ORG_CATEGORY_KIND_LABELS } from '@/features/settings/data/mock-org-category-seeds';
+import { useOrgCategories } from '@/features/settings/hooks/use-org-categories';
 import { cn } from '@/lib/utils';
 
 const TABS: OrgCategoryKind[] = ['product', 'income', 'expense', 'knowledge'];
@@ -41,93 +37,122 @@ const TAB_HINTS: Record<OrgCategoryKind, string> = {
 
 export function CategoriesSettingsPage() {
   const [activeKind, setActiveKind] = React.useState<OrgCategoryKind>('product');
-  const [categories, setCategories] = React.useState<OrgCategory[]>(() => getOrgCategories('product'));
+  const { categories, loading, error, refresh } = useOrgCategories(activeKind);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState({
     label: '',
     slug: '',
     description: '',
   });
+  const [busy, setBusy] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<OrgCategory | null>(null);
 
   React.useEffect(() => {
-    function refresh() {
-      setCategories(getOrgCategories(activeKind));
-    }
-    window.addEventListener(ORG_CATEGORIES_CHANGED, refresh);
-    return () => window.removeEventListener(ORG_CATEGORIES_CHANGED, refresh);
-  }, [activeKind]);
-
-  React.useEffect(() => {
-    setCategories(getOrgCategories(activeKind));
+    setEditingId(null);
     setDraft({ label: '', slug: '', description: '' });
   }, [activeKind]);
 
-  function handleAdd() {
+  function resetDraft() {
+    setEditingId(null);
+    setDraft({ label: '', slug: '', description: '' });
+  }
+
+  function startEdit(category: OrgCategory) {
+    setEditingId(category.id);
+    setDraft({
+      label: category.label,
+      slug: category.slug,
+      description: category.description ?? '',
+    });
+  }
+
+  async function handleSave() {
     if (!draft.label.trim()) {
       toast.error('Label is required');
       return;
     }
 
     const slug = (draft.slug.trim() || draft.label).replace(/\s+/g, '_').toLowerCase();
-    if (categories.some((item) => item.slug === slug)) {
+    if (
+      categories.some(
+        (item) => item.slug === slug && item.id !== editingId,
+      )
+    ) {
       toast.error('A category with this slug already exists');
       return;
     }
 
+    setBusy(true);
     try {
-      upsertOrgCategory({
+      await orgCategoriesApi.upsert({
+        id: editingId ?? undefined,
         kind: activeKind,
         slug,
         label: draft.label.trim(),
         description: draft.description.trim() || undefined,
-        sortOrder: categories.length,
-        isActive: true,
-        isSystem: false,
+        sortOrder: editingId
+          ? categories.find((c) => c.id === editingId)?.sortOrder ?? categories.length
+          : categories.length,
+        isActive: editingId
+          ? categories.find((c) => c.id === editingId)?.isActive ?? true
+          : true,
+        isSystem: editingId
+          ? categories.find((c) => c.id === editingId)?.isSystem ?? false
+          : false,
       });
-      setCategories(getOrgCategories(activeKind));
-      setDraft({ label: '', slug: '', description: '' });
-      toast.success('Category created');
+      await refresh();
+      resetDraft();
+      toast.success(editingId ? 'Category updated' : 'Category created');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not create category');
+      toast.error(error instanceof Error ? error.message : 'Could not save category');
+    } finally {
+      setBusy(false);
     }
   }
 
-  function handleToggleActive(category: OrgCategory) {
+  async function handleToggleActive(category: OrgCategory) {
+    setBusy(true);
     try {
-      setOrgCategoryActive(category.kind, category.slug, !category.isActive);
-      setCategories(getOrgCategories(activeKind));
+      await orgCategoriesApi.setActive(category.id, !category.isActive);
+      await refresh();
       toast.success(category.isActive ? 'Category deactivated' : 'Category activated');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Update failed');
+    } finally {
+      setBusy(false);
     }
   }
 
-  function handleDelete(category: OrgCategory) {
+  async function handleDelete(category: OrgCategory) {
     if (category.isSystem) {
       toast.error('System categories cannot be deleted');
       return;
     }
-
+    setBusy(true);
     try {
-      deleteOrgCategory(category.kind, category.slug);
-      setCategories(getOrgCategories(activeKind));
+      await orgCategoriesApi.remove(category.id);
+      await refresh();
+      if (editingId === category.id) resetDraft();
+      setDeleteTarget(null);
       toast.success('Category removed');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Delete failed');
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <PageShell
       title="Categories"
-      description="Org-specific categories for products, accounting, and knowledge — like a real multi-tenant CRM."
+      description="Org-specific categories for products, accounting, and knowledge."
     >
       <div className="space-y-4">
         <p className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          Categories are scoped to your organization. System categories (marked below) power automations
-          and cannot be deleted — deactivate only. Custom categories persist in this browser for the demo;
-          Phase 2 saves to database per tenant.{' '}
-          <Link href="/dashboard/accounting/chart-of-accounts" className="font-medium text-primary hover:underline">
-            Manage chart of accounts
+          Categories are scoped to your organization. System categories cannot be deleted — deactivate
+          only. Product brands live under Inventory → Brands.{' '}
+          <Link href="/dashboard/inventory/brands" className="font-medium text-primary hover:underline">
+            Manage brands
           </Link>
         </p>
 
@@ -149,9 +174,23 @@ export function CategoriesSettingsPage() {
           ))}
         </div>
 
-        <Card className="gap-0 py-0 shadow-none">
+        <p className="text-xs text-muted-foreground">{TAB_HINTS[activeKind]}</p>
+
+        <Can permission={['settings.manage', 'inventory.create', 'inventory.edit']} match="any">
+          <Card className="gap-0 py-0 shadow-none">
           <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-            <CardTitle className="text-sm">Add {ORG_CATEGORY_KIND_LABELS[activeKind].toLowerCase()}</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm">
+                {editingId
+                  ? `Edit ${ORG_CATEGORY_KIND_LABELS[activeKind].toLowerCase()}`
+                  : `Add ${ORG_CATEGORY_KIND_LABELS[activeKind].toLowerCase()}`}
+              </CardTitle>
+              {editingId ? (
+                <Button type="button" variant="ghost" size="sm" onClick={resetDraft}>
+                  Cancel edit
+                </Button>
+              ) : null}
+            </div>
           </CardHeader>
           <CardContent
             className={cn(
@@ -163,14 +202,18 @@ export function CategoriesSettingsPage() {
             <FormField label="Label">
               <FormInput
                 value={draft.label}
-                onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, label: event.target.value }))
+                }
                 placeholder={activeKind === 'product' ? 'Spices' : 'Office supplies'}
               />
             </FormField>
             <FormField label="Slug (optional)">
               <FormInput
                 value={draft.slug}
-                onChange={(event) => setDraft((current) => ({ ...current, slug: event.target.value }))}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, slug: event.target.value }))
+                }
                 placeholder="auto_from_label"
               />
             </FormField>
@@ -181,81 +224,98 @@ export function CategoriesSettingsPage() {
                 onChange={(event) =>
                   setDraft((current) => ({ ...current, description: event.target.value }))
                 }
-                placeholder={TAB_HINTS[activeKind]}
+                placeholder="Optional note"
               />
             </FormField>
             <div className="flex items-end sm:col-span-2 lg:col-span-3">
-              <Button type="button" onClick={handleAdd}>
-                Add category
+              <Button type="button" size="sm" disabled={busy} onClick={() => void handleSave()}>
+                <Plus className="size-4" />
+                {editingId ? 'Save category' : 'Add category'}
               </Button>
             </div>
           </CardContent>
-        </Card>
+          </Card>
+        </Can>
 
-        <Card className="gap-0 py-0 shadow-none">
-          <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-            <CardTitle className="text-sm">
-              {ORG_CATEGORY_KIND_LABELS[activeKind]} ({categories.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className={ORDER_SECTION_BODY_CLASS}>
-            <p className="mb-3 text-xs text-muted-foreground">{TAB_HINTS[activeKind]}</p>
-            <div className="overflow-x-auto rounded-lg border border-border/70">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Label</th>
-                    <th className="px-3 py-2 font-medium">Slug</th>
-                    <th className="px-3 py-2 font-medium">Active</th>
-                    <th className="px-3 py-2 font-medium">Type</th>
-                    <th className="px-3 py-2 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {categories.map((category) => (
-                    <tr key={category.id} className="border-b last:border-b-0">
-                      <td className="px-3 py-2.5 font-medium">{category.label}</td>
-                      <td className="px-3 py-2.5 font-mono text-xs">{category.slug}</td>
-                      <td className="px-3 py-2.5">
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {loading ? (
+            <li className="px-3 py-8 text-center text-sm text-muted-foreground">Loading…</li>
+          ) : error ? (
+            <li className="px-3 py-8 text-center text-sm text-destructive">{error}</li>
+          ) : categories.length === 0 ? (
+            <li className="px-3 py-8 text-center text-sm text-muted-foreground">No categories yet</li>
+          ) : (
+            categories.map((category) => (
+              <li
+                key={category.id}
+                className="flex flex-wrap items-center justify-between gap-3 px-3 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{category.label}</span>
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {category.slug}
+                    </Badge>
+                    {category.isSystem ? <Badge variant="secondary">System</Badge> : null}
+                    {!category.isActive ? <Badge variant="destructive">Inactive</Badge> : null}
+                  </div>
+                  {category.description ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{category.description}</p>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Can permission={['settings.manage', 'inventory.create', 'inventory.edit']} match="any">
+                    <>
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Checkbox
                           checked={category.isActive}
-                          onCheckedChange={() => handleToggleActive(category)}
-                          aria-label={`Toggle ${category.label}`}
+                          disabled={busy}
+                          onCheckedChange={() => void handleToggleActive(category)}
                         />
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {category.isSystem ? (
-                          <Badge variant="secondary" className="text-[10px]">
-                            System
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px]">
-                            Custom
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {!category.isSystem ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(category)}
-                          >
-                            Delete
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                        Active
+                      </label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        disabled={busy}
+                        aria-label={`Edit ${category.label}`}
+                        onClick={() => startEdit(category)}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                    </>
+                  </Can>
+                  {!category.isSystem ? (
+                    <Can permission={['settings.manage', 'inventory.delete']} match="any">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        className="text-destructive"
+                        onClick={() => setDeleteTarget(category)}
+                      >
+                        Delete
+                      </Button>
+                    </Can>
+                  ) : null}
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+        <ConfirmDialog
+          open={Boolean(deleteTarget)}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+          title="Archive category?"
+          description={`Archive “${deleteTarget?.label ?? ''}”? It moves to the recycle bin. If active products use it, deactivate it instead.`}
+          confirmLabel="Archive category"
+          destructive
+          loading={busy}
+          onConfirm={() => (deleteTarget ? handleDelete(deleteTarget) : undefined)}
+        />
       </div>
     </PageShell>
   );

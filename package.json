@@ -15,7 +15,13 @@
         "docker:down": "docker compose down",
         "db:generate": "prisma generate --schema=apps/api/prisma/schema.prisma",
         "db:push": "prisma db push --schema=apps/api/prisma/schema.prisma",
-        "db:seed": "node apps/api/prisma/seed.mjs"
+        "db:migrate": "prisma migrate dev --schema=apps/api/prisma/schema.prisma",
+        "db:migrate:deploy": "prisma migrate deploy --schema=apps/api/prisma/schema.prisma",
+        "db:seed": "node apps/api/prisma/seed.mjs",
+        "test:api": "pnpm --filter @laam/api test",
+        "test:catalog": "pnpm --filter @laam/api test:catalog",
+        "test:e2e": "cross-env PORT=3333 nx run api:build:development && playwright test",
+        "ci": "pnpm db:generate && pnpm typecheck && pnpm build && pnpm test:catalog"
     },
     "dependencies": {
         "@nestjs/common": "^11.0.0",
@@ -39,6 +45,7 @@
         "@nx/react": "^23.0.1",
         "@nx/web": "23.0.1",
         "@nx/webpack": "^23.0.1",
+        "@playwright/test": "^1.61.1",
         "@swc-node/register": "~1.11.1",
         "@swc/cli": "~0.8.0",
         "@swc/core": "~1.15.5",

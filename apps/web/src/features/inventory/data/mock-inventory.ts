@@ -164,6 +164,7 @@ export function filterMockProducts(query: ProductListQuery): ProductListResponse
 
   const allMatching = MOCK_INVENTORY_PRODUCTS.filter((item) => {
     if (query.category && item.category !== query.category) return false;
+    if (query.brandId && item.brandId !== query.brandId) return false;
     if (query.filter === 'low_stock' && !isLowStock(item)) return false;
     if (query.filter === 'out_of_stock' && !isOutOfStock(item)) return false;
     if (query.filter === 'active' && item.status !== 'active') return false;
@@ -178,7 +179,12 @@ export function filterMockProducts(query: ProductListQuery): ProductListResponse
     );
   });
 
-  const listItems = allMatching.map(({ activities: _a, variants: _v, notes: _n, description: _d, ...li }) => li);
+  const listItems = allMatching.map(
+    ({ activities: _a, variants, notes: _n, description: _d, ...li }) => ({
+      ...li,
+      primaryVariantId: variants[0]?.id,
+    }),
+  );
   const total = listItems.length;
   const start = (query.page - 1) * query.pageSize;
   const pageItems = listItems.slice(start, start + query.pageSize);
@@ -218,7 +224,9 @@ export function createMockProduct(payload: CreateProductPayload): InventoryProdu
     name: payload.name,
     sku: payload.sku,
     imageUrl: payload.imageUrl,
-    category: payload.category,
+    category: payload.category ?? 'other',
+    categoryId: payload.categoryId,
+    brandId: payload.brandId,
     status: payload.status,
     stock,
     reorderLevel: reorder,
@@ -287,6 +295,8 @@ export function updateMockProduct(id: string, patch: UpdateProductPayload): Inve
   const updated: InventoryProductDetail = {
     ...current,
     ...patch,
+    categoryId: patch.categoryId === null ? undefined : (patch.categoryId ?? current.categoryId),
+    brandId: patch.brandId === null ? undefined : (patch.brandId ?? current.brandId),
     variants,
     stock,
     reorderLevel: reorder,
@@ -312,6 +322,13 @@ export function updateMockProduct(id: string, patch: UpdateProductPayload): Inve
   };
   MOCK_INVENTORY_PRODUCTS[index] = updated;
   return updated;
+}
+
+export function deleteMockProduct(id: string): boolean {
+  const index = MOCK_INVENTORY_PRODUCTS.findIndex((p) => p.id === id);
+  if (index === -1) return false;
+  MOCK_INVENTORY_PRODUCTS.splice(index, 1);
+  return true;
 }
 
 export function bulkUpdateMockProducts(payload: {

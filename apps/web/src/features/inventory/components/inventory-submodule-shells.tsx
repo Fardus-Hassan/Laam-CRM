@@ -30,7 +30,6 @@ import { InventoryResponsiveList } from '@/features/inventory/components/invento
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
 import { ProductionBatchPanel } from '@/features/inventory/components/production-batch-panel';
 import { ProductionLedger } from '@/features/inventory/components/production-ledger';
-import { MOCK_INVENTORY_PRODUCTS } from '@/features/inventory/data/mock-inventory';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
 import {
   ORDER_CARD_CLASS,
@@ -184,10 +183,14 @@ export function PurchaseListShell() {
 
   React.useEffect(() => {
     setLoading(true);
-    void inventoryApi.listPurchases(search).then((r) => {
-      setData(r);
-      setLoading(false);
-    });
+    void inventoryApi
+      .listPurchases(search)
+      .then(setData)
+      .catch((error) => {
+        setData(null);
+        toast.error(error instanceof Error ? error.message : 'Could not load purchases');
+      })
+      .finally(() => setLoading(false));
   }, [search]);
 
   async function receiveStock(p: PurchaseListItem) {
@@ -349,13 +352,30 @@ export function AdjustmentListShell() {
   const [delta, setDelta] = React.useState('1');
   const [reason, setReason] = React.useState<keyof typeof ADJUSTMENT_REASON_LABELS>('count_correction');
   const [note, setNote] = React.useState('');
+  const [productOptions, setProductOptions] = React.useState<
+    { value: string; label: string }[]
+  >([]);
 
   const load = React.useCallback(() => {
     setLoading(true);
-    void inventoryApi.listAdjustments().then((r) => {
-      setItems(r.items);
-      setLoading(false);
-    });
+    void Promise.all([
+      inventoryApi.listAdjustments(),
+      inventoryApi.listProducts({ page: 1, pageSize: 100 }),
+    ])
+      .then(([adjustments, products]) => {
+        setItems(adjustments.items);
+        setProductOptions(
+          products.items.map((product) => ({
+            value: product.id,
+            label: `${product.sku} — ${product.name}`,
+          })),
+        );
+      })
+      .catch((error) => {
+        setItems([]);
+        toast.error(error instanceof Error ? error.message : 'Could not load adjustments');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   React.useEffect(() => {
@@ -369,11 +389,6 @@ export function AdjustmentListShell() {
     setNote('');
     load();
   }
-
-  const productOptions = MOCK_INVENTORY_PRODUCTS.map((p) => ({
-    value: p.id,
-    label: `${p.sku} — ${p.name}`,
-  }));
 
   const reasonOptions = (Object.keys(ADJUSTMENT_REASON_LABELS) as (keyof typeof ADJUSTMENT_REASON_LABELS)[]).map(
     (v) => ({ value: v, label: ADJUSTMENT_REASON_LABELS[v] }),

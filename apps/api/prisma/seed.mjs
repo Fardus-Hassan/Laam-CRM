@@ -84,6 +84,138 @@ async function seedCrmDemo() {
   console.log('CRM demo seed complete');
 }
 
+// Mirrors PRODUCT_CATEGORY_SEEDS in apps/api/src/crm/inventory-catalog.service.ts
+const PRODUCT_CATEGORY_SEEDS = [
+  { slug: 'honey', label: 'Honey' },
+  { slug: 'dates', label: 'Dates' },
+  { slug: 'combo', label: 'Combo' },
+  { slug: 'gift', label: 'Gift box' },
+  { slug: 'raw_material', label: 'Raw material' },
+  { slug: 'packaging', label: 'Packaging' },
+  { slug: 'other', label: 'Other' },
+];
+
+/** Idempotent catalog seed: one brand, default product categories, one product with one variant. */
+async function seedInventoryCatalog(organizationId) {
+  let brand = await prisma.productBrand.findFirst({
+    where: { organizationId, slug: 'laam_demo' },
+  });
+  if (!brand) {
+    brand = await prisma.productBrand.create({
+      data: {
+        organizationId,
+        name: 'Laam Demo',
+        slug: 'laam_demo',
+        description: 'Seeded demo brand',
+        isActive: true,
+      },
+    });
+  }
+
+  await prisma.orgCategory.createMany({
+    data: PRODUCT_CATEGORY_SEEDS.map((seed, index) => ({
+      organizationId,
+      kind: 'product',
+      slug: seed.slug,
+      label: seed.label,
+      sortOrder: index,
+      isActive: true,
+      isSystem: seed.slug === 'other',
+    })),
+    skipDuplicates: true,
+  });
+
+  const honeyCategory = await prisma.orgCategory.findFirst({
+    where: { organizationId, kind: 'product', slug: 'honey' },
+  });
+
+  const productSku = 'SEED-HONEY-001';
+  let product = await prisma.product.findFirst({
+    where: { organizationId, sku: productSku },
+  });
+  if (!product) {
+    product = await prisma.product.create({
+      data: {
+        organizationId,
+        name: 'Sundarban Honey (Seed)',
+        sku: productSku,
+        brandId: brand.id,
+        categoryId: honeyCategory?.id ?? null,
+        description: 'Seeded demo product',
+        status: 'active',
+        reorderLevel: 5,
+        tags: ['seed'],
+      },
+    });
+  }
+
+  const variantSku = 'SEED-HONEY-001-500G';
+  let variant = await prisma.productVariant.findFirst({
+    where: { organizationId, sku: variantSku },
+  });
+  if (!variant) {
+    variant = await prisma.productVariant.create({
+      data: {
+        organizationId,
+        productId: product.id,
+        label: '500g jar',
+        sku: variantSku,
+        salePrice: 499,
+        costPrice: 320,
+        stock: 25,
+        reorderLevel: 5,
+      },
+    });
+  }
+
+  const supplier = await prisma.inventorySupplier.upsert({
+    where: {
+      organizationId_name: {
+        organizationId,
+        name: 'Sundarban Apiaries',
+      },
+    },
+    create: {
+      organizationId,
+      name: 'Sundarban Apiaries',
+      contactPerson: 'Karim Uddin',
+      phone: '01710000001',
+      email: 'supply@example.com',
+      address: 'Khulna',
+      tags: ['Primary'],
+    },
+    update: {},
+  });
+
+  const purchaseNumber = 'PO-SEED-001';
+  const existingPurchase = await prisma.inventoryPurchase.findFirst({
+    where: { organizationId, purchaseNumber },
+  });
+  if (!existingPurchase && variant) {
+    await prisma.inventoryPurchase.create({
+      data: {
+        organizationId,
+        supplierId: supplier.id,
+        purchaseNumber,
+        paymentStatus: 'unpaid',
+        stockStatus: 'pending',
+        purchaseDate: new Date('2026-07-19T00:00:00.000Z'),
+        notes: 'Seeded purchase for inventory workflow verification',
+        lines: {
+          create: {
+            productId: product.id,
+            variantId: variant.id,
+            quantity: 10,
+            unitCost: 320,
+          },
+        },
+      },
+    });
+  }
+
+  console.log(`Inventory catalog seed ready for org ${organizationId} (${productSku})`);
+}
+
 async function seedNotifications() {
   const admin = await prisma.user.findFirst({
     where: {
@@ -137,9 +269,70 @@ async function seedNotifications() {
   console.log(`Notification samples ready for ${admin.email} @ ${admin.organization.slug}`);
 }
 
+async function seedE2eTenant() {
+  const email = (process.env.E2E_USER_EMAIL ?? 'e2e.admin@laam.test').trim().toLowerCase();
+  const password = process.env.E2E_USER_PASSWORD ?? 'e2e.admin2026';
+  const deviceId = process.env.E2E_DEVICE_ID ?? 'e2e-device';
+
+  const org = await prisma.organization.upsert({
+    where: { slug: 'laam' },
+    create: {
+      name: 'Laam Demo',
+      slug: 'laam',
+      plan: 'Growth',
+      status: 'active',
+    },
+    update: {
+      name: 'Laam Demo',
+      status: 'active',
+    },
+  });
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const user = await prisma.user.upsert({
+    where: { email },
+    create: {
+      email,
+      name: 'E2E Org Admin',
+      passwordHash,
+      systemRole: 'org_admin',
+      status: 'active',
+      organizationId: org.id,
+    },
+    update: {
+      passwordHash,
+      systemRole: 'org_admin',
+      status: 'active',
+      organizationId: org.id,
+    },
+  });
+
+  await prisma.trustedDevice.upsert({
+    where: { userId_deviceId: { userId: user.id, deviceId } },
+    create: { userId: user.id, deviceId },
+    update: {},
+  });
+
+  await seedInventoryCatalog(org.id);
+  console.log(`E2E tenant ready: ${email} @ ${org.slug} (device ${deviceId})`);
+  return org.id;
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedCrmDemo();
+  await seedE2eTenant();
+
+  const tenantOrg = await prisma.organization.findFirst({
+    where: { slug: { not: 'platform' } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (tenantOrg) {
+    await seedInventoryCatalog(tenantOrg.id);
+  } else {
+    console.log('Skip inventory catalog seed: no tenant organization found');
+  }
+
   await seedNotifications();
 }
 

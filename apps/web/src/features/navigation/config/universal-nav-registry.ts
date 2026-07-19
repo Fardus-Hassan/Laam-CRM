@@ -138,6 +138,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               badge: badges.lowStock,
             },
             {
+              id: 'inv-brands',
+              title: 'Brands',
+              url: '/dashboard/inventory/brands',
+              permissions: pv('inventory.view'),
+            },
+            {
               id: 'inv-suppliers',
               title: 'Suppliers',
               url: '/dashboard/inventory/suppliers',
@@ -384,6 +390,9 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
             'billing.view',
             'security.view',
             'recycle.view',
+            'inventory.view',
+            'inventory.create',
+            'inventory.edit',
           ],
           children: [
             {
@@ -414,7 +423,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               id: 'settings-categories',
               title: 'Categories',
               url: '/dashboard/settings/categories',
-              permissions: pv('settings.manage'),
+              permissions: ['settings.manage', 'inventory.view', 'inventory.create', 'inventory.edit'],
             },
             {
               id: 'settings-order-statuses',

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import type { ProductFilterCount } from '@laam/types';
 
 import { cn } from '@/lib/utils';
@@ -12,12 +13,21 @@ type ProductFilterChipsProps = {
 };
 
 export function ProductFilterChips({ filters, activeFilterId, className }: ProductFilterChipsProps) {
+  const searchParams = useSearchParams();
+
   return (
-    <div className={cn('custom-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 sm:flex-wrap sm:overflow-visible', className)}>
+    <div
+      className={cn(
+        'custom-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 sm:flex-wrap sm:overflow-visible',
+        className,
+      )}
+    >
       {filters.map((filter) => {
         const isActive = filter.id === activeFilterId;
-        const params = new URLSearchParams();
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('page');
         if (filter.id !== 'all') params.set('filter', filter.id);
+        else params.delete('filter');
         const href = params.toString()
           ? `/dashboard/inventory/products?${params.toString()}`
           : '/dashboard/inventory/products';

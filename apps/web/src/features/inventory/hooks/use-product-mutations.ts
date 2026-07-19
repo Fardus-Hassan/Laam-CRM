@@ -26,6 +26,80 @@ export function useProductMutations() {
     setIsLoading(true);
     try {
       return await inventoryApi.updateProduct(id, patch);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update product');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function deleteProduct(id: string) {
+    setIsLoading(true);
+    try {
+      await inventoryApi.deleteProduct(id);
+      toast.success('Product archived');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to archive product');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function hardDeleteProduct(id: string) {
+    setIsLoading(true);
+    try {
+      await inventoryApi.deleteProduct(id, { hard: true });
+      toast.success('Product permanently deleted');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to permanently delete product');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function restoreProduct(id: string) {
+    setIsLoading(true);
+    try {
+      const product = await inventoryApi.restoreProduct(id);
+      toast.success('Product restored');
+      return product;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to restore product');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function adjustStock(
+    productId: string,
+    payload: Parameters<typeof inventoryApi.adjustStock>[1],
+  ) {
+    setIsLoading(true);
+    try {
+      const product = await inventoryApi.adjustStock(productId, payload);
+      toast.success('Stock adjusted');
+      return product;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to adjust stock');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function uploadProductImage(productId: string, file: File) {
+    setIsLoading(true);
+    try {
+      const product = await inventoryApi.uploadProductImage(productId, file);
+      toast.success('Product image uploaded');
+      return product;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to upload product image');
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -37,6 +111,9 @@ export function useProductMutations() {
       const result = await inventoryApi.bulkProductAction(payload);
       toast.success(result.message ?? 'Bulk action completed');
       return result;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Bulk action failed');
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -47,10 +124,24 @@ export function useProductMutations() {
     try {
       await inventoryApi.createAdjustment(payload);
       toast.success('Stock adjusted');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to adjust stock');
+      throw error;
     } finally {
       setIsLoading(false);
     }
   }
 
-  return { createProduct, updateProduct, bulkAction, createAdjustment, isLoading };
+  return {
+    createProduct,
+    updateProduct,
+    deleteProduct,
+    hardDeleteProduct,
+    restoreProduct,
+    adjustStock,
+    uploadProductImage,
+    bulkAction,
+    createAdjustment,
+    isLoading,
+  };
 }

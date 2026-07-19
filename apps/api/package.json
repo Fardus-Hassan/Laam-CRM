@@ -2,6 +2,10 @@
     "name": "@laam/api",
     "version": "0.0.1",
     "private": true,
+    "scripts": {
+        "test": "jest --config jest.config.ts --passWithNoTests",
+        "test:catalog": "jest --config jest.config.ts --testPathPatterns=inventory-"
+    },
     "nx": {
         "name": "api",
         "targets": {
@@ -79,6 +83,7 @@
         }
     },
     "dependencies": {
+        "@aws-sdk/client-s3": "^3.1090.0",
         "@laam/types": "workspace:*",
         "@nestjs/common": "^11.0.0",
         "@nestjs/core": "^11.0.0",
@@ -105,9 +110,12 @@
         "@nestjs/testing": "^11.0.0",
         "@types/bcryptjs": "^3.0.0",
         "@types/express": "^5.0.6",
+        "@types/jest": "^30.0.0",
         "@types/multer": "^2.2.0",
         "@types/nodemailer": "^6.4.17",
         "@types/passport-jwt": "^4.0.1",
-        "prisma": "^7.8.0"
+        "jest": "^30.4.2",
+        "prisma": "^7.8.0",
+        "ts-jest": "^29.4.11"
     }
 }

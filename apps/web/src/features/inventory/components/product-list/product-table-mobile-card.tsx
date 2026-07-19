@@ -6,6 +6,7 @@ import type { InventoryProductListItem, ProductStatus } from '@laam/types';
 import { Minus, Package, Plus } from 'lucide-react';
 
 import type { CrmRowContext } from '@/components/data-table';
+import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -47,7 +48,18 @@ export function ProductTableMobileCard({
         />
         <div className="relative size-12 shrink-0 overflow-hidden rounded-md border bg-muted">
           {row.imageUrl ? (
-            <Image src={row.imageUrl} alt={row.name} fill className="object-cover" sizes="48px" />
+            <Image
+              src={row.imageUrl}
+              alt={row.name}
+              fill
+              className="object-cover"
+              sizes="48px"
+              unoptimized={
+                row.imageUrl.startsWith('data:') ||
+                row.imageUrl.startsWith('/api/') ||
+                row.imageUrl.includes('localhost')
+              }
+            />
           ) : (
             <div className="flex size-full items-center justify-center">
               <Package className="size-5 text-muted-foreground" />
@@ -63,8 +75,13 @@ export function ProductTableMobileCard({
           </Link>
           <p className="font-mono text-xs text-muted-foreground">{row.sku}</p>
           <div className="flex flex-wrap gap-1">
+            {row.brandName ? (
+              <Badge variant="secondary" className="text-[10px]">
+                {row.brandName}
+              </Badge>
+            ) : null}
             <Badge variant="outline" className="text-[10px]">
-              {resolveProductCategoryLabel(row.category)}
+              {row.categoryLabel ?? resolveProductCategoryLabel(row.category)}
             </Badge>
             <StockStatusBadge status={row.stockStatus} />
           </div>
@@ -76,25 +93,33 @@ export function ProductTableMobileCard({
           <div>
             <p className="text-xs text-muted-foreground">Stock</p>
             <div className="mt-1 flex items-center gap-2">
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="size-7"
-                onClick={() => onStockAdjust?.(row, -1)}
-              >
-                <Minus className="size-3.5" />
-              </Button>
+              <Can permission="inventory.adjust">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="size-7"
+                  disabled={row.variantCount !== 1 || !row.primaryVariantId}
+                  title={row.variantCount !== 1 ? 'Open product to adjust multi-variant stock' : undefined}
+                  onClick={() => onStockAdjust?.(row, -1)}
+                >
+                  <Minus className="size-3.5" />
+                </Button>
+              </Can>
               <span className="text-lg font-semibold tabular-nums">{row.stock}</span>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="size-7"
-                onClick={() => onStockAdjust?.(row, 1)}
-              >
-                <Plus className="size-3.5" />
-              </Button>
+              <Can permission="inventory.adjust">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="size-7"
+                  disabled={row.variantCount !== 1 || !row.primaryVariantId}
+                  title={row.variantCount !== 1 ? 'Open product to adjust multi-variant stock' : undefined}
+                  onClick={() => onStockAdjust?.(row, 1)}
+                >
+                  <Plus className="size-3.5" />
+                </Button>
+              </Can>
             </div>
           </div>
           <div className="text-right">

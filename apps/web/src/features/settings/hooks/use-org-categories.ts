@@ -2,35 +2,43 @@
 
 import * as React from 'react';
 
-import type { OrgCategoryKind } from '@laam/types';
+import type { OrgCategory, OrgCategoryKind } from '@laam/types';
 
-import {
-  getOrgCategories,
-  ORG_CATEGORIES_CHANGED,
-} from '@/features/settings/data/org-categories-store';
+import { orgCategoriesApi } from '@/features/settings/api/org-categories-api';
 
 export function useOrgCategories(kind: OrgCategoryKind) {
-  const [categories, setCategories] = React.useState(() => getOrgCategories(kind));
+  const [categories, setCategories] = React.useState<OrgCategory[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    function refresh() {
-      setCategories(getOrgCategories(kind));
+  const refresh = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setCategories(await orgCategoriesApi.list(kind));
+    } catch (cause) {
+      setCategories([]);
+      setError(cause instanceof Error ? cause.message : 'Could not load categories');
+    } finally {
+      setLoading(false);
     }
-
-    window.addEventListener(ORG_CATEGORIES_CHANGED, refresh);
-    return () => window.removeEventListener(ORG_CATEGORIES_CHANGED, refresh);
   }, [kind]);
 
-  return categories;
+  React.useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return { categories, loading, error, refresh };
 }
 
+/** Slug-based options for filters and legacy forms. */
 export function useOrgCategoryOptions(kind: OrgCategoryKind) {
-  const categories = useOrgCategories(kind);
+  const { categories } = useOrgCategories(kind);
   return React.useMemo(
     () =>
       categories
         .filter((item) => item.isActive)
-        .map((item) => ({ value: item.slug, label: item.label })),
+        .map((item) => ({ value: item.slug, label: item.label, id: item.id })),
     [categories],
   );
 }

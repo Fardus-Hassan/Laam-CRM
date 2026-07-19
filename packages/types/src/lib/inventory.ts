@@ -29,17 +29,37 @@ export const productVariantSchema = z.object({
 
 export type ProductVariant = z.infer<typeof productVariantSchema>;
 
+/** Variant payload for create/update: enforces non-negative price & stock. */
+export const productVariantInputSchema = productVariantSchema.extend({
+  label: z.string().min(1).max(120),
+  sku: z.string().min(1).max(120),
+  salePrice: z.number().nonnegative(),
+  costPrice: z.number().nonnegative().optional(),
+  stock: z.number().int().nonnegative().default(0),
+  reorderLevel: z.number().int().nonnegative().default(5),
+});
+
+export type ProductVariantInput = z.infer<typeof productVariantInputSchema>;
+
 export const inventoryProductListItemSchema = z.object({
   id: z.string(),
   name: z.string(),
   sku: z.string(),
   imageUrl: z.string().optional(),
+  /** Storage key of the uploaded image (server-side reference). */
+  imageKey: z.string().optional(),
+  /** Category slug for filters/display (legacy + API). */
   category: z.string().min(1),
+  categoryId: z.string().optional(),
+  categoryLabel: z.string().optional(),
+  brandId: z.string().optional(),
+  brandName: z.string().optional(),
   status: productStatusSchema,
   stock: z.number().int(),
   reorderLevel: z.number().int(),
   stockStatus: stockStatusSchema,
   variantCount: z.number().int(),
+  primaryVariantId: z.string().optional(),
   salePriceMin: z.number(),
   salePriceMax: z.number(),
   costPrice: z.number().optional(),
@@ -48,6 +68,8 @@ export const inventoryProductListItemSchema = z.object({
   lastSoldAt: z.string().optional(),
   updatedAt: z.string(),
   createdAt: z.string(),
+  /** Present when the product is soft-deleted. */
+  deletedAt: z.string().optional(),
 });
 
 export type InventoryProductListItem = z.infer<typeof inventoryProductListItemSchema>;
@@ -83,6 +105,7 @@ export type ProductFilter = z.infer<typeof productFilterSchema>;
 export const productListQuerySchema = z.object({
   filter: productFilterSchema.optional(),
   category: z.string().optional(),
+  brandId: z.string().optional(),
   search: z.string().optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().default(20),
@@ -119,39 +142,61 @@ export const productListResponseSchema = z.object({
 
 export type ProductListResponse = z.infer<typeof productListResponseSchema>;
 
+/**
+ * Product image URL: absolute http(s) URL or an app-relative upload path.
+ * Inline `data:` URIs are rejected — images must be uploaded first.
+ */
+export const productImageUrlSchema = z
+  .string()
+  .url()
+  .or(z.string().startsWith('/api/uploads'))
+  .refine((value) => !value.startsWith('data:'), {
+    message: 'Inline data: URLs are not allowed; upload the image instead',
+  });
+
 export const createProductPayloadSchema = z.object({
-  name: z.string().min(1),
-  sku: z.string().min(1),
-  category: z.string().default('other'),
-  description: z.string().optional(),
-  imageUrl: z.string().optional(),
+  name: z.string().min(1).max(200),
+  sku: z.string().min(1).max(120),
+  /** @deprecated Prefer categoryId; kept for mock / older clients. */
+  category: z.string().max(120).optional(),
+  categoryId: z.string().optional(),
+  brandId: z.string().optional(),
+  description: z.string().max(5000).optional(),
+  imageUrl: productImageUrlSchema.optional(),
+  imageKey: z.string().max(500).optional(),
   status: productStatusSchema.default('active'),
-  reorderLevel: z.number().int().default(5),
-  variants: z.array(productVariantSchema).min(1),
-  supplierName: z.string().optional(),
-  notes: z.string().optional(),
-  tags: z.array(z.string()).optional(),
+  reorderLevel: z.number().int().nonnegative().default(5),
+  variants: z.array(productVariantInputSchema).min(1),
+  supplierName: z.string().max(200).optional(),
+  notes: z.string().max(5000).optional(),
+  tags: z.array(z.string().max(60)).optional(),
 });
 
 export type CreateProductPayload = z.infer<typeof createProductPayloadSchema>;
 
 export const updateProductPayloadSchema = z.object({
-  name: z.string().optional(),
-  sku: z.string().optional(),
-  category: z.string().optional(),
-  description: z.string().optional(),
-  imageUrl: z.string().optional(),
+  name: z.string().min(1).max(200).optional(),
+  sku: z.string().min(1).max(120).optional(),
+  category: z.string().max(120).optional(),
+  categoryId: z.string().nullable().optional(),
+  brandId: z.string().nullable().optional(),
+  description: z.string().max(5000).optional(),
+  imageUrl: productImageUrlSchema.optional(),
+  imageKey: z.string().max(500).optional(),
   status: productStatusSchema.optional(),
-  reorderLevel: z.number().int().optional(),
-  variants: z.array(productVariantSchema).optional(),
-  supplierName: z.string().optional(),
-  notes: z.string().optional(),
-  tags: z.array(z.string()).optional(),
+  reorderLevel: z.number().int().nonnegative().optional(),
+  variants: z.array(productVariantInputSchema).optional(),
+  supplierName: z.string().max(200).optional(),
+  notes: z.string().max(5000).optional(),
+  tags: z.array(z.string().max(60)).optional(),
+  /**
+   * @deprecated Use the dedicated stock adjustment endpoint (adjustStockPayloadSchema).
+   * Kept for backward compatibility; omitted variantId targets the first variant.
+   */
   stockAdjustment: z
     .object({
       delta: z.number().int(),
       reason: z.string(),
-      /** When set, adjust this variant’s stock instead of the first variant. */
       variantId: z.string().optional(),
     })
     .optional(),
@@ -216,6 +261,28 @@ export const purchaseListResponseSchema = z.object({
 });
 
 export type PurchaseListResponse = z.infer<typeof purchaseListResponseSchema>;
+
+export const createPurchasePayloadSchema = z.object({
+  supplierId: z.string().min(1),
+  purchaseNumber: z.string().min(1).max(64),
+  paymentStatus: purchasePaymentStatusSchema.default('unpaid'),
+  purchaseDate: z.string(),
+  dueDate: z.string().optional(),
+  notes: z.string().max(1000).optional(),
+  lines: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        variantId: z.string().min(1),
+        quantity: z.number().int().positive(),
+        unitCost: z.number().nonnegative(),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+
+export type CreatePurchasePayload = z.infer<typeof createPurchasePayloadSchema>;
 
 // Purchase returns
 export const purchaseReturnListItemSchema = z.object({

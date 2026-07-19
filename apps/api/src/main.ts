@@ -4,6 +4,8 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import * as classTransformer from 'class-transformer';
+import * as classValidator from 'class-validator';
 import { AppModule } from './app/app.module';
 
 function isAllowedOrigin(origin: string | undefined): boolean {
@@ -37,6 +39,12 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       transform: true,
+      // Force the pipe to use the exact same class-transformer/class-validator
+      // instances the DTO decorators registered metadata in. Without this, the
+      // webpack bundle and node_modules copies diverge and nested DTOs (e.g.
+      // product variants) get stripped to empty objects by whitelist.
+      transformerPackage: classTransformer,
+      validatorPackage: classValidator,
     }),
   );
   app.enableCors({

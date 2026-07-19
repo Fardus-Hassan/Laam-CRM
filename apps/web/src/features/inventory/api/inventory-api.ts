@@ -1,4 +1,5 @@
 import type {
+  AdjustStockPayload,
   CreateAdjustmentPayload,
   CreateProductPayload,
   InventoryProductDetail,
@@ -12,14 +13,17 @@ import type {
   PurchaseReturnListResponse,
   RunProductionBatchPayload,
   StockAdjustmentListResponse,
+  StockMovementListResponse,
   SupplierListResponse,
   UpdateProductPayload,
 } from '@laam/types';
+import { ApiError } from '@/lib/api/errors';
 
 import {
   bulkUpdateMockProducts,
   createMockAdjustment,
   createMockProduct,
+  deleteMockProduct,
   filterMockProducts,
   filterMockPurchases,
   getMockProductById,
@@ -36,9 +40,20 @@ import {
 
 export type InventoryApi = {
   listProducts: (query: ProductListQuery) => Promise<ProductListResponse>;
-  getProduct: (id: string) => Promise<InventoryProductDetail | null>;
+  getProduct: (
+    id: string,
+    opts?: { includeDeleted?: boolean },
+  ) => Promise<InventoryProductDetail | null>;
   createProduct: (payload: CreateProductPayload) => Promise<InventoryProductDetail>;
   updateProduct: (id: string, patch: UpdateProductPayload) => Promise<InventoryProductDetail>;
+  deleteProduct: (id: string, opts?: { hard?: boolean }) => Promise<void>;
+  adjustStock: (productId: string, payload: AdjustStockPayload) => Promise<InventoryProductDetail>;
+  listStockMovements: (
+    productId: string,
+    query: { page: number; pageSize: number },
+  ) => Promise<StockMovementListResponse>;
+  uploadProductImage: (productId: string, file: File) => Promise<InventoryProductDetail>;
+  restoreProduct: (id: string) => Promise<InventoryProductDetail>;
   bulkProductAction: (payload: {
     productIds: string[];
     status?: ProductStatus;
@@ -80,6 +95,58 @@ export function createMockInventoryApi(): InventoryApi {
       const updated = updateMockProduct(id, patch);
       if (!updated) throw new Error('Product not found');
       return updated;
+    },
+    async deleteProduct(id) {
+      await delay(80);
+      if (!deleteMockProduct(id)) throw new Error('Product not found');
+    },
+    async adjustStock(productId, payload) {
+      await delay(80);
+      const product = updateMockProduct(productId, { stockAdjustment: payload });
+      if (!product) throw new Error('Product not found');
+      return product;
+    },
+    async listStockMovements(productId, query) {
+      await delay(60);
+      const product = getMockProductById(productId);
+      if (!product) throw new Error('Product not found');
+      const all = MOCK_ADJUSTMENTS.filter((item) => item.productId === productId).map((item) => ({
+        id: item.id,
+        productId,
+        variantId: product.variants[0]?.id ?? '',
+        variantLabel: product.variants[0]?.label,
+        variantSku: item.sku,
+        previousStock: item.previousStock,
+        delta: item.delta,
+        newStock: item.newStock,
+        reason: item.reason,
+        note: item.note,
+        actorName: item.adjustedBy,
+        createdAt: item.adjustedAt,
+      }));
+      const start = (query.page - 1) * query.pageSize;
+      return {
+        items: all.slice(start, start + query.pageSize),
+        total: all.length,
+        page: query.page,
+        pageSize: query.pageSize,
+      };
+    },
+    async uploadProductImage(productId, file) {
+      const imageUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Could not read image'));
+        reader.readAsDataURL(file);
+      });
+      const product = updateMockProduct(productId, { imageUrl });
+      if (!product) throw new Error('Product not found');
+      return product;
+    },
+    async restoreProduct(id) {
+      const product = getMockProductById(id);
+      if (!product) throw new Error('Product not found');
+      return updateMockProduct(id, { status: 'inactive' }) ?? product;
     },
     async bulkProductAction(payload) {
       await delay(150);
@@ -144,17 +211,20 @@ export function createHttpInventoryApi(): InventoryApi {
       const params = new URLSearchParams();
       if (query.filter) params.set('filter', query.filter);
       if (query.category) params.set('category', query.category);
+      if (query.brandId) params.set('brandId', query.brandId);
       if (query.search) params.set('search', query.search);
       params.set('page', String(query.page));
       params.set('pageSize', String(query.pageSize));
       return apiRequest<ProductListResponse>(`/crm/inventory/products?${params.toString()}`);
     },
-    async getProduct(id) {
+    async getProduct(id, opts) {
       const { apiRequest } = await import('@/lib/api/client');
       try {
-        return await apiRequest<InventoryProductDetail>(`/crm/inventory/products/${id}`);
-      } catch {
-        return null;
+        const qs = opts?.includeDeleted ? '?includeDeleted=true' : '';
+        return await apiRequest<InventoryProductDetail>(`/crm/inventory/products/${id}${qs}`);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
       }
     },
     async createProduct(payload) {
@@ -169,6 +239,44 @@ export function createHttpInventoryApi(): InventoryApi {
       return apiRequest<InventoryProductDetail>(`/crm/inventory/products/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(patch),
+      });
+    },
+    async deleteProduct(id, opts) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const query = opts?.hard ? '?hard=true' : '';
+      await apiRequest(`/crm/inventory/products/${id}${query}`, { method: 'DELETE' });
+    },
+    async adjustStock(productId, payload) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<InventoryProductDetail>(
+        `/crm/inventory/products/${productId}/stock-adjust`,
+        { method: 'POST', body: JSON.stringify(payload) },
+      );
+    },
+    async listStockMovements(productId, query) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const params = new URLSearchParams({
+        page: String(query.page),
+        pageSize: String(query.pageSize),
+      });
+      return apiRequest<StockMovementListResponse>(
+        `/crm/inventory/products/${productId}/stock-movements?${params.toString()}`,
+      );
+    },
+    async uploadProductImage(productId, file) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const body = new FormData();
+      body.append('file', file);
+      return apiRequest<InventoryProductDetail>(`/crm/inventory/products/${productId}/image`, {
+        method: 'POST',
+        body,
+        json: false,
+      });
+    },
+    async restoreProduct(id) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<InventoryProductDetail>(`/crm/inventory/products/${id}/restore`, {
+        method: 'POST',
       });
     },
     async bulkProductAction(payload) {
