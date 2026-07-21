@@ -1097,22 +1097,12 @@ export class InventoryOperationsService {
       const share = totalFinishedGrams > 0 ? lineGrams / totalFinishedGrams : 0;
       const lineCost = Math.round(materialCost * share);
       const rawUsage = inputs.map((input) => {
-        const totalRawBase =
-          input.usedUnits ??
-          (input.unit === 'kg'
-            ? input.quantity * 1000
-            : input.unit === 'g'
-              ? input.quantity
-              : input.quantity);
-        const baseForVariantLine = totalRawBase * share;
-        const basePerOneUnit = line.units > 0 ? baseForVariantLine / line.units : 0;
+        const qtyInInputUnit = input.quantity * share;
+        const perOneUnit = line.units > 0 ? qtyInInputUnit / line.units : 0;
         return {
           name: input.name,
           unit: input.unit,
-          quantityPerUnit:
-            input.unit === 'kg'
-              ? Math.round((basePerOneUnit / 1000) * 1000) / 1000
-              : Math.round(basePerOneUnit * 1000) / 1000,
+          quantityPerUnit: Math.round(perOneUnit * 1000) / 1000,
           costPerUnit:
             line.units > 0 ? Math.round((input.totalCost * share) / line.units) : 0,
         };

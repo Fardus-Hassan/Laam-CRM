@@ -188,7 +188,12 @@ type ProductRow = {
 const productListInclude = {
   brand: { select: { id: true, name: true } },
   category: { select: { id: true, slug: true, label: true } },
-  variants: { orderBy: { createdAt: 'asc' as const } },
+  variants: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      baseUom: { select: { id: true, code: true, name: true } },
+    },
+  },
 };
 
 const productInclude = {
@@ -1885,6 +1890,7 @@ export class InventoryCatalogService {
       stockStatus: stockStatusFor(stock, row.reorderLevel),
       variantCount: row.variants.length,
       primaryVariantId: row.variants[0]?.id,
+      primaryBaseUomCode: row.variants[0]?.baseUom?.code ?? undefined,
       salePriceMin,
       salePriceMax,
       costPrice: costs.length ? Math.min(...costs) : undefined,

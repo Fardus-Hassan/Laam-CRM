@@ -44,6 +44,13 @@ function createPrismaMock() {
     catalogActivity: {
       create: jest.fn(),
     },
+    warehouse: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
+    },
+    inventoryStockLevel: {
+      create: jest.fn(),
+    },
     orgCategory: {
       create: jest.fn(),
       update: jest.fn(),
@@ -314,6 +321,59 @@ describe('InventoryCatalogService', () => {
 
       expect((error as Error).message).toBe('Product not found');
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createProduct', () => {
+    it('persists variant base unit from baseUomCode', async () => {
+      const uom = {
+        resolveVariantBaseUomId: jest.fn(async (_org: string, opts: { baseUomCode?: string }) =>
+          opts.baseUomCode === 'g' ? 'uom-g' : 'uom-pcs',
+        ),
+        ensureDefaultUnits: jest.fn(),
+      };
+      service = new InventoryCatalogService(prisma as never, uom as never);
+
+      prisma.orgCategory.count.mockResolvedValue(10);
+      prisma.orgCategory.findFirst.mockResolvedValue({
+        id: 'cat-1',
+        slug: 'raw_material',
+        isActive: true,
+      });
+      tx.product.create.mockResolvedValue({ id: 'prod-1', name: 'Jafran', sku: 'J-1' });
+      tx.productVariant.create.mockResolvedValue({
+        id: 'var-1',
+        stock: 0,
+        costPrice: null,
+      });
+      jest.spyOn(service, 'getProduct').mockResolvedValue({ id: 'prod-1' } as never);
+
+      await service.createProduct(ORG, {
+        name: 'Jafran',
+        sku: 'J-1',
+        category: 'raw_material',
+        status: 'active',
+        reorderLevel: 5,
+        variants: [
+          {
+            id: 'tmp-1',
+            label: 'Standard',
+            sku: 'J-1',
+            baseUomCode: 'g',
+            salePrice: 100,
+            stock: 0,
+          },
+        ],
+      });
+
+      expect(uom.resolveVariantBaseUomId).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({ baseUomCode: 'g' }),
+        expect.anything(),
+      );
+      expect(tx.productVariant.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ baseUomId: 'uom-g' }),
+      });
     });
   });
 

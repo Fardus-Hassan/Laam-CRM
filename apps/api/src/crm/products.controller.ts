@@ -87,6 +87,16 @@ class VariantDto {
   @Min(0)
   @Max(1_000_000)
   reorderLevel?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  baseUomId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  baseUomCode?: string;
 }
 
 class StockAdjustmentDto {
@@ -293,6 +303,8 @@ export class ProductsController {
       label: v.label,
       sku: v.sku,
       barcode: v.barcode?.trim() || undefined,
+      baseUomId: v.baseUomId,
+      baseUomCode: v.baseUomCode?.trim() || undefined,
       salePrice: v.salePrice,
       costPrice: v.costPrice,
       stock: v.stock ?? 0,

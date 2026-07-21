@@ -67,6 +67,8 @@ export const inventoryProductListItemSchema = z.object({
   stockStatus: stockStatusSchema,
   variantCount: z.number().int(),
   primaryVariantId: z.string().optional(),
+  /** Base unit of the first variant (for purchase/production defaults). */
+  primaryBaseUomCode: z.string().optional(),
   salePriceMin: z.number(),
   salePriceMax: z.number(),
   costPrice: z.number().optional(),

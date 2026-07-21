@@ -216,9 +216,11 @@ export function ProductionBatchPanel({
 
   function onPickMaterial(key: string, productId: string) {
     const product = products.find((p) => p.id === productId);
+    const unit = defaultCode(product?.primaryBaseUomCode ?? 'kg');
     patchRaw(key, {
       productId,
       name: product?.name ?? '',
+      unit,
       costPerKg: product?.costPrice != null ? String(product.costPrice) : '',
     }, 'fromRate');
   }

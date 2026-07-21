@@ -227,6 +227,7 @@ export function filterMockProducts(query: ProductListQuery): ProductListResponse
     ({ activities: _a, variants, notes: _n, description: _d, ...li }) => ({
       ...li,
       primaryVariantId: variants[0]?.id,
+      primaryBaseUomCode: variants[0]?.baseUomCode,
     }),
   );
   const total = listItems.length;
@@ -276,6 +277,8 @@ export function createMockProduct(payload: CreateProductPayload): InventoryProdu
     reorderLevel: reorder,
     stockStatus: stockStatus(stock, reorder),
     variantCount: payload.variants.length,
+    primaryVariantId: payload.variants[0]?.id,
+    primaryBaseUomCode: payload.variants[0]?.baseUomCode,
     salePriceMin: Math.min(...prices),
     salePriceMax: Math.max(...prices),
     costPrice: payload.variants[0]?.costPrice,

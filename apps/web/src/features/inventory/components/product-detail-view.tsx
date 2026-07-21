@@ -30,6 +30,7 @@ import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categor
 import { productBrandsApi } from '@/features/settings/api/product-brands-api';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
+import { useInventoryUnits } from '@/features/inventory/hooks/use-inventory-units';
 import { ProductImageField } from '@/features/inventory/components/create-product-page';
 import {
   ORDER_CARD_CLASS,
@@ -49,11 +50,12 @@ const STATUS_OPTIONS = (Object.keys(PRODUCT_STATUS_LABELS) as ProductStatus[]).m
   label: PRODUCT_STATUS_LABELS[value],
 }));
 
-function emptyVariant(skuBase: string): ProductVariant {
+function emptyVariant(skuBase: string, baseUomCode = 'pcs'): ProductVariant {
   return {
     id: `new-${Date.now()}`,
     label: 'Standard',
     sku: `${skuBase}-STD`,
+    baseUomCode,
     salePrice: 0,
     costPrice: 0,
     stock: 0,
@@ -72,6 +74,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
     uploadProductImage,
     isLoading,
   } = useProductMutations();
+  const { unitOptions, defaultCode } = useInventoryUnits();
   const categoryOptions = useOrgCategoryOptions('product');
   const [brandOptions, setBrandOptions] = React.useState<{ value: string; label: string }[]>([]);
   const [product, setProduct] = React.useState<InventoryProductDetail | null>(null);
@@ -231,6 +234,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
         ...v,
         sku: v.sku.trim().toUpperCase(),
         label: v.label.trim() || 'Standard',
+        baseUomCode: v.baseUomCode || defaultCode('pcs'),
       })),
     });
     if (pendingFile) {
@@ -586,7 +590,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                   onClick={() =>
                     setDraft((c) => ({
                       ...c,
-                      variants: [...c.variants, emptyVariant(c.sku || product.sku)],
+                      variants: [...c.variants, emptyVariant(c.sku || product.sku, defaultCode('pcs'))],
                     }))
                   }
                 >
@@ -656,6 +660,13 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         }
                       />
                     </FormField>
+                    <FormField label="Base unit">
+                      <FormSearchSelect
+                        value={variant.baseUomCode ?? defaultCode('pcs')}
+                        onChange={(code) => patchVariant(index, { baseUomCode: code })}
+                        options={unitOptions}
+                      />
+                    </FormField>
                     <div className="flex items-end">
                       <Button
                         type="button"
@@ -692,6 +703,9 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         <span className="text-muted-foreground">
                           Cost {v.costPrice ? formatCurrency(v.costPrice) : '—'}
                         </span>
+                        {v.baseUomCode ? (
+                          <span className="text-muted-foreground">Unit {v.baseUomCode}</span>
+                        ) : null}
                       </div>
                     </div>
                   ))}
@@ -704,6 +718,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         <th className="pb-2 pr-4">SKU</th>
                         <th className="pb-2 pr-4">Sale</th>
                         <th className="pb-2 pr-4">Cost</th>
+                        <th className="pb-2 pr-4">Unit</th>
                         <th className="pb-2">Stock</th>
                       </tr>
                     </thead>
@@ -716,6 +731,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                           <td className="py-2 pr-4">
                             {v.costPrice ? formatCurrency(v.costPrice) : '—'}
                           </td>
+                          <td className="py-2 pr-4 text-muted-foreground">{v.baseUomCode ?? 'pcs'}</td>
                           <td className="py-2 tabular-nums">{v.stock}</td>
                         </tr>
                       ))}
