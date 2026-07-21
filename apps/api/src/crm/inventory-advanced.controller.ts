@@ -28,6 +28,7 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import { actorFromUser } from '../common/actor.util';
 import { InventoryAdvancedService } from './inventory-advanced.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { InventoryUomService } from './inventory-uom.service';
@@ -122,7 +123,7 @@ export class InventoryAdvancedController {
   ) {}
 
   private actor(user: AuthUserPayload) {
-    return { userId: user.userId, name: user.email };
+    return actorFromUser(user);
   }
 
   @Get('units')
@@ -170,7 +171,7 @@ export class InventoryAdvancedController {
   }
 
   @Post('warehouses')
-  @RequirePermissions('inventory.edit')
+  @RequirePermissions('inventory.warehouses')
   createWarehouse(@CurrentUser() user: AuthUserPayload, @Body() body: CreateWarehouseDto) {
     this.catalog.requireOrg(user.organizationId);
     const payload: CreateWarehousePayload = {
@@ -183,7 +184,7 @@ export class InventoryAdvancedController {
   }
 
   @Patch('warehouses/:id')
-  @RequirePermissions('inventory.edit')
+  @RequirePermissions('inventory.warehouses')
   updateWarehouse(
     @CurrentUser() user: AuthUserPayload,
     @Param('id') id: string,

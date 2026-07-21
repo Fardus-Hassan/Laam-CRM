@@ -7,6 +7,7 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import { actorFromUser } from '../common/actor.util';
 import { InventoryCatalogService } from './inventory-catalog.service';
 
 class RecycleListQueryDto {
@@ -24,7 +25,7 @@ export class RecycleBinController {
   constructor(private readonly catalog: InventoryCatalogService) {}
 
   private actor(user: AuthUserPayload) {
-    return { userId: user.userId, name: user.email };
+    return actorFromUser(user);
   }
 
   @Get()

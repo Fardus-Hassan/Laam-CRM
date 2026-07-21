@@ -60,7 +60,7 @@ function orderMatchesSearch(order: OrderDetail, rawSearch: string): boolean {
   return haystack.includes(search);
 }
 
-const AGENTS = ['Sakib Ahmed', 'Mitu Rahman', 'Imran Hossain', 'Tania Sultana', 'Arif Mahmud'];
+const AGENTS = ['Sakib Ahmed (sakib@laamcrm.com)', 'Mitu Rahman (mitu@laamcrm.com)', 'Imran Hossain (imran@laamcrm.com)', 'Tania Sultana (tania@laamcrm.com)', 'Arif Mahmud (arif@laamcrm.com)'];
 const AREAS = ['Gulshan', 'Banani', 'Dhanmondi', 'Mirpur', 'Uttara', 'Mohammadpur', 'Bashundhara'];
 
 function buildOrder(

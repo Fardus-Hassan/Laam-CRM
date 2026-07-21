@@ -37,6 +37,7 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import { actorFromUser } from '../common/actor.util';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { ObjectStorageService } from './object-storage.service';
 
@@ -294,7 +295,7 @@ export class ProductsController {
   ) {}
 
   private actor(user: AuthUserPayload) {
-    return { userId: user.userId, name: user.email };
+    return actorFromUser(user);
   }
 
   private mapVariants(variants: VariantDto[]) {

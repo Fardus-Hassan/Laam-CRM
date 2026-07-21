@@ -32,6 +32,7 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import { actorFromUser } from '../common/actor.util';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { InventoryOperationsService } from './inventory-operations.service';
 
@@ -456,7 +457,7 @@ export class InventoryOperationsController {
   ) {}
 
   private actor(user: AuthUserPayload) {
-    return { userId: user.userId, name: user.email };
+    return actorFromUser(user);
   }
 
   @Get('suppliers')
@@ -563,7 +564,7 @@ export class InventoryOperationsController {
   }
 
   @Post('purchases/:id/receive')
-  @RequirePermissions('inventory.purchase', 'inventory.adjust')
+  @RequirePermissions('inventory.purchase')
   receivePurchase(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
     this.catalog.requireOrg(user.organizationId);
     return this.operations.receivePurchase(user.organizationId!, id, this.actor(user));
@@ -628,7 +629,7 @@ export class InventoryOperationsController {
   }
 
   @Post('purchase-returns/:id/complete')
-  @RequirePermissions('inventory.purchase', 'inventory.adjust')
+  @RequirePermissions('inventory.purchase')
   async completePurchaseReturn(
     @CurrentUser() user: AuthUserPayload,
     @Param('id') id: string,
@@ -650,7 +651,7 @@ export class InventoryOperationsController {
   }
 
   @Post('mixer')
-  @RequirePermissions('inventory.adjust')
+  @RequirePermissions('inventory.mixer')
   createMixerRecipe(
     @CurrentUser() user: AuthUserPayload,
     @Body() body: CreateMixerRecipeDto,
@@ -667,7 +668,7 @@ export class InventoryOperationsController {
   }
 
   @Patch('mixer/:id')
-  @RequirePermissions('inventory.adjust')
+  @RequirePermissions('inventory.mixer')
   updateMixerRecipe(
     @CurrentUser() user: AuthUserPayload,
     @Param('id') id: string,
@@ -685,7 +686,7 @@ export class InventoryOperationsController {
   }
 
   @Delete('mixer/:id')
-  @RequirePermissions('inventory.adjust')
+  @RequirePermissions('inventory.mixer')
   async deleteMixerRecipe(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
     this.catalog.requireOrg(user.organizationId);
     await this.operations.deleteMixerRecipe(user.organizationId!, id);
@@ -700,7 +701,7 @@ export class InventoryOperationsController {
   }
 
   @Post('mixer/preview')
-  @RequirePermissions('inventory.view', 'inventory.adjust')
+  @RequirePermissions('inventory.mixer')
   previewProduction(
     @CurrentUser() user: AuthUserPayload,
     @Body() body: RunProductionDto,
@@ -710,7 +711,7 @@ export class InventoryOperationsController {
   }
 
   @Post('mixer/run')
-  @RequirePermissions('inventory.adjust')
+  @RequirePermissions('inventory.mixer')
   runProduction(@CurrentUser() user: AuthUserPayload, @Body() body: RunProductionDto) {
     this.catalog.requireOrg(user.organizationId);
     return this.operations.runProduction(user.organizationId!, body, this.actor(user));

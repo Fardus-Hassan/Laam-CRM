@@ -5,6 +5,7 @@ import type { InventoryProductDetail, InventoryProductListItem, Warehouse } from
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -196,10 +197,12 @@ export function WarehousesPage() {
               Storage locations — move stock between them with a full audit trail.
             </p>
           </div>
-          <Button type="button" size="sm" className="shrink-0 self-start" onClick={openCreate}>
-            <Plus className="size-3.5" />
-            Add warehouse
-          </Button>
+          <Can permission="inventory.warehouses">
+            <Button type="button" size="sm" className="shrink-0 self-start" onClick={openCreate}>
+              <Plus className="size-3.5" />
+              Add warehouse
+            </Button>
+          </Can>
         </div>
 
         <InventoryResponsiveList
@@ -221,13 +224,16 @@ export function WarehousesPage() {
               <Badge key="st" variant={w.isActive ? 'default' : 'secondary'}>
                 {w.isActive ? 'Active' : 'Inactive'}
               </Badge>,
-              <Button key="e" type="button" size="sm" variant="outline" onClick={() => openEdit(w)}>
-                Edit
-              </Button>,
+              <Can key="e" permission="inventory.warehouses">
+                <Button type="button" size="sm" variant="outline" onClick={() => openEdit(w)}>
+                  Edit
+                </Button>
+              </Can>,
             ],
           }))}
         />
 
+        <Can permission="inventory.adjust">
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0')}>
           <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
             <CardTitle className="text-sm">Transfer stock</CardTitle>
@@ -290,6 +296,7 @@ export function WarehousesPage() {
             </div>
           </CardContent>
         </Card>
+        </Can>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="sm:max-w-lg">

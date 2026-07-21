@@ -788,7 +788,9 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                     </div>
                     <div className="text-right text-xs text-muted-foreground">
                       <p>{new Date(movement.createdAt).toLocaleString()}</p>
-                      {movement.actorName ? <p>{movement.actorName}</p> : null}
+                      {movement.actorName ? (
+                        <p className="max-w-[220px] break-words">{movement.actorName}</p>
+                      ) : null}
                     </div>
                   </li>
                 ))}
@@ -816,7 +818,9 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                       <p className="text-xs text-muted-foreground">{activity.description}</p>
                     ) : null}
                     {activity.actorName ? (
-                      <p className="text-xs text-muted-foreground">By {activity.actorName}</p>
+                      <p className="max-w-full break-words text-xs text-muted-foreground">
+                        By {activity.actorName}
+                      </p>
                     ) : null}
                   </li>
                 ))}

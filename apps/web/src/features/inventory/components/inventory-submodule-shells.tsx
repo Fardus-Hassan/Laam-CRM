@@ -15,6 +15,7 @@ import type {
 import { Plus, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -78,9 +79,11 @@ function InventoryPageLayout({
             <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
               {actions}
               {onExport ? (
-                <Button type="button" size="sm" variant="outline" onClick={onExport}>
-                  Export CSV
-                </Button>
+                <Can permission="inventory.export">
+                  <Button type="button" size="sm" variant="outline" onClick={onExport}>
+                    Export CSV
+                  </Button>
+                </Can>
               ) : null}
             </div>
           ) : null}
@@ -226,10 +229,12 @@ export function SuppliersListShell() {
       title="Suppliers"
       description="Vendors for honey, dates, packaging, and raw materials."
       actions={
-        <Button type="button" size="sm" onClick={openCreate}>
-          <Plus className="size-3.5" />
-          Add supplier
-        </Button>
+        <Can permission="inventory.purchase">
+          <Button type="button" size="sm" onClick={openCreate}>
+            <Plus className="size-3.5" />
+            Add supplier
+          </Button>
+        </Can>
       }
       onExport={() =>
         downloadCsv(
@@ -267,15 +272,17 @@ export function SuppliersListShell() {
             s.productCount,
             <Badge key="st" variant={s.status === 'active' ? 'default' : 'secondary'}>{s.status}</Badge>,
             <div key="actions" className="flex flex-wrap gap-1">
-              <Button type="button" size="sm" variant="outline" onClick={() => openEdit(s)}>
-                Edit
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => void toggleStatus(s)}>
-                {s.status === 'active' ? 'Deactivate' : 'Activate'}
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => void handleDelete(s)}>
-                Delete
-              </Button>
+              <Can permission="inventory.purchase">
+                <Button type="button" size="sm" variant="outline" onClick={() => openEdit(s)}>
+                  Edit
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => void toggleStatus(s)}>
+                  {s.status === 'active' ? 'Deactivate' : 'Activate'}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => void handleDelete(s)}>
+                  Delete
+                </Button>
+              </Can>
             </div>,
           ],
           mobile: (
@@ -295,14 +302,16 @@ export function SuppliersListShell() {
                   {s.balance < 0 ? ' due' : s.balance > 0 ? ' advance' : ''}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => openEdit(s)}>
-                  Edit
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => void toggleStatus(s)}>
-                  {s.status === 'active' ? 'Deactivate' : 'Activate'}
-                </Button>
-              </div>
+              <Can permission="inventory.purchase">
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={() => openEdit(s)}>
+                    Edit
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => void toggleStatus(s)}>
+                    {s.status === 'active' ? 'Deactivate' : 'Activate'}
+                  </Button>
+                </div>
+              </Can>
             </div>
           ),
         }))}
@@ -1175,10 +1184,12 @@ export function MixerListShell() {
       title="Mixer & production"
       description="Record raw materials in any unit (kg, g, L, pcs…) and how many of each variant you made — full hisab kept."
       actions={
-        <Button type="button" size="sm" onClick={openCreate}>
-          <Plus className="size-3.5" />
-          New recipe
-        </Button>
+        <Can permission="inventory.mixer">
+          <Button type="button" size="sm" onClick={openCreate}>
+            <Plus className="size-3.5" />
+            New recipe
+          </Button>
+        </Can>
       }
     >
       <ProductionBatchPanel
@@ -1240,12 +1251,14 @@ export function MixerListShell() {
                     <Button type="button" size="sm" className="h-7" variant="outline" onClick={() => applyRecipe(recipe)}>
                       Use as guide
                     </Button>
-                    <Button type="button" size="sm" className="h-7" variant="ghost" onClick={() => openEdit(recipe)}>
-                      Edit
-                    </Button>
-                    <Button type="button" size="sm" className="h-7" variant="ghost" onClick={() => void deleteRecipe(recipe)}>
-                      Delete
-                    </Button>
+                    <Can permission="inventory.mixer">
+                      <Button type="button" size="sm" className="h-7" variant="ghost" onClick={() => openEdit(recipe)}>
+                        Edit
+                      </Button>
+                      <Button type="button" size="sm" className="h-7" variant="ghost" onClick={() => void deleteRecipe(recipe)}>
+                        Delete
+                      </Button>
+                    </Can>
                   </div>
                 </CardContent>
               </Card>

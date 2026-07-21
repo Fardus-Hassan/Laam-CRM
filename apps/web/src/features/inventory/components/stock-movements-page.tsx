@@ -5,6 +5,7 @@ import type { StockMovement, StockMovementListQuery, Warehouse } from '@laam/typ
 import { RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -150,9 +151,11 @@ export function StockMovementsPage() {
               <RefreshCw className="size-3.5" />
               Refresh
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={handleExport}>
-              Export CSV
-            </Button>
+            <Can permission="inventory.export">
+              <Button type="button" size="sm" variant="outline" onClick={handleExport}>
+                Export CSV
+              </Button>
+            </Can>
           </div>
         </div>
 

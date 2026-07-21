@@ -11,6 +11,7 @@ import type {
 import { Calculator, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -604,14 +605,16 @@ export function ProductionBatchPanel({
           </p>
         ) : null}
 
-        <Button
-          type="button"
-          className="w-full sm:w-auto"
-          disabled={running || !preview?.ok}
-          onClick={() => void handleRun()}
-        >
-          {running ? 'Saving…' : 'Save production hisab'}
-        </Button>
+        <Can permission="inventory.mixer">
+          <Button
+            type="button"
+            className="w-full sm:w-auto"
+            disabled={running || !preview?.ok}
+            onClick={() => void handleRun()}
+          >
+            {running ? 'Saving…' : 'Save production hisab'}
+          </Button>
+        </Can>
       </CardContent>
     </Card>
   );

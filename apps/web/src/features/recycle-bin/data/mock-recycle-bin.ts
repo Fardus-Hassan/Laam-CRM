@@ -5,11 +5,11 @@ import { createMockOrder } from '@/features/orders/data/mock-orders';
 import { createMockProduct } from '@/features/inventory/data/mock-inventory';
 
 let items: RecycleBinItem[] = [
-  { id: 'rb-1', entityType: 'order', entityId: 'ord-old-1', title: 'MH-8701', subtitle: 'Fatima Begum · 01712345678', deletedBy: 'Sakib Ahmed', deletedAt: '2026-07-03T10:00:00Z', purgeAt: '2026-08-02T10:00:00Z' },
-  { id: 'rb-2', entityType: 'customer', entityId: 'cust-old-1', title: 'Test Buyer', subtitle: '01700001111', deletedBy: 'Laam Org Admin', deletedAt: '2026-07-02T14:00:00Z', purgeAt: '2026-08-01T14:00:00Z' },
-  { id: 'rb-3', entityType: 'product', entityId: 'prod-old-1', title: 'Old Modhu Jar', subtitle: 'SKU: OLD-MDH', deletedBy: 'Imran Hossain', deletedAt: '2026-07-01T09:00:00Z', purgeAt: '2026-07-31T09:00:00Z' },
-  { id: 'rb-4', entityType: 'lead', entityId: 'lead-old-1', title: 'Facebook lead — Mirpur', subtitle: '01811223344', deletedBy: 'Mitu Rahman', deletedAt: '2026-06-30T16:00:00Z', purgeAt: '2026-07-30T16:00:00Z' },
-  { id: 'rb-5', entityType: 'contact', entityId: 'con-old-1', title: 'Supplier draft', subtitle: 'supplier@test.com', deletedBy: 'Laam Org Admin', deletedAt: '2026-06-28T11:00:00Z', purgeAt: '2026-07-28T11:00:00Z' },
+  { id: 'rb-1', entityType: 'order', entityId: 'ord-old-1', title: 'MH-8701', subtitle: 'Fatima Begum · 01712345678', deletedBy: 'Sakib Ahmed (sakib@laamcrm.com)', deletedAt: '2026-07-03T10:00:00Z', purgeAt: '2026-08-02T10:00:00Z' },
+  { id: 'rb-2', entityType: 'customer', entityId: 'cust-old-1', title: 'Test Buyer', subtitle: '01700001111', deletedBy: 'Laam Org Admin (admin@laamcrm.com)', deletedAt: '2026-07-02T14:00:00Z', purgeAt: '2026-08-01T14:00:00Z' },
+  { id: 'rb-3', entityType: 'product', entityId: 'prod-old-1', title: 'Old Modhu Jar', subtitle: 'SKU: OLD-MDH', deletedBy: 'Imran Hossain (imran@laamcrm.com)', deletedAt: '2026-07-01T09:00:00Z', purgeAt: '2026-07-31T09:00:00Z' },
+  { id: 'rb-4', entityType: 'lead', entityId: 'lead-old-1', title: 'Facebook lead — Mirpur', subtitle: '01811223344', deletedBy: 'Mitu Rahman (mitu@laamcrm.com)', deletedAt: '2026-06-30T16:00:00Z', purgeAt: '2026-07-30T16:00:00Z' },
+  { id: 'rb-5', entityType: 'contact', entityId: 'con-old-1', title: 'Supplier draft', subtitle: 'supplier@test.com', deletedBy: 'Laam Org Admin (admin@laamcrm.com)', deletedAt: '2026-06-28T11:00:00Z', purgeAt: '2026-07-28T11:00:00Z' },
 ];
 
 export function listRecycleItems(query: RecycleListQuery = {}): RecycleBinItem[] {

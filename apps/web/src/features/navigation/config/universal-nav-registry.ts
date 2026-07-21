@@ -16,7 +16,7 @@ import type { UniversalNavGroup } from '@/features/navigation/types/universal-na
 import { getNavBadgeCounts } from '@/features/navigation/api/nav-badges-api';
 import { buildOrdersNav } from '@/features/orders/config/build-orders-nav';
 
-const pv = (p: Permission) => [p] as Permission[];
+const pv = (...perms: Permission[]) => perms;
 const acc = pv('accounting.view');
 
 /** Full app navigation — filtered by effective user permissions. Badges via navBadgesApi. */
@@ -146,7 +146,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               id: 'inv-warehouses',
               title: 'Warehouses',
               url: '/dashboard/inventory/warehouses',
-              permissions: pv('inventory.view'),
+              permissions: pv('inventory.view', 'inventory.warehouses'),
             },
             {
               id: 'inv-reconciliation',
@@ -183,7 +183,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               id: 'inv-returns',
               title: 'Purchase returns',
               url: '/dashboard/inventory/purchase-returns',
-              permissions: pv('inventory.view'),
+              permissions: pv('inventory.purchase'),
             },
             {
               id: 'inv-adjustment',
@@ -195,7 +195,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               id: 'inv-mixer',
               title: 'Mixer / production',
               url: '/dashboard/inventory/mixer',
-              permissions: pv('inventory.view'),
+              permissions: pv('inventory.view', 'inventory.mixer'),
             },
           ],
         },

@@ -154,7 +154,7 @@ function buildProduct(index: number): InventoryProductDetail {
         id: `${base.id}-a1`,
         label: 'Product created',
         timestamp: createdAt,
-        actorName: 'Sakib Ahmed',
+        actorName: 'Sakib Ahmed (sakib@laamcrm.com)',
       },
       ...(totalStock <= reorder
         ? [
@@ -290,7 +290,7 @@ export function createMockProduct(payload: CreateProductPayload): InventoryProdu
     variants: payload.variants,
     notes: payload.notes,
     activities: [
-      { id: `${id}-a1`, label: 'Product created', timestamp: now, actorName: 'Sakib Ahmed' },
+      { id: `${id}-a1`, label: 'Product created', timestamp: now, actorName: 'Sakib Ahmed (sakib@laamcrm.com)' },
     ],
   };
   MOCK_INVENTORY_PRODUCTS.unshift(product);
@@ -361,7 +361,7 @@ export function updateMockProduct(id: string, patch: UpdateProductPayload): Inve
               label: `Stock ${patch.stockAdjustment.delta > 0 ? '+' : ''}${patch.stockAdjustment.delta}`,
               description: patch.stockAdjustment.reason,
               timestamp: now,
-              actorName: 'Sakib Ahmed',
+              actorName: 'Sakib Ahmed (sakib@laamcrm.com)',
             },
           ]
         : []),
@@ -735,7 +735,11 @@ export const MOCK_ADJUSTMENTS: StockAdjustmentListItem[] = Array.from({ length: 
     newStock: Math.max(0, prev + delta),
     reason: (['damage', 'count_correction', 'gift_sample', 'expiry', 'return_in'] as const)[i % 5],
     note: i % 3 === 0 ? 'Found during monthly count' : undefined,
-    adjustedBy: ['Sakib Ahmed', 'Fatema Akter', 'Karim Hassan'][i % 3],
+    adjustedBy: [
+      'Sakib Ahmed (sakib@laamcrm.com)',
+      'Fatema Akter (fatema@laamcrm.com)',
+      'Karim Hassan (karim@laamcrm.com)',
+    ][i % 3],
     adjustedAt: `2026-06-${String(1 + (i % 28)).padStart(2, '0')}T${String(9 + (i % 8)).padStart(2, '0')}:00:00.000Z`,
   };
 });
@@ -757,7 +761,7 @@ export function createMockAdjustment(payload: CreateAdjustmentPayload): StockAdj
     newStock: Math.max(0, prev + payload.delta),
     reason: payload.reason,
     note: payload.note,
-    adjustedBy: 'Sakib Ahmed',
+    adjustedBy: 'Sakib Ahmed (sakib@laamcrm.com)',
     adjustedAt: new Date().toISOString(),
   };
   MOCK_ADJUSTMENTS.unshift(adj);
@@ -1349,7 +1353,7 @@ export function transferMockStock(payload: TransferStockPayload): void {
     variantSku: variant.sku,
     unitCost: variant.costPrice,
     note: payload.note,
-    actorName: 'Sakib Ahmed',
+    actorName: 'Sakib Ahmed (sakib@laamcrm.com)',
     createdAt: now,
   };
   MOCK_ORG_MOVEMENTS.unshift(

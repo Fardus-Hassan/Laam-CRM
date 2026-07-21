@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { PageShell } from '@/components/layout/page-shell';
@@ -161,10 +162,12 @@ export function InventoryReportsDashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={exportCsv} disabled={!data}>
-              <Download className="size-3.5" />
-              Export CSV
-            </Button>
+            <Can permission="inventory.export">
+              <Button type="button" size="sm" variant="outline" onClick={exportCsv} disabled={!data}>
+                <Download className="size-3.5" />
+                Export CSV
+              </Button>
+            </Can>
             <Button type="button" size="sm" variant="outline" onClick={() => load()} disabled={loading}>
               <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
               Refresh

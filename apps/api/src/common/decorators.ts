@@ -6,6 +6,8 @@ import { resolveTenantSlugFromRequest } from './tenant.util';
 export type AuthUserPayload = {
   userId: string;
   email: string;
+  /** Display name from User.name */
+  name: string;
   systemRole: string;
   organizationId: string | null;
 };

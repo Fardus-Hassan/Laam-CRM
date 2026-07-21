@@ -25,6 +25,7 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import { actorFromUser } from '../common/actor.util';
 import { InventoryCatalogService } from './inventory-catalog.service';
 
 class UpsertCategoryDto {
@@ -112,10 +113,7 @@ export class OrgCategoriesController {
   @RequirePermissions('settings.manage', 'inventory.delete')
   async remove(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
     this.catalog.requireOrg(user.organizationId);
-    await this.catalog.deleteCategory(user.organizationId!, id, {
-      userId: user.userId,
-      name: user.email,
-    });
+    await this.catalog.deleteCategory(user.organizationId!, id, actorFromUser(user));
     return { ok: true };
   }
 }

@@ -14,6 +14,7 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import { actorFromUser } from '../common/actor.util';
 import { InventoryCatalogService } from './inventory-catalog.service';
 
 class CreateBrandDto {
@@ -86,10 +87,7 @@ export class ProductBrandsController {
   @RequirePermissions('inventory.delete')
   async remove(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
     this.catalog.requireOrg(user.organizationId);
-    await this.catalog.deleteBrand(user.organizationId!, id, {
-      userId: user.userId,
-      name: user.email,
-    });
+    await this.catalog.deleteBrand(user.organizationId!, id, actorFromUser(user));
     return { ok: true };
   }
 }

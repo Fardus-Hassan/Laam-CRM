@@ -14,11 +14,11 @@ import { LEAD_PIPELINE_TABS } from '@/features/leads/config/lead-status-config';
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
 
 export const LEAD_AGENTS = [
-  'Sakib Ahmed',
-  'Mitu Rahman',
-  'Imran Hossain',
-  'Tania Sultana',
-  'Arif Mahmud',
+  'Sakib Ahmed (sakib@laamcrm.com)',
+  'Mitu Rahman (mitu@laamcrm.com)',
+  'Imran Hossain (imran@laamcrm.com)',
+  'Tania Sultana (tania@laamcrm.com)',
+  'Arif Mahmud (arif@laamcrm.com)',
 ];
 
 const AREAS = ['Gulshan', 'Banani', 'Dhanmondi', 'Mirpur', 'Uttara', 'Mohammadpur', 'Bashundhara'];

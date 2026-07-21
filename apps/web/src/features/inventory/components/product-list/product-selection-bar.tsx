@@ -3,6 +3,7 @@
 import type { InventoryProductListItem } from '@laam/types';
 import { X } from 'lucide-react';
 
+import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { ProductBulkActions } from '@/features/inventory/components/product-list/product-bulk-actions';
 import { cn } from '@/lib/utils';
@@ -41,12 +42,14 @@ export function ProductSelectionBar({
         </Button>
       </div>
       <div className="mt-2.5">
-        <ProductBulkActions
-          selectedCount={selectedCount}
-          selectedProductIds={selectedProductIds}
-          selectedRows={selectedRows}
-          onSuccess={onSuccess}
-        />
+        <Can permission="inventory.edit">
+          <ProductBulkActions
+            selectedCount={selectedCount}
+            selectedProductIds={selectedProductIds}
+            selectedRows={selectedRows}
+            onSuccess={onSuccess}
+          />
+        </Can>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs">
         <span className="font-medium text-muted-foreground">Selection summary</span>
