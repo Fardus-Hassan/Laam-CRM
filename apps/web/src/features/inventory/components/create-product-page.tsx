@@ -356,9 +356,15 @@ export function CreateProductPage() {
         reorderLevel: draft.reorderLevel,
         notes: draft.notes.trim() || undefined,
         variants: draft.variants.map((v) => ({
-          ...v,
+          id: v.id,
+          label: v.label.trim() || 'Standard',
           sku: v.sku.trim().toUpperCase(),
+          barcode: v.barcode,
           baseUomCode: v.baseUomCode || defaultCode('pcs'),
+          salePrice: v.salePrice,
+          costPrice: v.costPrice,
+          stock: v.stock,
+          reorderLevel: v.reorderLevel,
         })),
       });
       if (pendingFile) {

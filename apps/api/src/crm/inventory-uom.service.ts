@@ -120,10 +120,8 @@ export class InventoryUomService {
     tx?: Prisma.TransactionClient,
   ): Promise<string> {
     await this.ensureDefaultUnits(organizationId, tx);
-    if (opts.baseUomId) {
-      const byId = await this.resolveUnit(organizationId, { uomId: opts.baseUomId }, tx);
-      return byId.id;
-    }
+    // Prefer code when both are sent — product edit UI keeps the old baseUomId
+    // while the dropdown updates baseUomCode; code reflects current user intent.
     if (opts.baseUomCode?.trim()) {
       const byCode = await this.resolveUnit(
         organizationId,
@@ -131,6 +129,10 @@ export class InventoryUomService {
         tx,
       );
       return byCode.id;
+    }
+    if (opts.baseUomId) {
+      const byId = await this.resolveUnit(organizationId, { uomId: opts.baseUomId }, tx);
+      return byId.id;
     }
     const pcs = await this.resolveUnit(organizationId, { uomCode: 'pcs' }, tx);
     return pcs.id;

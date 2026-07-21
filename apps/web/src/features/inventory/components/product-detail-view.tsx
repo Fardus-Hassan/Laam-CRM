@@ -231,10 +231,16 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
       reorderLevel: draft.reorderLevel,
       imageUrl: draft.imageUrl.startsWith('data:') ? undefined : draft.imageUrl || undefined,
       variants: draft.variants.map((v) => ({
-        ...v,
-        sku: v.sku.trim().toUpperCase(),
+        id: v.id,
         label: v.label.trim() || 'Standard',
+        sku: v.sku.trim().toUpperCase(),
+        barcode: v.barcode,
+        // Send code only — stale baseUomId would otherwise keep the old unit.
         baseUomCode: v.baseUomCode || defaultCode('pcs'),
+        salePrice: v.salePrice,
+        costPrice: v.costPrice,
+        stock: v.stock,
+        reorderLevel: v.reorderLevel,
       })),
     });
     if (pendingFile) {
@@ -604,9 +610,9 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
             {editing ? (
               <div className="space-y-3 p-4">
                 {draft.variants.map((variant, index) => (
+                  <div key={variant.id} className="space-y-1.5">
                   <div
-                    key={variant.id}
-                    className="grid gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-2 lg:grid-cols-7"
+                    className="grid gap-2 rounded-lg border border-border/70 p-3 sm:grid-cols-2 lg:grid-cols-4"
                   >
                     <FormField label="Label">
                       <FormInput
@@ -630,6 +636,20 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         }
                       />
                     </FormField>
+                    <FormField label="Base unit">
+                      <FormSearchSelect
+                        value={variant.baseUomCode ?? defaultCode('pcs')}
+                        onChange={(code) =>
+                          patchVariant(index, {
+                            baseUomCode: code,
+                            baseUomId: undefined,
+                            baseUomName: undefined,
+                          })
+                        }
+                        options={unitOptions}
+                        searchable
+                      />
+                    </FormField>
                     <FormField label="Sale">
                       <FormInput
                         type="number"
@@ -640,7 +660,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         }
                       />
                     </FormField>
-                    <FormField label="Cost">
+                    <FormField label="Cost (per unit)">
                       <FormInput
                         type="number"
                         min={0}
@@ -658,13 +678,6 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         onChange={(e) =>
                           patchVariant(index, { stock: Number(e.target.value) || 0 })
                         }
-                      />
-                    </FormField>
-                    <FormField label="Base unit">
-                      <FormSearchSelect
-                        value={variant.baseUomCode ?? defaultCode('pcs')}
-                        onChange={(code) => patchVariant(index, { baseUomCode: code })}
-                        options={unitOptions}
                       />
                     </FormField>
                     <div className="flex items-end">
@@ -685,6 +698,10 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         Remove
                       </Button>
                     </div>
+                  </div>
+                  <p className="px-1 text-[11px] text-muted-foreground">
+                    Cost is per 1 base unit. Mixer/production may update it from batch cost.
+                  </p>
                   </div>
                 ))}
               </div>
