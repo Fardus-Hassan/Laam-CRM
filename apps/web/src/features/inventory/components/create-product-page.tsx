@@ -30,8 +30,9 @@ import {
 } from '@/features/inventory/config/product-filters';
 import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import { productBrandsApi } from '@/features/settings/api/product-brands-api';
-import { MOCK_SUPPLIERS } from '@/features/inventory/data/mock-inventory';
+import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
+import { useInventoryUnits } from '@/features/inventory/hooks/use-inventory-units';
 import { ORDER_CARD_CLASS } from '@/features/orders/components/create-order/section-layout';
 import { cn } from '@/lib/utils';
 import { ApiError } from '@/lib/api/errors';
@@ -48,6 +49,7 @@ function emptyVariant(sku: string): ProductVariant {
     id: `new-${Date.now()}`,
     label: 'Standard',
     sku: `${sku}-STD`,
+    baseUomCode: 'pcs',
     salePrice: 0,
     costPrice: 0,
     stock: 0,
@@ -255,8 +257,12 @@ export function ProductImageField({
 export function CreateProductPage() {
   const router = useRouter();
   const { createProduct, uploadProductImage, isLoading } = useProductMutations();
+  const { unitOptions, defaultCode } = useInventoryUnits();
   const categoryOptions = useOrgCategoryOptions('product');
   const [brandOptions, setBrandOptions] = React.useState<{ value: string; label: string }[]>([]);
+  const [supplierOptions, setSupplierOptions] = React.useState<{ value: string; label: string }[]>(
+    [],
+  );
   const [pendingFile, setPendingFile] = React.useState<File | null>(null);
   const [skuError, setSkuError] = React.useState<string | undefined>();
   const [draft, setDraft] = React.useState({
@@ -281,6 +287,21 @@ export function CreateProductPage() {
           .map((b) => ({ value: b.id, label: b.name })),
       );
     });
+  }, []);
+
+  React.useEffect(() => {
+    void inventoryApi
+      .listSuppliers()
+      .then((res) => {
+        setSupplierOptions(
+          res.items
+            .filter((s) => s.status === 'active')
+            .map((s) => ({ value: s.name, label: s.name })),
+        );
+      })
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : 'Could not load suppliers');
+      });
   }, []);
 
   React.useEffect(() => {
@@ -337,6 +358,7 @@ export function CreateProductPage() {
         variants: draft.variants.map((v) => ({
           ...v,
           sku: v.sku.trim().toUpperCase(),
+          baseUomCode: v.baseUomCode || defaultCode('pcs'),
         })),
       });
       if (pendingFile) {
@@ -445,9 +467,19 @@ export function CreateProductPage() {
                   <FormSearchSelect
                     value={draft.supplierName}
                     onChange={(v) => patch({ supplierName: v })}
-                    options={MOCK_SUPPLIERS.map((s) => ({ value: s.name, label: s.name }))}
-                    placeholder="Select supplier…"
+                    options={supplierOptions}
+                    placeholder={
+                      supplierOptions.length ? 'Select supplier…' : 'No active suppliers yet'
+                    }
                   />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    <Link
+                      href="/dashboard/inventory/suppliers"
+                      className="font-medium text-primary hover:underline"
+                    >
+                      Manage suppliers
+                    </Link>
+                  </p>
                 </FormField>
               </div>
 
@@ -561,6 +593,15 @@ export function CreateProductPage() {
                           updateVariant(index, { barcode: e.target.value || undefined })
                         }
                         placeholder="EAN / UPC (optional)"
+                      />
+                    </FormField>
+                    <FormField label="Base unit">
+                      <FormSearchSelect
+                        value={variant.baseUomCode ?? defaultCode('pcs')}
+                        onChange={(code) => updateVariant(index, { baseUomCode: code })}
+                        options={unitOptions}
+                        placeholder="pcs, kg, L…"
+                        searchable
                       />
                     </FormField>
                     <FormField label="Sale price (৳)" required>

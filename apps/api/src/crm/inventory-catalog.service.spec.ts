@@ -91,7 +91,11 @@ describe('InventoryCatalogService', () => {
 
   beforeEach(() => {
     ({ prisma, tx } = createPrismaMock());
-    service = new InventoryCatalogService(prisma as never);
+    const uom = {
+      resolveVariantBaseUomId: jest.fn(async () => 'uom-pcs'),
+      ensureDefaultUnits: jest.fn(),
+    };
+    service = new InventoryCatalogService(prisma as never, uom as never);
   });
 
   describe('requireOrg', () => {

@@ -14,6 +14,7 @@ import { InventoryOperationsController } from './inventory-operations.controller
 import { InventoryOperationsService } from './inventory-operations.service';
 import { InventoryReportsController } from './inventory-reports.controller';
 import { InventoryReportsService } from './inventory-reports.service';
+import { InventoryUomService } from './inventory-uom.service';
 import { LeadsController } from './leads.controller';
 import { NotificationsController } from './notifications.controller';
 import { ObjectStorageService } from './object-storage.service';
@@ -53,8 +54,9 @@ import { RbacService } from './rbac.service';
     InventoryOperationsService,
     InventoryReportsService,
     InventoryAdvancedService,
+    InventoryUomService,
     ObjectStorageService,
   ],
-  exports: [RbacService, BrandingService, InventoryCatalogService, ObjectStorageService],
+  exports: [RbacService, BrandingService, InventoryCatalogService, InventoryUomService, ObjectStorageService],
 })
 export class CrmModule {}

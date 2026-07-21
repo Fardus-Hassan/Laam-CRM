@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
+import { useInventoryUnits } from '@/features/inventory/hooks/use-inventory-units';
 import { PURCHASE_PAYMENT_LABELS } from '@/features/inventory/config/product-filters';
 import {
   ORDER_CARD_CLASS,
@@ -37,16 +38,18 @@ type LineDraft = {
   productId: string;
   variantId: string;
   quantity: string;
+  uomCode: string;
   unitCost: string;
   variants: InventoryProductDetail['variants'];
 };
 
-function emptyLine(): LineDraft {
+function emptyLine(defaultUom = 'pcs'): LineDraft {
   return {
     key: `line-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     productId: '',
     variantId: '',
     quantity: '1',
+    uomCode: defaultUom,
     unitCost: '',
     variants: [],
   };
@@ -58,6 +61,7 @@ function todayIso() {
 
 export function CreatePurchasePage() {
   const router = useRouter();
+  const { unitOptions, defaultCode } = useInventoryUnits();
   const [suppliers, setSuppliers] = React.useState<SupplierListItem[]>([]);
   const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
   const [supplierId, setSupplierId] = React.useState('');
@@ -113,6 +117,7 @@ export function CreatePurchasePage() {
               productId,
               variants,
               variantId: first?.id ?? '',
+              uomCode: defaultCode(first?.baseUomCode),
               unitCost: first ? String(first.costPrice) : '',
             }
           : row,
@@ -141,12 +146,13 @@ export function CreatePurchasePage() {
         variantId: line.variantId,
         quantity: Number(line.quantity),
         unitCost: Number(line.unitCost),
+        uomCode: line.uomCode || defaultCode('pcs'),
       }))
       .filter(
         (line) =>
           line.productId &&
           line.variantId &&
-          Number.isInteger(line.quantity) &&
+          Number.isFinite(line.quantity) &&
           line.quantity > 0 &&
           Number.isFinite(line.unitCost) &&
           line.unitCost >= 0,
@@ -246,7 +252,7 @@ export function CreatePurchasePage() {
           <Card className={cn(ORDER_CARD_CLASS, 'min-w-0')}>
             <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}>
               <CardTitle className="text-sm">Lines</CardTitle>
-              <Button type="button" size="sm" variant="outline" onClick={() => setLines((rows) => [...rows, emptyLine()])}>
+              <Button type="button" size="sm" variant="outline" onClick={() => setLines((rows) => [...rows, emptyLine(defaultCode('pcs'))])}>
                 <Plus className="size-3.5" />
                 Add line
               </Button>
@@ -277,6 +283,7 @@ export function CreatePurchasePage() {
                           const variant = line.variants.find((item) => item.id === v);
                           patchLine(line.key, {
                             variantId: v,
+                            uomCode: defaultCode(variant?.baseUomCode),
                             unitCost: variant ? String(variant.costPrice) : line.unitCost,
                           });
                         }}
@@ -288,10 +295,18 @@ export function CreatePurchasePage() {
                     <FormField label="Qty" className="lg:col-span-2" required>
                       <FormInput
                         type="number"
-                        min={1}
-                        step={1}
+                        min={0.000001}
+                        step="any"
                         value={line.quantity}
                         onChange={(e) => patchLine(line.key, { quantity: e.target.value })}
+                      />
+                    </FormField>
+                    <FormField label="Unit" className="lg:col-span-2" required>
+                      <FormSearchSelect
+                        value={line.uomCode || defaultCode('pcs')}
+                        onChange={(v) => patchLine(line.key, { uomCode: v })}
+                        options={unitOptions}
+                        searchable
                       />
                     </FormField>
                     <FormField label="Unit cost" className="lg:col-span-2" required>

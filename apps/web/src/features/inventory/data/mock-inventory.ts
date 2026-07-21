@@ -30,6 +30,7 @@ import type {
   StockMovementListResponse,
   SupplierListItem,
   TransferStockPayload,
+  UnitOfMeasure,
   UpdateMixerRecipePayload,
   UpdateProductPayload,
   UpdateSupplierPayload,
@@ -45,6 +46,29 @@ import {
 
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
 import { PRODUCT_FILTERS } from '@/features/inventory/config/product-filters';
+
+export const MOCK_UNITS: UnitOfMeasure[] = [
+  { id: 'uom-pcs', code: 'pcs', name: 'Pieces', dimension: 'count', factorToDimensionBase: 1, isSystem: true },
+  { id: 'uom-box', code: 'box', name: 'Box', dimension: 'count', factorToDimensionBase: 1, isSystem: true },
+  { id: 'uom-dozen', code: 'dozen', name: 'Dozen', dimension: 'count', factorToDimensionBase: 12, isSystem: true },
+  { id: 'uom-g', code: 'g', name: 'Gram', dimension: 'mass', factorToDimensionBase: 1, isSystem: true },
+  { id: 'uom-kg', code: 'kg', name: 'Kilogram', dimension: 'mass', factorToDimensionBase: 1000, isSystem: true },
+  { id: 'uom-ml', code: 'ml', name: 'Millilitre', dimension: 'volume', factorToDimensionBase: 1, isSystem: true },
+  { id: 'uom-l', code: 'L', name: 'Litre', dimension: 'volume', factorToDimensionBase: 1000, isSystem: true },
+];
+
+function mockConvertToBase(quantity: number, uomCode?: string): number {
+  const code = (uomCode ?? 'pcs').toLowerCase();
+  const unit = MOCK_UNITS.find((u) => u.code.toLowerCase() === code) ?? MOCK_UNITS[0];
+  const pcs = MOCK_UNITS.find((u) => u.code === 'pcs')!;
+  if (unit.dimension !== pcs.dimension) {
+    if (code === 'kg') return Math.round(quantity * 1000);
+    if (code === 'g') return Math.round(quantity);
+    if (code === 'dozen') return Math.round(quantity * 12);
+    return Math.round(quantity);
+  }
+  return Math.max(1, Math.round((quantity * unit.factorToDimensionBase) / pcs.factorToDimensionBase));
+}
 
 const SUPPLIER_NAMES = [
   'Sundarban Honey Co-op',
@@ -584,13 +608,17 @@ export function createMockPurchase(payload: CreatePurchasePayload): PurchaseList
   if (MOCK_PURCHASES.some((p) => p.purchaseNumber === purchaseNumber)) {
     throw new Error('A purchase with this number already exists');
   }
+  const normalizedLines = payload.lines.map((line) => ({
+    ...line,
+    quantity: mockConvertToBase(line.quantity, line.uomCode),
+  }));
   const item: PurchaseListItem = {
     id: `pur-${Date.now()}`,
     purchaseNumber,
     supplierName: supplier.name,
     supplierId: supplier.id,
-    itemCount: payload.lines.reduce((sum, line) => sum + line.quantity, 0),
-    totalAmount: payload.lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0),
+    itemCount: normalizedLines.reduce((sum, line) => sum + line.quantity, 0),
+    totalAmount: normalizedLines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0),
     paymentStatus: payload.paymentStatus ?? 'unpaid',
     stockStatus: 'pending',
     purchaseDate: payload.purchaseDate,
@@ -746,12 +774,20 @@ export function createMockAdjustment(payload: CreateAdjustmentPayload): StockAdj
 
 export const MOCK_PRODUCTION_RUNS: ProductionBatchResult[] = [];
 
-function qtyToKg(quantity: number, unit: 'kg' | 'g') {
-  return unit === 'kg' ? quantity : quantity / 1000;
+function qtyToKg(quantity: number, unit: string) {
+  const u = unit.toLowerCase();
+  if (u === 'kg') return quantity;
+  if (u === 'g') return quantity / 1000;
+  if (u === 'mg') return quantity / 1_000_000;
+  return quantity;
 }
 
-function qtyToGrams(quantity: number, unit: 'kg' | 'g') {
-  return unit === 'kg' ? quantity * 1000 : quantity;
+function qtyToGrams(quantity: number, unit: string) {
+  const u = unit.toLowerCase();
+  if (u === 'kg') return quantity * 1000;
+  if (u === 'g') return quantity;
+  if (u === 'mg') return quantity / 1000;
+  return quantity;
 }
 
 function round3(n: number) {

@@ -41,6 +41,7 @@ import {
   isUniqueConstraintError,
   toNumber,
 } from './inventory-catalog.service';
+import { InventoryUomService } from './inventory-uom.service';
 
 const ADJUSTMENT_REASONS = [
   'damage',
@@ -58,6 +59,7 @@ export class InventoryOperationsService {
     private readonly prisma: PrismaService,
     private readonly catalog: InventoryCatalogService,
     private readonly advanced: InventoryAdvancedService,
+    private readonly uom: InventoryUomService,
   ) {}
 
   async listSuppliers(organizationId: string, search?: string): Promise<SupplierListResponse> {
@@ -341,6 +343,23 @@ export class InventoryOperationsService {
     }
 
     try {
+      const normalizedLines = await Promise.all(
+        input.lines.map(async (line) => {
+          const { baseQuantity } = await this.uom.convertToVariantBase(
+            organizationId,
+            line.variantId,
+            line.quantity,
+            { uomId: line.uomId, uomCode: line.uomCode },
+          );
+          return {
+            productId: line.productId,
+            variantId: line.variantId,
+            quantity: baseQuantity,
+            unitCost: new Prisma.Decimal(line.unitCost),
+          };
+        }),
+      );
+
       const created = await this.prisma.inventoryPurchase.create({
         data: {
           organizationId,
@@ -352,12 +371,7 @@ export class InventoryOperationsService {
           dueDate,
           notes: input.notes?.trim() || null,
           lines: {
-            create: input.lines.map((line) => ({
-              productId: line.productId,
-              variantId: line.variantId,
-              quantity: line.quantity,
-              unitCost: new Prisma.Decimal(line.unitCost),
-            })),
+            create: normalizedLines,
           },
         },
         include: {
@@ -523,11 +537,26 @@ export class InventoryOperationsService {
     if (!ADJUSTMENT_REASONS.includes(input.reason)) {
       throw new BadRequestException('Invalid adjustment reason');
     }
+
+    let delta = Math.trunc(input.delta);
+    if ((input.uomId || input.uomCode?.trim()) && input.variantId) {
+      const sign = delta < 0 ? -1 : 1;
+      const magnitude = Math.abs(delta) || Math.abs(input.delta);
+      const { baseQuantity } = await this.uom.convertToVariantBase(
+        organizationId,
+        input.variantId,
+        magnitude,
+        { uomId: input.uomId, uomCode: input.uomCode },
+      );
+      delta = sign * baseQuantity;
+    }
+
     await this.catalog.adjustStock(
       organizationId,
       input.productId,
       {
-        delta: input.delta,
+        variantId: input.variantId,
+        delta,
         reason: input.reason,
         note: input.note?.trim() || undefined,
       },
@@ -608,6 +637,23 @@ export class InventoryOperationsService {
     }
 
     try {
+      const normalizedLines = await Promise.all(
+        input.lines.map(async (line) => {
+          const { baseQuantity } = await this.uom.convertToVariantBase(
+            organizationId,
+            line.variantId,
+            line.quantity,
+            { uomId: line.uomId, uomCode: line.uomCode },
+          );
+          return {
+            productId: line.productId,
+            variantId: line.variantId,
+            quantity: baseQuantity,
+            unitCost: new Prisma.Decimal(line.unitCost),
+          };
+        }),
+      );
+
       const created = await this.prisma.inventoryPurchaseReturn.create({
         data: {
           organizationId,
@@ -619,12 +665,7 @@ export class InventoryOperationsService {
           returnDate,
           reason: input.reason?.trim() || null,
           lines: {
-            create: input.lines.map((line) => ({
-              productId: line.productId,
-              variantId: line.variantId,
-              quantity: line.quantity,
-              unitCost: new Prisma.Decimal(line.unitCost),
-            })),
+            create: normalizedLines,
           },
         },
         include: { lines: { select: { quantity: true, unitCost: true } } },
@@ -972,10 +1013,7 @@ export class InventoryOperationsService {
 
     const inputs: ProductionBatchResult['inputs'] = [];
     for (const raw of raws) {
-      const qtyKg = raw.unit === 'kg' ? raw.quantity : raw.quantity / 1000;
-      const costPerKg =
-        raw.costPerKg > 0 ? raw.costPerKg : qtyKg > 0 ? raw.totalCost / qtyKg : 0;
-      const totalCost = raw.totalCost > 0 ? raw.totalCost : Math.round(costPerKg * qtyKg);
+      const unitCode = raw.uomId ? undefined : raw.unit;
       let sku: string | undefined;
       let usedUnits: number | undefined;
       let availableStock = 0;
@@ -983,25 +1021,49 @@ export class InventoryOperationsService {
       if (raw.productId) {
         const product = await this.prisma.product.findFirst({
           where: { id: raw.productId, organizationId, deletedAt: null },
-          include: { variants: { select: { stock: true }, orderBy: { createdAt: 'asc' } } },
+          include: {
+            variants: {
+              select: { id: true, stock: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
         });
         if (!product) {
           return { ...empty, limitedBy: `Raw material product not found: ${raw.name}` };
         }
         sku = product.sku;
+        const variantId = product.variants[0]?.id;
         availableStock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
-        usedUnits =
-          raw.unit === 'kg'
-            ? Math.ceil(raw.quantity)
-            : Math.max(1, Math.ceil(raw.quantity / 1000));
+        if (variantId) {
+          const converted = await this.uom.convertToVariantBase(
+            organizationId,
+            variantId,
+            raw.quantity,
+            { uomId: raw.uomId, uomCode: unitCode },
+          );
+          usedUnits = converted.baseQuantity;
+        }
       }
+
+      const qtyKg =
+        unitCode === 'kg'
+          ? raw.quantity
+          : unitCode === 'g'
+            ? raw.quantity / 1000
+            : usedUnits != null
+              ? usedUnits / 1000
+              : raw.quantity;
+      const costPerKg =
+        raw.costPerKg > 0 ? raw.costPerKg : qtyKg > 0 ? raw.totalCost / qtyKg : 0;
+      const totalCost = raw.totalCost > 0 ? raw.totalCost : Math.round(costPerKg * qtyKg);
 
       inputs.push({
         productId: raw.productId,
         name: raw.name.trim(),
         sku,
         quantity: raw.quantity,
-        unit: raw.unit,
+        unit: unitCode ?? raw.unit,
+        uomId: raw.uomId,
         totalCost: Math.round(totalCost),
         costPerKg: Math.round(costPerKg * 100) / 100,
         usedUnits,
@@ -1035,16 +1097,22 @@ export class InventoryOperationsService {
       const share = totalFinishedGrams > 0 ? lineGrams / totalFinishedGrams : 0;
       const lineCost = Math.round(materialCost * share);
       const rawUsage = inputs.map((input) => {
-        const totalRawGrams = input.unit === 'kg' ? input.quantity * 1000 : input.quantity;
-        const gramsForThisVariantLine = totalRawGrams * share;
-        const gramsPerOneUnit = line.units > 0 ? gramsForThisVariantLine / line.units : 0;
+        const totalRawBase =
+          input.usedUnits ??
+          (input.unit === 'kg'
+            ? input.quantity * 1000
+            : input.unit === 'g'
+              ? input.quantity
+              : input.quantity);
+        const baseForVariantLine = totalRawBase * share;
+        const basePerOneUnit = line.units > 0 ? baseForVariantLine / line.units : 0;
         return {
           name: input.name,
           unit: input.unit,
           quantityPerUnit:
             input.unit === 'kg'
-              ? Math.round((gramsPerOneUnit / 1000) * 1000) / 1000
-              : Math.round(gramsPerOneUnit * 1000) / 1000,
+              ? Math.round((basePerOneUnit / 1000) * 1000) / 1000
+              : Math.round(basePerOneUnit * 1000) / 1000,
           costPerUnit:
             line.units > 0 ? Math.round((input.totalCost * share) / line.units) : 0,
         };
@@ -1088,7 +1156,8 @@ export class InventoryOperationsService {
       productName?: string;
       sku?: string;
       quantity: number;
-      unit: 'kg' | 'g';
+      unit: string;
+      uomId?: string;
     }>,
   ): Promise<MixerRecipeListItem['inputs']> {
     if (!inputs.length) throw new BadRequestException('At least one recipe input is required');
@@ -1108,7 +1177,8 @@ export class InventoryOperationsService {
         productName: product.name,
         sku: product.sku,
         quantity: input.quantity,
-        unit: input.unit,
+        unit: input.unit.trim() || 'pcs',
+        uomId: input.uomId,
       };
     });
   }

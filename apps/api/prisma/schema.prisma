@@ -37,6 +37,7 @@ model Organization {
   warehouses               Warehouse[]
   inventoryLots            InventoryLot[]
   accountingJournalEntries AccountingJournalEntry[]
+  unitsOfMeasure           UnitOfMeasure[]
 }
 
 model User {
@@ -348,6 +349,8 @@ model ProductVariant {
   label          String
   sku            String
   barcode        String?
+  baseUomId      String?
+  baseUom        UnitOfMeasure?           @relation(fields: [baseUomId], references: [id], onDelete: SetNull)
   salePrice      Decimal                  @db.Decimal(12, 2)
   costPrice      Decimal?                 @db.Decimal(12, 2)
   stock          Int                      @default(0)
@@ -359,12 +362,48 @@ model ProductVariant {
   returnLines    InventoryPurchaseReturnLine[]
   stockLevels    InventoryStockLevel[]
   lots           InventoryLot[]
+  uomConversions VariantUomConversion[]
 
   @@unique([organizationId, sku])
   @@unique([productId, sku])
   @@unique([organizationId, barcode])
   @@index([productId])
   @@index([organizationId])
+  @@index([baseUomId])
+}
+
+/// Tenant-scoped units of measure (pcs, kg, L, box, etc.).
+model UnitOfMeasure {
+  id                   String                 @id @default(uuid())
+  organizationId       String
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code                 String
+  name                 String
+  /// count | mass | volume | length | area | other
+  dimension            String                 @default("count")
+  /// Multiply qty in this unit by factor to get dimension base (g=1, kg=1000, ml=1, L=1000, pcs=1).
+  factorToDimensionBase Decimal               @default(1) @db.Decimal(18, 6)
+  isSystem             Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  variants             ProductVariant[]
+  variantConversions   VariantUomConversion[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, dimension])
+}
+
+/// Alternate purchase/sell units for a variant (e.g. 1 box = 12 pcs).
+model VariantUomConversion {
+  id              String         @id @default(uuid())
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  uomId           String
+  uom             UnitOfMeasure  @relation(fields: [uomId], references: [id], onDelete: Cascade)
+  /// qtyInUom * factorToVariantBase = qty in variant base UoM
+  factorToVariantBase Decimal    @db.Decimal(18, 6)
+
+  @@unique([variantId, uomId])
+  @@index([uomId])
 }
 
 /// Immutable stock ledger for catalog variants.

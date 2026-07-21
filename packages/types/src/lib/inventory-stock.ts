@@ -111,7 +111,9 @@ export const transferStockPayloadSchema = z.object({
   toWarehouseId: z.string().min(1),
   productId: z.string().min(1),
   variantId: z.string().min(1),
-  quantity: z.number().int().positive(),
+  quantity: z.number().positive(),
+  uomId: z.string().optional(),
+  uomCode: z.string().max(32).optional(),
   note: z.string().max(500).optional(),
 });
 

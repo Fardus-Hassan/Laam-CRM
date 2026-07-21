@@ -17,6 +17,12 @@ function createMocks() {
     inventoryStockMovement: {
       create: jest.fn(),
     },
+    inventoryLot: {
+      create: jest.fn(async (args) => ({ id: 'lot-1', ...args.data })),
+    },
+    inventoryStockLevel: {
+      upsert: jest.fn(),
+    },
   };
   const prisma = {
     inventorySupplier: {
@@ -39,12 +45,29 @@ function createMocks() {
   const catalog = {
     adjustStock: jest.fn(),
   };
-  return { prisma, catalog, tx };
+  const advanced = {
+    ensureDefaultWarehouse: jest.fn(async () => ({ id: 'wh-main' })),
+    postInventoryJournal: jest.fn(),
+    applyWarehouseDelta: jest.fn(),
+  };
+  const uom = {
+    convertToVariantBase: jest.fn(async (_org, _variantId, quantity) => ({
+      baseQuantity: Math.round(quantity),
+      uomCode: 'pcs',
+      baseUomCode: 'pcs',
+    })),
+  };
+  return { prisma, catalog, advanced, uom, tx };
 }
 
 describe('InventoryOperationsService', () => {
-  const { prisma, catalog, tx } = createMocks();
-  const service = new InventoryOperationsService(prisma as never, catalog as never);
+  const { prisma, catalog, advanced, uom, tx } = createMocks();
+  const service = new InventoryOperationsService(
+    prisma as never,
+    catalog as never,
+    advanced as never,
+    uom as never,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -109,6 +132,7 @@ describe('InventoryOperationsService', () => {
       stockStatus: 'pending',
       lines: [
         {
+          id: 'line-1',
           productId: 'product-1',
           variantId: 'variant-1',
           quantity: 5,
@@ -135,18 +159,17 @@ describe('InventoryOperationsService', () => {
       name: 'Admin',
     });
 
-    expect(tx.productVariant.update).toHaveBeenCalledWith({
-      where: { id: 'variant-1' },
-      data: { stock: 15, costPrice: 100 },
-    });
-    expect(tx.inventoryStockMovement.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        reason: 'purchase_received',
+    expect(advanced.applyWarehouseDelta).toHaveBeenCalledWith(
+      tx,
+      ORG,
+      expect.objectContaining({
+        warehouseId: 'wh-main',
+        variantId: 'variant-1',
         delta: 5,
-        previousStock: 10,
-        newStock: 15,
+        reason: 'purchase_received',
       }),
-    });
+    );
+    expect(advanced.postInventoryJournal).toHaveBeenCalled();
     expect(result.stockStatus).toBe('received');
   });
 });

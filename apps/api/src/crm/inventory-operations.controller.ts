@@ -45,14 +45,23 @@ class PurchaseLineDto {
   variantId!: string;
 
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @Min(0.000001)
   quantity!: number;
 
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   unitCost!: number;
+
+  @IsOptional()
+  @IsString()
+  uomId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  uomCode?: string;
 }
 
 class CreatePurchaseDto {
@@ -188,8 +197,14 @@ class MixerRecipeInputDto {
   @Min(0.0001)
   quantity!: number;
 
-  @IsIn(['kg', 'g'])
-  unit!: 'kg' | 'g';
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
+  unit!: string;
+
+  @IsOptional()
+  @IsString()
+  uomId?: string;
 }
 
 class CreateMixerRecipeDto {
@@ -256,7 +271,7 @@ class CreateAdjustmentDto {
   productId!: string;
 
   @Type(() => Number)
-  @IsInt()
+  @IsNumber()
   delta!: number;
 
   @IsIn([
@@ -269,6 +284,19 @@ class CreateAdjustmentDto {
     'other',
   ])
   reason!: AdjustmentReason;
+
+  @IsOptional()
+  @IsString()
+  variantId?: string;
+
+  @IsOptional()
+  @IsString()
+  uomId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  uomCode?: string;
 
   @IsOptional()
   @IsString()
@@ -286,14 +314,23 @@ class PurchaseReturnLineDto {
   variantId!: string;
 
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @Min(0.000001)
   quantity!: number;
 
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   unitCost!: number;
+
+  @IsOptional()
+  @IsString()
+  uomId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  uomCode?: string;
 }
 
 class CreatePurchaseReturnDto {
@@ -346,8 +383,14 @@ class ProductionRawMaterialDto {
   @Min(0.0001)
   quantity!: number;
 
-  @IsIn(['kg', 'g'])
-  unit!: 'kg' | 'g';
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
+  unit!: string;
+
+  @IsOptional()
+  @IsString()
+  uomId?: string;
 
   @Type(() => Number)
   @IsNumber()

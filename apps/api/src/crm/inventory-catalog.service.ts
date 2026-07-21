@@ -28,6 +28,7 @@ import type {
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { InventoryUomService } from './inventory-uom.service';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -145,6 +146,8 @@ type VariantRow = {
   label: string;
   sku: string;
   barcode?: string | null;
+  baseUomId?: string | null;
+  baseUom?: { id: string; code: string; name: string } | null;
   salePrice: unknown;
   costPrice: unknown;
   stock: number;
@@ -182,17 +185,30 @@ type ProductRow = {
   activities?: ActivityRow[];
 };
 
-const productInclude = {
+const productListInclude = {
   brand: { select: { id: true, name: true } },
   category: { select: { id: true, slug: true, label: true } },
   variants: { orderBy: { createdAt: 'asc' as const } },
+};
+
+const productInclude = {
+  ...productListInclude,
+  variants: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      baseUom: { select: { id: true, code: true, name: true } },
+    },
+  },
 };
 
 // ─── Service ────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class InventoryCatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uom: InventoryUomService,
+  ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
     if (!organizationId) {
@@ -682,7 +698,7 @@ export class InventoryCatalogService {
       this.prisma.product.count({ where }),
       this.prisma.product.findMany({
         where,
-        include: productInclude,
+        include: productListInclude,
         orderBy: [{ updatedAt: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -772,6 +788,10 @@ export class InventoryCatalogService {
 
         for (const v of input.variants) {
           const barcode = v.barcode?.trim() || null;
+          const baseUomId = await this.uom.resolveVariantBaseUomId(organizationId, {
+            baseUomId: v.baseUomId,
+            baseUomCode: v.baseUomCode,
+          }, tx);
           const variant = await tx.productVariant.create({
             data: {
               organizationId,
@@ -779,6 +799,7 @@ export class InventoryCatalogService {
               label: v.label.trim() || 'Standard',
               sku: v.sku.trim().toUpperCase(),
               barcode,
+              baseUomId,
               salePrice: new Prisma.Decimal(v.salePrice),
               costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
               stock: v.stock ?? 0,
@@ -933,12 +954,17 @@ export class InventoryCatalogService {
                 : null;
 
             if (persistedId) {
+              const baseUomId = await this.uom.resolveVariantBaseUomId(organizationId, {
+                baseUomId: v.baseUomId,
+                baseUomCode: v.baseUomCode,
+              }, tx);
               await tx.productVariant.update({
                 where: { id: persistedId },
                 data: {
                   label: v.label.trim() || 'Standard',
                   sku: v.sku.trim().toUpperCase(),
                   barcode: v.barcode?.trim() || null,
+                  baseUomId,
                   salePrice: new Prisma.Decimal(v.salePrice),
                   costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
                   reorderLevel: v.reorderLevel ?? existing.reorderLevel,
@@ -975,6 +1001,10 @@ export class InventoryCatalogService {
               }
             } else {
               const stock = Math.max(0, Math.trunc(v.stock ?? 0));
+              const baseUomId = await this.uom.resolveVariantBaseUomId(organizationId, {
+                baseUomId: v.baseUomId,
+                baseUomCode: v.baseUomCode,
+              }, tx);
               const created = await tx.productVariant.create({
                 data: {
                   organizationId,
@@ -982,6 +1012,7 @@ export class InventoryCatalogService {
                   label: v.label.trim() || 'Standard',
                   sku: v.sku.trim().toUpperCase(),
                   barcode: v.barcode?.trim() || null,
+                  baseUomId,
                   salePrice: new Prisma.Decimal(v.salePrice),
                   costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
                   stock,
@@ -1872,6 +1903,9 @@ export class InventoryCatalogService {
       label: v.label,
       sku: v.sku,
       barcode: v.barcode ?? undefined,
+      baseUomId: v.baseUomId ?? v.baseUom?.id ?? undefined,
+      baseUomCode: v.baseUom?.code ?? undefined,
+      baseUomName: v.baseUom?.name ?? undefined,
       salePrice: toNumber(v.salePrice),
       costPrice: toNullableNumber(v.costPrice) ?? undefined,
       stock: v.stock,

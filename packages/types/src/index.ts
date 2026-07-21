@@ -18,6 +18,7 @@ export * from './lib/followups.js';
 export * from './lib/tasks.js';
 export * from './lib/inventory.js';
 export * from './lib/inventory-stock.js';
+export * from './lib/uom.js';
 export * from './lib/accounting.js';
 export * from './lib/billing.js';
 export * from './lib/security.js';

@@ -19,6 +19,7 @@ import type {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { type Actor, isUniqueConstraintError, toNumber } from './inventory-catalog.service';
+import { InventoryUomService } from './inventory-uom.service';
 
 const INVENTORY_ACCOUNT = { code: '1200', name: 'Inventory Stock' };
 const PAYABLE_ACCOUNT = { code: '2000', name: 'Accounts Payable' };
@@ -26,7 +27,10 @@ const WRITEOFF_ACCOUNT = { code: '5300', name: 'Inventory Write-off' };
 
 @Injectable()
 export class InventoryAdvancedService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uom: InventoryUomService,
+  ) {}
 
   async ensureDefaultWarehouse(organizationId: string, tx?: Prisma.TransactionClient) {
     const db = tx ?? this.prisma;
@@ -201,12 +205,20 @@ export class InventoryAdvancedService {
       if (!to) throw new NotFoundException('Destination warehouse not found');
       if (!variant) throw new NotFoundException('Variant not found');
 
+      const { baseQuantity } = await this.uom.convertToVariantBase(
+        organizationId,
+        input.variantId,
+        input.quantity,
+        { uomId: input.uomId, uomCode: input.uomCode },
+        tx,
+      );
+
       const unitCost = variant.costPrice == null ? undefined : toNumber(variant.costPrice);
       await this.applyWarehouseDelta(tx, organizationId, {
         warehouseId: from.id,
         productId: input.productId,
         variantId: input.variantId,
-        delta: -input.quantity,
+        delta: -baseQuantity,
         reason: 'warehouse_transfer_out',
         note: input.note?.trim() || `Transfer to ${to.code}`,
         unitCost,
@@ -220,7 +232,7 @@ export class InventoryAdvancedService {
         warehouseId: to.id,
         productId: input.productId,
         variantId: input.variantId,
-        delta: input.quantity,
+        delta: baseQuantity,
         reason: 'warehouse_transfer_in',
         note: input.note?.trim() || `Transfer from ${from.code}`,
         unitCost,

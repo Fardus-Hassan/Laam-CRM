@@ -33,6 +33,7 @@ import type {
   SupplierListItem,
   SupplierListResponse,
   TransferStockPayload,
+  UnitOfMeasureListResponse,
   UpdateMixerRecipePayload,
   UpdateProductPayload,
   UpdateSupplierPayload,
@@ -140,6 +141,7 @@ export type InventoryApi = {
   transferStock: (payload: TransferStockPayload) => Promise<void>;
   listLots: (expiringWithinDays?: number) => Promise<InventoryLotListResponse>;
   getReconciliation: () => Promise<InventoryReconciliationResponse>;
+  listUnits: () => Promise<UnitOfMeasureListResponse>;
 };
 
 function delay(ms: number) {
@@ -358,6 +360,11 @@ export function createMockInventoryApi(): InventoryApi {
     async getReconciliation() {
       await delay(80);
       return getMockReconciliation();
+    },
+    async listUnits() {
+      await delay(40);
+      const { MOCK_UNITS } = await import('@/features/inventory/data/mock-inventory');
+      return { items: MOCK_UNITS, total: MOCK_UNITS.length };
     },
   };
 }
@@ -639,6 +646,10 @@ export function createHttpInventoryApi(): InventoryApi {
     async getReconciliation() {
       const { apiRequest } = await import('@/lib/api/client');
       return apiRequest<InventoryReconciliationResponse>('/crm/inventory/reconciliation');
+    },
+    async listUnits() {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<UnitOfMeasureListResponse>('/crm/inventory/units');
     },
   };
 }

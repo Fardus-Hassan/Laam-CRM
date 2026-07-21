@@ -38,6 +38,7 @@ import {
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { InventoryResponsiveList } from '@/features/inventory/components/inventory-responsive-list';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
+import { useInventoryUnits } from '@/features/inventory/hooks/use-inventory-units';
 import { ProductionBatchPanel } from '@/features/inventory/components/production-batch-panel';
 import { ProductionLedger } from '@/features/inventory/components/production-ledger';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
@@ -1023,6 +1024,7 @@ export function AdjustmentListShell() {
 }
 
 export function MixerListShell() {
+  const { unitOptions, defaultCode } = useInventoryUnits();
   const [items, setItems] = React.useState<MixerRecipeListItem[]>([]);
   const [runs, setRuns] = React.useState<ProductionBatchResult[]>([]);
   const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
@@ -1038,9 +1040,9 @@ export function MixerListShell() {
   const [status, setStatus] = React.useState<'active' | 'draft'>('draft');
   const [inputProductId, setInputProductId] = React.useState('');
   const [inputQty, setInputQty] = React.useState('1');
-  const [inputUnit, setInputUnit] = React.useState<'kg' | 'g'>('kg');
+  const [inputUnit, setInputUnit] = React.useState('kg');
   const [recipeInputs, setRecipeInputs] = React.useState<
-    { productId: string; quantity: number; unit: 'kg' | 'g' }[]
+    { productId: string; quantity: number; unit: string }[]
   >([]);
 
   const load = React.useCallback(() => {
@@ -1081,7 +1083,7 @@ export function MixerListShell() {
     setRecipeInputs([]);
     setInputProductId('');
     setInputQty('1');
-    setInputUnit('kg');
+    setInputUnit(defaultCode('kg'));
     setDialogOpen(true);
   }
 
@@ -1097,9 +1099,10 @@ export function MixerListShell() {
         .map((input) => ({
           productId: input.productId!,
           quantity: input.quantity,
-          unit: input.unit === 'g' ? 'g' : 'kg',
+          unit: input.unit?.trim() || defaultCode('kg'),
         })),
     );
+    setInputUnit(defaultCode('kg'));
     setDialogOpen(true);
   }
 
@@ -1170,7 +1173,7 @@ export function MixerListShell() {
   return (
     <InventoryPageLayout
       title="Mixer & production"
-      description="Record kg/g of raw material and how many of each variant you made — full hisab kept."
+      description="Record raw materials in any unit (kg, g, L, pcs…) and how many of each variant you made — full hisab kept."
       actions={
         <Button type="button" size="sm" onClick={openCreate}>
           <Plus className="size-3.5" />
@@ -1283,7 +1286,7 @@ export function MixerListShell() {
               />
             </FormField>
             <div className="sm:col-span-2 space-y-2 rounded-md border border-border/60 p-3">
-              <p className="text-xs font-medium text-muted-foreground">Inputs (kg/g)</p>
+              <p className="text-xs font-medium text-muted-foreground">Inputs (any unit)</p>
               {recipeInputs.map((row, index) => {
                 const product = products.find((p) => p.id === row.productId);
                 return (
@@ -1311,12 +1314,9 @@ export function MixerListShell() {
                 />
                 <FormInput type="number" min={0.0001} step="any" value={inputQty} onChange={(e) => setInputQty(e.target.value)} />
                 <FormSearchSelect
-                  value={inputUnit}
-                  onChange={(v) => setInputUnit(v as 'kg' | 'g')}
-                  options={[
-                    { value: 'kg', label: 'kg' },
-                    { value: 'g', label: 'g' },
-                  ]}
+                  value={inputUnit || defaultCode('kg')}
+                  onChange={setInputUnit}
+                  options={unitOptions}
                   searchable={false}
                 />
               </div>

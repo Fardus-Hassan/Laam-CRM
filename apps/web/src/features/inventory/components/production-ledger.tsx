@@ -170,7 +170,7 @@ export function ProductionLedger({ runs, className }: ProductionLedgerProps) {
                                 <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
                                   <th className="px-3 py-2 font-medium">Material</th>
                                   <th className="px-3 py-2 font-medium">Qty</th>
-                                  <th className="px-3 py-2 font-medium">৳ / kg</th>
+                                  <th className="px-3 py-2 font-medium">৳ / unit</th>
                                   <th className="px-3 py-2 text-right font-medium">Line cost</th>
                                 </tr>
                               </thead>
@@ -190,6 +190,7 @@ export function ProductionLedger({ runs, className }: ProductionLedgerProps) {
                                     </td>
                                     <td className="px-3 py-2 tabular-nums">
                                       {formatCurrency(input.costPerKg)}
+                                      <span className="text-muted-foreground">/{input.unit}</span>
                                     </td>
                                     <td className="px-3 py-2 text-right font-medium tabular-nums">
                                       {formatCurrency(input.totalCost)}

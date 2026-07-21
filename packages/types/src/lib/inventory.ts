@@ -22,6 +22,9 @@ export const productVariantSchema = z.object({
   label: z.string(),
   sku: z.string(),
   barcode: z.string().optional(),
+  baseUomId: z.string().optional(),
+  baseUomCode: z.string().optional(),
+  baseUomName: z.string().optional(),
   salePrice: z.number(),
   costPrice: z.number().optional(),
   stock: z.number().int().default(0),
@@ -35,6 +38,8 @@ export const productVariantInputSchema = productVariantSchema.extend({
   label: z.string().min(1).max(120),
   sku: z.string().min(1).max(120),
   barcode: z.string().max(64).optional(),
+  baseUomId: z.string().optional(),
+  baseUomCode: z.string().max(32).optional(),
   salePrice: z.number().nonnegative(),
   costPrice: z.number().nonnegative().optional(),
   stock: z.number().int().nonnegative().default(0),
@@ -321,8 +326,10 @@ export const createPurchasePayloadSchema = z.object({
       z.object({
         productId: z.string().min(1),
         variantId: z.string().min(1),
-        quantity: z.number().int().positive(),
+        quantity: z.number().positive(),
         unitCost: z.number().nonnegative(),
+        uomId: z.string().optional(),
+        uomCode: z.string().max(32).optional(),
       }),
     )
     .min(1)
@@ -365,8 +372,10 @@ export const createPurchaseReturnPayloadSchema = z.object({
       z.object({
         productId: z.string().min(1),
         variantId: z.string().min(1),
-        quantity: z.number().int().positive(),
+        quantity: z.number().positive(),
         unitCost: z.number().nonnegative(),
+        uomId: z.string().optional(),
+        uomCode: z.string().max(32).optional(),
       }),
     )
     .min(1)
@@ -436,9 +445,12 @@ export type StockAdjustmentListResponse = z.infer<typeof stockAdjustmentListResp
 
 export const createAdjustmentPayloadSchema = z.object({
   productId: z.string(),
-  delta: z.number().int(),
+  delta: z.number(),
   reason: adjustmentReasonSchema,
   note: z.string().optional(),
+  variantId: z.string().optional(),
+  uomId: z.string().optional(),
+  uomCode: z.string().max(32).optional(),
 });
 
 export type CreateAdjustmentPayload = z.infer<typeof createAdjustmentPayloadSchema>;
@@ -479,7 +491,8 @@ export const mixerRecipeInputSchema = z.object({
   productName: z.string().min(1).optional(),
   sku: z.string().min(1).optional(),
   quantity: z.number().positive(),
-  unit: z.enum(['kg', 'g']),
+  unit: z.string().min(1).max(32),
+  uomId: z.string().optional(),
 });
 
 export type MixerRecipeInput = z.infer<typeof mixerRecipeInputSchema>;
@@ -504,10 +517,11 @@ export const productionRawMaterialSchema = z.object({
   productId: z.string().optional(),
   name: z.string().min(1),
   quantity: z.number().positive(),
-  unit: z.enum(['kg', 'g']),
+  unit: z.string().min(1).max(32),
+  uomId: z.string().optional(),
   /** Line total in ৳. */
   totalCost: z.number().nonnegative(),
-  /** Rate in ৳ per kg. */
+  /** Rate in ৳ per base mass/volume unit (legacy field name costPerKg). */
   costPerKg: z.number().nonnegative(),
 });
 
@@ -527,7 +541,7 @@ export type ProductionOutputLine = z.infer<typeof productionOutputLineSchema>;
 /** Per finished unit: how much of one raw material was used. */
 export const productionRawUsageSchema = z.object({
   name: z.string(),
-  unit: z.enum(['kg', 'g']),
+  unit: z.string().min(1).max(32),
   quantityPerUnit: z.number(),
   costPerUnit: z.number(),
 });
@@ -563,7 +577,8 @@ export const productionBatchResultSchema = z.object({
       name: z.string(),
       sku: z.string().optional(),
       quantity: z.number(),
-      unit: z.enum(['kg', 'g']),
+      unit: z.string().min(1).max(32),
+      uomId: z.string().optional(),
       totalCost: z.number(),
       costPerKg: z.number(),
       usedUnits: z.number().optional(),
@@ -608,7 +623,8 @@ export const productionPreviewResultSchema = z.object({
       name: z.string(),
       sku: z.string().optional(),
       quantity: z.number(),
-      unit: z.enum(['kg', 'g']),
+      unit: z.string().min(1).max(32),
+      uomId: z.string().optional(),
       totalCost: z.number(),
       costPerKg: z.number(),
       usedUnits: z.number().optional(),

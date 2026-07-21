@@ -10,7 +10,7 @@ import {
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
-  IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -30,6 +30,7 @@ import {
 } from '../common/decorators';
 import { InventoryAdvancedService } from './inventory-advanced.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
+import { InventoryUomService } from './inventory-uom.service';
 
 class CreateWarehouseDto {
   @IsString()
@@ -93,9 +94,18 @@ class TransferStockDto {
   variantId!: string;
 
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @Min(0.000001)
   quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  uomId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  uomCode?: string;
 
   @IsOptional()
   @IsString()
@@ -108,10 +118,18 @@ export class InventoryAdvancedController {
   constructor(
     private readonly advanced: InventoryAdvancedService,
     private readonly catalog: InventoryCatalogService,
+    private readonly uom: InventoryUomService,
   ) {}
 
   private actor(user: AuthUserPayload) {
     return { userId: user.userId, name: user.email };
+  }
+
+  @Get('units')
+  @RequirePermissions('inventory.view')
+  listUnits(@CurrentUser() user: AuthUserPayload) {
+    this.catalog.requireOrg(user.organizationId);
+    return this.uom.listUnits(user.organizationId!);
   }
 
   @Get('stock-movements')
@@ -192,6 +210,8 @@ export class InventoryAdvancedController {
       productId: body.productId,
       variantId: body.variantId,
       quantity: body.quantity,
+      uomId: body.uomId,
+      uomCode: body.uomCode,
       note: body.note,
     };
     await this.advanced.transferStock(user.organizationId!, payload, this.actor(user));

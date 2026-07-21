@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
+import { useInventoryUnits } from '@/features/inventory/hooks/use-inventory-units';
 import {
   ORDER_CARD_CLASS,
   ORDER_SECTION_BODY_CLASS,
@@ -31,7 +32,7 @@ type RawRow = {
   productId: string;
   name: string;
   quantity: string;
-  unit: 'kg' | 'g';
+  unit: string;
   totalCost: string;
   costPerKg: string;
 };
@@ -50,10 +51,14 @@ type ProductionBatchPanelProps = {
   guideNonce?: number;
 };
 
-function normalizeGuideUnit(unit: string): 'kg' | 'g' {
+function normalizeGuideUnit(unit: string): string {
   const u = unit.trim().toLowerCase();
   if (u === 'g' || u === 'gram' || u === 'grams') return 'g';
-  return 'kg';
+  if (u === 'kg' || u === 'kilogram' || u === 'kilograms') return 'kg';
+  if (u === 'l' || u === 'litre' || u === 'liter') return 'L';
+  if (u === 'ml') return 'ml';
+  if (u === 'pcs' || u === 'pc' || u === 'piece' || u === 'pieces') return 'pcs';
+  return unit.trim() || 'kg';
 }
 
 export function parseGramsFromLabel(label: string): number {
@@ -73,20 +78,21 @@ function plansFromVariants(variants: ProductVariant[]): VariantPlan[] {
   }));
 }
 
-function emptyRawRow(): RawRow {
+function emptyRawRow(defaultUnit = 'kg'): RawRow {
   return {
     key: `raw-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     productId: '',
     name: '',
     quantity: '',
-    unit: 'kg',
+    unit: defaultUnit,
     totalCost: '',
     costPerKg: '',
   };
 }
 
-function qtyToKg(quantity: number, unit: 'kg' | 'g') {
-  return unit === 'kg' ? quantity : quantity / 1000;
+/** Rate math uses the line's selected unit (not forced to kg). */
+function lineQtyInRateUnit(quantity: number, _unit: string) {
+  return quantity;
 }
 
 export function ProductionBatchPanel({
@@ -94,10 +100,14 @@ export function ProductionBatchPanel({
   guideRecipe,
   guideNonce = 0,
 }: ProductionBatchPanelProps) {
+  const { unitOptions, defaultCode } = useInventoryUnits();
   const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
   const [outputDetail, setOutputDetail] = React.useState<InventoryProductDetail | null>(null);
   const [outputProductId, setOutputProductId] = React.useState('');
-  const [rawRows, setRawRows] = React.useState<RawRow[]>([emptyRawRow(), emptyRawRow()]);
+  const [rawRows, setRawRows] = React.useState<RawRow[]>(() => [
+    emptyRawRow('kg'),
+    emptyRawRow('kg'),
+  ]);
   const [variantPlans, setVariantPlans] = React.useState<VariantPlan[]>([]);
   const [note, setNote] = React.useState('');
   const [running, setRunning] = React.useState(false);
@@ -136,10 +146,10 @@ export function ProductionBatchPanel({
       const unit = normalizeGuideUnit(input.unit);
       const quantity = String(input.quantity);
       const costPerKg = matched?.costPrice != null ? String(matched.costPrice) : '';
-      const qtyKg = unit === 'kg' ? Number(input.quantity) : Number(input.quantity) / 1000;
+      const qty = Number(input.quantity);
       const totalCost =
-        costPerKg && Number.isFinite(qtyKg) && qtyKg > 0
-          ? String(Math.round(Number(costPerKg) * qtyKg))
+        costPerKg && Number.isFinite(qty) && qty > 0
+          ? String(Math.round(Number(costPerKg) * qty))
           : '';
       return {
         key: `raw-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -152,10 +162,10 @@ export function ProductionBatchPanel({
       };
     });
 
-    setRawRows(nextRows.length ? nextRows : [emptyRawRow()]);
+    setRawRows(nextRows.length ? nextRows : [emptyRawRow(defaultCode('kg'))]);
     setNote(`Guide: ${guideRecipe.name}`);
     setPreview(null);
-  }, [guideRecipe, guideNonce, products]);
+  }, [guideRecipe, guideNonce, products, defaultCode]);
 
   React.useEffect(() => {
     if (!outputProductId) {
@@ -186,17 +196,17 @@ export function ProductionBatchPanel({
         if (row.key !== key) return row;
         const next = { ...row, ...patch };
         const qty = Number(next.quantity);
-        const qtyKg = qtyToKg(qty, next.unit);
-        if (recalc === 'fromTotal' && qtyKg > 0 && next.totalCost !== '') {
+        const qtyInUnit = lineQtyInRateUnit(qty, next.unit);
+        if (recalc === 'fromTotal' && qtyInUnit > 0 && next.totalCost !== '') {
           const total = Number(next.totalCost);
           if (Number.isFinite(total)) {
-            next.costPerKg = String(Math.round((total / qtyKg) * 100) / 100);
+            next.costPerKg = String(Math.round((total / qtyInUnit) * 100) / 100);
           }
         }
-        if (recalc === 'fromRate' && qtyKg > 0 && next.costPerKg !== '') {
+        if (recalc === 'fromRate' && qtyInUnit > 0 && next.costPerKg !== '') {
           const rate = Number(next.costPerKg);
           if (Number.isFinite(rate)) {
-            next.totalCost = String(Math.round(rate * qtyKg));
+            next.totalCost = String(Math.round(rate * qtyInUnit));
           }
         }
         return next;
@@ -260,7 +270,7 @@ export function ProductionBatchPanel({
         `Saved ${result.batchNumber}: ${result.unitsProduced} units · total ${formatCurrency(result.materialCost)} · ${formatCurrency(result.costPerUnit)}/unit`,
       );
       onCompleted?.(result);
-      setRawRows([emptyRawRow(), emptyRawRow()]);
+      setRawRows([emptyRawRow(defaultCode('kg')), emptyRawRow(defaultCode('kg'))]);
       setVariantPlans((plans) => plans.map((p) => ({ ...p, units: '' })));
       setNote('');
       const refreshed = await inventoryApi.listProducts({ page: 1, pageSize: 100, filter: 'active' });
@@ -307,7 +317,7 @@ export function ProductionBatchPanel({
               size="sm"
               variant="outline"
               className="h-7"
-              onClick={() => setRawRows((rows) => [...rows, emptyRawRow()])}
+              onClick={() => setRawRows((rows) => [...rows, emptyRawRow(defaultCode('kg'))])}
             >
               <Plus className="size-3.5" />
               Add material
@@ -362,22 +372,13 @@ export function ProductionBatchPanel({
                         }
                         className="min-w-0 flex-1"
                       />
-                      <div className="flex shrink-0 rounded-md border">
-                        {(['kg', 'g'] as const).map((u) => (
-                          <button
-                            key={u}
-                            type="button"
-                            className={cn(
-                              'px-2 text-xs font-medium',
-                              row.unit === u
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-muted-foreground hover:bg-muted',
-                            )}
-                            onClick={() => patchRaw(row.key, { unit: u }, 'fromRate')}
-                          >
-                            {u}
-                          </button>
-                        ))}
+                      <div className="w-28 shrink-0">
+                        <FormSearchSelect
+                          value={row.unit || defaultCode('kg')}
+                          onChange={(u) => patchRaw(row.key, { unit: u }, 'fromRate')}
+                          options={unitOptions}
+                          searchable={false}
+                        />
                       </div>
                     </div>
                   </FormField>
@@ -393,7 +394,7 @@ export function ProductionBatchPanel({
                     />
                   </FormField>
                 </div>
-                <FormField label="Cost per kg (৳)">
+                <FormField label={`Cost per ${row.unit || 'unit'} (৳)`}>
                   <FormInput
                     type="number"
                     min={0}
@@ -405,7 +406,7 @@ export function ProductionBatchPanel({
                     className="max-w-xs"
                   />
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    Auto from total ÷ kg; edit either field.
+                    Auto from total ÷ qty; edit either field. Rate is per selected unit.
                   </p>
                 </FormField>
               </div>
@@ -420,7 +421,7 @@ export function ProductionBatchPanel({
           </p>
           {!outputProductId ? (
             <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-              Select finished product to load variants (500g, 1kg, …).
+              Select finished product to load variants (size / pack).
             </p>
           ) : (
             <div className="space-y-2 rounded-xl border p-3">
@@ -433,7 +434,7 @@ export function ProductionBatchPanel({
                       {outputDetail?.variants.find((v) => v.id === plan.variantId)?.stock ?? '—'}
                     </p>
                   </div>
-                  <FormField label="g / unit">
+                  <FormField label="Share (g)">
                     <FormInput
                       type="number"
                       min={1}
@@ -487,7 +488,7 @@ export function ProductionBatchPanel({
                     <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
                       <th className="px-3 py-2 font-medium">Material</th>
                       <th className="px-3 py-2 font-medium">Qty</th>
-                      <th className="px-3 py-2 font-medium">৳ / kg</th>
+                      <th className="px-3 py-2 font-medium">৳ / unit</th>
                       <th className="px-3 py-2 text-right font-medium">Line cost</th>
                     </tr>
                   </thead>
@@ -498,7 +499,10 @@ export function ProductionBatchPanel({
                         <td className="px-3 py-2 tabular-nums">
                           {input.quantity} {input.unit}
                         </td>
-                        <td className="px-3 py-2 tabular-nums">{formatCurrency(input.costPerKg)}</td>
+                        <td className="px-3 py-2 tabular-nums">
+                          {formatCurrency(input.costPerKg)}
+                          <span className="text-muted-foreground">/{input.unit}</span>
+                        </td>
                         <td className="px-3 py-2 text-right font-medium tabular-nums">
                           {formatCurrency(input.totalCost)}
                         </td>
