@@ -21,6 +21,8 @@ import type {
 
 import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { CarrybeeCourierService } from './carrybee-courier.service';
+import { CarrybeeSyncService } from './carrybee-sync.service';
 import { CouponsService } from './coupons.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { FollowupsService } from './followups.service';
@@ -63,6 +65,12 @@ export type CreateOrderInput = CreateOrderPayload & {
   pathaoCityId?: number;
   pathaoZoneId?: number;
   pathaoAreaId?: number;
+  carrybeeCity?: string;
+  carrybeeZone?: string;
+  carrybeeArea?: string;
+  carrybeeCityId?: number;
+  carrybeeZoneId?: number;
+  carrybeeAreaId?: number;
   utmSource?: string;
   utmId?: string;
   utmContent?: string;
@@ -110,6 +118,12 @@ export type UpdateOrderInput = {
   pathaoCityId?: number | null;
   pathaoZoneId?: number | null;
   pathaoAreaId?: number | null;
+  carrybeeCity?: string;
+  carrybeeZone?: string;
+  carrybeeArea?: string;
+  carrybeeCityId?: number | null;
+  carrybeeZoneId?: number | null;
+  carrybeeAreaId?: number | null;
   lineItems?: CreateOrderInput['lineItems'];
   attachmentNames?: string[];
   attachmentUrls?: string[];
@@ -181,9 +195,12 @@ export class OrdersService {
     private readonly leads: LeadsService,
     private readonly followups: FollowupsService,
     private readonly pathao: PathaoCourierService,
+    private readonly carrybee: CarrybeeCourierService,
     private readonly courierIntegrations: CourierIntegrationsService,
     @Inject(forwardRef(() => PathaoSyncService))
     private readonly pathaoSync: PathaoSyncService,
+    @Inject(forwardRef(() => CarrybeeSyncService))
+    private readonly carrybeeSync: CarrybeeSyncService,
   ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
@@ -393,6 +410,7 @@ export class OrdersService {
     if (query.district) where.district = query.district;
     if (query.courierStatusSlug) where.courierStatusSlug = query.courierStatusSlug;
     if (query.courier === 'pathao') where.courierProvider = 'pathao';
+    if (query.courier === 'carrybee') where.courierProvider = 'carrybee';
     if (query.search?.trim()) {
       const q = query.search.trim();
       where.OR = [
@@ -582,7 +600,16 @@ export class OrdersService {
       (status === 'cancelled' ? 'Cancelled' : status);
 
     return {
-      courierName: row.courierProvider === 'pathao' ? 'Pathao' : row.pathaoCity ? 'Pathao' : 'Courier',
+      courierName:
+        row.courierProvider === 'pathao'
+          ? 'Pathao'
+          : row.courierProvider === 'carrybee'
+            ? 'Carrybee'
+            : row.pathaoCity
+              ? 'Pathao'
+              : row.carrybeeCity
+                ? 'Carrybee'
+                : 'Courier',
       trackingId: row.courierConsignmentId ?? row.courierTrackingCode ?? undefined,
       currentStatus:
         status === 'cancelled'
@@ -819,6 +846,21 @@ export class OrdersService {
           pathaoAreaId:
             input.pathaoAreaId !== undefined && input.pathaoAreaId !== null
               ? Math.floor(Number(input.pathaoAreaId))
+              : null,
+          carrybeeCity: input.carrybeeCity?.trim() || null,
+          carrybeeZone: input.carrybeeZone?.trim() || null,
+          carrybeeArea: input.carrybeeArea?.trim() || null,
+          carrybeeCityId:
+            input.carrybeeCityId !== undefined && input.carrybeeCityId !== null
+              ? Math.floor(Number(input.carrybeeCityId))
+              : null,
+          carrybeeZoneId:
+            input.carrybeeZoneId !== undefined && input.carrybeeZoneId !== null
+              ? Math.floor(Number(input.carrybeeZoneId))
+              : null,
+          carrybeeAreaId:
+            input.carrybeeAreaId !== undefined && input.carrybeeAreaId !== null
+              ? Math.floor(Number(input.carrybeeAreaId))
               : null,
           notes: input.notes?.trim() || null,
           courierNote: input.courierNote?.trim() || null,
@@ -1279,6 +1321,36 @@ export class OrdersService {
                 ? null
                 : Math.floor(Number(input.pathaoAreaId))
               : undefined,
+          carrybeeCity:
+            input.carrybeeCity !== undefined
+              ? input.carrybeeCity.trim() || null
+              : undefined,
+          carrybeeZone:
+            input.carrybeeZone !== undefined
+              ? input.carrybeeZone.trim() || null
+              : undefined,
+          carrybeeArea:
+            input.carrybeeArea !== undefined
+              ? input.carrybeeArea.trim() || null
+              : undefined,
+          carrybeeCityId:
+            input.carrybeeCityId !== undefined
+              ? input.carrybeeCityId === null
+                ? null
+                : Math.floor(Number(input.carrybeeCityId))
+              : undefined,
+          carrybeeZoneId:
+            input.carrybeeZoneId !== undefined
+              ? input.carrybeeZoneId === null
+                ? null
+                : Math.floor(Number(input.carrybeeZoneId))
+              : undefined,
+          carrybeeAreaId:
+            input.carrybeeAreaId !== undefined
+              ? input.carrybeeAreaId === null
+                ? null
+                : Math.floor(Number(input.carrybeeAreaId))
+              : undefined,
           attachmentNames:
             input.attachmentNames !== undefined ? input.attachmentNames : undefined,
           attachmentUrls:
@@ -1435,6 +1507,144 @@ export class OrdersService {
     idOrNumber: string,
   ): Promise<OrderDetail> {
     await this.pathaoSync.syncOrder(organizationId, idOrNumber);
+    if (idOrNumber.startsWith('ORD-')) {
+      return this.getByOrderNumber(organizationId, idOrNumber);
+    }
+    try {
+      return await this.getById(organizationId, idOrNumber);
+    } catch {
+      return this.getByOrderNumber(organizationId, idOrNumber);
+    }
+  }
+
+  /**
+   * Book order on Carrybee sandbox/live.
+   * collectable_amount = due; success → status in_courier.
+   */
+  async bookWithCarrybee(
+    organizationId: string,
+    idOrNumber: string,
+    actor: ActorLabel,
+  ): Promise<OrderDetail> {
+    const existing = await this.prisma.order.findFirst({
+      where: {
+        organizationId,
+        OR: [{ id: idOrNumber }, { orderNumber: idOrNumber }],
+      },
+      include: {
+        lineItems: { orderBy: { createdAt: 'asc' } },
+        activities: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!existing) throw new NotFoundException('Order not found');
+
+    if (existing.status === 'cancelled') {
+      throw new BadRequestException('Cancelled orders cannot be booked');
+    }
+    if (existing.courierConsignmentId) {
+      throw new BadRequestException(
+        `Already booked with ${existing.courierProvider ?? 'courier'} (${existing.courierConsignmentId})`,
+      );
+    }
+    if (!existing.carrybeeCityId || !existing.carrybeeZoneId) {
+      throw new BadRequestException(
+        'Select Carrybee city and zone (with IDs) before booking',
+      );
+    }
+    if (!existing.shippingAddress?.trim() || existing.shippingAddress.trim().length < 10) {
+      throw new BadRequestException(
+        'Shipping address must be at least 10 characters for Carrybee',
+      );
+    }
+
+    const phoneDigits = existing.customerPhone.replace(/\D/g, '');
+    const phone =
+      phoneDigits.length === 11
+        ? phoneDigits
+        : phoneDigits.length === 10
+          ? `0${phoneDigits}`
+          : phoneDigits.slice(-11);
+    if (phone.length !== 11) {
+      throw new BadRequestException(
+        'Customer phone must be an 11-digit Bangladesh number for Carrybee',
+      );
+    }
+
+    const due = Math.max(0, existing.amount - (existing.paidAmount ?? 0));
+    const itemQuantity = Math.max(
+      1,
+      existing.lineItems.reduce((sum, l) => sum + l.quantity, 0),
+    );
+    const itemDescription = existing.lineItems
+      .map((l) =>
+        l.variationLabel ? `${l.productName} (${l.variationLabel})` : l.productName,
+      )
+      .slice(0, 5)
+      .join(', ')
+      .slice(0, 200);
+
+    const storeId = await this.carrybee.assertStoreReady(organizationId);
+    const booked = await this.carrybee.createOrder(organizationId, {
+      storeId,
+      merchantOrderId: existing.orderNumber,
+      recipientName: existing.customerName.trim().slice(0, 99),
+      recipientPhone: phone,
+      recipientSecondaryPhone: (() => {
+        const alt = existing.altMobile?.replace(/\D/g, '') ?? '';
+        const normalized =
+          alt.length === 11 ? alt : alt.length === 10 ? `0${alt}` : alt.slice(-11);
+        return normalized.length === 11 ? normalized : undefined;
+      })(),
+      recipientAddress: existing.shippingAddress.trim().slice(0, 200),
+      cityId: existing.carrybeeCityId,
+      zoneId: existing.carrybeeZoneId,
+      areaId: existing.carrybeeAreaId ?? undefined,
+      specialInstruction: existing.courierNote?.trim() || undefined,
+      itemQuantity,
+      itemWeight: 500,
+      productDescription: itemDescription || existing.orderNumber,
+      collectableAmount: due,
+    });
+
+    const mapped = await this.courierIntegrations.resolveStatusMapping(
+      organizationId,
+      'carrybee',
+      'created',
+    );
+
+    await this.prisma.order.update({
+      where: { id: existing.id },
+      data: {
+        courierProvider: 'carrybee',
+        courierConsignmentId: booked.consignmentId,
+        courierTrackingCode: booked.consignmentId,
+        courierCollectAmount: due,
+        courierBookedAt: new Date(),
+        courierStatus: mapped.label,
+        courierStatusSlug: mapped.slug,
+        courierStatusSyncedAt: new Date(),
+        activities: {
+          create: {
+            organizationId,
+            type: 'note',
+            label: 'Booked with Carrybee',
+            description: `Consignment ${booked.consignmentId} · collect ৳${due}`,
+            actorUserId: actor.userId ?? null,
+            actorName: actor.name ?? null,
+          },
+        },
+      },
+    });
+
+    // Move to in_courier (stock cut if not already deducted)
+    return this.updateStatus(organizationId, existing.id, 'in_courier', actor);
+  }
+
+  async syncCarrybeeStatus(
+    organizationId: string,
+    idOrNumber: string,
+  ): Promise<OrderDetail> {
+    await this.carrybeeSync.syncOrder(organizationId, idOrNumber);
     if (idOrNumber.startsWith('ORD-')) {
       return this.getByOrderNumber(organizationId, idOrNumber);
     }
@@ -1612,6 +1822,12 @@ export class OrdersService {
     pathaoCityId?: number | null;
     pathaoZoneId?: number | null;
     pathaoAreaId?: number | null;
+    carrybeeCity?: string | null;
+    carrybeeZone?: string | null;
+    carrybeeArea?: string | null;
+    carrybeeCityId?: number | null;
+    carrybeeZoneId?: number | null;
+    carrybeeAreaId?: number | null;
     courierProvider?: string | null;
     courierConsignmentId?: string | null;
     courierTrackingCode?: string | null;
@@ -1683,6 +1899,12 @@ export class OrdersService {
       pathaoCityId: row.pathaoCityId ?? undefined,
       pathaoZoneId: row.pathaoZoneId ?? undefined,
       pathaoAreaId: row.pathaoAreaId ?? undefined,
+      carrybeeCity: row.carrybeeCity ?? undefined,
+      carrybeeZone: row.carrybeeZone ?? undefined,
+      carrybeeArea: row.carrybeeArea ?? undefined,
+      carrybeeCityId: row.carrybeeCityId ?? undefined,
+      carrybeeZoneId: row.carrybeeZoneId ?? undefined,
+      carrybeeAreaId: row.carrybeeAreaId ?? undefined,
       courierProvider: row.courierProvider ?? undefined,
       courierConsignmentId: row.courierConsignmentId ?? undefined,
       courierTrackingCode: row.courierTrackingCode ?? undefined,

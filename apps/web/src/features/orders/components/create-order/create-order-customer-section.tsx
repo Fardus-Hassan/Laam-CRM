@@ -20,6 +20,7 @@ import {
   ORDER_SECTION_GRID_GAP,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { CarrybeeLocationDialog } from './carrybee-location-dialog';
 import { PathaoLocationDialog } from './pathao-location-dialog';
 
 type CreateOrderCustomerSectionProps = {
@@ -27,9 +28,18 @@ type CreateOrderCustomerSectionProps = {
 };
 
 export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionProps) {
-  const { state, errors, options, patch, lookupCustomer, setPathaoLocation, clearFieldError } =
-    form;
+  const {
+    state,
+    errors,
+    options,
+    patch,
+    lookupCustomer,
+    setPathaoLocation,
+    setCarrybeeLocation,
+    clearFieldError,
+  } = form;
   const [pathaoOpen, setPathaoOpen] = React.useState(false);
+  const [carrybeeOpen, setCarrybeeOpen] = React.useState(false);
 
   const districtOptions = React.useMemo(() => {
     const q = state.district.trim().toLowerCase();
@@ -42,6 +52,12 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
 
   const orderSourceOptions = options.sources;
   const orderTagOptions = options.orderTags;
+
+  const locationHint = state.carrybeeLocation
+    ? `Carrybee: ${state.carrybeeLocation.label}`
+    : state.pathaoLocation
+      ? `Pathao: ${state.pathaoLocation.label}`
+      : 'Select Pathao or Carrybee location to auto-fill delivery address.';
 
   return (
     <>
@@ -109,14 +125,17 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
               error={errors.address}
               className="min-w-0"
               labelAction={
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {state.pathaoLocation ? (
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                  {state.pathaoLocation || state.carrybeeLocation ? (
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
                       className="h-7 px-2 text-xs"
-                      onClick={() => setPathaoLocation(null)}
+                      onClick={() => {
+                        setPathaoLocation(null);
+                        setCarrybeeLocation(null);
+                      }}
                     >
                       Clear
                     </Button>
@@ -124,18 +143,23 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
                   <Button
                     type="button"
                     size="sm"
+                    variant="outline"
                     className="h-7 text-xs"
                     onClick={() => setPathaoOpen(true)}
                   >
-                    {state.pathaoLocation ? 'Change Pathao' : 'Select Pathao Location'}
+                    {state.pathaoLocation ? 'Change Pathao' : 'Pathao'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setCarrybeeOpen(true)}
+                  >
+                    {state.carrybeeLocation ? 'Change Carrybee' : 'Carrybee'}
                   </Button>
                 </div>
               }
-              hint={
-                state.pathaoLocation
-                  ? state.pathaoLocation.label
-                  : 'Use Pathao location to auto-fill delivery address.'
-              }
+              hint={locationHint}
             >
               <FormTextarea
                 id="address"
@@ -233,9 +257,21 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
         onOpenChange={setPathaoOpen}
         value={state.pathaoLocation}
         onConfirm={(location) => {
+          setCarrybeeLocation(null);
           setPathaoLocation(location);
           clearFieldError('address');
-          toast.success('Delivery location applied to address');
+          toast.success('Pathao location applied to address');
+        }}
+      />
+      <CarrybeeLocationDialog
+        open={carrybeeOpen}
+        onOpenChange={setCarrybeeOpen}
+        value={state.carrybeeLocation}
+        onConfirm={(location) => {
+          setPathaoLocation(null);
+          setCarrybeeLocation(location);
+          clearFieldError('address');
+          toast.success('Carrybee location applied to address');
         }}
       />
     </>

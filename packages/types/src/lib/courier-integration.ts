@@ -62,3 +62,39 @@ export const upsertCourierStatusMapPayloadSchema = z.object({
 export type UpsertCourierStatusMapPayload = z.infer<
   typeof upsertCourierStatusMapPayloadSchema
 >;
+
+export const carrybeeEnvironmentSchema = z.enum(['sandbox', 'live']);
+export type CarrybeeEnvironment = z.infer<typeof carrybeeEnvironmentSchema>;
+
+export const carrybeeIntegrationSettingsSchema = z.object({
+  provider: z.literal('carrybee'),
+  enabled: z.boolean(),
+  environment: carrybeeEnvironmentSchema,
+  storeId: z.string().nullable(),
+  hasCredentials: z.boolean(),
+  clientIdMasked: z.string().nullable(),
+  clientContextMasked: z.string().nullable(),
+  syncIntervalSec: z.number().int(),
+  lastSyncAt: z.string().nullable(),
+  lastError: z.string().nullable(),
+  updatedAt: z.string(),
+});
+
+export type CarrybeeIntegrationSettings = z.infer<
+  typeof carrybeeIntegrationSettingsSchema
+>;
+
+export const upsertCarrybeeIntegrationPayloadSchema = z.object({
+  enabled: z.boolean().optional(),
+  environment: carrybeeEnvironmentSchema.optional(),
+  storeId: z.string().nullable().optional(),
+  clientId: z.string().optional(),
+  clientSecret: z.string().optional(),
+  clientContext: z.string().optional(),
+  baseUrl: z.string().optional(),
+  syncIntervalSec: z.number().int().min(60).max(3600).optional(),
+});
+
+export type UpsertCarrybeeIntegrationPayload = z.infer<
+  typeof upsertCarrybeeIntegrationPayloadSchema
+>;

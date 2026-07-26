@@ -25,6 +25,7 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import { CarrybeeCourierService } from './carrybee-courier.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { PathaoCourierService } from './pathao-courier.service';
 
@@ -56,6 +57,43 @@ class UpsertPathaoDto {
   @IsOptional()
   @IsString()
   password?: string;
+
+  @IsOptional()
+  @IsString()
+  baseUrl?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(60)
+  @Max(3600)
+  syncIntervalSec?: number;
+}
+
+class UpsertCarrybeeDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsIn(['sandbox', 'live'])
+  environment?: 'sandbox' | 'live';
+
+  @IsOptional()
+  @IsString()
+  storeId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  clientId?: string;
+
+  @IsOptional()
+  @IsString()
+  clientSecret?: string;
+
+  @IsOptional()
+  @IsString()
+  clientContext?: string;
 
   @IsOptional()
   @IsString()
@@ -108,6 +146,7 @@ export class CourierIntegrationsController {
   constructor(
     private readonly integrations: CourierIntegrationsService,
     private readonly pathao: PathaoCourierService,
+    private readonly carrybee: CarrybeeCourierService,
   ) {}
 
   @Get('pathao')
@@ -165,5 +204,72 @@ export class CourierIntegrationsController {
     @Body() body: UpsertStatusMapDto,
   ) {
     return this.integrations.upsertStatusMap(user.organizationId!, { ...body, id });
+  }
+
+  @Get('carrybee')
+  @RequirePermissions('settings.view', 'settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Get Carrybee integration settings for current org' })
+  getCarrybee(@CurrentUser() user: AuthUserPayload) {
+    return this.integrations.getCarrybeePublic(user.organizationId!);
+  }
+
+  @Put('carrybee')
+  @RequirePermissions('settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Create/update Carrybee credentials (org settings)' })
+  upsertCarrybee(@CurrentUser() user: AuthUserPayload, @Body() body: UpsertCarrybeeDto) {
+    return this.integrations.upsertCarrybee(user.organizationId!, body);
+  }
+
+  @Delete('carrybee')
+  @RequirePermissions('settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Disable Carrybee and clear credentials' })
+  disconnectCarrybee(@CurrentUser() user: AuthUserPayload) {
+    return this.integrations.disconnectCarrybee(user.organizationId!);
+  }
+
+  @Post('carrybee/test')
+  @RequirePermissions('settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Test Carrybee connection with saved credentials' })
+  testCarrybee(@CurrentUser() user: AuthUserPayload) {
+    return this.carrybee.testConnection(user.organizationId!);
+  }
+
+  @Get('carrybee/stores')
+  @RequirePermissions('settings.view', 'settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'List Carrybee stores using org credentials' })
+  listCarrybeeStores(@CurrentUser() user: AuthUserPayload) {
+    return this.carrybee.listStores(user.organizationId!);
+  }
+
+  @Get('carrybee/status-maps')
+  @RequirePermissions('settings.view', 'settings.manage', 'courier.view', 'orders.view')
+  listCarrybeeStatusMaps(@CurrentUser() user: AuthUserPayload) {
+    return this.integrations.listStatusMaps(user.organizationId!, 'carrybee');
+  }
+
+  @Put('carrybee/status-maps')
+  @RequirePermissions('settings.manage', 'courier.manage')
+  upsertCarrybeeStatusMap(
+    @CurrentUser() user: AuthUserPayload,
+    @Body() body: UpsertStatusMapDto,
+  ) {
+    return this.integrations.upsertStatusMap(user.organizationId!, {
+      ...body,
+      provider: 'carrybee',
+    });
+  }
+
+  @Patch('carrybee/status-maps/:id')
+  @RequirePermissions('settings.manage', 'courier.manage')
+  patchCarrybeeStatusMap(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body: UpsertStatusMapDto,
+  ) {
+    return this.integrations.upsertStatusMap(user.organizationId!, {
+      ...body,
+      provider: 'carrybee',
+      id,
+    });
   }
 }

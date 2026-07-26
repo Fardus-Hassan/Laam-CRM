@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  CARRYBEE_STATUS_SEEDS,
+  normalizeCarrybeeStatusSlug,
+} from './carrybee-status.defaults';
 import { decryptSecret, encryptSecret } from './credentials-crypto.util';
 import {
   normalizePathaoStatusSlug,
@@ -68,6 +72,50 @@ type StoredPathaoSecrets = {
   clientSecret: string;
   username: string;
   password: string;
+  baseUrl?: string;
+};
+
+export type CarrybeeAuthCredentials = {
+  baseUrl: string;
+  clientId: string;
+  clientSecret: string;
+  clientContext: string;
+  environment: 'sandbox' | 'live';
+};
+
+export type CarrybeeCredentials = CarrybeeAuthCredentials & {
+  storeId: string;
+};
+
+export type CarrybeeIntegrationPublic = {
+  provider: 'carrybee';
+  enabled: boolean;
+  environment: 'sandbox' | 'live';
+  storeId: string | null;
+  hasCredentials: boolean;
+  clientIdMasked: string | null;
+  clientContextMasked: string | null;
+  syncIntervalSec: number;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  updatedAt: string;
+};
+
+export type UpsertCarrybeeIntegrationInput = {
+  enabled?: boolean;
+  environment?: 'sandbox' | 'live';
+  storeId?: string | null;
+  clientId?: string;
+  clientSecret?: string;
+  clientContext?: string;
+  baseUrl?: string;
+  syncIntervalSec?: number;
+};
+
+type StoredCarrybeeSecrets = {
+  clientId: string;
+  clientSecret: string;
+  clientContext: string;
   baseUrl?: string;
 };
 
@@ -331,13 +379,296 @@ export class CourierIntegrationsService {
     }));
   }
 
-  async ensurePathaoStatusMaps(organizationId: string): Promise<void> {
-    const count = await this.prisma.courierStatusMap.count({
-      where: { organizationId, provider: 'pathao' },
+  async getCarrybeePublic(organizationId: string): Promise<CarrybeeIntegrationPublic> {
+    const row = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'carrybee' },
+      },
     });
-    if (count > 0) return;
+    if (!row) {
+      return {
+        provider: 'carrybee',
+        enabled: false,
+        environment: 'sandbox',
+        storeId: null,
+        hasCredentials: false,
+        clientIdMasked: null,
+        clientContextMasked: null,
+        syncIntervalSec: 180,
+        lastSyncAt: null,
+        lastError: null,
+        updatedAt: new Date(0).toISOString(),
+      };
+    }
+    let secrets: StoredCarrybeeSecrets | null = null;
+    if (row.credentialsEnc) {
+      try {
+        secrets = JSON.parse(decryptSecret(row.credentialsEnc)) as StoredCarrybeeSecrets;
+      } catch {
+        secrets = null;
+      }
+    }
+    return {
+      provider: 'carrybee',
+      enabled: row.enabled,
+      environment: row.environment === 'live' ? 'live' : 'sandbox',
+      storeId: row.storeId,
+      hasCredentials: Boolean(
+        secrets?.clientId && secrets?.clientSecret && secrets?.clientContext,
+      ),
+      clientIdMasked: secrets?.clientId ? maskSecret(secrets.clientId) : null,
+      clientContextMasked: secrets?.clientContext
+        ? maskSecret(secrets.clientContext)
+        : null,
+      syncIntervalSec: row.syncIntervalSec || 180,
+      lastSyncAt: row.lastSyncAt?.toISOString() ?? null,
+      lastError: row.lastError,
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  async upsertCarrybee(
+    organizationId: string,
+    input: UpsertCarrybeeIntegrationInput,
+  ): Promise<CarrybeeIntegrationPublic> {
+    const existing = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'carrybee' },
+      },
+    });
+
+    let secrets: StoredCarrybeeSecrets | null = null;
+    if (existing?.credentialsEnc) {
+      try {
+        secrets = JSON.parse(decryptSecret(existing.credentialsEnc)) as StoredCarrybeeSecrets;
+      } catch {
+        secrets = null;
+      }
+    }
+
+    const nextSecrets: StoredCarrybeeSecrets = {
+      clientId: input.clientId?.trim() || secrets?.clientId || '',
+      clientSecret: input.clientSecret?.trim() || secrets?.clientSecret || '',
+      clientContext: input.clientContext?.trim() || secrets?.clientContext || '',
+      baseUrl: input.baseUrl?.trim() || secrets?.baseUrl,
+    };
+
+    if (
+      input.enabled !== false &&
+      (input.clientId || input.clientSecret || input.clientContext || !existing)
+    ) {
+      if (!nextSecrets.clientId || !nextSecrets.clientSecret || !nextSecrets.clientContext) {
+        throw new BadRequestException(
+          'Carrybee requires clientId, clientSecret, and clientContext',
+        );
+      }
+    }
+
+    const environment =
+      input.environment ??
+      (existing?.environment === 'live' ? 'live' : 'sandbox');
+
+    const syncIntervalSec = Math.max(
+      60,
+      Math.min(3600, input.syncIntervalSec ?? existing?.syncIntervalSec ?? 180),
+    );
+
+    await this.prisma.courierIntegration.upsert({
+      where: {
+        organizationId_provider: { organizationId, provider: 'carrybee' },
+      },
+      create: {
+        organizationId,
+        provider: 'carrybee',
+        enabled: input.enabled ?? false,
+        environment,
+        storeId: input.storeId === undefined ? null : input.storeId,
+        credentialsEnc:
+          nextSecrets.clientId && nextSecrets.clientSecret
+            ? encryptSecret(JSON.stringify(nextSecrets))
+            : null,
+        syncIntervalSec,
+        lastError: null,
+      },
+      update: {
+        ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        environment,
+        ...(input.storeId !== undefined ? { storeId: input.storeId } : {}),
+        ...(nextSecrets.clientId
+          ? { credentialsEnc: encryptSecret(JSON.stringify(nextSecrets)) }
+          : {}),
+        syncIntervalSec,
+        lastError: null,
+      },
+    });
+
+    await this.ensureCarrybeeStatusMaps(organizationId);
+    return this.getCarrybeePublic(organizationId);
+  }
+
+  async disconnectCarrybee(organizationId: string): Promise<CarrybeeIntegrationPublic> {
+    const existing = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'carrybee' },
+      },
+    });
+    if (!existing) {
+      return this.getCarrybeePublic(organizationId);
+    }
+    await this.prisma.courierIntegration.update({
+      where: { id: existing.id },
+      data: {
+        enabled: false,
+        credentialsEnc: null,
+        storeId: null,
+        lastError: null,
+      },
+    });
+    return this.getCarrybeePublic(organizationId);
+  }
+
+  /**
+   * Auth credentials only (no store required) — for cities/zones/areas/test.
+   */
+  async resolveCarrybeeAuth(organizationId: string): Promise<CarrybeeAuthCredentials> {
+    const row = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'carrybee' },
+      },
+    });
+
+    if (row?.credentialsEnc) {
+      if (!row.enabled) {
+        throw new ServiceUnavailableException(
+          'Carrybee is saved but not enabled. Open Settings → Integrations → Carrybee, turn on Enable Carrybee, then Save.',
+        );
+      }
+      let secrets: StoredCarrybeeSecrets;
+      try {
+        secrets = JSON.parse(decryptSecret(row.credentialsEnc)) as StoredCarrybeeSecrets;
+      } catch {
+        throw new ServiceUnavailableException(
+          'Carrybee credentials are corrupt. Re-save them in Settings → Integrations → Carrybee.',
+        );
+      }
+      if (!secrets.clientId || !secrets.clientSecret || !secrets.clientContext) {
+        throw new ServiceUnavailableException(
+          'Carrybee credentials incomplete. Configure in Settings → Integrations → Carrybee.',
+        );
+      }
+      const environment = row.environment === 'live' ? 'live' : 'sandbox';
+      return {
+        baseUrl: (
+          secrets.baseUrl ||
+          (environment === 'live'
+            ? 'https://developers.carrybee.com'
+            : 'https://sandbox.carrybee.com')
+        ).replace(/\/$/, ''),
+        clientId: secrets.clientId,
+        clientSecret: secrets.clientSecret,
+        clientContext: secrets.clientContext,
+        environment,
+      };
+    }
+
+    if (!row) {
+      const boot = tryEnvCarrybeeBootstrap();
+      if (boot) {
+        const { storeId: _storeId, ...auth } = boot;
+        return auth;
+      }
+    }
+
+    throw new ServiceUnavailableException(
+      'Carrybee is not configured for this organization. Go to Settings → Integrations → Carrybee.',
+    );
+  }
+
+  /**
+   * Full credentials including store — for booking / order APIs.
+   */
+  async resolveCarrybeeCredentials(organizationId: string): Promise<CarrybeeCredentials> {
+    const auth = await this.resolveCarrybeeAuth(organizationId);
+    const row = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'carrybee' },
+      },
+    });
+
+    const storeId = row?.storeId?.trim();
+    if (storeId) {
+      return { ...auth, storeId };
+    }
+
+    const boot = !row ? tryEnvCarrybeeBootstrap() : null;
+    if (boot?.storeId) {
+      return { ...auth, storeId: boot.storeId };
+    }
+
+    throw new ServiceUnavailableException(
+      'Carrybee store is not selected. Click Test connection, choose a Store, then Save.',
+    );
+  }
+
+  async markCarrybeeSyncResult(
+    organizationId: string,
+    result: { ok: boolean; error?: string },
+  ): Promise<void> {
+    await this.prisma.courierIntegration.updateMany({
+      where: { organizationId, provider: 'carrybee' },
+      data: {
+        lastSyncAt: new Date(),
+        lastError: result.ok ? null : (result.error ?? 'Sync failed').slice(0, 500),
+      },
+    });
+  }
+
+  async listEnabledCarrybeeOrgs(): Promise<
+    Array<{ organizationId: string; syncIntervalSec: number }>
+  > {
+    const rows = await this.prisma.courierIntegration.findMany({
+      where: { provider: 'carrybee', enabled: true, credentialsEnc: { not: null } },
+      select: { organizationId: true, syncIntervalSec: true },
+    });
+    return rows.map((r) => ({
+      organizationId: r.organizationId,
+      syncIntervalSec: r.syncIntervalSec || 180,
+    }));
+  }
+
+  async ensureCarrybeeStatusMaps(organizationId: string): Promise<void> {
+    const existing = await this.prisma.courierStatusMap.findMany({
+      where: { organizationId, provider: 'carrybee' },
+      select: { slug: true },
+    });
+    const have = new Set(existing.map((r) => r.slug));
+    const missing = CARRYBEE_STATUS_SEEDS.filter((s) => !have.has(s.slug));
+    if (missing.length === 0) return;
     await this.prisma.courierStatusMap.createMany({
-      data: PATHAO_STATUS_SEEDS.map((s) => ({
+      data: missing.map((s) => ({
+        organizationId,
+        provider: 'carrybee',
+        slug: s.slug,
+        label: s.label,
+        crmStatus: s.crmStatus,
+        isTerminal: s.isTerminal,
+        sortOrder: s.sortOrder,
+        isActive: true,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  async ensurePathaoStatusMaps(organizationId: string): Promise<void> {
+    const existing = await this.prisma.courierStatusMap.findMany({
+      where: { organizationId, provider: 'pathao' },
+      select: { slug: true },
+    });
+    const have = new Set(existing.map((r) => r.slug));
+    const missing = PATHAO_STATUS_SEEDS.filter((s) => !have.has(s.slug));
+    if (missing.length === 0) return;
+    await this.prisma.courierStatusMap.createMany({
+      data: missing.map((s) => ({
         organizationId,
         provider: 'pathao',
         slug: s.slug,
@@ -347,6 +678,7 @@ export class CourierIntegrationsService {
         sortOrder: s.sortOrder,
         isActive: true,
       })),
+      skipDuplicates: true,
     });
   }
 
@@ -354,7 +686,11 @@ export class CourierIntegrationsService {
     organizationId: string,
     provider = 'pathao',
   ): Promise<CourierStatusMapDto[]> {
-    await this.ensurePathaoStatusMaps(organizationId);
+    if (provider === 'carrybee') {
+      await this.ensureCarrybeeStatusMaps(organizationId);
+    } else {
+      await this.ensurePathaoStatusMaps(organizationId);
+    }
     const rows = await this.prisma.courierStatusMap.findMany({
       where: { organizationId, provider },
       orderBy: { sortOrder: 'asc' },
@@ -385,7 +721,10 @@ export class CourierIntegrationsService {
     },
   ): Promise<CourierStatusMapDto> {
     const provider = input.provider ?? 'pathao';
-    const slug = normalizePathaoStatusSlug(input.slug);
+    const slug =
+      provider === 'carrybee'
+        ? normalizeCarrybeeStatusSlug(input.slug)
+        : normalizePathaoStatusSlug(input.slug);
     if (!input.label.trim()) throw new BadRequestException('label is required');
 
     const row = input.id
@@ -444,8 +783,15 @@ export class CourierIntegrationsService {
     provider: string,
     rawStatus: string,
   ): Promise<{ slug: string; label: string; crmStatus: string | null; isTerminal: boolean }> {
-    await this.ensurePathaoStatusMaps(organizationId);
-    const slug = normalizePathaoStatusSlug(rawStatus);
+    const isCarrybee = provider === 'carrybee';
+    if (isCarrybee) {
+      await this.ensureCarrybeeStatusMaps(organizationId);
+    } else {
+      await this.ensurePathaoStatusMaps(organizationId);
+    }
+    const slug = isCarrybee
+      ? normalizeCarrybeeStatusSlug(rawStatus)
+      : normalizePathaoStatusSlug(rawStatus);
     const row = await this.prisma.courierStatusMap.findUnique({
       where: {
         organizationId_provider_slug: { organizationId, provider, slug },
@@ -459,10 +805,12 @@ export class CourierIntegrationsService {
         isTerminal: row.isTerminal,
       };
     }
-    const seed = PATHAO_STATUS_SEEDS.find((s) => s.slug === slug);
+    const seed = isCarrybee
+      ? CARRYBEE_STATUS_SEEDS.find((s) => s.slug === slug)
+      : PATHAO_STATUS_SEEDS.find((s) => s.slug === slug);
     return {
       slug,
-      label: seed?.label ?? `Pathao - ${rawStatus}`,
+      label: seed?.label ?? `${isCarrybee ? 'Carrybee' : 'Pathao'} - ${rawStatus}`,
       crmStatus: seed?.crmStatus ?? 'in_courier',
       isTerminal: seed?.isTerminal ?? false,
     };
@@ -509,6 +857,40 @@ function tryEnvPathaoBootstrap(): PathaoCredentials | null {
     password,
     grantType: process.env['PATHAO_SANDBOX_GRANT_TYPE'] ?? 'password',
     storeId: Math.floor(storeId),
+    environment: isLive ? 'live' : 'sandbox',
+  };
+}
+
+function tryEnvCarrybeeBootstrap(): CarrybeeCredentials | null {
+  const env = (process.env['CARRYBEE_ENV'] ?? 'sandbox').toLowerCase();
+  const isLive = env === 'live' || env === 'production';
+  const baseUrl = (
+    isLive
+      ? process.env['CARRYBEE_LIVE_BASE_URL']
+      : process.env['CARRYBEE_SANDBOX_BASE_URL']
+  )?.replace(/\/$/, '');
+  const clientId = isLive
+    ? process.env['CARRYBEE_LIVE_CLIENT_ID']
+    : process.env['CARRYBEE_SANDBOX_CLIENT_ID'];
+  const clientSecret = isLive
+    ? process.env['CARRYBEE_LIVE_CLIENT_SECRET']
+    : process.env['CARRYBEE_SANDBOX_CLIENT_SECRET'];
+  const clientContext = isLive
+    ? process.env['CARRYBEE_LIVE_CLIENT_CONTEXT']
+    : process.env['CARRYBEE_SANDBOX_CLIENT_CONTEXT'];
+  const storeId = (
+    isLive
+      ? process.env['CARRYBEE_LIVE_STORE_ID'] || process.env['CARRYBEE_STORE_ID']
+      : process.env['CARRYBEE_SANDBOX_STORE_ID']
+  )?.trim();
+  if (!baseUrl || !clientId || !clientSecret || !clientContext) return null;
+  if (!storeId) return null;
+  return {
+    baseUrl,
+    clientId,
+    clientSecret,
+    clientContext,
+    storeId,
     environment: isLive ? 'live' : 'sandbox',
   };
 }

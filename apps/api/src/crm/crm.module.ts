@@ -29,6 +29,9 @@ import { OrdersService } from './orders.service';
 import { PathaoCourierController } from './pathao-courier.controller';
 import { PathaoCourierService } from './pathao-courier.service';
 import { PathaoSyncService } from './pathao-sync.service';
+import { CarrybeeCourierController } from './carrybee-courier.controller';
+import { CarrybeeCourierService } from './carrybee-courier.service';
+import { CarrybeeSyncService } from './carrybee-sync.service';
 import { CourierIntegrationsController } from './courier-integrations.controller';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { ProductBrandsController } from './product-brands.controller';
@@ -48,6 +51,7 @@ import { RbacService } from './rbac.service';
     PipelineController,
     OrdersController,
     PathaoCourierController,
+    CarrybeeCourierController,
     CourierIntegrationsController,
     CouponsController,
     FollowupsController,
@@ -70,6 +74,8 @@ import { RbacService } from './rbac.service';
     OrdersService,
     PathaoCourierService,
     PathaoSyncService,
+    CarrybeeCourierService,
+    CarrybeeSyncService,
     CourierIntegrationsService,
     CouponsService,
     InventoryCatalogService,

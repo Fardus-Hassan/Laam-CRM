@@ -19,6 +19,10 @@ import {
   loadOrderFilterPresets,
   saveOrderFilterPreset,
 } from '@/features/orders/lib/order-filter-presets';
+import {
+  buildCourierStatusFilterOptions,
+  parseCourierStatusFilterValue,
+} from '@/features/orders/lib/courier-status-filter-options';
 import { cn } from '@/lib/utils';
 
 export type OrderFilterValues = Pick<
@@ -66,22 +70,29 @@ export function OrderFilterPanel({
   const [presetName, setPresetName] = React.useState('');
   const [courierStatusOptions, setCourierStatusOptions] = React.useState<
     Array<{ value: string; label: string }>
-  >([]);
+  >(() =>
+    buildCourierStatusFilterOptions([], []).map((o) => ({ value: o.value, label: o.label })),
+  );
 
   React.useEffect(() => {
     let cancelled = false;
-    void import('@/features/settings/api/pathao-settings-api')
-      .then((m) => m.pathaoSettingsApi.listStatusMaps())
-      .then((maps) => {
+    void Promise.all([
+      import('@/features/settings/api/pathao-settings-api').then((m) =>
+        m.pathaoSettingsApi.listStatusMaps().catch(() => []),
+      ),
+      import('@/features/settings/api/carrybee-settings-api').then((m) =>
+        m.carrybeeSettingsApi.listStatusMaps().catch(() => []),
+      ),
+    ])
+      .then(([pathaoMaps, carrybeeMaps]) => {
         if (cancelled) return;
-        setCourierStatusOptions(
-          maps
-            .filter((m) => m.isActive)
-            .map((m) => ({ value: m.slug, label: m.label })),
-        );
+        const options = buildCourierStatusFilterOptions(pathaoMaps, carrybeeMaps);
+        setCourierStatusOptions(options.map((o) => ({ value: o.value, label: o.label })));
       })
       .catch(() => {
-        if (!cancelled) setCourierStatusOptions([]);
+        if (cancelled) return;
+        const options = buildCourierStatusFilterOptions([], []);
+        setCourierStatusOptions(options.map((o) => ({ value: o.value, label: o.label })));
       });
     return () => {
       cancelled = true;
@@ -202,16 +213,31 @@ export function OrderFilterPanel({
           />
         </FormField>
         <FormField label="Courier status">
-          <FormSelect
-            value={values.courierStatusSlug ?? ''}
-            onChange={(courierStatusSlug) =>
-              patch({ courierStatusSlug: courierStatusSlug || undefined })
+          <FormSearchSelect
+            value={
+              values.courierStatusSlug
+                ? values.courier === 'pathao' || values.courier === 'carrybee'
+                  ? `${values.courier}:${values.courierStatusSlug}`
+                  : values.courierStatusSlug
+                : ''
             }
+            onChange={(raw) => {
+              if (!raw) {
+                patch({ courierStatusSlug: undefined });
+                return;
+              }
+              const parsed = parseCourierStatusFilterValue(raw);
+              patch({
+                courierStatusSlug: parsed.slug,
+                ...(parsed.provider ? { courier: parsed.provider } : {}),
+              });
+            }}
             options={[
               { value: '', label: 'All' },
               ...courierStatusOptions,
             ]}
             placeholder="All"
+            searchPlaceholder="Search Pathao or Carrybee…"
           />
         </FormField>
         <FormField label="Payment Status">

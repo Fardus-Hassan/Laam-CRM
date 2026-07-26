@@ -85,16 +85,29 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
     }
   }, [order.id, order.status, order.courierStatus, order.courierStatusSyncedAt]);
 
-  // Soft refresh Pathao status while detail page is open (no full reload)
+  // Soft refresh courier status while detail page is open (no full reload)
   React.useEffect(() => {
-    if (order.courierProvider !== 'pathao' || !order.courierConsignmentId) return;
-    if (['delivered', 'completed', 'cancelled', 'returned'].includes(order.status)) return;
+    if (
+      (order.courierProvider !== 'pathao' && order.courierProvider !== 'carrybee') ||
+      !order.courierConsignmentId
+    ) {
+      return;
+    }
+    if (['delivered', 'completed', 'cancelled', 'returned', 'rts_carrybee'].includes(order.status)) {
+      return;
+    }
 
     let cancelled = false;
     const tick = async () => {
       try {
-        const { pathaoCourierApi } = await import('@/features/orders/api/pathao-courier-api');
-        const updated = await pathaoCourierApi.syncOrder(order.id);
+        const updated =
+          order.courierProvider === 'carrybee'
+            ? await (
+                await import('@/features/orders/api/carrybee-courier-api')
+              ).carrybeeCourierApi.syncOrder(order.id)
+            : await (
+                await import('@/features/orders/api/pathao-courier-api')
+              ).pathaoCourierApi.syncOrder(order.id);
         if (!cancelled) {
           setOrder(updated);
           setCustomerDraft(orderToCustomerValue(updated));

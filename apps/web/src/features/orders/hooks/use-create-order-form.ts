@@ -12,6 +12,7 @@ import {
   calcLineSubtotal,
 } from '@/features/orders/lib/create-order-calculations';
 import type {
+  CarrybeeLocation,
   CreateOrderFormState,
   CreateOrderLineItem,
   CreateOrderTotals,
@@ -58,6 +59,7 @@ type FormAction =
       code?: string;
     }
   | { type: 'set_pathao'; location: PathaoLocation | null }
+  | { type: 'set_carrybee'; location: CarrybeeLocation | null }
   | { type: 'add_attachment'; name: string; url: string }
   | { type: 'remove_attachment'; name: string };
 
@@ -71,6 +73,7 @@ function createInitialState(): CreateOrderFormState {
     customerNote: '',
     district: '',
     pathaoLocation: null,
+    carrybeeLocation: null,
     orderSource: '',
     orderTag: '',
     customerTag: '',
@@ -205,6 +208,18 @@ function reducer(state: CreateOrderFormState, action: FormAction): CreateOrderFo
       return {
         ...state,
         pathaoLocation: action.location,
+        ...(action.location
+          ? {
+              address: action.location.label,
+              district: action.location.city,
+            }
+          : {}),
+      };
+
+    case 'set_carrybee':
+      return {
+        ...state,
+        carrybeeLocation: action.location,
         ...(action.location
           ? {
               address: action.location.label,
@@ -426,6 +441,10 @@ export function useCreateOrderForm() {
     dispatch({ type: 'set_pathao', location });
   }, []);
 
+  const setCarrybeeLocation = React.useCallback((location: CarrybeeLocation | null) => {
+    dispatch({ type: 'set_carrybee', location });
+  }, []);
+
   const addAttachment = React.useCallback((name: string, url: string) => {
     dispatch({ type: 'add_attachment', name, url });
   }, []);
@@ -498,6 +517,7 @@ export function useCreateOrderForm() {
     removeLineItem,
     applyCoupon,
     setPathaoLocation,
+    setCarrybeeLocation,
     addAttachment,
     removeAttachment,
     uploadAttachment,

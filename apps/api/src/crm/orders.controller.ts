@@ -200,6 +200,33 @@ class CreateOrderDto {
 
   @IsOptional()
   @IsString()
+  carrybeeCity?: string;
+
+  @IsOptional()
+  @IsString()
+  carrybeeZone?: string;
+
+  @IsOptional()
+  @IsString()
+  carrybeeArea?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  carrybeeCityId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  carrybeeZoneId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  carrybeeAreaId?: number;
+
+  @IsOptional()
+  @IsString()
   utmSource?: string;
 
   @IsOptional()
@@ -354,6 +381,39 @@ class UpdateOrderDto {
   )
   @IsNumber()
   pathaoAreaId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  carrybeeCity?: string;
+
+  @IsOptional()
+  @IsString()
+  carrybeeZone?: string;
+
+  @IsOptional()
+  @IsString()
+  carrybeeArea?: string;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === null || value === undefined || value === '' ? value : Number(value),
+  )
+  @IsNumber()
+  carrybeeCityId?: number | null;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === null || value === undefined || value === '' ? value : Number(value),
+  )
+  @IsNumber()
+  carrybeeZoneId?: number | null;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === null || value === undefined || value === '' ? value : Number(value),
+  )
+  @IsNumber()
+  carrybeeAreaId?: number | null;
 
   @IsOptional()
   @IsArray()
@@ -547,6 +607,12 @@ export class OrdersController {
       pathaoCityId: body.pathaoCityId,
       pathaoZoneId: body.pathaoZoneId,
       pathaoAreaId: body.pathaoAreaId,
+      carrybeeCity: body.carrybeeCity,
+      carrybeeZone: body.carrybeeZone,
+      carrybeeArea: body.carrybeeArea,
+      carrybeeCityId: body.carrybeeCityId,
+      carrybeeZoneId: body.carrybeeZoneId,
+      carrybeeAreaId: body.carrybeeAreaId,
       utmSource: body.utmSource,
       utmId: body.utmId,
       utmContent: body.utmContent,
@@ -599,6 +665,22 @@ export class OrdersController {
   syncPathao(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
     this.orders.requireOrg(user.organizationId);
     return this.orders.syncPathaoStatus(user.organizationId!, id);
+  }
+
+  @Post(':id/courier/carrybee/book')
+  @RequirePermissions('courier.manage', 'orders.confirm')
+  @ApiOperation({ summary: 'Book order with Carrybee (org Settings credentials)' })
+  bookCarrybee(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.bookWithCarrybee(user.organizationId!, id, this.actor(user));
+  }
+
+  @Post(':id/courier/carrybee/sync')
+  @RequirePermissions('courier.manage', 'orders.view', 'orders.confirm')
+  @ApiOperation({ summary: 'Refresh Carrybee courier status' })
+  syncCarrybee(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.syncCarrybeeStatus(user.organizationId!, id);
   }
 
   @Patch(':id')

@@ -33,6 +33,7 @@ import {
 import { OrderSmsDialog } from '@/features/orders/components/shared/order-sms-dialog';
 import { ORDER_STICKY_ACTION_CLASS } from '@/features/orders/components/create-order/section-layout';
 import { pathaoCourierApi } from '@/features/orders/api/pathao-courier-api';
+import { carrybeeCourierApi } from '@/features/orders/api/carrybee-courier-api';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
@@ -78,8 +79,10 @@ export function OrderActionBar({
   const hasPathaoIds = Boolean(
     order.pathaoCityId && order.pathaoZoneId && order.pathaoAreaId,
   );
+  const hasCarrybeeIds = Boolean(order.carrybeeCityId && order.carrybeeZoneId);
   const alreadyBooked = Boolean(order.courierConsignmentId);
   const due = collectAmount(order);
+  const [bookProvider, setBookProvider] = React.useState<'pathao' | 'carrybee'>('pathao');
 
   async function handleBookPathao() {
     setCourierLoading(true);
@@ -99,7 +102,25 @@ export function OrderActionBar({
     }
   }
 
-  function handleCourierClick() {
+  async function handleBookCarrybee() {
+    setCourierLoading(true);
+    try {
+      const updated = await carrybeeCourierApi.bookOrder(order.id);
+      toast.success(
+        updated.courierConsignmentId
+          ? `Booked Carrybee · ${updated.courierConsignmentId}`
+          : `${order.orderNumber} booked with Carrybee`,
+      );
+      setBookOpen(false);
+      onCourierBooked?.(updated);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Carrybee booking failed');
+    } finally {
+      setCourierLoading(false);
+    }
+  }
+
+  function handlePathaoClick() {
     if (alreadyBooked) {
       toast.message(
         `Already booked: ${order.courierConsignmentId ?? order.courierTrackingCode}`,
@@ -110,6 +131,22 @@ export function OrderActionBar({
       toast.error('Select Pathao city, zone & area in Order details first');
       return;
     }
+    setBookProvider('pathao');
+    setBookOpen(true);
+  }
+
+  function handleCarrybeeClick() {
+    if (alreadyBooked) {
+      toast.message(
+        `Already booked: ${order.courierConsignmentId ?? order.courierTrackingCode}`,
+      );
+      return;
+    }
+    if (!hasCarrybeeIds) {
+      toast.error('Select Carrybee city & zone in Order details first');
+      return;
+    }
+    setBookProvider('carrybee');
     setBookOpen(true);
   }
 
@@ -157,10 +194,29 @@ export function OrderActionBar({
               variant="outline"
               className="h-8"
               disabled={courierLoading || order.status === 'cancelled'}
-              onClick={handleCourierClick}
+              onClick={handlePathaoClick}
             >
               <Truck className="size-3.5" />
-              {alreadyBooked ? 'Booked' : courierLoading ? 'Booking…' : 'Pathao'}
+              {alreadyBooked && order.courierProvider === 'pathao'
+                ? 'Booked'
+                : courierLoading && bookProvider === 'pathao'
+                  ? 'Booking…'
+                  : 'Pathao'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8"
+              disabled={courierLoading || order.status === 'cancelled'}
+              onClick={handleCarrybeeClick}
+            >
+              <Truck className="size-3.5" />
+              {alreadyBooked && order.courierProvider === 'carrybee'
+                ? 'Booked'
+                : courierLoading && bookProvider === 'carrybee'
+                  ? 'Booking…'
+                  : 'Carrybee'}
             </Button>
           </Can>
 
@@ -215,10 +271,13 @@ export function OrderActionBar({
       <Dialog open={bookOpen} onOpenChange={setBookOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Book with Pathao</DialogTitle>
+            <DialogTitle>
+              Book with {bookProvider === 'carrybee' ? 'Carrybee' : 'Pathao'}
+            </DialogTitle>
             <DialogDescription>
-              Creates a Pathao consignment (sandbox/live per PATHAO_ENV). Order status becomes{' '}
-              <span className="font-medium text-foreground">In Courier</span>.
+              Creates a {bookProvider === 'carrybee' ? 'Carrybee' : 'Pathao'} consignment. Order
+              status becomes <span className="font-medium text-foreground">In Courier</span>. COD
+              collect = due.
             </DialogDescription>
           </DialogHeader>
 
@@ -230,9 +289,13 @@ export function OrderActionBar({
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Location</span>
               <span className="max-w-[14rem] text-right font-medium">
-                {[order.pathaoArea, order.pathaoZone, order.pathaoCity]
-                  .filter(Boolean)
-                  .join(', ') || '—'}
+                {bookProvider === 'carrybee'
+                  ? [order.carrybeeArea, order.carrybeeZone, order.carrybeeCity]
+                      .filter(Boolean)
+                      .join(', ') || '—'
+                  : [order.pathaoArea, order.pathaoZone, order.pathaoCity]
+                      .filter(Boolean)
+                      .join(', ') || '—'}
               </span>
             </div>
             <div className="flex justify-between gap-3">
@@ -253,7 +316,9 @@ export function OrderActionBar({
             <Button
               type="button"
               disabled={courierLoading}
-              onClick={() => void handleBookPathao()}
+              onClick={() =>
+                void (bookProvider === 'carrybee' ? handleBookCarrybee() : handleBookPathao())
+              }
             >
               {courierLoading ? 'Booking…' : 'Confirm book'}
             </Button>

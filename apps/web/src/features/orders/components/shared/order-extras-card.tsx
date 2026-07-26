@@ -12,8 +12,9 @@ import { FormTextarea } from '@/components/form/form-textarea';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PathaoLocationDialog } from '@/features/orders/components/create-order/pathao-location-dialog';
+import { CarrybeeLocationDialog } from '@/features/orders/components/create-order/carrybee-location-dialog';
 import { EditableSectionCard } from '@/features/orders/components/shared/editable-section-card';
-import type { PathaoLocation } from '@/features/orders/lib/create-order-types';
+import type { CarrybeeLocation, PathaoLocation } from '@/features/orders/lib/create-order-types';
 import { env } from '@/config/env';
 import { getStoredAccessToken } from '@/lib/auth-token';
 import { getTenantSlugFromHost } from '@/lib/tenant';
@@ -36,6 +37,12 @@ type OrderExtrasCardProps = {
     pathaoCityId?: number | null;
     pathaoZoneId?: number | null;
     pathaoAreaId?: number | null;
+    carrybeeCity?: string;
+    carrybeeZone?: string;
+    carrybeeArea?: string;
+    carrybeeCityId?: number | null;
+    carrybeeZoneId?: number | null;
+    carrybeeAreaId?: number | null;
     customerNote?: string;
     courierNote?: string;
     packingNote?: string;
@@ -54,6 +61,7 @@ type Draft = {
   customerTag: string;
   orderTag: string;
   pathaoLocation: PathaoLocation | null;
+  carrybeeLocation: CarrybeeLocation | null;
   customerNote: string;
   courierNote: string;
   packingNote: string;
@@ -85,6 +93,21 @@ function pathaoFromOrder(order: OrderDetail): PathaoLocation | null {
   };
 }
 
+function carrybeeFromOrder(order: OrderDetail): CarrybeeLocation | null {
+  if (!order.carrybeeCity || !order.carrybeeZone) return null;
+  return {
+    cityId: order.carrybeeCityId ?? 0,
+    zoneId: order.carrybeeZoneId ?? 0,
+    areaId: order.carrybeeAreaId ?? undefined,
+    city: order.carrybeeCity,
+    zone: order.carrybeeZone,
+    area: order.carrybeeArea ?? undefined,
+    label: order.carrybeeArea
+      ? `${order.carrybeeArea}, ${order.carrybeeZone}, ${order.carrybeeCity}`
+      : `${order.carrybeeZone}, ${order.carrybeeCity}`,
+  };
+}
+
 function toDraft(order: OrderDetail): Draft {
   return {
     altMobile: order.altMobile ?? '',
@@ -95,6 +118,7 @@ function toDraft(order: OrderDetail): Draft {
     customerTag: order.customerTag ?? '',
     orderTag: order.orderTag ?? '',
     pathaoLocation: pathaoFromOrder(order),
+    carrybeeLocation: carrybeeFromOrder(order),
     customerNote: order.customerNote ?? '',
     courierNote: order.courierNote ?? '',
     packingNote: order.packingNote ?? '',
@@ -148,6 +172,7 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
   const [draft, setDraft] = React.useState(() => toDraft(order));
   const [uploading, setUploading] = React.useState(false);
   const [pathaoOpen, setPathaoOpen] = React.useState(false);
+  const [carrybeeOpen, setCarrybeeOpen] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -160,6 +185,11 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
     draft.pathaoLocation?.cityId &&
       draft.pathaoLocation?.zoneId &&
       draft.pathaoLocation?.areaId,
+  );
+  const carrybee = draft.carrybeeLocation?.label
+    ?? [order.carrybeeCity, order.carrybeeZone, order.carrybeeArea].filter(Boolean).join(' › ');
+  const carrybeeReady = Boolean(
+    draft.carrybeeLocation?.cityId && draft.carrybeeLocation?.zoneId,
   );
   const attachments = order.attachments ?? [];
 
@@ -308,6 +338,37 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
             <p className="mt-1.5 text-sm font-medium">{draft.pathaoLocation.label}</p>
           ) : null}
         </FormField>
+
+        <FormField
+          label="Carrybee location"
+          hint={
+            carrybeeReady
+              ? 'Ready to book'
+              : draft.carrybeeLocation
+                ? 'Re-select location to save Carrybee IDs before booking'
+                : 'Required before Carrybee booking'
+          }
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => setCarrybeeOpen(true)}>
+              {draft.carrybeeLocation ? 'Change Carrybee' : 'Select Carrybee'}
+            </Button>
+            {draft.carrybeeLocation ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() => patchDraft({ carrybeeLocation: null })}
+              >
+                Clear
+              </Button>
+            ) : null}
+          </div>
+          {draft.carrybeeLocation ? (
+            <p className="mt-1.5 text-sm font-medium">{draft.carrybeeLocation.label}</p>
+          ) : null}
+        </FormField>
       </div>
 
       <FormField label="Customer note">
@@ -416,6 +477,15 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
               : undefined
           }
         />
+        <MetaRow label="Carrybee" value={carrybee || undefined} />
+        <MetaRow
+          label="Carrybee IDs"
+          value={
+            order.carrybeeCityId && order.carrybeeZoneId
+              ? `${order.carrybeeCityId}/${order.carrybeeZoneId}${order.carrybeeAreaId ? `/${order.carrybeeAreaId}` : ''}`
+              : undefined
+          }
+        />
         <MetaRow label="Consignment" value={order.courierConsignmentId} />
       </div>
 
@@ -490,6 +560,7 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
             ? async () => {
                 const paid = Number(draft.paidAmount);
                 const loc = draft.pathaoLocation;
+                const cb = draft.carrybeeLocation;
                 await onSave({
                   altMobile: draft.altMobile,
                   referenceNo: draft.referenceNo,
@@ -504,6 +575,12 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
                   pathaoCityId: loc?.cityId ? loc.cityId : null,
                   pathaoZoneId: loc?.zoneId ? loc.zoneId : null,
                   pathaoAreaId: loc?.areaId ? loc.areaId : null,
+                  carrybeeCity: cb?.city ?? '',
+                  carrybeeZone: cb?.zone ?? '',
+                  carrybeeArea: cb?.area ?? '',
+                  carrybeeCityId: cb?.cityId ? cb.cityId : null,
+                  carrybeeZoneId: cb?.zoneId ? cb.zoneId : null,
+                  carrybeeAreaId: cb?.areaId ? cb.areaId : null,
                   customerNote: draft.customerNote,
                   courierNote: draft.courierNote,
                   packingNote: draft.packingNote,
@@ -524,6 +601,15 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
         onConfirm={(location) => {
           patchDraft({ pathaoLocation: location });
           toast.success('Pathao location selected — save to apply');
+        }}
+      />
+      <CarrybeeLocationDialog
+        open={carrybeeOpen}
+        onOpenChange={setCarrybeeOpen}
+        value={draft.carrybeeLocation}
+        onConfirm={(location) => {
+          patchDraft({ carrybeeLocation: location });
+          toast.success('Carrybee location selected — save to apply');
         }}
       />
     </>

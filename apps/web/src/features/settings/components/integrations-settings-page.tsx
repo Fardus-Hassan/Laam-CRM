@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import type { PathaoIntegrationSettings } from '@laam/types';
+import type { CarrybeeIntegrationSettings, PathaoIntegrationSettings } from '@laam/types';
 import { CheckCircle2, Plug, Unplug, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -11,6 +11,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { carrybeeSettingsApi } from '@/features/settings/api/carrybee-settings-api';
 import { pathaoSettingsApi } from '@/features/settings/api/pathao-settings-api';
 import {
   ORDER_CARD_CLASS,
@@ -22,28 +23,52 @@ import { cn } from '@/lib/utils';
 
 const COMING_SOON = [
   { id: 'steadfast', label: 'Steadfast Courier', icon: '🚚' },
-  { id: 'carrybee', label: 'CarryBee Courier', icon: '📦' },
   { id: 'redx', label: 'RedX Courier', icon: '🔴' },
   { id: 'bkash', label: 'bKash Payment', icon: '💳' },
   { id: 'smtp', label: 'Email (SMTP)', icon: '✉️' },
 ] as const;
 
+function statusOf(cfg: { enabled?: boolean; hasCredentials?: boolean; lastError?: string | null } | null) {
+  if (cfg?.lastError) return 'error' as const;
+  if (cfg?.enabled && cfg.hasCredentials) return 'connected' as const;
+  return 'disconnected' as const;
+}
+
+function StatusBadge({ status }: { status: 'connected' | 'error' | 'disconnected' }) {
+  return (
+    <Badge
+      variant={
+        status === 'connected' ? 'success' : status === 'error' ? 'destructive' : 'secondary'
+      }
+      className="gap-1 text-[10px]"
+    >
+      {status === 'connected' ? (
+        <CheckCircle2 className="size-3" />
+      ) : status === 'error' ? (
+        <XCircle className="size-3" />
+      ) : (
+        <Unplug className="size-3" />
+      )}
+      {status === 'connected' ? 'Connected' : status === 'error' ? 'Error' : 'Not connected'}
+    </Badge>
+  );
+}
+
 export function IntegrationsSettingsPage() {
   const [pathao, setPathao] = React.useState<PathaoIntegrationSettings | null>(null);
+  const [carrybee, setCarrybee] = React.useState<CarrybeeIntegrationSettings | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      const cfg = await pathaoSettingsApi.get();
-      setPathao(cfg);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load Pathao settings';
-      setError(message);
-      setPathao(null);
-      toast.error(message);
+      const [p, c] = await Promise.all([
+        pathaoSettingsApi.get().catch(() => null),
+        carrybeeSettingsApi.get().catch(() => null),
+      ]);
+      setPathao(p);
+      setCarrybee(c);
+      if (!p && !c) toast.error('Failed to load integrations');
     } finally {
       setLoading(false);
     }
@@ -53,12 +78,8 @@ export function IntegrationsSettingsPage() {
     void refresh();
   }, [refresh]);
 
-  const pathaoConnected = Boolean(pathao?.enabled && pathao.hasCredentials);
-  const pathaoStatus = pathao?.lastError
-    ? 'error'
-    : pathaoConnected
-      ? 'connected'
-      : 'disconnected';
+  const pathaoStatus = statusOf(pathao);
+  const carrybeeStatus = statusOf(carrybee);
 
   return (
     <PageShell
@@ -77,35 +98,12 @@ export function IntegrationsSettingsPage() {
                     <span className="text-lg">📦</span>
                     <CardTitle className="text-sm">Pathao Courier</CardTitle>
                   </div>
-                  <Badge
-                    variant={
-                      pathaoStatus === 'connected'
-                        ? 'success'
-                        : pathaoStatus === 'error'
-                          ? 'destructive'
-                          : 'secondary'
-                    }
-                    className="gap-1 text-[10px]"
-                  >
-                    {pathaoStatus === 'connected' ? (
-                      <CheckCircle2 className="size-3" />
-                    ) : pathaoStatus === 'error' ? (
-                      <XCircle className="size-3" />
-                    ) : (
-                      <Unplug className="size-3" />
-                    )}
-                    {pathaoStatus === 'connected'
-                      ? 'Connected'
-                      : pathaoStatus === 'error'
-                        ? 'Error'
-                        : 'Not connected'}
-                  </Badge>
+                  <StatusBadge status={pathaoStatus} />
                 </div>
               </CardHeader>
               <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
                 <p className="text-xs text-muted-foreground">
-                  Book parcels, sync courier status, and map Pathao → CRM status from org
-                  settings.
+                  Book parcels, sync courier status, and map Pathao → CRM status.
                 </p>
                 {pathao?.environment ? (
                   <p className="text-xs text-muted-foreground">
@@ -113,19 +111,42 @@ export function IntegrationsSettingsPage() {
                     {pathao.storeId ? ` · Store ${pathao.storeId}` : ''}
                   </p>
                 ) : null}
-                {pathao?.lastSyncAt ? (
-                  <p className="text-xs text-muted-foreground">
-                    Last sync: {new Date(pathao.lastSyncAt).toLocaleString()}
-                  </p>
-                ) : null}
-                {pathao?.lastError || error ? (
-                  <p className="text-xs text-destructive">{pathao?.lastError || error}</p>
-                ) : null}
                 <Can permission="settings.manage">
                   <Button type="button" size="sm" asChild>
                     <Link href="/dashboard/settings/integrations/pathao">
                       <Plug className="size-3.5" />
                       Configure Pathao
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
+
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📦</span>
+                    <CardTitle className="text-sm">Carrybee Courier</CardTitle>
+                  </div>
+                  <StatusBadge status={carrybeeStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  Book parcels, sync status, and map Carrybee → CRM (incl. RTS Carrybee).
+                </p>
+                {carrybee?.environment ? (
+                  <p className="text-xs text-muted-foreground">
+                    Environment: <span className="font-medium">{carrybee.environment}</span>
+                    {carrybee.storeId ? ` · Store ${carrybee.storeId}` : ''}
+                  </p>
+                ) : null}
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/carrybee">
+                      <Plug className="size-3.5" />
+                      Configure Carrybee
                     </Link>
                   </Button>
                 </Can>
@@ -146,9 +167,7 @@ export function IntegrationsSettingsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className={ORDER_SECTION_BODY_CLASS}>
-                  <p className="text-xs text-muted-foreground">
-                    Not configured yet. Pathao is available now.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Not configured yet.</p>
                 </CardContent>
               </Card>
             ))}

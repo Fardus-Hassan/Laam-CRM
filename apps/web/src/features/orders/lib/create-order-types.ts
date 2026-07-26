@@ -12,6 +12,16 @@ export type PathaoLocation = {
   label: string;
 };
 
+export type CarrybeeLocation = {
+  cityId: number;
+  zoneId: number;
+  areaId?: number;
+  city: string;
+  zone: string;
+  area?: string;
+  label: string;
+};
+
 export type CreateOrderLineItem = {
   id: string;
   productId: string;
@@ -38,6 +48,7 @@ export type CreateOrderFormState = {
   customerNote: string;
   district: string;
   pathaoLocation: PathaoLocation | null;
+  carrybeeLocation: CarrybeeLocation | null;
   orderSource: OrderSource | '';
   orderTag: string;
   customerTag: string;
