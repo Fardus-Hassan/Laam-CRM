@@ -9,5 +9,10 @@ type ProductPickerProps =
 
 /** Product catalog search + line items — shared between create and detail edit. */
 export function ProductPicker(props: ProductPickerProps) {
-  return <CreateOrderProductsSection form={props.form} />;
+  return (
+    <CreateOrderProductsSection
+      form={props.form}
+      variant={props.mode === 'edit' ? 'lines-only' : 'full'}
+    />
+  );
 }

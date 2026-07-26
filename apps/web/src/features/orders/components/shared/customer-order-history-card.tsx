@@ -33,12 +33,23 @@ export function CustomerOrderHistoryCard({
   React.useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void ordersApi.getOrdersByPhone(phone, currentOrderId).then((items) => {
-      if (!cancelled) {
-        setOrders(items);
-        setLoading(false);
-      }
-    });
+    void ordersApi
+      .getOrdersByPhone(phone, currentOrderId)
+      .then((items) => {
+        if (!cancelled) {
+          setOrders(items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOrders([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
     return () => {
       cancelled = true;
     };

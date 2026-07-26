@@ -38,6 +38,53 @@ model Organization {
   inventoryLots            InventoryLot[]
   accountingJournalEntries AccountingJournalEntry[]
   unitsOfMeasure           UnitOfMeasure[]
+  orders                   Order[]
+  orderFormOptions         OrderFormOption[]
+  coupons                  Coupon[]
+  leads                    Lead[]
+  followups                Followup[]
+  courierIntegrations      CourierIntegration[]
+  courierStatusMaps        CourierStatusMap[]
+}
+
+/// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
+model CourierIntegration {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider         String // pathao | steadfast | carrybee
+  enabled          Boolean      @default(false)
+  environment      String       @default("sandbox") // sandbox | live
+  storeId          String?
+  /// AES-GCM payload: clientId, clientSecret, username, password, baseUrl?
+  credentialsEnc   String?
+  lastSyncAt       DateTime?
+  lastError        String?
+  syncIntervalSec  Int          @default(180)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, enabled])
+}
+
+/// Configurable courier → CRM status catalog (filter labels + auto-map).
+model CourierStatusMap {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       String
+  slug           String
+  label          String
+  crmStatus      String?
+  isTerminal     Boolean      @default(false)
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, provider, slug])
+  @@index([organizationId, provider, isActive])
 }
 
 model User {
@@ -170,9 +217,10 @@ model Notification {
 }
 
 model Lead {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   organizationId    String?
-  leadNumber        String   @unique
+  organization      Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadNumber        String
   name              String
   phone             String
   email             String?
@@ -180,12 +228,26 @@ model Lead {
   status            String
   assignedAgentName String?
   area              String?
+  address           String?
   estimatedValue    Float?
   campaignName      String?
   notes             String?
-  tags              String[] @default([])
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  tags              String[]  @default([])
+  productSummary    String?
+  itemCount         Int?
+  followUpDue       DateTime?
+  /// Stores converted order number (UI links to /dashboard/orders/:orderId).
+  orderId           String?
+  convertedAt       DateTime?
+  lastActivityAt    DateTime?
+  lineItems         Json      @default("[]")
+  activities        Json      @default("[]")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([organizationId, leadNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, phone])
 }
 
 model Contact {
@@ -243,21 +305,186 @@ model Deal {
 }
 
 model Order {
-  id                String   @id @default(cuid())
-  organizationId    String?
-  orderNumber       String   @unique
-  status            String
-  customerName      String
-  customerPhone     String
-  source            String
-  itemsCount        Int
-  amount            Float
-  paymentStatus     String
+  id                 String   @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderNumber        String
+  status             String
+  customerName       String
+  customerPhone      String
+  customerEmail      String?
+  altMobile          String?
+  customerNote       String?
+  customerTag        String?
+  orderTag           String?
+  source             String
+  itemsCount         Int
+  subtotal           Float    @default(0)
+  discount           Float    @default(0)
+  deliveryCharge     Float    @default(0)
+  amount             Float
+  paidAmount         Float    @default(0)
+  paymentStatus      String
+  paymentMethod      String?
+  assignedAgentName  String?
+  shippingArea       String
+  shippingAddress    String?
+  district           String?
+  pathaoCity         String?
+  pathaoZone         String?
+  pathaoArea         String?
+  pathaoCityId       Int?
+  pathaoZoneId       Int?
+  pathaoAreaId       Int?
+  notes              String?
+  courierNote        String?
+  packingNote        String?
+  referenceNo        String?
+  orderDate          DateTime @default(now())
+  skipFollowup       Boolean  @default(false)
+  couponCode         String?
+  courierChargedToMe Float    @default(0)
+  courierProvider    String?
+  courierConsignmentId String?
+  courierTrackingCode  String?
+  courierCollectAmount Float?
+  courierBookedAt    DateTime?
+  courierStatus      String?
+  courierStatusSlug  String?
+  courierStatusSyncedAt DateTime?
+  leadId             String?
+  utmSource          String?
+  utmId              String?
+  utmContent         String?
+  utmCampaign        String?
+  attachmentNames    String[] @default([])
+  attachmentUrls     String[] @default([])
+  stockDeductedAt    DateTime?
+  createdByUserId    String?
+  createdByName      String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  lineItems          OrderItem[]
+  activities         OrderActivity[]
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, customerPhone])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, courierStatusSlug])
+  @@index([organizationId, courierProvider, courierConsignmentId])
+  @@index([courierProvider, courierStatusSyncedAt])
+}
+
+model Followup {
+  id                String    @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  queue             Int       @default(1)
+  orderId           String?
+  orderNumber       String?
+  customerId        String
+  customerNumber    String
+  scheduleDate      DateTime? @db.Date
+  skipped           Boolean   @default(false)
+  name              String
+  phone             String
+  address           String?
+  area              String?
+  district          String?
+  followupNotes     String?
+  customerNotes     String?
+  followupStatus    String    @default("no_status")
+  type              String    @default("listed")
+  recentProducts    Json      @default("[]")
+  tags              String[]  @default([])
+  smsStatus         String    @default("not_sent")
   assignedAgentName String?
-  shippingArea      String
-  shippingAddress   String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  source            String
+  activities        Json      @default("[]")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([organizationId, orderId])
+  @@index([organizationId, queue])
+  @@index([organizationId, phone])
+  @@index([organizationId, scheduleDate])
+  @@index([organizationId, followupStatus])
+}
+
+model Coupon {
+  id              String    @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code            String
+  type            String // percent | fixed
+  value           Float
+  minOrderBdt     Float?
+  maxDiscountBdt  Float?
+  usageCount      Int       @default(0)
+  usageLimit      Int?
+  expiresAt       DateTime?
+  isActive        Boolean   @default(true)
+  description     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organizationId  String
+  productId       String?
+  variantId       String?
+  productName     String
+  variationLabel  String?
+  sku             String?
+  quantity        Int
+  unitPrice       Float
+  discount        Float    @default(0)
+  lineTotal       Float
+  createdAt       DateTime @default(now())
+
+  @@index([orderId])
+  @@index([organizationId])
+}
+
+model OrderActivity {
+  id             String   @id @default(cuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organizationId String
+  type           String
+  label          String
+  description    String?
+  actorUserId    String?
+  actorName      String?
+  createdAt      DateTime @default(now())
+
+  @@index([orderId])
+  @@index([organizationId])
+}
+
+/// Org-configurable create-order dropdowns / defaults (not hardcoded in UI).
+model OrderFormOption {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind           String // status | payment_method | source | district | order_tag | customer_tag | default_courier_note | default_shipping
+  value          String
+  label          String
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, kind, value])
+  @@index([organizationId, kind, isActive])
 }
 
 /// Product manufacturer / label brand (not tenant CRM theming).

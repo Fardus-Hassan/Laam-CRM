@@ -19,13 +19,27 @@ type UploadedImage = {
 };
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+const ATTACHMENT_EXTENSIONS = [
+  ...ALLOWED_EXTENSIONS,
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.txt',
+  '.csv',
+];
 const MIME_TO_EXTENSION: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/jpg': '.jpg',
   'image/webp': '.webp',
   'image/gif': '.gif',
+  'application/pdf': '.pdf',
+  'text/plain': '.txt',
+  'text/csv': '.csv',
 };
 
 /**
@@ -133,6 +147,58 @@ export class ObjectStorageService implements OnModuleInit {
     await writeFile(join(dir, filename), file.buffer);
     const key = `${organizationId}/products/${filename}`;
     return { key, url: `/api/uploads/${key}` };
+  }
+
+  async uploadOrderAttachment(
+    organizationId: string,
+    file: UploadedImage,
+  ): Promise<{ key: string; url: string; name: string }> {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Attachment file is required');
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      throw new BadRequestException('Attachment must be 10MB or smaller');
+    }
+
+    const rawExt = extname(file.originalname ?? '').toLowerCase();
+    const ext = ATTACHMENT_EXTENSIONS.includes(rawExt)
+      ? rawExt
+      : MIME_TO_EXTENSION[file.mimetype?.toLowerCase() ?? ''];
+    if (!ext) {
+      throw new BadRequestException(
+        'Allowed: images, PDF, Word, Excel, TXT, CSV',
+      );
+    }
+
+    const safeName = (file.originalname || `attachment${ext}`).replace(
+      /[^\w.\-()+ ]+/g,
+      '_',
+    );
+    const filename = `${randomUUID()}${ext}`;
+
+    if (this.client) {
+      const key = `orgs/${organizationId}/orders/attachments/${filename}`;
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype || 'application/octet-stream',
+          CacheControl: 'private, max-age=31536000',
+        }),
+      );
+      return {
+        key,
+        url: `${this.publicBaseUrl}/${key}`,
+        name: safeName,
+      };
+    }
+
+    const dir = join(process.cwd(), 'uploads', organizationId, 'orders');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, filename), file.buffer);
+    const key = `${organizationId}/orders/${filename}`;
+    return { key, url: `/api/uploads/${key}`, name: safeName };
   }
 
   async deleteObject(key: string): Promise<void> {

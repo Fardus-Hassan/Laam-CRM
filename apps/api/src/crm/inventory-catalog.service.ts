@@ -1602,6 +1602,42 @@ export class InventoryCatalogService {
     });
   }
 
+  /**
+   * Decrements (or restores) variant stock for order lines inside an existing
+   * transaction. Positive `sign` restores; negative consumes.
+   */
+  async applyOrderStockDeltas(
+    tx: Tx,
+    organizationId: string,
+    lines: Array<{
+      productId: string | null;
+      variantId: string | null;
+      quantity: number;
+      productName: string;
+    }>,
+    options: {
+      sign: 1 | -1;
+      orderNumber: string;
+      actor?: Actor;
+    },
+  ): Promise<void> {
+    for (const line of lines) {
+      if (!line.productId || line.quantity <= 0) continue;
+      await this.applyStockDelta(
+        tx,
+        organizationId,
+        line.productId,
+        {
+          variantId: line.variantId ?? undefined,
+          delta: options.sign * line.quantity,
+          reason: options.sign < 0 ? 'order_sale' : 'order_restock',
+          note: `Order ${options.orderNumber} · ${line.productName}`,
+        },
+        options.actor,
+      );
+    }
+  }
+
   // ─── Internal: lookups / validation ───────────────────────────────────────
 
   private async requireBrand(

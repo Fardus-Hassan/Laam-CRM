@@ -1,0 +1,9 @@
+-- Pathao location IDs + courier booking metadata
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "pathaoCityId" INTEGER;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "pathaoZoneId" INTEGER;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "pathaoAreaId" INTEGER;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "courierProvider" TEXT;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "courierConsignmentId" TEXT;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "courierTrackingCode" TEXT;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "courierCollectAmount" DOUBLE PRECISION;
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "courierBookedAt" TIMESTAMP(3);

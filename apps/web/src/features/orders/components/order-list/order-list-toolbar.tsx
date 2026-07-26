@@ -51,6 +51,9 @@ function buildActiveFilterChips(
   if (filters.courier) {
     chips.push({ key: 'courier', label: filters.courier });
   }
+  if (filters.courierStatusSlug) {
+    chips.push({ key: 'courierStatusSlug', label: filters.courierStatusSlug });
+  }
   if (filters.product) {
     chips.push({ key: 'product', label: `Product: ${filters.product}` });
   }

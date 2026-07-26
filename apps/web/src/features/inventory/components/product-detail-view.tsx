@@ -32,6 +32,12 @@ import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
 import { useInventoryUnits } from '@/features/inventory/hooks/use-inventory-units';
 import { ProductImageField } from '@/features/inventory/components/create-product-page';
+import { MerchandisingFlagsField } from '@/features/inventory/components/merchandising-flags-field';
+import {
+  mergeMerchandisingTags,
+  parseMerchandisingFlags,
+  type MerchandisingFlags,
+} from '@/features/inventory/lib/product-merchandising';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -97,6 +103,11 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
     category: '',
     reorderLevel: 5,
     imageUrl: '',
+    merchandising: {
+      isHero: false,
+      isUpsell: false,
+      isCrossSell: false,
+    } as MerchandisingFlags,
     variants: [] as ProductVariant[],
   });
 
@@ -133,6 +144,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
           category: data.category,
           reorderLevel: data.reorderLevel,
           imageUrl: data.imageUrl ?? '',
+          merchandising: parseMerchandisingFlags(data.tags),
           variants: data.variants.map((v) => ({ ...v })),
         });
         setPendingFile(null);
@@ -230,6 +242,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
       categoryId: selectedCategory?.id,
       reorderLevel: draft.reorderLevel,
       imageUrl: draft.imageUrl.startsWith('data:') ? undefined : draft.imageUrl || undefined,
+      tags: mergeMerchandisingTags(product.tags, draft.merchandising),
       variants: draft.variants.map((v) => ({
         id: v.id,
         label: v.label.trim() || 'Standard',
@@ -404,6 +417,18 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                     {isArchived ? <Badge variant="destructive">Archived</Badge> : null}
                     <Badge variant="secondary">{PRODUCT_STATUS_LABELS[product.status]}</Badge>
                     <StockStatusBadge status={product.stockStatus} />
+                    {(() => {
+                      const merch = parseMerchandisingFlags(product.tags);
+                      return (
+                        <>
+                          {merch.isHero ? <Badge>Hero</Badge> : null}
+                          {merch.isUpsell ? <Badge variant="outline">Upsell</Badge> : null}
+                          {merch.isCrossSell ? (
+                            <Badge variant="outline">Cross-sell</Badge>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {editing && !isArchived ? (
@@ -473,6 +498,13 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                           onChange={(e) => setDraft((c) => ({ ...c, notes: e.target.value }))}
                         />
                       </FormField>
+                      <MerchandisingFlagsField
+                        className="sm:col-span-2"
+                        value={draft.merchandising}
+                        onChange={(merchandising) =>
+                          setDraft((c) => ({ ...c, merchandising }))
+                        }
+                      />
                       <div className="sm:col-span-2">
                         <ProductImageField
                           imageUrl={draft.imageUrl}

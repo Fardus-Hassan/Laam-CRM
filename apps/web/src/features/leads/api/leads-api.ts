@@ -1,5 +1,6 @@
 import type {
   CreateLeadPayload,
+  LeadConvertPrefill,
   LeadDetail,
   LeadListQuery,
   LeadListResponse,
@@ -18,7 +19,6 @@ import {
   saveLeadConvertPrefill,
   updateMockLead,
   type LeadBulkActionResult,
-  type LeadConvertPrefill,
 } from '@/features/leads/data/mock-leads';
 
 export type { LeadConvertPrefill, LeadBulkActionResult };

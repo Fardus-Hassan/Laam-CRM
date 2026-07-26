@@ -3,15 +3,37 @@
 import * as React from 'react';
 import Link from 'next/link';
 import type { OrderDetail } from '@laam/types';
-import { ArrowLeft, MessageSquare, Printer, Truck } from 'lucide-react';
+import {
+  ArrowLeft,
+  MoreHorizontal,
+  MessageSquare,
+  Printer,
+  Truck,
+  UserPlus,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
-import { StatusBadge } from '@/components/dashboard/status-badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { OrderSmsDialog } from '@/features/orders/components/shared/order-sms-dialog';
 import { ORDER_STICKY_ACTION_CLASS } from '@/features/orders/components/create-order/section-layout';
-import { courierApi } from '@/features/courier/api/courier-api';
+import { pathaoCourierApi } from '@/features/orders/api/pathao-courier-api';
+import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
 type OrderActionBarProps = {
@@ -21,9 +43,14 @@ type OrderActionBarProps = {
   onAssign?: () => void;
   onStatusClick?: () => void;
   onPrint?: (type: 'invoice' | 'packing') => void;
+  onCourierBooked?: (order: OrderDetail) => void;
   backHref?: string;
   className?: string;
 };
+
+function collectAmount(order: OrderDetail) {
+  return Math.max(0, order.amount - (order.paidAmount ?? 0));
+}
 
 export function OrderActionBar({
   order,
@@ -32,86 +59,148 @@ export function OrderActionBar({
   onAssign,
   onStatusClick,
   onPrint,
+  onCourierBooked,
   backHref = '/dashboard/orders',
   className,
 }: OrderActionBarProps) {
   const [smsOpen, setSmsOpen] = React.useState(false);
+  const [bookOpen, setBookOpen] = React.useState(false);
   const [courierLoading, setCourierLoading] = React.useState(false);
+  const { can } = usePermissions();
+  const canConfirm =
+    order.status === 'pending' || order.status === 'pending_2' || order.status === 'pending_3';
+  const canCancel =
+    order.status !== 'delivered' &&
+    order.status !== 'cancelled' &&
+    order.status !== 'completed';
+  const showCancel = can('orders.cancel');
 
-  async function handleSendCourier() {
+  const hasPathaoIds = Boolean(
+    order.pathaoCityId && order.pathaoZoneId && order.pathaoAreaId,
+  );
+  const alreadyBooked = Boolean(order.courierConsignmentId);
+  const due = collectAmount(order);
+
+  async function handleBookPathao() {
     setCourierLoading(true);
     try {
-      await courierApi.submitOrders([order.id], 'steadfast');
-      toast.success(`${order.orderNumber} submitted to courier`);
+      const updated = await pathaoCourierApi.bookOrder(order.id);
+      toast.success(
+        updated.courierConsignmentId
+          ? `Booked Pathao · ${updated.courierConsignmentId}`
+          : `${order.orderNumber} booked with Pathao`,
+      );
+      setBookOpen(false);
+      onCourierBooked?.(updated);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Pathao booking failed');
     } finally {
       setCourierLoading(false);
     }
   }
 
+  function handleCourierClick() {
+    if (alreadyBooked) {
+      toast.message(
+        `Already booked: ${order.courierConsignmentId ?? order.courierTrackingCode}`,
+      );
+      return;
+    }
+    if (!hasPathaoIds) {
+      toast.error('Select Pathao city, zone & area in Order details first');
+      return;
+    }
+    setBookOpen(true);
+  }
+
   return (
     <div className={cn(ORDER_STICKY_ACTION_CLASS, className)}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button type="button" variant="outline" size="sm" asChild>
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2 text-muted-foreground"
+          asChild
+        >
           <Link href={backHref}>
             <ArrowLeft className="size-4" />
-            Back
+            Orders
           </Link>
         </Button>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge status={order.status} kind="order" />
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           <Can permission="orders.confirm">
             <Button
               type="button"
               size="sm"
-              disabled={order.status !== 'pending'}
+              className="h-8"
+              disabled={!canConfirm}
               onClick={onConfirm}
             >
               Confirm
             </Button>
           </Can>
-          <Can permission="orders.cancel">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={order.status === 'delivered' || order.status === 'cancelled'}
-              onClick={onCancel}
-            >
-              Cancel
-            </Button>
-          </Can>
+          <Button type="button" size="sm" variant="secondary" className="h-8" onClick={onStatusClick}>
+            Status
+          </Button>
           <Can permission="orders.assign">
-            <Button type="button" size="sm" variant="secondary" onClick={onAssign}>
-              Assign agent
+            <Button type="button" size="sm" variant="outline" className="h-8" onClick={onAssign}>
+              <UserPlus className="size-3.5" />
+              Assign
             </Button>
           </Can>
-          <Button type="button" size="sm" variant="outline" onClick={onStatusClick}>
-            Change status
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => setSmsOpen(true)}>
-            <MessageSquare className="size-4" />
-            SMS
-          </Button>
           <Can permission="courier.manage">
             <Button
               type="button"
               size="sm"
               variant="outline"
+              className="h-8"
               disabled={courierLoading || order.status === 'cancelled'}
-              onClick={() => void handleSendCourier()}
+              onClick={handleCourierClick}
             >
-              <Truck className="size-4" />
-              {courierLoading ? 'Sending…' : 'Courier'}
+              <Truck className="size-3.5" />
+              {alreadyBooked ? 'Booked' : courierLoading ? 'Booking…' : 'Pathao'}
             </Button>
           </Can>
-          <Button type="button" size="sm" variant="outline" asChild>
-            <Link href="/dashboard/courier">Hub</Link>
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => onPrint?.('invoice')}>
-            <Printer className="size-4" />
-            Print
-          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm" variant="outline" className="h-8 px-2">
+                <MoreHorizontal className="size-4" />
+                <span className="sr-only">More actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => setSmsOpen(true)}>
+                <MessageSquare className="size-4" />
+                Send SMS
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onPrint?.('invoice')}>
+                <Printer className="size-4" />
+                Print invoice
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onPrint?.('packing')}>
+                <Printer className="size-4" />
+                Print packing slip
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/courier">Courier hub</Link>
+              </DropdownMenuItem>
+              {showCancel ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={!canCancel}
+                    className="text-destructive focus:text-destructive"
+                    onClick={onCancel}
+                  >
+                    Cancel order
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -122,6 +211,55 @@ export function OrderActionBar({
         customerPhone={order.customerPhone}
         customerName={order.customerName}
       />
+
+      <Dialog open={bookOpen} onOpenChange={setBookOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Book with Pathao</DialogTitle>
+            <DialogDescription>
+              Creates a Pathao consignment (sandbox/live per PATHAO_ENV). Order status becomes{' '}
+              <span className="font-medium text-foreground">In Courier</span>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-2.5 text-sm">
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Order</span>
+              <span className="font-medium">{order.orderNumber}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Location</span>
+              <span className="max-w-[14rem] text-right font-medium">
+                {[order.pathaoArea, order.pathaoZone, order.pathaoCity]
+                  .filter(Boolean)
+                  .join(', ') || '—'}
+              </span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Collect amount</span>
+              <span className="font-semibold">
+                ৳{due.toLocaleString('en-BD')}
+                {due === 0 ? (
+                  <span className="ml-1 font-normal text-muted-foreground">(fully paid)</span>
+                ) : null}
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBookOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={courierLoading}
+              onClick={() => void handleBookPathao()}
+            >
+              {courierLoading ? 'Booking…' : 'Confirm book'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

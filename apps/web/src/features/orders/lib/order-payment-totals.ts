@@ -1,4 +1,4 @@
-import type { OrderDetail } from '@laam/types';
+import type { OrderDetail, PaymentStatus } from '@laam/types';
 
 const paidAmountByOrderId = new Map<string, number>();
 
@@ -12,17 +12,29 @@ export function getRegisteredPaidAmount(orderId: string): number | undefined {
 }
 
 export function calcOrderPaymentTotals(
-  order: Pick<OrderDetail, 'id' | 'amount' | 'paymentStatus'>,
+  order: Pick<OrderDetail, 'id' | 'amount' | 'paymentStatus'> & {
+    paidAmount?: number;
+  },
 ) {
   const registered = paidAmountByOrderId.get(order.id);
+  const fromOrder =
+    typeof order.paidAmount === 'number' && Number.isFinite(order.paidAmount)
+      ? Math.max(0, order.paidAmount)
+      : undefined;
 
-  const paid =
-    order.paymentStatus === 'paid'
-      ? order.amount
-      : order.paymentStatus === 'partial'
-        ? (registered ?? Math.round(order.amount * 0.5))
-        : 0;
+  let paid: number;
+  if (order.paymentStatus === 'paid') {
+    paid = fromOrder ?? registered ?? order.amount;
+  } else if (order.paymentStatus === 'partial') {
+    paid = fromOrder ?? registered ?? 0;
+  } else if (order.paymentStatus === 'refunded') {
+    paid = fromOrder ?? registered ?? 0;
+  } else {
+    // cod / unpaid — still honor advance if stored
+    paid = fromOrder ?? registered ?? 0;
+  }
 
+  paid = Math.min(paid, order.amount);
   return { paid, due: Math.max(0, order.amount - paid) };
 }
 
@@ -30,7 +42,7 @@ export function calcOrderPaymentTotals(
 export function seedOrderPaidAmount(
   orderId: string,
   amount: number,
-  paymentStatus: OrderDetail['paymentStatus'],
+  paymentStatus: PaymentStatus,
   seedIndex = 0,
 ) {
   if (paymentStatus === 'paid') {

@@ -33,7 +33,7 @@ export function DataTableCourierStats({
   compact?: boolean;
 }) {
   const percent = Math.min(100, Math.max(0, courier.percent));
-  const total = courier.to + courier.co + courier.su + courier.fa;
+  const total = courier.to;
 
   return (
     <div className={cn('w-full space-y-1 text-[11px]', compact && 'space-y-0.5', className)}>

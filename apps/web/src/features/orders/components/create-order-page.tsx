@@ -7,11 +7,10 @@ import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { PageShell } from '@/components/layout/page-shell';
-import { VALID_COUPON_CODES } from '@/features/orders/data/mock-create-order';
+import { leadsApi } from '@/features/leads/api/leads-api';
 import {
   clearLeadConvertPrefill,
   loadLeadConvertPrefill,
-  markLeadConverted,
 } from '@/features/leads/data/mock-leads';
 import { mapLeadPrefillToOrderLineItems } from '@/features/leads/lib/lead-order-prefill';
 import { CreateOrderOtherSection } from '@/features/orders/components/create-order/create-order-other-section';
@@ -44,8 +43,14 @@ export function CreateOrderPage() {
   const [leadPrefillId, setLeadPrefillId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const prefill = loadLeadConvertPrefill();
-    if (prefill) {
+    let cancelled = false;
+
+    async function applyLeadPrefill(prefill: Awaited<ReturnType<typeof leadsApi.prepareConvert>>) {
+      if (!prefill || cancelled) return;
+      const lineItems = prefill.lineItems?.length
+        ? await mapLeadPrefillToOrderLineItems(prefill.lineItems)
+        : undefined;
+      if (cancelled) return;
       form.patch({
         name: prefill.customerName,
         mobile: prefill.customerPhone,
@@ -53,22 +58,43 @@ export function CreateOrderPage() {
         address: prefill.shippingAddress ?? '',
         district: prefill.shippingArea ?? '',
         orderSource: prefill.orderSource,
-        ...(prefill.lineItems?.length
-          ? { lineItems: mapLeadPrefillToOrderLineItems(prefill.lineItems) }
-          : {}),
+        ...(lineItems?.length ? { lineItems } : {}),
       });
       setLeadPrefillId(prefill.leadId);
-      clearLeadConvertPrefill();
       toast.info(`Pre-filled from lead ${prefill.leadNumber}`);
-      return;
     }
 
-    const phone = searchParams.get('phone');
-    if (phone) {
-      form.patch({ mobile: phone });
-      form.lookupCustomer();
-      toast.info('Customer phone pre-filled');
+    async function bootstrap() {
+      const fromLead = searchParams.get('fromLead');
+      if (fromLead) {
+        try {
+          const prefill = await leadsApi.prepareConvert(fromLead);
+          await applyLeadPrefill(prefill);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load lead');
+        }
+        return;
+      }
+
+      const stored = loadLeadConvertPrefill();
+      if (stored) {
+        await applyLeadPrefill(stored);
+        clearLeadConvertPrefill();
+        return;
+      }
+
+      const phone = searchParams.get('phone');
+      if (phone) {
+        form.patch({ mobile: phone });
+        form.lookupCustomer();
+        toast.info('Customer phone pre-filled');
+      }
     }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
     // Run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -93,47 +119,64 @@ export function CreateOrderPage() {
       return;
     }
 
-    if (form.state.couponCode && !form.state.couponApplied) {
-      toast.error(`Invalid coupon. Try ${VALID_COUPON_CODES.join(', ')}`);
-      return;
-    }
-
     const lineItems = form.state.lineItems.map((line) => ({
+      productId: line.productId,
+      variantId: line.variationId,
       productName: line.productName,
+      variationLabel: line.variationLabel,
       quantity: line.quantity,
       unitPrice: line.unitPrice,
+      discount: line.discount,
     }));
 
     const order = await createOrder({
       customerName: form.state.name,
       customerPhone: form.state.mobile,
       customerEmail: form.state.email || undefined,
+      altMobile: form.state.altMobile || undefined,
       shippingAddress: form.state.address,
-      shippingArea: form.state.district || 'Dhaka',
+      shippingArea: form.state.district || form.state.pathaoLocation?.city || 'Unknown',
       district: form.state.district,
-      source: (form.state.orderSource || 'call') as 'facebook' | 'call' | 'ecommerce' | 'walk_in',
-      status: (form.state.orderStatus || 'pending') as 'pending',
+      source: form.state.orderSource || 'call',
+      status: form.state.orderStatus || 'pending',
+      paymentMethod: form.state.paymentMethod,
       paymentStatus:
         form.state.paymentMethod === 'paid'
           ? 'paid'
           : form.state.advancePayment > 0
             ? 'partial'
             : 'cod',
-      paidAmount:
-        form.state.advancePayment > 0 ? form.state.advancePayment : undefined,
+      paidAmount: form.state.advancePayment > 0 ? form.state.advancePayment : undefined,
       deliveryCharge: form.state.shipping,
       discount: form.totals.orderDiscount + form.totals.couponDiscount,
       lineItems,
       notes: form.state.orderNote || undefined,
+      customerNote: form.state.customerNote || undefined,
+      courierNote: form.state.courierNote || undefined,
+      packingNote: form.state.packingNote || undefined,
       skipFollowup: form.state.skipFollowup,
       couponCode: form.state.couponApplied ? form.state.couponCode : undefined,
       leadId: leadPrefillId ?? undefined,
+      customerTag: form.state.customerTag || undefined,
+      orderTag: form.state.orderTag || undefined,
+      referenceNo: form.state.referenceNo || undefined,
+      orderDate: form.state.orderDate.toISOString(),
+      courierChargedToMe: form.state.courierChargedToMe,
+      pathaoCity: form.state.pathaoLocation?.city,
+      pathaoZone: form.state.pathaoLocation?.zone,
+      pathaoArea: form.state.pathaoLocation?.area,
+      pathaoCityId: form.state.pathaoLocation?.cityId,
+      pathaoZoneId: form.state.pathaoLocation?.zoneId,
+      pathaoAreaId: form.state.pathaoLocation?.areaId,
+      utmSource: form.state.utmSource || undefined,
+      utmId: form.state.utmId || undefined,
+      utmContent: form.state.utmContent || undefined,
+      utmCampaign: form.state.utmCampaign || undefined,
+      attachmentNames: form.state.attachments.map((a) => a.name),
+      attachmentUrls: form.state.attachments.map((a) => a.url),
     });
 
-    if (leadPrefillId) {
-      markLeadConverted(leadPrefillId, order.orderNumber);
-    }
-
+    toast.success(`Order ${order.orderNumber} created`);
     router.push(`/dashboard/orders/${order.orderNumber}`);
   }
 

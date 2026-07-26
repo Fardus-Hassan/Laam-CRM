@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -12,10 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import {
-  getStatusConfigBySlug,
-  MOCK_ORDER_STATUSES,
-} from '@/features/orders/data/mock-status-config';
+import { ordersApi } from '@/features/orders/api/orders-api';
 
 type OrderStatusDialogProps = {
   open: boolean;
@@ -32,23 +30,40 @@ export function OrderStatusDialog({
 }: OrderStatusDialogProps) {
   const [status, setStatus] = React.useState(currentStatus);
   const [saving, setSaving] = React.useState(false);
-
-  const statusOptions = React.useMemo(() => {
-    const current = getStatusConfigBySlug(currentStatus as never);
-    const allowed = current?.allowedTransitions?.length
-      ? MOCK_ORDER_STATUSES.filter(
-          (item) =>
-            item.slug === currentStatus ||
-            current.allowedTransitions.includes(item.slug),
-        )
-      : MOCK_ORDER_STATUSES;
-    return allowed.map((item) => ({ value: item.slug, label: item.label }));
-  }, [currentStatus]);
+  const [loading, setLoading] = React.useState(false);
+  const [statusOptions, setStatusOptions] = React.useState<Array<{ value: string; label: string }>>(
+    [],
+  );
 
   React.useEffect(() => {
-    if (open) {
-      setStatus(currentStatus);
-    }
+    if (!open) return;
+    setStatus(currentStatus);
+    let cancelled = false;
+    setLoading(true);
+    void ordersApi
+      .getFormOptions()
+      .then((options) => {
+        if (cancelled) return;
+        const next = options.statuses.map((s) => ({ value: s.value, label: s.label }));
+        if (currentStatus && !next.some((s) => s.value === currentStatus)) {
+          next.unshift({ value: currentStatus, label: currentStatus });
+        }
+        setStatusOptions(next);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          toast.error('Failed to load statuses');
+          setStatusOptions(
+            currentStatus ? [{ value: currentStatus, label: currentStatus }] : [],
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, currentStatus]);
 
   async function handleSave() {
@@ -72,17 +87,23 @@ export function OrderStatusDialog({
             value={status}
             onChange={setStatus}
             options={statusOptions}
-            placeholder="Search status"
+            placeholder={loading ? 'Loading…' : 'Search status'}
+            disabled={loading}
           />
         </FormField>
         <p className="text-xs text-muted-foreground">
-          Only allowed transitions from the current status are shown.
+          Statuses come from your organization order form settings. Confirming cuts stock;
+          cancelling restocks if stock was deducted.
         </p>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" disabled={saving || status === currentStatus} onClick={() => void handleSave()}>
+          <Button
+            type="button"
+            disabled={saving || loading || status === currentStatus}
+            onClick={() => void handleSave()}
+          >
             Update status
           </Button>
         </DialogFooter>

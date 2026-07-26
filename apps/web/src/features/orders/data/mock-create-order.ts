@@ -57,18 +57,6 @@ export type MockCustomerProfile = {
   stats: CustomerLookupStats;
 };
 
-export type PathaoCity = {
-  id: string;
-  name: string;
-  zones: PathaoZone[];
-};
-
-export type PathaoZone = {
-  id: string;
-  name: string;
-  areas: string[];
-};
-
 export const MOCK_DISTRICTS = [
   'Dhaka',
   'Chittagong',
@@ -97,47 +85,6 @@ export const MOCK_PAYMENT_METHODS = [
   { value: 'bkash', label: 'bKash' },
   { value: 'nagad', label: 'Nagad' },
   { value: 'card', label: 'Card' },
-];
-
-export const PATHAO_GEO: PathaoCity[] = [
-  {
-    id: 'dhaka',
-    name: 'Dhaka',
-    zones: [
-      {
-        id: 'dhaka-north',
-        name: 'Dhaka North',
-        areas: ['Uttara', 'Banani', 'Gulshan', 'Mirpur', 'Mohakhali'],
-      },
-      {
-        id: 'dhaka-south',
-        name: 'Dhaka South',
-        areas: ['Dhanmondi', 'Mohammadpur', 'Lalbagh', 'Old Dhaka', 'Jatrabari'],
-      },
-    ],
-  },
-  {
-    id: 'chittagong',
-    name: 'Chittagong',
-    zones: [
-      {
-        id: 'ctg-city',
-        name: 'Chittagong City',
-        areas: ['Agrabad', 'Halishahar', 'Pahartali', 'Nasirabad'],
-      },
-    ],
-  },
-  {
-    id: 'sylhet',
-    name: 'Sylhet',
-    zones: [
-      {
-        id: 'sylhet-city',
-        name: 'Sylhet City',
-        areas: ['Zindabazar', 'Ambarkhana', 'Shibgonj'],
-      },
-    ],
-  },
 ];
 
 /** Active promo codes from coupons module. */
@@ -237,23 +184,4 @@ export function searchDistricts(query: string): string[] {
   }
 
   return MOCK_DISTRICTS.filter((district) => district.toLowerCase().includes(q));
-}
-
-export function filterPathaoAreas(
-  cityId: string,
-  zoneId: string,
-  search: string,
-): string[] {
-  const city = PATHAO_GEO.find((item) => item.id === cityId);
-  const zone = city?.zones.find((item) => item.id === zoneId);
-  if (!zone) {
-    return [];
-  }
-
-  const q = search.trim().toLowerCase();
-  if (!q) {
-    return zone.areas;
-  }
-
-  return zone.areas.filter((area) => area.toLowerCase().includes(q));
 }

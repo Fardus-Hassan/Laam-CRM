@@ -23,7 +23,14 @@ import { cn } from '@/lib/utils';
 
 export type OrderFilterValues = Pick<
   OrderListQuery,
-  'source' | 'employee' | 'district' | 'paymentStatus' | 'courier' | 'product' | 'dateRange'
+  | 'source'
+  | 'employee'
+  | 'district'
+  | 'paymentStatus'
+  | 'courier'
+  | 'courierStatusSlug'
+  | 'product'
+  | 'dateRange'
 > & { status?: OrderStatusType };
 
 const EMPLOYEES = ['Sakib Ahmed', 'Mitu Rahman', 'Imran Hossain', 'Tania Sultana', 'Arif Mahmud'];
@@ -34,6 +41,7 @@ const EMPTY_FILTERS: OrderFilterValues = {
   district: undefined,
   paymentStatus: undefined,
   courier: undefined,
+  courierStatusSlug: undefined,
   product: undefined,
   dateRange: 'last_30',
   status: undefined,
@@ -56,6 +64,29 @@ export function OrderFilterPanel({
 }: OrderFilterPanelProps) {
   const [presets, setPresets] = React.useState(loadOrderFilterPresets);
   const [presetName, setPresetName] = React.useState('');
+  const [courierStatusOptions, setCourierStatusOptions] = React.useState<
+    Array<{ value: string; label: string }>
+  >([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void import('@/features/settings/api/pathao-settings-api')
+      .then((m) => m.pathaoSettingsApi.listStatusMaps())
+      .then((maps) => {
+        if (cancelled) return;
+        setCourierStatusOptions(
+          maps
+            .filter((m) => m.isActive)
+            .map((m) => ({ value: m.slug, label: m.label })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setCourierStatusOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function patch(patch: Partial<OrderFilterValues>) {
     onChange({ ...values, ...patch });
@@ -166,6 +197,19 @@ export function OrderFilterPanel({
               { value: 'pathao', label: 'Pathao' },
               { value: 'steadfast', label: 'Steadfast' },
               { value: 'carrybee', label: 'Carrybee' },
+            ]}
+            placeholder="All"
+          />
+        </FormField>
+        <FormField label="Courier status">
+          <FormSelect
+            value={values.courierStatusSlug ?? ''}
+            onChange={(courierStatusSlug) =>
+              patch({ courierStatusSlug: courierStatusSlug || undefined })
+            }
+            options={[
+              { value: '', label: 'All' },
+              ...courierStatusOptions,
             ]}
             placeholder="All"
           />

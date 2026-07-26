@@ -20,6 +20,7 @@ type EditableSectionCardProps = {
   onSave?: () => void | Promise<void>;
   onCancel?: () => void;
   className?: string;
+  headerExtra?: React.ReactNode;
 };
 
 export function EditableSectionCard({
@@ -31,6 +32,7 @@ export function EditableSectionCard({
   onSave,
   onCancel,
   className,
+  headerExtra,
 }: EditableSectionCardProps) {
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -52,14 +54,15 @@ export function EditableSectionCard({
 
   return (
     <Card className={cn('gap-0 py-0 shadow-none', className)}>
-      <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}>
-        <CardTitle className="flex items-center gap-2 text-sm">
+      <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between gap-2')}>
+        <CardTitle className="flex min-w-0 items-center gap-2 text-sm">
           {icon}
-          {title}
+          <span className="truncate">{title}</span>
         </CardTitle>
-        {canEdit && editContent ? (
-          <div className="flex gap-1">
-            {editing ? (
+        <div className="flex shrink-0 items-center gap-1">
+          {headerExtra}
+          {canEdit && editContent ? (
+            editing ? (
               <>
                 <Button
                   type="button"
@@ -92,9 +95,9 @@ export function EditableSectionCard({
                 <Pencil className="size-3.5" />
                 Edit
               </Button>
-            )}
-          </div>
-        ) : null}
+            )
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className={cn('space-y-3', ORDER_SECTION_BODY_CLASS)}>
         {editing && editContent ? editContent : children}

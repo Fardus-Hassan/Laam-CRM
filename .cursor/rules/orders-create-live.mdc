@@ -1,0 +1,23 @@
+---
+description: Create Order product search must use live inventory API
+globs: apps/web/src/features/orders/**/*
+alwaysApply: false
+---
+
+# Create Order — product catalog via API
+
+On `/dashboard/orders/new` (and shared product picker / Product catalog panel):
+
+- Provide **both**:
+  1. **Category-wise filter** (load categories from live settings/inventory API; filter products by selected category)
+  2. **Search** (name/SKU) — must call the inventory/products API (server-side), not only client-filter a preloaded list
+- Do not rely on loading ~80 products once and client-filtering forever — large catalogs will miss matches.
+- Prefer debounced search + category → `inventoryApi.listProducts({ search, categoryId?, filter: 'active', page, pageSize })` (or equivalent).
+- Initial empty/default list can prefetch a first page; typing/changing category must hit the API.
+- Keep mock-only helpers inside mock API implementations; UI should go through `inventoryApi` / `ordersApi`.
+
+Related Create Order live work (implemented):
+- Coupon live validate + usage on create
+- Real attachment upload (`POST /crm/orders/attachments`)
+- Stock cut on confirm / restock on cancel
+- Product catalog API search + category filter

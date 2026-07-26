@@ -302,10 +302,10 @@ export function createMockOrder(payload: CreateOrderPayload): OrderDetail {
   const amount = subtotal + payload.deliveryCharge - payload.discount;
 
   const order = buildOrder(index, {
-    status: payload.status,
+    status: payload.status as OrderDetail['status'],
     customerName: payload.customerName,
     customerPhone: payload.customerPhone,
-    source: payload.source,
+    source: payload.source as OrderDetail['source'],
     paymentStatus: payload.paymentStatus,
     assignedAgentName: payload.assignedAgentName,
     shippingArea: payload.shippingArea,
@@ -388,24 +388,49 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
     customerName: patch.customerName ?? current.customerName,
     customerPhone: patch.customerPhone ?? current.customerPhone,
     customerEmail: patch.customerEmail ?? current.customerEmail,
+    altMobile: patch.altMobile ?? current.altMobile,
     shippingAddress: patch.shippingAddress ?? current.shippingAddress,
-    shippingArea: patch.shippingAddress ? current.shippingArea : current.shippingArea,
+    shippingArea: patch.shippingArea ?? patch.district ?? current.shippingArea,
+    district: patch.district ?? current.district,
     source: patch.source ?? current.source,
     status: patch.status ?? current.status,
     paymentStatus: patch.paymentStatus ?? current.paymentStatus,
+    paymentMethod: patch.paymentMethod ?? current.paymentMethod,
     deliveryCharge,
     discount,
     subtotal,
     amount,
+    paidAmount: patch.paidAmount ?? current.paidAmount,
     lineItems,
     itemsCount: lineItems.length,
     notes: patch.notes ?? current.notes,
+    customerNote: patch.customerNote ?? current.customerNote,
+    courierNote: patch.courierNote ?? current.courierNote,
+    packingNote: patch.packingNote ?? current.packingNote,
+    referenceNo: patch.referenceNo ?? current.referenceNo,
+    skipFollowup: patch.skipFollowup ?? current.skipFollowup,
+    couponCode: patch.couponCode ?? current.couponCode,
+    customerTag: patch.customerTag ?? current.customerTag,
+    orderTag: patch.orderTag ?? current.orderTag,
+    pathaoCity: patch.pathaoCity ?? current.pathaoCity,
+    pathaoZone: patch.pathaoZone ?? current.pathaoZone,
+    pathaoArea: patch.pathaoArea ?? current.pathaoArea,
     assignedAgentName: patch.assignedAgentName ?? current.assignedAgentName,
+    attachments:
+      patch.attachmentUrls !== undefined
+        ? (patch.attachmentUrls ?? []).map((url, index) => ({
+            id: `${current.id}-att-${index}`,
+            url,
+            name: patch.attachmentNames?.[index] || url.split('/').pop() || `File ${index + 1}`,
+          }))
+        : current.attachments,
     timeline,
   };
 
   mockOrderStore[index] = updated;
-  if (patch.paymentStatus) {
+  if (patch.paidAmount !== undefined) {
+    registerOrderPaidAmount(updated.id, patch.paidAmount);
+  } else if (patch.paymentStatus) {
     seedOrderPaidAmount(updated.id, updated.amount, updated.paymentStatus, index);
   }
 

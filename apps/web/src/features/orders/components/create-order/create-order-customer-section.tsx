@@ -12,11 +12,6 @@ import { FormSelect } from '@/components/form/form-select';
 import { FormTextarea } from '@/components/form/form-textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  MOCK_ORDER_TAGS,
-  searchDistricts,
-} from '@/features/orders/data/mock-create-order';
-import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import type { CreateOrderFormApi } from '@/features/orders/hooks/use-create-order-form';
 import { cn } from '@/lib/utils';
 
@@ -32,30 +27,21 @@ type CreateOrderCustomerSectionProps = {
 };
 
 export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionProps) {
-  const { state, errors, patch, lookupCustomer, setPathaoLocation, clearFieldError } = form;
+  const { state, errors, options, patch, lookupCustomer, setPathaoLocation, clearFieldError } =
+    form;
   const [pathaoOpen, setPathaoOpen] = React.useState(false);
 
-  const districtOptions = React.useMemo(
-    () =>
-      searchDistricts(state.district).map((district) => ({
-        value: district,
-        label: district,
-      })),
-    [state.district],
-  );
+  const districtOptions = React.useMemo(() => {
+    const q = state.district.trim().toLowerCase();
+    const list = options.districts.filter((d) => !q || d.label.toLowerCase().includes(q));
+    return (list.length ? list : options.districts).map((d) => ({
+      value: d.value,
+      label: d.label,
+    }));
+  }, [options.districts, state.district]);
 
-  const orderSourceOptions = (Object.keys(ORDER_SOURCE_LABELS) as OrderSource[]).map(
-    (source) => ({
-      value: source,
-      label: ORDER_SOURCE_LABELS[source],
-    }),
-  );
-
-  const orderTagOptions = MOCK_ORDER_TAGS.map((tag) => ({ value: tag, label: tag }));
-
-  function handleMobileBlur() {
-    lookupCustomer();
-  }
+  const orderSourceOptions = options.sources;
+  const orderTagOptions = options.orderTags;
 
   return (
     <>
@@ -70,12 +56,7 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
               ORDER_SECTION_GRID_GAP,
             )}
           >
-            <FormField
-              label="Mobile Number"
-              htmlFor="mobile"
-              required
-              error={errors.mobile}
-            >
+            <FormField label="Mobile Number" htmlFor="mobile" required error={errors.mobile}>
               <FormPhoneInput
                 id="mobile"
                 value={state.mobile}
@@ -83,7 +64,7 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
                   patch({ mobile: event.target.value });
                   clearFieldError('mobile');
                 }}
-                onBlur={handleMobileBlur}
+                onBlur={() => void lookupCustomer()}
                 placeholder="01XXXXXXXXX"
                 className={cn(errors.mobile && 'border-destructive')}
               />
@@ -120,19 +101,15 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
             </FormField>
           </div>
 
-          <div
-            className={cn(
-              'col-span-full grid lg:grid-cols-2',
-              ORDER_SECTION_GRID_GAP,
-            )}
-          >
+          <div className={cn('col-span-full grid lg:grid-cols-2', ORDER_SECTION_GRID_GAP)}>
             <FormField
               label="Address"
               htmlFor="address"
               required
               error={errors.address}
+              className="min-w-0"
               labelAction={
-                <div className="flex items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1.5">
                   {state.pathaoLocation ? (
                     <Button
                       type="button"
@@ -144,7 +121,12 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
                       Clear
                     </Button>
                   ) : null}
-                  <Button type="button" size="sm" className="h-7 text-xs" onClick={() => setPathaoOpen(true)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setPathaoOpen(true)}
+                  >
                     {state.pathaoLocation ? 'Change Pathao' : 'Select Pathao Location'}
                   </Button>
                 </div>
@@ -159,14 +141,14 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
                 id="address"
                 rows={3}
                 value={state.address}
-                readOnly={Boolean(state.pathaoLocation)}
+                placeholder="Full delivery address"
                 onChange={(event) => {
                   patch({ address: event.target.value });
                   clearFieldError('address');
                 }}
                 className={cn(
+                  'min-h-[4.5rem] w-full break-words',
                   errors.address && 'border-destructive',
-                  state.pathaoLocation && 'bg-muted/40',
                 )}
               />
             </FormField>
@@ -211,11 +193,14 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
               />
             </FormField>
 
-            <FormField label="Order Source" htmlFor="orderSource">
+            <FormField label="Order Source" htmlFor="orderSource" error={errors.orderSource}>
               <FormSelect
                 id="orderSource"
                 value={state.orderSource}
-                onChange={(orderSource) => patch({ orderSource: orderSource as OrderSource | '' })}
+                onChange={(orderSource) => {
+                  patch({ orderSource: orderSource as OrderSource | '' });
+                  clearFieldError('orderSource');
+                }}
                 options={orderSourceOptions}
                 placeholder="Select source"
               />

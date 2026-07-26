@@ -73,7 +73,7 @@ export function FormCombobox({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           id={id}
@@ -98,8 +98,12 @@ export function FormCombobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        // In-dialog: avoid portal so Dialog scroll-lock allows native smooth wheel scroll.
+        portal={false}
         className="w-[var(--radix-popover-trigger-width)] overflow-hidden p-0"
         align="start"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
       >
         {searchable ? (
           <div className="border-b border-border/70 p-2">
@@ -117,7 +121,7 @@ export function FormCombobox({
             </div>
           </div>
         ) : null}
-        <div className="custom-scrollbar max-h-56 overflow-y-auto p-1">
+        <div className="custom-scrollbar max-h-56 overflow-y-auto overscroll-contain p-1">
           {filtered.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</p>
           ) : (

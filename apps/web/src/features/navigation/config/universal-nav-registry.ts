@@ -456,6 +456,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               permissions: pv('settings.manage'),
             },
             {
+              id: 'settings-order-form-options',
+              title: 'Order form options',
+              url: '/dashboard/settings/order-form-options',
+              permissions: pv('settings.manage', 'orders.create'),
+            },
+            {
               id: 'settings-sms',
               title: 'SMS templates',
               url: '/dashboard/settings/sms-templates',

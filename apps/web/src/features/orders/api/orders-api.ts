@@ -5,7 +5,9 @@ import type {
   DuplicateCheckResult,
   OrderBulkActionPayload,
   OrderCourierTracking,
+  OrderCustomerLookup,
   OrderDetail,
+  OrderFormOptionsResponse,
   OrderListQuery,
   OrderListResponse,
   OrderListRow,
@@ -42,6 +44,8 @@ export type OrdersApi = {
   updateOrderNote: (orderId: string, note: string) => Promise<void>;
   getOrdersByPhone: (phone: string, excludeOrderId?: string) => Promise<OrderDetail[]>;
   quickSearchOrders: (query: string, limit?: number) => Promise<OrderListRow[]>;
+  getFormOptions: () => Promise<OrderFormOptionsResponse>;
+  lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
 };
 
 export function createMockOrdersApi(): OrdersApi {
@@ -100,6 +104,38 @@ export function createMockOrdersApi(): OrdersApi {
         orderDetailToListRow(order, index + 1),
       );
     },
+    async getFormOptions() {
+      await delay(50);
+      const { DEFAULT_COURIER_NOTE, MOCK_DISTRICTS, MOCK_ORDER_STATUSES, MOCK_ORDER_TAGS, MOCK_PAYMENT_METHODS } =
+        await import('@/features/orders/data/mock-create-order');
+      const { ORDER_SOURCE_LABELS } = await import('@/features/orders/config/order-status');
+      return {
+        statuses: MOCK_ORDER_STATUSES,
+        paymentMethods: MOCK_PAYMENT_METHODS,
+        sources: Object.entries(ORDER_SOURCE_LABELS).map(([value, label]) => ({ value, label })),
+        districts: MOCK_DISTRICTS.map((d) => ({ value: d, label: d })),
+        orderTags: MOCK_ORDER_TAGS.map((t) => ({ value: t, label: t })),
+        customerTags: MOCK_ORDER_TAGS.map((t) => ({ value: t, label: t })),
+        defaultCourierNote: DEFAULT_COURIER_NOTE,
+        defaultShipping: 120,
+      };
+    },
+    async lookupCustomer(phone) {
+      await delay(50);
+      const { lookupCustomerByMobile } = await import('@/features/orders/data/mock-create-order');
+      const profile = lookupCustomerByMobile(phone);
+      if (!profile) return null;
+      return {
+        mobile: profile.mobile,
+        name: profile.name,
+        email: profile.email,
+        address: profile.address,
+        district: profile.district,
+        orderSource: profile.orderSource,
+        customerTag: profile.customerTag,
+        stats: profile.stats,
+      };
+    },
   };
 }
 
@@ -119,16 +155,21 @@ export function createHttpOrdersApi(): OrdersApi {
     const response = await apiRequest<OrderListResponse>(`${crmEndpoints.orders}${suffix}`);
     return {
       ...response,
-      items: response.items.map((item) => ({
-        ...item,
-        hasNote: false,
-        products: [],
-        shippingAddress: item.shippingArea,
-        subtotal: item.amount,
-        discount: 0,
-        paid: 0,
-        due: item.amount,
-      })),
+      items: response.items.map((item) => {
+        const paid = item.paidAmount ?? 0;
+        const discount = item.discount ?? 0;
+        const subtotal = item.subtotal ?? item.amount;
+        return {
+          ...item,
+          hasNote: item.hasNote ?? false,
+          products: item.products ?? [],
+          shippingAddress: item.shippingAddress || item.shippingArea,
+          subtotal,
+          discount,
+          paid,
+          due: Math.max(0, item.amount - paid),
+        };
+      }),
     };
   }
 
@@ -194,9 +235,9 @@ export function createHttpOrdersApi(): OrdersApi {
     async updateOrderNote(orderId, note) {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
-      await apiRequest(`${crmEndpoints.orders}/${orderId}/note`, {
-        method: 'PUT',
-        body: JSON.stringify({ note }),
+      await apiRequest(`${crmEndpoints.orders}/${orderId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ notes: note }),
       });
     },
     async getOrdersByPhone(phone, excludeOrderId) {
@@ -209,6 +250,19 @@ export function createHttpOrdersApi(): OrdersApi {
     async quickSearchOrders(query, limit = 8) {
       const response = await fetchList({ search: query, page: 1, pageSize: limit });
       return response.items;
+    },
+    async getFormOptions() {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<OrderFormOptionsResponse>(`${crmEndpoints.orders}/meta/form-options`);
+    },
+    async lookupCustomer(phone) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      const params = new URLSearchParams({ phone });
+      return apiRequest<OrderCustomerLookup | null>(
+        `${crmEndpoints.orders}/meta/customer-lookup?${params}`,
+      );
     },
   };
 }

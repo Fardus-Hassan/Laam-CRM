@@ -7,41 +7,66 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { cn } from '@/lib/utils';
 
 type OrderTimelineProps = {
   events: OrderTimelineEvent[];
   title?: string;
 };
 
-export function OrderTimeline({ events, title = 'Activity timeline' }: OrderTimelineProps) {
+export function OrderTimeline({ events, title = 'Activity' }: OrderTimelineProps) {
+  if (!events.length) {
+    return (
+      <Card className="gap-0 py-0 shadow-none">
+        <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+          <CardTitle className="text-sm">{title}</CardTitle>
+        </CardHeader>
+        <CardContent className={ORDER_SECTION_BODY_CLASS}>
+          <p className="text-sm text-muted-foreground">No activity yet.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="gap-0 py-0 shadow-none">
       <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
         <CardTitle className="text-sm">{title}</CardTitle>
       </CardHeader>
       <CardContent className={ORDER_SECTION_BODY_CLASS}>
-        <ol className="space-y-4">
-          {events.map((event) => (
-            <li key={event.id} className="flex gap-3 text-sm">
-              <div className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
-              <div>
-                <p className="font-medium">{event.label}</p>
-                {event.description ? (
-                  <p className="text-muted-foreground">{event.description}</p>
+        <ol className="relative space-y-0">
+          {events.map((event, index) => {
+            const isLast = index === events.length - 1;
+            return (
+              <li key={event.id} className="relative flex gap-3 pb-4 last:pb-0">
+                {!isLast ? (
+                  <span className="absolute top-2.5 left-[5px] h-[calc(100%-4px)] w-px bg-border" />
                 ) : null}
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {new Intl.DateTimeFormat('en-GB', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }).format(new Date(event.timestamp))}
-                  {event.actorName ? ` · ${event.actorName}` : ''}
-                </p>
-              </div>
-            </li>
-          ))}
+                <span
+                  className={cn(
+                    'relative z-[1] mt-1 size-2.5 shrink-0 rounded-full border-2 border-background',
+                    index === events.length - 1 ? 'bg-primary' : 'bg-muted-foreground/40',
+                  )}
+                />
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p className="text-sm font-medium leading-snug">{event.label}</p>
+                  {event.description ? (
+                    <p className="mt-0.5 text-sm text-muted-foreground">{event.description}</p>
+                  ) : null}
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {new Intl.DateTimeFormat('en-GB', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    }).format(new Date(event.timestamp))}
+                    {event.actorName ? ` · ${event.actorName}` : ''}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
         </ol>
       </CardContent>
     </Card>

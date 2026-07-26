@@ -1,8 +1,10 @@
 'use client';
 
 import type { OrderDetail } from '@laam/types';
+import { Banknote } from 'lucide-react';
 
 import { CreateOrderSummaryPanel } from '@/features/orders/components/create-order/create-order-summary-panel';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ORDER_SECTION_BODY_CLASS,
@@ -27,6 +29,35 @@ type MoneySummaryPanelProps =
       className?: string;
     };
 
+function Row({
+  label,
+  value,
+  muted,
+  strong,
+  danger,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  strong?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <div className={cn('flex items-center justify-between gap-3 text-sm', strong && 'pt-1')}>
+      <span className={cn(muted ? 'text-muted-foreground' : 'text-foreground')}>{label}</span>
+      <span
+        className={cn(
+          'tabular-nums',
+          strong && 'text-base font-semibold',
+          danger && 'font-semibold text-destructive',
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 export function MoneySummaryPanel(props: MoneySummaryPanelProps) {
   if (props.mode === 'create') {
     return (
@@ -43,40 +74,54 @@ export function MoneySummaryPanel(props: MoneySummaryPanelProps) {
   const { paid, due } = calcOrderPaymentTotals(order);
 
   return (
-    <Card className={cn('gap-0 py-0 shadow-none', className)}>
+    <Card className={cn('gap-0 overflow-hidden py-0 shadow-none', className)}>
       <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-        <CardTitle className="text-sm">Payment summary</CardTitle>
-      </CardHeader>
-      <CardContent className={cn('space-y-2 text-sm', ORDER_SECTION_BODY_CLASS)}>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Subtotal</span>
-          <span className="tabular-nums">{formatCurrency(order.subtotal)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Delivery</span>
-          <span className="tabular-nums">{formatCurrency(order.deliveryCharge)}</span>
-        </div>
-        {order.discount ? (
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Discount</span>
-            <span className="tabular-nums">-{formatCurrency(order.discount)}</span>
-          </div>
-        ) : null}
-        <div className="flex justify-between border-t pt-2 font-semibold">
-          <span>Total</span>
-          <span className="tabular-nums">{formatCurrency(order.amount)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Paid</span>
-          <span className="tabular-nums text-primary">{formatCurrency(paid)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Due</span>
-          <span className={cn('tabular-nums', due > 0 && 'text-destructive')}>
-            {formatCurrency(due)}
+        <CardTitle className="flex items-center justify-between gap-2 text-sm">
+          <span className="flex items-center gap-2">
+            <Banknote className="size-4 text-primary" />
+            Payment summary
           </span>
+          <Badge
+            variant={
+              order.paymentStatus === 'paid'
+                ? 'success'
+                : order.paymentStatus === 'partial'
+                  ? 'warning'
+                  : 'outline'
+            }
+            className="rounded-md uppercase"
+          >
+            {order.paymentStatus}
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className={cn('space-y-2.5', ORDER_SECTION_BODY_CLASS)}>
+        <Row label="Subtotal" value={formatCurrency(order.subtotal)} muted />
+        <Row label="Delivery" value={formatCurrency(order.deliveryCharge)} muted />
+        {order.discount ? (
+          <Row label="Discount" value={`−${formatCurrency(order.discount)}`} muted />
+        ) : null}
+        <div className="border-t border-border/70 pt-2.5">
+          <Row label="Order total" value={formatCurrency(order.amount)} strong />
         </div>
-        <p className="text-xs text-muted-foreground">{order.paymentStatus.toUpperCase()}</p>
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-2.5 space-y-2">
+          <Row label="Paid" value={formatCurrency(paid)} />
+          <Row label="Due" value={formatCurrency(due)} danger={due > 0} />
+        </div>
+        {(order.paymentMethod || order.couponCode) && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {order.paymentMethod ? (
+              <Badge variant="secondary" className="rounded-md font-normal">
+                {order.paymentMethod}
+              </Badge>
+            ) : null}
+            {order.couponCode ? (
+              <Badge variant="outline" className="rounded-md font-normal">
+                Coupon {order.couponCode}
+              </Badge>
+            ) : null}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

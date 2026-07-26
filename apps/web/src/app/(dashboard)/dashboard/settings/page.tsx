@@ -51,6 +51,12 @@ const SETTINGS_LINKS = [
     icon: GitBranch,
   },
   {
+    title: 'Order form options',
+    description: 'District, source, tags, payment, status list, and default courier note.',
+    href: '/dashboard/settings/order-form-options',
+    icon: Tags,
+  },
+  {
     title: 'SMS Templates',
     description: 'Bulk SMS message templates for order notifications.',
     href: '/dashboard/settings/sms-templates',

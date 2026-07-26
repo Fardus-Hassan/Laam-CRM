@@ -17,6 +17,12 @@ import {
 import { StatusBadge } from '@/components/dashboard/status-badge';
 import { FormPhoneInput } from '@/components/form/form-phone-input';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 
 export function formatOrderDateTime(value: string) {
@@ -75,22 +81,35 @@ export function buildOrderTableColumns(options?: {
       align: 'middle',
     },
     cell: ({ row }) => (
-      <Button
-        type="button"
-        size="icon"
-        variant="ghost"
-        className={
-          row.original.hasNote ? 'size-8 text-primary' : 'size-8 text-muted-foreground'
-        }
-        aria-label={row.original.hasNote ? 'View note' : 'Add note'}
-        onClick={() => onNoteClick?.(row.original)}
-      >
-        {row.original.hasNote ? (
-          <MessageSquare className="size-4" />
-        ) : (
-          <MessageSquarePlus className="size-4" />
-        )}
-      </Button>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={
+                row.original.hasNote ? 'size-8 text-primary' : 'size-8 text-muted-foreground'
+              }
+              aria-label={row.original.hasNote ? 'View note' : 'Add note'}
+              onClick={() => onNoteClick?.(row.original)}
+            >
+              {row.original.hasNote ? (
+                <MessageSquare className="size-4" />
+              ) : (
+                <MessageSquarePlus className="size-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-[220px]">
+            {row.original.lastNotePreview?.trim()
+              ? row.original.lastNotePreview
+              : row.original.hasNote
+                ? 'Open to view note history'
+                : 'Add note'}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     ),
   },
   {
@@ -253,12 +272,44 @@ export function buildOrderTableColumns(options?: {
       cellClassName: 'w-[168px]',
       align: 'top',
     },
-    cell: ({ row }) =>
-      row.original.courier ? (
-        <DataTableCourierStats courier={row.original.courier} compact />
-      ) : (
-        <DataTableEmptyValue />
-      ),
+    cell: ({ row }) => {
+      const stats = row.original.courier;
+      const provider = row.original.courierProvider;
+      const status = row.original.courierStatus;
+      const consignment = row.original.courierConsignmentId;
+
+      if (stats) {
+        return (
+          <div className="space-y-1">
+            <DataTableCourierStats courier={stats} compact />
+            {provider || status || consignment ? (
+              <div className="truncate text-[10px] leading-snug text-muted-foreground">
+                {provider === 'pathao' ? 'Pathao' : provider}
+                {status ? ` · ${status}` : ''}
+                {consignment ? ` · ${consignment}` : ''}
+              </div>
+            ) : null}
+          </div>
+        );
+      }
+
+      if (provider || status || consignment) {
+        return (
+          <div className="space-y-0.5 text-[11px] leading-snug">
+            <p className="font-semibold capitalize text-foreground">
+              {provider === 'pathao' ? 'Pathao' : provider || 'Courier'}
+            </p>
+            {status ? (
+              <p className="line-clamp-2 text-muted-foreground">{status}</p>
+            ) : null}
+            {consignment ? (
+              <p className="truncate font-mono text-[10px] text-muted-foreground">{consignment}</p>
+            ) : null}
+          </div>
+        );
+      }
+      return <DataTableEmptyValue />;
+    },
   },
 ];
 }

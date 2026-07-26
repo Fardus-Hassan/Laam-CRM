@@ -92,6 +92,7 @@ export function OrderListShell({ queue }: OrderListShellProps) {
       district: filters.district,
       paymentStatus: filters.paymentStatus,
       courier: filters.courier,
+      courierStatusSlug: filters.courierStatusSlug,
       product: filters.product,
       dateRange: filters.dateRange,
       followUpDue: queue.followUpDue,
@@ -292,8 +293,8 @@ export function OrderListShell({ queue }: OrderListShellProps) {
       <OrderNoteModal
         open={Boolean(noteRow)}
         onOpenChange={(open) => !open && setNoteRow(null)}
+        orderId={noteRow?.id ?? ''}
         orderNumber={noteRow?.orderNumber ?? ''}
-        initialNote=""
         onSave={handleSaveNote}
       />
     </PageShell>

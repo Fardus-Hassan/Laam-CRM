@@ -160,6 +160,9 @@ function buildOrders(): OrderDetail[] {
       lineItems: [
         { id: `line-${i}`, productName: 'Premium Dates', quantity: 1, unitPrice: amount - 120, lineTotal: amount - 120 },
       ],
+      products: [
+        { name: 'Premium Dates', quantity: 1, price: amount - 120 },
+      ],
       timeline: [{ id: `t-${i}`, type: 'created', label: 'Order created', timestamp: createdAt }],
     };
   });

@@ -22,7 +22,6 @@ import { FollowupNoteModal } from '@/features/followups/components/followup-list
 import { FollowupQueueTabs } from '@/features/followups/components/followup-list/followup-queue-tabs';
 import { FollowupSelectionBar } from '@/features/followups/components/followup-list/followup-selection-bar';
 import { FollowupWorkspaceHeader } from '@/features/followups/components/followup-list/followup-workspace-header';
-import { MOCK_FOLLOWUPS } from '@/features/followups/data/mock-followups';
 import { useFollowupMutations } from '@/features/followups/hooks/use-followup-mutations';
 import { useFollowupsList } from '@/features/followups/hooks/use-followups-list';
 import { cn } from '@/lib/utils';
@@ -97,12 +96,16 @@ export function FollowupListShell() {
   );
 
   const queueCounts = React.useMemo(() => {
-    const counts: Partial<Record<FollowupQueue, number>> = {};
-    for (const q of [1, 2, 3] as FollowupQueue[]) {
-      counts[q] = MOCK_FOLLOWUPS.filter((f) => f.queue === q).length;
+    const fromApi = data?.summary.queueCounts;
+    if (fromApi) {
+      return {
+        1: fromApi[1],
+        2: fromApi[2],
+        3: fromApi[3],
+      } as Partial<Record<FollowupQueue, number>>;
     }
-    return counts;
-  }, []);
+    return {} as Partial<Record<FollowupQueue, number>>;
+  }, [data?.summary.queueCounts]);
 
   const summaryItems = [
     { id: 'count', label: 'In this view', value: data ? String(data.summary.count) : '—' },

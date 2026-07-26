@@ -31,23 +31,7 @@ const CAMPAIGNS = [
   'Walk-in Stall',
 ];
 
-export type LeadConvertPrefill = {
-  leadId: string;
-  leadNumber: string;
-  customerName: string;
-  customerPhone: string;
-  customerEmail?: string;
-  shippingAddress?: string;
-  shippingArea?: string;
-  source: LeadListItem['source'];
-  orderSource: LeadListItem['source'];
-  lineItems?: Array<{
-    productName: string;
-    quantity: number;
-    unitPrice: number;
-    sku?: string;
-  }>;
-};
+export type LeadConvertPrefill = import('@laam/types').LeadConvertPrefill;
 
 export type LeadBulkActionResult = {
   successCount: number;

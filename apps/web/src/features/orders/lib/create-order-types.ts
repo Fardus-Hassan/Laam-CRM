@@ -3,6 +3,9 @@ import type { OrderSource } from '@laam/types';
 export type DiscountMode = 'amount' | 'percent';
 
 export type PathaoLocation = {
+  cityId: number;
+  zoneId: number;
+  areaId: number;
   city: string;
   zone: string;
   area: string;
@@ -47,7 +50,7 @@ export type CreateOrderFormState = {
 
   orderStatus: string;
   paymentMethod: string;
-  attachmentNames: string[];
+  attachments: Array<{ name: string; url: string }>;
   courierNote: string;
   packingNote: string;
   orderNote: string;
@@ -66,7 +69,11 @@ export type CreateOrderFormState = {
   courierChargedToMe: number;
   couponCode: string;
   couponApplied: boolean;
+  couponDiscountAmount: number;
   skipFollowup: boolean;
+
+  catalogSearch: string;
+  catalogCategory: string;
 };
 
 export type CreateOrderTotals = {
@@ -86,7 +93,10 @@ export type CreateOrderValidationErrors = Partial<
     | 'lineItems'
     | 'discountValue'
     | 'shipping'
-    | 'orderDate',
+    | 'orderDate'
+    | 'orderSource'
+    | 'orderStatus'
+    | 'paymentMethod',
     string
   >
 >;

@@ -141,7 +141,30 @@ export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobile
 
         {row.courier ? (
           <LabeledSection title="Courier">
-            <DataTableCourierStats courier={row.courier} />
+            <div className="space-y-1">
+              <DataTableCourierStats courier={row.courier} />
+              {row.courierProvider || row.courierStatus || row.courierConsignmentId ? (
+                <p className="text-xs text-muted-foreground">
+                  {row.courierProvider === 'pathao' ? 'Pathao' : row.courierProvider}
+                  {row.courierStatus ? ` · ${row.courierStatus}` : ''}
+                  {row.courierConsignmentId ? ` · ${row.courierConsignmentId}` : ''}
+                </p>
+              ) : null}
+            </div>
+          </LabeledSection>
+        ) : row.courierProvider || row.courierStatus || row.courierConsignmentId ? (
+          <LabeledSection title="Courier">
+            <div className="space-y-0.5 text-sm leading-snug">
+              <p className="font-semibold capitalize">
+                {row.courierProvider === 'pathao' ? 'Pathao' : row.courierProvider || 'Courier'}
+              </p>
+              {row.courierStatus ? (
+                <p className="text-muted-foreground">{row.courierStatus}</p>
+              ) : null}
+              {row.courierConsignmentId ? (
+                <p className="font-mono text-xs text-muted-foreground">{row.courierConsignmentId}</p>
+              ) : null}
+            </div>
           </LabeledSection>
         ) : null}
 

@@ -16,10 +16,21 @@ import { InventoryReportsController } from './inventory-reports.controller';
 import { InventoryReportsService } from './inventory-reports.service';
 import { InventoryUomService } from './inventory-uom.service';
 import { LeadsController } from './leads.controller';
+import { LeadsService } from './leads.service';
 import { NotificationsController } from './notifications.controller';
 import { ObjectStorageService } from './object-storage.service';
 import { OrgCategoriesController } from './org-categories.controller';
+import { CouponsController } from './coupons.controller';
+import { CouponsService } from './coupons.service';
+import { FollowupsController } from './followups.controller';
+import { FollowupsService } from './followups.service';
 import { OrdersController } from './orders.controller';
+import { OrdersService } from './orders.service';
+import { PathaoCourierController } from './pathao-courier.controller';
+import { PathaoCourierService } from './pathao-courier.service';
+import { PathaoSyncService } from './pathao-sync.service';
+import { CourierIntegrationsController } from './courier-integrations.controller';
+import { CourierIntegrationsService } from './courier-integrations.service';
 import { ProductBrandsController } from './product-brands.controller';
 import { ProductsController } from './products.controller';
 import { RecycleBinController } from './recycle-bin.controller';
@@ -36,6 +47,10 @@ import { RbacService } from './rbac.service';
     DealsController,
     PipelineController,
     OrdersController,
+    PathaoCourierController,
+    CourierIntegrationsController,
+    CouponsController,
+    FollowupsController,
     RbacController,
     BrandingController,
     NotificationsController,
@@ -50,6 +65,13 @@ import { RbacService } from './rbac.service';
   providers: [
     RbacService,
     BrandingService,
+    LeadsService,
+    FollowupsService,
+    OrdersService,
+    PathaoCourierService,
+    PathaoSyncService,
+    CourierIntegrationsService,
+    CouponsService,
     InventoryCatalogService,
     InventoryOperationsService,
     InventoryReportsService,

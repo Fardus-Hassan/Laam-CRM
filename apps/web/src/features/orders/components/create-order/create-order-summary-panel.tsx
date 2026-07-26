@@ -9,7 +9,6 @@ import { FormInput } from '@/components/form/form-input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { VALID_COUPON_CODES } from '@/features/orders/data/mock-create-order';
 import type { CreateOrderFormApi } from '@/features/orders/hooks/use-create-order-form';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -47,6 +46,7 @@ export function CreateOrderSummaryPanel({
 }: CreateOrderSummaryPanelProps) {
   const { state, totals, errors, patch, applyCoupon } = form;
   const [couponOpen, setCouponOpen] = React.useState(false);
+  const [couponBusy, setCouponBusy] = React.useState(false);
 
   return (
     <Card className={cn('gap-0 py-0 shadow-none', className)}>
@@ -147,21 +147,35 @@ export function CreateOrderSummaryPanel({
                     id="couponCode"
                     value={state.couponCode}
                     onChange={(event) =>
-                      patch({ couponCode: event.target.value, couponApplied: false })
+                      patch({
+                        couponCode: event.target.value,
+                        couponApplied: false,
+                        couponDiscountAmount: 0,
+                      })
                     }
-                    placeholder={`Try ${VALID_COUPON_CODES[0]} or ${VALID_COUPON_CODES[1]}`}
+                    placeholder="Enter coupon code"
                   />
                   <Button
                     type="button"
                     size="sm"
                     className="shrink-0"
+                    disabled={couponBusy}
                     onClick={() => {
-                      const applied = applyCoupon();
-                      if (applied) {
-                        toast.success('Coupon applied — 10% off');
-                      } else {
-                        toast.error(`Invalid coupon. Try ${VALID_COUPON_CODES.join(', ')}`);
-                      }
+                      void (async () => {
+                        setCouponBusy(true);
+                        try {
+                          const result = await applyCoupon();
+                          if (result.ok) {
+                            toast.success(
+                              `Coupon applied — ৳${Math.round(result.discount)} off`,
+                            );
+                          } else {
+                            toast.error(result.message);
+                          }
+                        } finally {
+                          setCouponBusy(false);
+                        }
+                      })();
                     }}
                   >
                     Apply
@@ -169,7 +183,10 @@ export function CreateOrderSummaryPanel({
                 </div>
               </FormField>
               {state.couponApplied ? (
-                <p className="text-xs text-primary">Coupon applied — 10% off</p>
+                <p className="text-xs text-primary">
+                  Coupon {state.couponCode} applied — ৳
+                  {Math.round(totals.couponDiscount)} off
+                </p>
               ) : null}
             </div>
           )}

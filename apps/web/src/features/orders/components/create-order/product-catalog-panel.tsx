@@ -5,16 +5,15 @@ import { Plus, Sparkles } from 'lucide-react';
 
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
+import { FormSelect } from '@/components/form/form-select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  getOrderCatalogProducts,
-  getProductById,
-  searchProducts,
-  type MockProduct,
-} from '@/features/orders/data/mock-create-order';
-import type { CreateOrderFormApi } from '@/features/orders/hooks/use-create-order-form';
+import type {
+  CreateOrderFormApi,
+  OrderCatalogProduct,
+} from '@/features/orders/hooks/use-create-order-form';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
@@ -32,9 +31,9 @@ function ProductRow({
   onAdd,
   highlight,
 }: {
-  product: MockProduct;
+  product: OrderCatalogProduct;
   onAdd: (id: string) => void;
-  highlight?: 'hero' | 'upsell';
+  highlight?: 'hero' | 'upsell' | 'cross_sell';
 }) {
   const minPrice = Math.min(...product.variations.map((v) => v.unitPrice));
 
@@ -44,6 +43,7 @@ function ProductRow({
         'flex items-center gap-2.5 rounded-md border px-2 py-2 transition-colors hover:bg-muted/60',
         highlight === 'hero' && 'border-primary/40 bg-primary/5',
         highlight === 'upsell' && 'border-border/60',
+        highlight === 'cross_sell' && 'border-border/60',
         !highlight && 'border-transparent',
       )}
     >
@@ -52,17 +52,31 @@ function ProductRow({
         className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
         onClick={() => onAdd(product.id)}
       >
-        <img
-          src={product.imageUrl}
-          alt={product.name}
-          className="size-11 shrink-0 rounded-md border border-border/60 object-cover"
-          loading="lazy"
-        />
+        {product.imageUrl ? (
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            className="size-11 shrink-0 rounded-md border border-border/60 object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="size-11 shrink-0 rounded-md border border-border/60 bg-muted" />
+        )}
         <span className="min-w-0">
           <span className="flex min-w-0 items-center gap-1.5">
             <p className="truncate text-sm font-medium">{product.name}</p>
             {highlight === 'hero' ? (
               <Badge className="shrink-0 text-[10px]">Hero</Badge>
+            ) : null}
+            {highlight === 'upsell' ? (
+              <Badge variant="outline" className="shrink-0 text-[10px]">
+                Upsell
+              </Badge>
+            ) : null}
+            {highlight === 'cross_sell' ? (
+              <Badge variant="outline" className="shrink-0 text-[10px]">
+                Cross-sell
+              </Badge>
             ) : null}
           </span>
           <p className="text-xs text-muted-foreground">
@@ -86,23 +100,30 @@ function ProductRow({
 }
 
 export function ProductCatalogPanel({ form, className }: ProductCatalogPanelProps) {
-  const { addLineItemFromProduct, clearFieldError, state } = form;
-  const [filter, setFilter] = React.useState('');
+  const {
+    addLineItemFromProduct,
+    clearFieldError,
+    state,
+    patch,
+    catalogProducts,
+    catalogTotal,
+    loadingCatalog,
+  } = form;
+  const categoryOptions = useOrgCategoryOptions('product');
 
-  const products = React.useMemo(() => searchProducts(filter), [filter]);
-  const heroProducts = products.filter((p) => p.isHero);
-  const upsellProducts = products.filter((p) => p.isUpsell && !p.isHero);
-  const otherProducts = products.filter((p) => !p.isHero && !p.isUpsell);
-
-  const hasHeroInCart = state.lineItems.some((line) => {
-    const product = getProductById(line.productId);
-    return product?.isHero;
-  });
+  const heroProducts = catalogProducts.filter((p) => p.isHero);
+  const upsellProducts = catalogProducts.filter((p) => p.isUpsell && !p.isHero);
+  const crossSellProducts = catalogProducts.filter(
+    (p) => p.isCrossSell && !p.isHero && !p.isUpsell,
+  );
+  const otherProducts = catalogProducts.filter(
+    (p) => !p.isHero && !p.isUpsell && !p.isCrossSell,
+  );
 
   function handleQuickAdd(productId: string) {
-    const product = getProductById(productId);
+    const product = catalogProducts.find((p) => p.id === productId);
     const variationId = product?.variations[0]?.id;
-    addLineItemFromProduct(productId, variationId);
+    void addLineItemFromProduct(productId, variationId);
     clearFieldError('lineItems');
   }
 
@@ -111,24 +132,41 @@ export function ProductCatalogPanel({ form, className }: ProductCatalogPanelProp
       <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
         <CardTitle className="text-sm">Product catalog</CardTitle>
         <p className="text-[11px] text-muted-foreground">
-          Hero mix first — then add-ons (pink salt, beetroot, etc.)
+          Search and filter by category — live inventory
         </p>
       </CardHeader>
       <CardContent className={cn('flex flex-col gap-2.5', ORDER_SECTION_BODY_CLASS)}>
-        <FormField label="Search products">
-          <FormInput
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter by name or SKU"
-          />
-        </FormField>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <FormField label="Category">
+            <FormSelect
+              value={state.catalogCategory}
+              onChange={(catalogCategory) => patch({ catalogCategory })}
+              options={[
+                { value: '', label: 'All categories' },
+                ...categoryOptions.map((c) => ({ value: c.value, label: c.label })),
+              ]}
+              placeholder="All categories"
+            />
+          </FormField>
+          <FormField label="Search products">
+            <FormInput
+              value={state.catalogSearch}
+              onChange={(event) => patch({ catalogSearch: event.target.value })}
+              placeholder="Search by name or SKU"
+            />
+          </FormField>
+        </div>
 
         <div className="custom-scrollbar h-[420px] space-y-3 overflow-y-auto rounded-lg border border-border/70 p-2">
-          {heroProducts.length > 0 ? (
+          {loadingCatalog ? (
+            <p className="p-4 text-center text-sm text-muted-foreground">Searching…</p>
+          ) : null}
+
+          {!loadingCatalog && heroProducts.length > 0 ? (
             <div className="space-y-1">
               <p className="flex items-center gap-1 px-1 text-[11px] font-semibold tracking-wide text-primary uppercase">
                 <Sparkles className="size-3" />
-                Hero — Honey + Kalojira Mix
+                Hero
               </p>
               {heroProducts.map((product) => (
                 <ProductRow
@@ -141,10 +179,10 @@ export function ProductCatalogPanel({ form, className }: ProductCatalogPanelProp
             </div>
           ) : null}
 
-          {upsellProducts.length > 0 ? (
+          {!loadingCatalog && upsellProducts.length > 0 ? (
             <div className="space-y-1">
               <p className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                {hasHeroInCart ? 'Add-ons / upsell' : 'Also sell with mix'}
+                Upsell
               </p>
               {upsellProducts.map((product) => (
                 <ProductRow
@@ -157,10 +195,26 @@ export function ProductCatalogPanel({ form, className }: ProductCatalogPanelProp
             </div>
           ) : null}
 
-          {otherProducts.length > 0 ? (
+          {!loadingCatalog && crossSellProducts.length > 0 ? (
             <div className="space-y-1">
               <p className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                Other
+                Cross-sell
+              </p>
+              {crossSellProducts.map((product) => (
+                <ProductRow
+                  key={product.id}
+                  product={product}
+                  onAdd={handleQuickAdd}
+                  highlight="cross_sell"
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {!loadingCatalog && otherProducts.length > 0 ? (
+            <div className="space-y-1">
+              <p className="px-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Products
               </p>
               {otherProducts.map((product) => (
                 <ProductRow key={product.id} product={product} onAdd={handleQuickAdd} />
@@ -168,14 +222,13 @@ export function ProductCatalogPanel({ form, className }: ProductCatalogPanelProp
             </div>
           ) : null}
 
-          {products.length === 0 ? (
+          {!loadingCatalog && catalogProducts.length === 0 ? (
             <p className="p-4 text-center text-sm text-muted-foreground">No products match.</p>
           ) : null}
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Showing {products.length} of {getOrderCatalogProducts().length} products · tap + or a row
-          to add
+          Showing {catalogProducts.length} of {catalogTotal} · tap + or a row to add
         </p>
       </CardContent>
     </Card>

@@ -1208,7 +1208,7 @@ export class InventoryOperationsService {
     status: string;
     returnDate: Date;
     reason: string | null;
-    lines: { quantity: number; unitCost: Prisma.Decimal | number }[];
+    lines: { quantity: number; unitCost: Prisma.Decimal | number | unknown }[];
   }): PurchaseReturnListItem {
     return {
       id: row.id,

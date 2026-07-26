@@ -37,15 +37,17 @@ export function calcCouponDiscount(
   afterOrderDiscount: number,
   couponApplied: boolean,
   couponCode = '',
+  couponDiscountAmount = 0,
 ): number {
   if (!couponApplied || afterOrderDiscount <= 0) {
     return 0;
   }
-
+  if (couponDiscountAmount > 0) {
+    return Math.min(couponDiscountAmount, afterOrderDiscount);
+  }
   if (getActiveCouponByCode(couponCode)) {
     return calcCouponDiscountAmount(couponCode, afterOrderDiscount);
   }
-  // Legacy SAVE10
   if (couponCode.trim().toUpperCase() === 'SAVE10') {
     return (afterOrderDiscount * 10) / 100;
   }
@@ -61,6 +63,7 @@ export function calcCreateOrderTotals(state: Pick<
   | 'advancePayment'
   | 'couponApplied'
   | 'couponCode'
+  | 'couponDiscountAmount'
 >): CreateOrderTotals {
   const subtotal = calcSubtotal(state.lineItems);
   const orderDiscount = calcOrderDiscount(
@@ -69,7 +72,12 @@ export function calcCreateOrderTotals(state: Pick<
     state.discountValue,
   );
   const afterOrderDiscount = Math.max(0, subtotal - orderDiscount);
-  const couponDiscount = calcCouponDiscount(afterOrderDiscount, state.couponApplied, state.couponCode);
+  const couponDiscount = calcCouponDiscount(
+    afterOrderDiscount,
+    state.couponApplied,
+    state.couponCode,
+    state.couponDiscountAmount,
+  );
   const afterDiscount = Math.max(0, afterOrderDiscount - couponDiscount);
   const grandTotal = Math.max(0, afterDiscount + state.shipping);
   const due = Math.max(0, grandTotal - state.advancePayment);

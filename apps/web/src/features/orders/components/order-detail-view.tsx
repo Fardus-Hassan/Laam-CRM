@@ -1,8 +1,12 @@
 'use client';
 
 import * as React from 'react';
-import type { OrderDetail, OrderCourierTracking } from '@laam/types';
-import { MapPin } from 'lucide-react';
+import type {
+  OrderDetail,
+  OrderCourierTracking,
+  OrderFormOptionsResponse,
+} from '@laam/types';
+import { MapPin, StickyNote } from 'lucide-react';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { FormField } from '@/components/form/form-field';
@@ -20,6 +24,7 @@ import { MoneySummaryPanel } from '@/features/orders/components/shared/money-sum
 import { OrderActionBar } from '@/features/orders/components/shared/order-action-bar';
 import { OrderAssignSheet } from '@/features/orders/components/shared/order-assign-sheet';
 import { OrderDetailHeader } from '@/features/orders/components/shared/order-detail-header';
+import { OrderExtrasCard } from '@/features/orders/components/shared/order-extras-card';
 import { OrderLineItemsCard } from '@/features/orders/components/shared/order-line-items-card';
 import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
 import { OrderTimeline } from '@/features/orders/components/shared/order-timeline';
@@ -27,11 +32,22 @@ import { PrintPreviewDialog } from '@/features/orders/components/shared/print-pr
 import {
   ORDER_PAGE_GAP,
   ORDER_SIDEBAR_GRID_CLASS,
+  ORDER_STICKY_MAX_H_CLASS,
+  ORDER_STICKY_TOP_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { ordersApi } from '@/features/orders/api/orders-api';
 import { useOrderDetailMutations } from '@/features/orders/hooks/use-order-mutations';
 import { createOrderDetailBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
 import { cn } from '@/lib/utils';
+
+const COURIER_TRACKING_STATUSES = new Set([
+  'confirmed',
+  'processing',
+  'processing_2',
+  'in_courier',
+  'delivered',
+  'completed',
+]);
 
 export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail }) {
   const [order, setOrder] = React.useState(initialOrder);
@@ -41,6 +57,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
   const [customerDraft, setCustomerDraft] = React.useState(orderToCustomerValue(order));
   const [assignOpen, setAssignOpen] = React.useState(false);
   const [statusOpen, setStatusOpen] = React.useState(false);
+  const [formOptions, setFormOptions] = React.useState<OrderFormOptionsResponse | null>(null);
 
   const { confirmOrder, cancelOrder, changeStatus, updateOrder } = useOrderDetailMutations(
     order,
@@ -48,12 +65,53 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
   );
 
   React.useEffect(() => {
-    if (['in_courier', 'delivered', 'completed'].includes(order.status)) {
-      void ordersApi.getCourierTracking(order.id).then(setCourierTracking);
+    let cancelled = false;
+    void ordersApi.getFormOptions().then((options) => {
+      if (!cancelled) setFormOptions(options);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (COURIER_TRACKING_STATUSES.has(order.status)) {
+      void ordersApi
+        .getCourierTracking(order.id)
+        .then(setCourierTracking)
+        .catch(() => setCourierTracking(null));
     } else {
       setCourierTracking(null);
     }
-  }, [order.id, order.status]);
+  }, [order.id, order.status, order.courierStatus, order.courierStatusSyncedAt]);
+
+  // Soft refresh Pathao status while detail page is open (no full reload)
+  React.useEffect(() => {
+    if (order.courierProvider !== 'pathao' || !order.courierConsignmentId) return;
+    if (['delivered', 'completed', 'cancelled', 'returned'].includes(order.status)) return;
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { pathaoCourierApi } = await import('@/features/orders/api/pathao-courier-api');
+        const updated = await pathaoCourierApi.syncOrder(order.id);
+        if (!cancelled) {
+          setOrder(updated);
+          setCustomerDraft(orderToCustomerValue(updated));
+        }
+      } catch {
+        // ignore transient sync errors on soft refresh
+      }
+    };
+
+    const id = window.setInterval(() => {
+      void tick();
+    }, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [order.id, order.courierProvider, order.courierConsignmentId, order.status]);
 
   React.useEffect(() => {
     setOrder(initialOrder);
@@ -64,12 +122,10 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
   return (
     <PageShell
       title={order.orderNumber}
-      description={`${order.customerName}`}
+      description={order.customerName}
       breadcrumbs={createOrderDetailBreadcrumbs(order.orderNumber, order.status)}
     >
       <div className={cn(ORDER_PAGE_GAP)}>
-        <OrderDetailHeader order={order} />
-
         <OrderActionBar
           order={order}
           onConfirm={confirmOrder}
@@ -77,26 +133,17 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
           onAssign={() => setAssignOpen(true)}
           onStatusClick={() => setStatusOpen(true)}
           onPrint={(type) => setPrintType(type)}
+          onCourierBooked={(updated) => {
+            setOrder(updated);
+            setCustomerDraft(orderToCustomerValue(updated));
+            setDeliveryNote(updated.notes ?? '');
+          }}
         />
 
-        <div className={cn('grid gap-4', ORDER_SIDEBAR_GRID_CLASS)}>
-          <div className="space-y-4">
-            <CustomerBlock
-              mode="edit"
-              value={customerDraft}
-              onChange={setCustomerDraft}
-              onSave={async () => {
-                const updated = await updateOrder(order.id, {
-                  customerName: customerDraft.name,
-                  customerPhone: customerDraft.phone,
-                  customerEmail: customerDraft.email,
-                  shippingAddress: customerDraft.address,
-                  source: customerDraft.source,
-                });
-                setCustomerDraft(orderToCustomerValue(updated));
-              }}
-            />
+        <OrderDetailHeader order={order} />
 
+        <div className={cn('grid items-start gap-4', ORDER_SIDEBAR_GRID_CLASS)}>
+          <div className="min-w-0 space-y-4">
             <OrderLineItemsCard
               order={order}
               onSaveLineItems={async (lineItems) => {
@@ -104,11 +151,35 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
                   lineItems: lineItems.map((line) => ({
                     productName: line.productName,
                     sku: line.sku,
+                    productId: line.productId,
+                    variantId: line.variantId,
+                    variationLabel: line.variationLabel,
                     quantity: line.quantity,
                     unitPrice: line.unitPrice,
+                    discount: line.discount,
                   })),
                 });
                 setOrder(updated);
+              }}
+            />
+
+            <CustomerBlock
+              mode="edit"
+              value={customerDraft}
+              onChange={setCustomerDraft}
+              districts={formOptions?.districts}
+              sources={formOptions?.sources}
+              onSave={async () => {
+                const updated = await updateOrder(order.id, {
+                  customerName: customerDraft.name,
+                  customerPhone: customerDraft.phone,
+                  customerEmail: customerDraft.email,
+                  shippingAddress: customerDraft.address,
+                  shippingArea: customerDraft.area,
+                  district: customerDraft.district,
+                  source: customerDraft.source,
+                });
+                setCustomerDraft(orderToCustomerValue(updated));
               }}
             />
 
@@ -130,32 +201,69 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
               }}
               onCancel={() => setDeliveryNote(order.notes ?? '')}
             >
-              <div className="space-y-2 text-sm">
-                <p>{order.shippingAddress}</p>
-                <p className="text-muted-foreground">Area: {order.shippingArea}</p>
-                <p className="text-muted-foreground">
-                  Agent: {order.assignedAgentName ?? 'Unassigned'}
-                </p>
-                {order.notes ? (
-                  <p className="rounded-md bg-muted/40 p-2 text-muted-foreground">{order.notes}</p>
-                ) : (
-                  <p className="text-muted-foreground">No internal notes yet.</p>
-                )}
+              <div className="space-y-3 text-sm">
+                <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/15 p-2.5 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Shipping address
+                    </p>
+                    <p className="mt-0.5 leading-relaxed">{order.shippingAddress}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Area
+                    </p>
+                    <p className="mt-0.5 font-medium">{order.shippingArea || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Assigned agent
+                    </p>
+                    <p className="mt-0.5 font-medium">{order.assignedAgentName ?? 'Unassigned'}</p>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <StickyNote className="size-3.5" />
+                    Internal note
+                  </p>
+                  {order.notes ? (
+                    <p className="rounded-lg border border-border/60 bg-muted/25 px-2.5 py-2 leading-relaxed text-foreground">
+                      {order.notes}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground">No internal notes yet.</p>
+                  )}
+                </div>
               </div>
             </EditableSectionCard>
+
+            <OrderExtrasCard
+              order={order}
+              options={formOptions}
+              onSave={async (patch) => {
+                const updated = await updateOrder(order.id, patch);
+                setOrder(updated);
+                return updated;
+              }}
+            />
           </div>
 
-          <div className="space-y-4">
+          <aside
+            className={cn(
+              'space-y-4 xl:sticky xl:self-start',
+              ORDER_STICKY_TOP_CLASS,
+              ORDER_STICKY_MAX_H_CLASS,
+              'xl:overflow-y-auto',
+            )}
+          >
             <MoneySummaryPanel mode="readonly" order={order} />
-            <OrderRelatedLinks order={order} />
-            <CustomerOrderHistoryCard
-              phone={order.customerPhone}
-              currentOrderId={order.id}
-            />
+            <CustomerOrderHistoryCard phone={order.customerPhone} currentOrderId={order.id} />
             <OrderTimeline events={order.timeline} />
             {courierTracking ? <CourierTrackingCard tracking={courierTracking} /> : null}
             {order.leadId ? <LinkedLeadCard leadId={order.leadId} /> : null}
-          </div>
+            <OrderRelatedLinks order={order} />
+          </aside>
         </div>
       </div>
 
@@ -169,8 +277,10 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
       <OrderAssignSheet
         open={assignOpen}
         onOpenChange={setAssignOpen}
+        currentAgentName={order.assignedAgentName}
         onAssign={async (employeeName) => {
-          await updateOrder(order.id, { assignedAgentName: employeeName });
+          const updated = await updateOrder(order.id, { assignedAgentName: employeeName });
+          setOrder(updated);
         }}
       />
 
