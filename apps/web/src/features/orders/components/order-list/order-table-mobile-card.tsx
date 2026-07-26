@@ -8,7 +8,6 @@ import { toast } from 'sonner';
 import {
   DataTableCopyableText,
   DataTableCourierStats,
-  DataTableDateTime,
   DataTableEmptyValue,
   DataTableMoneySummary,
   DataTablePersonCell,
@@ -22,7 +21,7 @@ import { FormPhoneInput } from '@/components/form/form-phone-input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
-import { formatOrderDateTime } from '@/features/orders/components/order-list/order-table-columns';
+import { OrderDateStack } from '@/features/orders/components/order-list/order-date-stack';
 import { OrderAgeBadge } from '@/features/orders/components/shared/order-age-badge';
 
 type OrderTableMobileCardProps = {
@@ -168,32 +167,22 @@ export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobile
           </LabeledSection>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <LabeledSection title="Created">
+        <LabeledSection title="Dates">
+          <OrderDateStack row={row} />
+        </LabeledSection>
+
+        <LabeledSection title="Employee">
+          {row.assignedAgentName ? (
             <DataTableCopyableText
-              copyValue={`C: ${formatOrderDateTime(row.createdAt)}`}
-              copyToastMessage="Date copied"
+              copyValue={row.assignedAgentName}
+              copyToastMessage="Employee copied"
             >
-              <DataTableDateTime
-                prefix="C:"
-                value={row.createdAt}
-                formatter={formatOrderDateTime}
-              />
+              <p className="text-sm font-medium">{row.assignedAgentName}</p>
             </DataTableCopyableText>
-          </LabeledSection>
-          <LabeledSection title="Employee">
-            {row.assignedAgentName ? (
-              <DataTableCopyableText
-                copyValue={row.assignedAgentName}
-                copyToastMessage="Employee copied"
-              >
-                <p className="text-sm font-medium">{row.assignedAgentName}</p>
-              </DataTableCopyableText>
-            ) : (
-              <DataTableEmptyValue />
-            )}
-          </LabeledSection>
-        </div>
+          ) : (
+            <DataTableEmptyValue />
+          )}
+        </LabeledSection>
 
         <LabeledSection title="Address">
           <DataTableCopyableText copyValue={row.shippingAddress} copyToastMessage="Address copied">

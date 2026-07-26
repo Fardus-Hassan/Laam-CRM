@@ -1,12 +1,12 @@
 import type { OrderStatusConfig, Permission } from '@laam/types';
 
 import type { NavChildDefinition } from '@/features/navigation/types/universal-nav';
-import { mockFailedOrderStore } from '@/features/orders/data/mock-failed-orders';
-import { getFollowUpDueCount } from '@/features/orders/data/mock-orders';
-import { getStatusCount } from '@/features/orders/data/mock-status-counts';
 import {
-  MOCK_ORDER_QUEUE_PAGES,
-} from '@/features/orders/data/mock-status-config';
+  getFailedOrdersBadgeCount,
+  getFollowupsDueBadgeCount,
+  getStatusCount,
+} from '@/features/orders/data/order-status-counts-store';
+import { MOCK_ORDER_QUEUE_PAGES } from '@/features/orders/data/mock-status-config';
 import { getOrderStatuses } from '@/features/orders/data/order-status-store';
 import { statusShowsInSidebar } from '@/features/orders/lib/order-status-visibility';
 
@@ -30,17 +30,18 @@ function statusToNavItem(
   status: OrderStatusConfig,
   parentQueueSlug?: string,
 ): OrdersNavChild {
+  const count = getStatusCount(status.slug);
   return {
     id: `orders-status-${status.slug}`,
     title: status.label,
     url: statusNavUrl(status, parentQueueSlug),
     permissions: ['orders.view'] as Permission[],
-    badge: getStatusCount(status.slug),
+    badge: count > 0 ? count : undefined,
   };
 }
 
 function sumStatusBadges(slugs: string[]): number | undefined {
-  const total = slugs.reduce((sum, slug) => sum + getStatusCount(slug as OrderStatusConfig['slug']), 0);
+  const total = slugs.reduce((sum, slug) => sum + getStatusCount(slug), 0);
   return total > 0 ? total : undefined;
 }
 
@@ -51,14 +52,16 @@ function pageToNavItem(
   let badge: number | undefined;
 
   if (page.slug === 'failed') {
-    badge = mockFailedOrderStore.length;
+    const count = getFailedOrdersBadgeCount();
+    badge = count > 0 ? count : undefined;
   } else if (page.slug === 'pendings') {
     const childSlugs = sidebarStatuses
       .filter((status) => status.parentSlug === 'pendings')
       .map((status) => status.slug);
     badge = sumStatusBadges(childSlugs.length ? childSlugs : ['pending', 'pending_2', 'pending_3']);
   } else if (page.slug === 'followups') {
-    badge = getFollowUpDueCount();
+    const count = getFollowupsDueBadgeCount();
+    badge = count > 0 ? count : undefined;
   }
 
   const nestedStatuses = sidebarStatuses

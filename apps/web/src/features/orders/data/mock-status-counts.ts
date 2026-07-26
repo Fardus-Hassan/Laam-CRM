@@ -1,8 +1,9 @@
 import type { OrderStatusCount, OrderStatusType } from '@laam/types';
 
 import { MOCK_ORDER_STATUSES } from '@/features/orders/data/mock-status-config';
+import { getStatusCount as getLiveStatusCount } from '@/features/orders/data/order-status-counts-store';
 
-/** Demo counts for sidebar badges and Group by Status tiles. */
+/** Demo counts for offline mock / group-by tiles before live hydrate. */
 export const MOCK_STATUS_COUNTS: OrderStatusCount[] = [
   { slug: 'pending', count: 491, unitCount: 502 },
   { slug: 'pending_2', count: 736, unitCount: 741 },
@@ -30,15 +31,26 @@ const countMap = new Map<OrderStatusType, OrderStatusCount>(
   MOCK_STATUS_COUNTS.map((item) => [item.slug, item]),
 );
 
+const useHttpApi = process.env.NEXT_PUBLIC_USE_API === 'true';
+
 export function getStatusCount(slug: OrderStatusType): number {
+  if (useHttpApi) {
+    return getLiveStatusCount(slug);
+  }
   return countMap.get(slug)?.count ?? 0;
 }
 
 export function getStatusUnitCount(slug: OrderStatusType): number {
+  if (useHttpApi) {
+    return getLiveStatusCount(slug);
+  }
   return countMap.get(slug)?.unitCount ?? getStatusCount(slug);
 }
 
 export function getTotalOrderCount(): number {
+  if (useHttpApi) {
+    return MOCK_ORDER_STATUSES.reduce((sum, item) => sum + getLiveStatusCount(item.slug), 0);
+  }
   return MOCK_STATUS_COUNTS.reduce((sum, item) => sum + item.count, 0);
 }
 

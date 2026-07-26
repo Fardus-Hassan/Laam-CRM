@@ -617,6 +617,10 @@ export function orderDetailToListRow(order: OrderDetail, serialNumber?: number):
     assignedAgentName: order.assignedAgentName,
     shippingArea: order.shippingArea,
     createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    followUpDueAt: undefined,
+    followUpSetAt: undefined,
+    courierBookedAt: order.courierBookedAt,
     serialNumber,
     hasNote: Boolean(order.notes),
     products: order.lineItems.map((line, idx) => ({

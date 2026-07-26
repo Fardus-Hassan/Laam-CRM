@@ -2,7 +2,11 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import type { CarrybeeIntegrationSettings, PathaoIntegrationSettings } from '@laam/types';
+import type {
+  CarrybeeIntegrationSettings,
+  PathaoIntegrationSettings,
+  SmsIntegrationSettings,
+} from '@laam/types';
 import { CheckCircle2, Plug, Unplug, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -13,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { carrybeeSettingsApi } from '@/features/settings/api/carrybee-settings-api';
 import { pathaoSettingsApi } from '@/features/settings/api/pathao-settings-api';
+import { smsSettingsApi } from '@/features/settings/api/sms-settings-api';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -57,18 +62,21 @@ function StatusBadge({ status }: { status: 'connected' | 'error' | 'disconnected
 export function IntegrationsSettingsPage() {
   const [pathao, setPathao] = React.useState<PathaoIntegrationSettings | null>(null);
   const [carrybee, setCarrybee] = React.useState<CarrybeeIntegrationSettings | null>(null);
+  const [sms, setSms] = React.useState<SmsIntegrationSettings | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [p, c] = await Promise.all([
+      const [p, c, s] = await Promise.all([
         pathaoSettingsApi.get().catch(() => null),
         carrybeeSettingsApi.get().catch(() => null),
+        smsSettingsApi.get().catch(() => null),
       ]);
       setPathao(p);
       setCarrybee(c);
-      if (!p && !c) toast.error('Failed to load integrations');
+      setSms(s);
+      if (!p && !c && !s) toast.error('Failed to load integrations');
     } finally {
       setLoading(false);
     }
@@ -80,6 +88,7 @@ export function IntegrationsSettingsPage() {
 
   const pathaoStatus = statusOf(pathao);
   const carrybeeStatus = statusOf(carrybee);
+  const smsStatus = statusOf(sms);
 
   return (
     <PageShell
@@ -147,6 +156,31 @@ export function IntegrationsSettingsPage() {
                     <Link href="/dashboard/settings/integrations/carrybee">
                       <Plug className="size-3.5" />
                       Configure Carrybee
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
+
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">💬</span>
+                    <CardTitle className="text-sm">SMS Gateway</CardTitle>
+                  </div>
+                  <StatusBadge status={smsStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  Custom HTTP SMS (Gennet / SSL / any). Send from order detail &amp; bulk actions.
+                </p>
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/sms">
+                      <Plug className="size-3.5" />
+                      Configure SMS
                     </Link>
                   </Button>
                 </Can>

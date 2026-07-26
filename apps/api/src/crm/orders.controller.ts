@@ -452,6 +452,58 @@ export class OrdersController {
     return this.orders.getFormOptions(user.organizationId!);
   }
 
+  @Get('meta/status-counts')
+  @RequirePermissions('orders.view')
+  @ApiOperation({ summary: 'Order counts by status for sidebar nav badges' })
+  statusCounts(@CurrentUser() user: AuthUserPayload) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.getNavStatusCounts(user.organizationId!);
+  }
+
+  @Post('bulk/follow-up')
+  @RequirePermissions('orders.confirm', 'orders.create', 'orders.assign')
+  @ApiOperation({ summary: 'Bulk set follow-up date and move orders to hold_followup' })
+  bulkFollowUp(
+    @CurrentUser() user: AuthUserPayload,
+    @Body() body: { orderIds?: string[]; followUpDate?: string },
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.bulkSetFollowUp(
+      user.organizationId!,
+      body.orderIds ?? [],
+      body.followUpDate ?? '',
+      this.actor(user),
+    );
+  }
+
+  @Post('bulk')
+  @RequirePermissions('orders.confirm', 'orders.create', 'orders.assign', 'orders.cancel')
+  @ApiOperation({ summary: 'Bulk order actions (status change, assign, …)' })
+  bulkAction(
+    @CurrentUser() user: AuthUserPayload,
+    @Body()
+    body: {
+      action?: string;
+      orderIds?: string[];
+      status?: string;
+      employeeName?: string;
+      courier?: string;
+    },
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.bulkAction(
+      user.organizationId!,
+      {
+        action: body.action ?? 'status_change',
+        orderIds: body.orderIds ?? [],
+        status: body.status,
+        employeeName: body.employeeName,
+        courier: body.courier,
+      },
+      this.actor(user),
+    );
+  }
+
   @Get('meta/form-options/manage')
   @RequirePermissions('orders.create', 'settings.manage')
   @ApiOperation({ summary: 'List form options for settings CRUD' })

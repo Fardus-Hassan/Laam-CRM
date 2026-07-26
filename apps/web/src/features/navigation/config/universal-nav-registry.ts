@@ -52,6 +52,13 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
             url: queue.url,
             permissions: queue.permissions,
             badge: queue.badge,
+            children: queue.children?.map((child) => ({
+              id: child.id,
+              title: child.title,
+              url: child.url,
+              permissions: child.permissions,
+              badge: child.badge,
+            })),
           })),
         },
         {

@@ -7,7 +7,6 @@ import type { CrmColumnDef } from '@/components/data-table';
 import {
   DataTableCourierStats,
   DataTableCopyableText,
-  DataTableDateTime,
   DataTableEmptyValue,
   DataTableMoneySummary,
   DataTablePersonCell,
@@ -24,19 +23,9 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
+import { OrderDateStack } from '@/features/orders/components/order-list/order-date-stack';
 
-export function formatOrderDateTime(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
-    .format(new Date(value))
-    .replace(',', ' -');
-}
+export { formatOrderDateTime } from '@/features/orders/components/order-list/order-date-stack';
 
 export function buildOrderTableColumns(options?: {
   onNoteClick?: (row: OrderListRow) => void;
@@ -167,27 +156,16 @@ export function buildOrderTableColumns(options?: {
     id: 'date',
     header: 'Date',
     enableSorting: true,
-    size: 148,
-    minSize: 130,
+    size: 168,
+    minSize: 150,
     meta: {
-      label: 'Created',
+      label: 'Dates',
       priority: 'secondary',
-      headerClassName: 'min-w-[150px]',
-      cellClassName: 'min-w-[150px]',
+      headerClassName: 'min-w-[160px]',
+      cellClassName: 'min-w-[160px]',
       align: 'top',
     },
-    cell: ({ row }) => {
-      const formatted = formatOrderDateTime(row.original.createdAt);
-      return (
-        <DataTableCopyableText copyValue={`C: ${formatted}`} copyToastMessage="Date copied">
-          <DataTableDateTime
-            prefix="C:"
-            value={row.original.createdAt}
-            formatter={formatOrderDateTime}
-          />
-        </DataTableCopyableText>
-      );
-    },
+    cell: ({ row }) => <OrderDateStack row={row.original} />,
   },
   {
     id: 'address',

@@ -27,6 +27,7 @@ export * from './lib/branding.js';
 export * from './lib/reports.js';
 export * from './lib/courier.js';
 export * from './lib/courier-integration.js';
+export * from './lib/sms-integration.js';
 export * from './lib/support.js';
 export * from './lib/coupons.js';
 export * from './lib/recycle-bin.js';

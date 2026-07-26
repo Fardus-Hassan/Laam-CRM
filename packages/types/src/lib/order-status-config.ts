@@ -92,3 +92,11 @@ export const orderStatusCountSchema = z.object({
 });
 
 export type OrderStatusCount = z.infer<typeof orderStatusCountSchema>;
+
+export const orderNavStatusCountsSchema = z.object({
+  byStatus: z.record(z.string(), z.number().int().nonnegative()),
+  followupsDue: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative().default(0),
+});
+
+export type OrderNavStatusCounts = z.infer<typeof orderNavStatusCountsSchema>;

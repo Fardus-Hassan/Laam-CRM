@@ -263,9 +263,7 @@ export function OrderActionBar({
       <OrderSmsDialog
         open={smsOpen}
         onOpenChange={setSmsOpen}
-        orderNumber={order.orderNumber}
-        customerPhone={order.customerPhone}
-        customerName={order.customerName}
+        order={order}
       />
 
       <Dialog open={bookOpen} onOpenChange={setBookOpen}>

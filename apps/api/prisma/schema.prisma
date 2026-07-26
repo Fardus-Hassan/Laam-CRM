@@ -45,6 +45,9 @@ model Organization {
   followups                Followup[]
   courierIntegrations      CourierIntegration[]
   courierStatusMaps        CourierStatusMap[]
+  smsIntegration           SmsIntegration?
+  smsTemplates             SmsTemplate[]
+  smsLogs                  SmsLog[]
 }
 
 /// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
@@ -66,6 +69,57 @@ model CourierIntegration {
 
   @@unique([organizationId, provider])
   @@index([organizationId, enabled])
+}
+
+/// Per-tenant SMS gateway (custom HTTP API — Gennet, SSL, etc.). Secrets encrypted.
+model SmsIntegration {
+  id               String       @id @default(cuid())
+  organizationId   String       @unique
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider         String       @default("custom")
+  enabled          Boolean      @default(false)
+  /// AES-GCM JSON: apiUrl, httpMethod, paramsTemplate, headersJson?
+  credentialsEnc   String?
+  lastSentAt       DateTime?
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, enabled])
+}
+
+/// Org SMS message templates (manual send + future status automations).
+model SmsTemplate {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug           String
+  label          String
+  message        String       @db.Text
+  enabled        Boolean      @default(true)
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, sortOrder])
+}
+
+/// Audit log for outbound SMS.
+model SmsLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId        String?
+  toPhone        String
+  message        String       @db.Text
+  status         String
+  providerRef    String?
+  error          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, orderId])
 }
 
 /// Configurable courier → CRM status catalog (filter labels + auto-map).

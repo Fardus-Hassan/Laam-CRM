@@ -396,6 +396,227 @@ export class OrdersService {
     return { ok: true };
   }
 
+  /** Sidebar badge counts — groupBy status + follow-ups due (pending/hold older than 48h). */
+  async getNavStatusCounts(organizationId: string): Promise<{
+    byStatus: Record<string, number>;
+    followupsDue: number;
+    failed: number;
+  }> {
+    const grouped = await this.prisma.order.groupBy({
+      by: ['status'],
+      where: { organizationId },
+      _count: { _all: true },
+    });
+
+    const byStatus: Record<string, number> = {};
+    for (const row of grouped) {
+      byStatus[row.status] = row._count._all;
+    }
+
+    const followUpCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const followupsDue = await this.prisma.order.count({
+      where: {
+        organizationId,
+        skipFollowup: false,
+        createdAt: { lte: followUpCutoff },
+        OR: [
+          { status: { startsWith: 'pending' } },
+          { status: { in: ['hold', 'hold_followup'] } },
+        ],
+      },
+    });
+
+    return { byStatus, followupsDue, failed: 0 };
+  }
+
+  async bulkSetFollowUp(
+    organizationId: string,
+    orderIds: string[],
+    followUpDate: string,
+    actor: ActorLabel,
+  ): Promise<{ successCount: number; failedCount: number; message: string }> {
+    const ids = [...new Set(orderIds.map((id) => id.trim()).filter(Boolean))];
+    if (ids.length === 0) {
+      throw new BadRequestException('orderIds required');
+    }
+    const parsed = new Date(followUpDate);
+    if (!followUpDate.trim() || Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Valid followUpDate required (YYYY-MM-DD)');
+    }
+    const scheduleDate = new Date(
+      Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()),
+    );
+    const noteLine = `Follow-up due: ${followUpDate.trim().slice(0, 10)}`;
+
+    let successCount = 0;
+    for (const orderId of ids) {
+      const order = await this.prisma.order.findFirst({
+        where: { id: orderId, organizationId },
+        include: { lineItems: true },
+      });
+      if (!order) continue;
+
+      const notes = order.notes ? `${order.notes}\n${noteLine}` : noteLine;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            status: 'hold_followup',
+            notes,
+            skipFollowup: false,
+          },
+        });
+        await tx.orderActivity.createMany({
+          data: [
+            {
+              organizationId,
+              orderId: order.id,
+              type: 'status',
+              label: 'Status updated',
+              description: 'hold_followup',
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+            },
+            {
+              organizationId,
+              orderId: order.id,
+              type: 'note',
+              label: 'Follow-up scheduled',
+              description: noteLine,
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+            },
+          ],
+        });
+      });
+
+      const existingFu = await this.prisma.followup.findFirst({
+        where: { organizationId, orderId: order.id },
+      });
+      if (existingFu) {
+        await this.prisma.followup.update({
+          where: { id: existingFu.id },
+          data: {
+            scheduleDate,
+            skipped: false,
+            followupNotes: noteLine,
+          },
+        });
+      } else {
+        await this.followups.createFromOrder(
+          organizationId,
+          {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            customerName: order.customerName,
+            phone: order.customerPhone,
+            address: order.shippingAddress,
+            district: order.district,
+            area: order.shippingArea,
+            source: order.source,
+            assignedAgentName: order.assignedAgentName,
+            customerNotes: order.customerNote,
+            lineItems: order.lineItems.map((l) => ({
+              productName: l.productName,
+              quantity: l.quantity,
+            })),
+            skipFollowup: false,
+          },
+          actor,
+        );
+        await this.prisma.followup.updateMany({
+          where: { organizationId, orderId: order.id },
+          data: { scheduleDate, followupNotes: noteLine },
+        });
+      }
+
+      successCount += 1;
+    }
+
+    return {
+      successCount,
+      failedCount: ids.length - successCount,
+      message: `Follow-up set for ${successCount} order(s)`,
+    };
+  }
+
+  async bulkAction(
+    organizationId: string,
+    payload: {
+      action: string;
+      orderIds: string[];
+      status?: string;
+      employeeName?: string;
+      courier?: string;
+    },
+    actor: ActorLabel,
+  ): Promise<{ successCount: number; failedCount: number; message: string }> {
+    const ids = [...new Set(payload.orderIds.map((id) => id.trim()).filter(Boolean))];
+    if (ids.length === 0) {
+      throw new BadRequestException('orderIds required');
+    }
+
+    if (payload.action === 'status_change') {
+      const status = payload.status?.trim();
+      if (!status) throw new BadRequestException('status required for status_change');
+      let successCount = 0;
+      for (const orderId of ids) {
+        const existing = await this.prisma.order.findFirst({
+          where: { id: orderId, organizationId },
+        });
+        if (!existing) continue;
+        await this.prisma.$transaction(async (tx) => {
+          await tx.order.update({
+            where: { id: existing.id },
+            data: { status },
+          });
+          await tx.orderActivity.create({
+            data: {
+              organizationId,
+              orderId: existing.id,
+              type: 'status',
+              label: 'Status updated',
+              description: status,
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+            },
+          });
+        });
+        successCount += 1;
+      }
+      return {
+        successCount,
+        failedCount: ids.length - successCount,
+        message: `Updated status for ${successCount} order(s)`,
+      };
+    }
+
+    if (payload.action === 'transfer_employee') {
+      const name = payload.employeeName?.trim() || null;
+      let successCount = 0;
+      for (const orderId of ids) {
+        const existing = await this.prisma.order.findFirst({
+          where: { id: orderId, organizationId },
+        });
+        if (!existing) continue;
+        await this.prisma.order.update({
+          where: { id: existing.id },
+          data: { assignedAgentName: name },
+        });
+        successCount += 1;
+      }
+      return {
+        successCount,
+        failedCount: ids.length - successCount,
+        message: `Assigned ${successCount} order(s)`,
+      };
+    }
+
+    throw new BadRequestException(
+      `Bulk action "${payload.action}" is not implemented yet`,
+    );
+  }
+
   async list(
     organizationId: string,
     query: Partial<OrderListQuery> & { page?: number; pageSize?: number },
@@ -456,8 +677,44 @@ export class OrdersService {
     ];
     const courierByPhone = await this.loadCourierStatsByPhone(organizationId, phones);
 
+    const orderIds = rows.map((r) => r.id);
+    const [followups, followUpActivities] = await Promise.all([
+      orderIds.length
+        ? this.prisma.followup.findMany({
+            where: { organizationId, orderId: { in: orderIds } },
+            select: { orderId: true, scheduleDate: true },
+          })
+        : Promise.resolve([]),
+      orderIds.length
+        ? this.prisma.orderActivity.findMany({
+            where: {
+              organizationId,
+              orderId: { in: orderIds },
+              label: 'Follow-up scheduled',
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { orderId: true, createdAt: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const followUpDueByOrderId = new Map<string, string>();
+    for (const fu of followups) {
+      if (!fu.orderId || !fu.scheduleDate) continue;
+      followUpDueByOrderId.set(fu.orderId, fu.scheduleDate.toISOString());
+    }
+
+    const followUpSetByOrderId = new Map<string, string>();
+    for (const act of followUpActivities) {
+      if (followUpSetByOrderId.has(act.orderId)) continue;
+      followUpSetByOrderId.set(act.orderId, act.createdAt.toISOString());
+    }
+
     const items: OrderListItem[] = rows.map((row) =>
-      this.toListItem(row, imageByProductId, courierByPhone.get(row.customerPhone)),
+      this.toListItem(row, imageByProductId, courierByPhone.get(row.customerPhone), {
+        followUpDueAt: followUpDueByOrderId.get(row.id),
+        followUpSetAt: followUpSetByOrderId.get(row.id),
+      }),
     );
     const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
 
@@ -1728,6 +1985,8 @@ export class OrdersService {
       assignedAgentName: string | null;
       shippingArea: string;
       createdAt: Date;
+      updatedAt: Date;
+      courierBookedAt?: Date | null;
       shippingAddress?: string | null;
       subtotal?: number;
       discount?: number;
@@ -1745,6 +2004,10 @@ export class OrdersService {
     },
     imageByProductId?: Map<string, string | undefined>,
     courier?: OrderCourierStats,
+    dates?: {
+      followUpDueAt?: string;
+      followUpSetAt?: string;
+    },
   ): OrderListItem {
     return {
       id: row.id,
@@ -1759,6 +2022,12 @@ export class OrdersService {
       assignedAgentName: row.assignedAgentName ?? undefined,
       shippingArea: row.shippingArea,
       createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      followUpDueAt: dates?.followUpDueAt,
+      followUpSetAt: dates?.followUpSetAt,
+      courierBookedAt: row.courierBookedAt
+        ? row.courierBookedAt.toISOString()
+        : undefined,
       products: (row.lineItems ?? []).map((l) => ({
         name: l.productName,
         variationLabel: l.variationLabel ?? undefined,

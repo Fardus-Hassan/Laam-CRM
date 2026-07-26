@@ -17,9 +17,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { getOrderStatuses } from '@/features/orders/data/order-status-store';
-import { loadSmsTemplates } from '@/features/orders/data/mock-sms-templates';
 import { exportOrdersToCsv } from '@/features/orders/lib/export-orders-csv';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
+import { orderSmsApi, smsSettingsApi } from '@/features/settings/api/sms-settings-api';
 
 const EMPLOYEES = ['Sakib Ahmed', 'Mitu Rahman', 'Imran Hossain', 'Tania Sultana', 'Arif Mahmud'];
 
@@ -41,17 +41,43 @@ type OrderBulkModalsProps = {
 
 export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }: OrderBulkModalsProps) {
   const { bulkAction, bulkSetFollowUp, isLoading } = useOrderMutations();
-  const smsTemplates = React.useMemo(() => loadSmsTemplates(), [state?.type]);
-  const [smsTemplate, setSmsTemplate] = React.useState('confirm');
+  const [smsTemplates, setSmsTemplates] = React.useState<
+    Array<{ id: string; label: string; message: string }>
+  >([]);
+  const [smsTemplate, setSmsTemplate] = React.useState('');
   const [smsMessage, setSmsMessage] = React.useState('');
+  const [smsSending, setSmsSending] = React.useState(false);
   const [status, setStatus] = React.useState('confirmed');
   const [employee, setEmployee] = React.useState('');
   const [followUpDate, setFollowUpDate] = React.useState('');
 
   React.useEffect(() => {
+    if (state?.type !== 'sms') return;
+    let cancelled = false;
+    void smsSettingsApi
+      .listTemplates()
+      .then((list) => {
+        if (cancelled) return;
+        const enabled = list.filter((t) => t.enabled);
+        setSmsTemplates(enabled.map((t) => ({ id: t.id, label: t.label, message: t.message })));
+        const first = enabled[0];
+        if (first) {
+          setSmsTemplate(first.id);
+          setSmsMessage(first.message);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSmsTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state?.type]);
+
+  React.useEffect(() => {
     if (state?.type === 'sms') {
       const template = smsTemplates.find((t) => t.id === smsTemplate);
-      setSmsMessage(template?.message ?? '');
+      if (template) setSmsMessage(template.message ?? '');
     }
   }, [smsTemplate, smsTemplates, state?.type]);
 
@@ -69,15 +95,30 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleSmsSubmit() {
     if (state?.type !== 'sms') return;
-    await bulkAction({
-      action: 'sms',
-      orderIds: state.orderIds,
-      smsTemplateId: smsTemplate,
-      smsMessage,
-    });
-    toast.success(`SMS queued for ${state.orderIds.length} order(s)`);
-    onSuccess?.();
-    onClose();
+    if (!smsMessage.trim()) {
+      toast.error('Enter SMS message');
+      return;
+    }
+    setSmsSending(true);
+    try {
+      const result = await orderSmsApi.bulk({
+        orderIds: state.orderIds,
+        message: smsMessage.trim(),
+      });
+      if (result.failedCount > 0) {
+        toast.warning(
+          `SMS: ${result.successCount} sent, ${result.failedCount} failed. Check Settings → SMS if all failed.`,
+        );
+      } else {
+        toast.success(result.message || `SMS sent to ${result.successCount} order(s)`);
+      }
+      onSuccess?.();
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Bulk SMS failed');
+    } finally {
+      setSmsSending(false);
+    }
   }
 
   async function handleStatusSubmit() {
@@ -167,8 +208,8 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleSmsSubmit()} disabled={isLoading}>
-              Send SMS
+            <Button type="button" onClick={() => void handleSmsSubmit()} disabled={isLoading || smsSending}>
+              {smsSending ? 'Sending…' : 'Send SMS'}
             </Button>
           </DialogFooter>
         </DialogContent>

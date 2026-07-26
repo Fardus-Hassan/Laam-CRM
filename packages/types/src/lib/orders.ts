@@ -55,6 +55,14 @@ export const orderListItemSchema = z.object({
   assignedAgentName: z.string().optional(),
   shippingArea: z.string(),
   createdAt: z.string(),
+  /** Last order field update. */
+  updatedAt: z.string().optional(),
+  /** Follow-up callback due date (date-only ISO). */
+  followUpDueAt: z.string().optional(),
+  /** When follow-up was scheduled on the order. */
+  followUpSetAt: z.string().optional(),
+  /** When courier consignment was booked. */
+  courierBookedAt: z.string().optional(),
   /** Present on live list responses for the orders table. */
   products: z.array(orderListProductPreviewSchema).optional(),
   shippingAddress: z.string().optional(),
@@ -561,6 +569,7 @@ export {
   orderQueuePageSchema,
   orderStatusConfigSchema,
   orderStatusCountSchema,
+  orderNavStatusCountsSchema,
   orderStatusDisplayModeSchema,
   orderWorkflowGroupSchema,
   type BulkActionId,
@@ -568,6 +577,7 @@ export {
   type OrderQueuePage,
   type OrderStatusConfig,
   type OrderStatusCount,
+  type OrderNavStatusCounts,
   type OrderStatusDisplayMode,
   type OrderWorkflowGroup,
 } from './order-status-config.js';
