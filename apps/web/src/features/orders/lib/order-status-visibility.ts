@@ -23,5 +23,5 @@ export function statusVisibilityLabel(status: OrderStatusConfig): string {
   if (sidebar && tabs) return 'Sidebar + page tabs';
   if (sidebar) return 'Sidebar only';
   if (tabs) return 'Page tabs only';
-  return 'Filter only';
+  return 'Filter / picker only (hidden from nav)';
 }

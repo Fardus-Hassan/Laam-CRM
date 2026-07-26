@@ -25,7 +25,9 @@ export function FailedOrdersListPage() {
   const [website, setWebsite] = React.useState('all');
   const [noteStatus, setNoteStatus] = React.useState('all');
   const [page, setPage] = React.useState(1);
-  const [data, setData] = React.useState<Awaited<ReturnType<typeof failedOrdersApi.listFailedOrders>> | null>(null);
+  const [data, setData] = React.useState<Awaited<
+    ReturnType<typeof failedOrdersApi.listFailedOrders>
+  > | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
   const load = React.useCallback(async () => {
@@ -43,6 +45,8 @@ export function FailedOrdersListPage() {
         pageSize: 10,
       });
       setData(response);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load intake queue');
     } finally {
       setIsLoading(false);
     }
@@ -53,24 +57,38 @@ export function FailedOrdersListPage() {
   }, [load]);
 
   async function handleRetry(row: { id: string }) {
-    const result = await failedOrdersApi.retryFailedOrder(row.id);
-    toast.success(result.message);
-    void load();
+    try {
+      const result = await failedOrdersApi.retryFailedOrder(row.id);
+      if (!result.success) {
+        toast.error(result.message || 'Retry failed');
+        return;
+      }
+      toast.success(result.message);
+      void load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Retry failed');
+    }
   }
 
   async function handleDismiss(row: { id: string }) {
-    await failedOrdersApi.dismissFailedOrder(row.id);
-    toast.success('Failed order dismissed');
-    void load();
+    try {
+      await failedOrdersApi.dismissFailedOrder(row.id);
+      toast.success('Failed order dismissed');
+      void load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Dismiss failed');
+    }
   }
 
   const hasActiveFilters =
     search !== '' || failedType !== 'all' || website !== 'all' || noteStatus !== 'all';
 
+  const websiteOptions = data?.websites?.length ? data.websites : FAILED_ORDER_WEBSITES;
+
   return (
     <PageShell
       title="Failed Orders"
-      description="Duplicate, blocked, or invalid orders for manual review. Auto-deleted after 90 days."
+      description="Duplicate, blocked, or invalid orders for manual review. Auto-hidden after 90 days."
     >
       <div className={ORDER_PAGE_GAP}>
         {data ? (
@@ -96,7 +114,7 @@ export function FailedOrdersListPage() {
                 id: 'queue',
                 label: 'In queue',
                 value: data.total.toLocaleString(),
-                hint: 'Auto-deleted after 90 days',
+                hint: 'Auto-hidden after 90 days',
               },
             ]}
           />
@@ -134,7 +152,7 @@ export function FailedOrdersListPage() {
               onChange={setWebsite}
               options={[
                 { value: 'all', label: 'All' },
-                ...FAILED_ORDER_WEBSITES.map((site) => ({ value: site, label: site })),
+                ...websiteOptions.map((site) => ({ value: site, label: site })),
               ]}
               searchable={false}
             />

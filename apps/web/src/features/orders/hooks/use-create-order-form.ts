@@ -268,6 +268,8 @@ const EMPTY_OPTIONS: OrderFormOptionsResponse = {
   districts: [],
   orderTags: [],
   customerTags: [],
+  pathaoCities: [],
+  pathaoZones: [],
   defaultCourierNote: '',
   defaultShipping: 0,
 };
@@ -311,13 +313,18 @@ export function useCreateOrderForm() {
       try {
         const formOptions = await ordersApi.getFormOptions();
         if (cancelled) return;
-        setOptions(formOptions);
+        const { mergeStatusSelectOptions } = await import(
+          '@/features/orders/lib/order-status-hierarchy'
+        );
+        const statuses = mergeStatusSelectOptions(formOptions.statuses);
+        const merged = { ...formOptions, statuses };
+        setOptions(merged);
         dispatch({
           type: 'hydrate_defaults',
-          courierNote: formOptions.defaultCourierNote,
-          shipping: formOptions.defaultShipping,
-          status: formOptions.statuses[0]?.value ?? 'pending',
-          paymentMethod: formOptions.paymentMethods[0]?.value ?? 'cod',
+          courierNote: merged.defaultCourierNote,
+          shipping: merged.defaultShipping,
+          status: merged.statuses[0]?.value ?? 'pending',
+          paymentMethod: merged.paymentMethods[0]?.value ?? 'cod',
         });
       } finally {
         if (!cancelled) setLoadingMeta(false);

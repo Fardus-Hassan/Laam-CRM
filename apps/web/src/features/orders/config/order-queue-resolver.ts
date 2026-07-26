@@ -1,4 +1,4 @@
-import type { BulkActionId, OrderStatusType } from '@laam/types';
+import type { BulkActionId } from '@laam/types';
 
 import {
   getQueueChildStatusSlugs,
@@ -15,11 +15,11 @@ export type OrderQueueContext = {
   description: string;
   href: string;
   /** Active status filter (undefined = all orders). */
-  statusFilter?: OrderStatusType;
+  statusFilter?: string;
   /** Parent queue with nested tabs. */
   parentSlug?: string;
-  childStatusSlugs?: OrderStatusType[];
-  defaultChildSlug?: OrderStatusType;
+  childStatusSlugs?: string[];
+  defaultChildSlug?: string;
   bulkActions: BulkActionId[];
   showGroupByStatus: boolean;
   showFilterPanel: boolean;
@@ -144,7 +144,7 @@ export function resolveOrderQueueFromPath(
     const childStatusSlugs = page ? getQueueChildStatusSlugs(page.slug) : [];
     if (childStatusSlugs.length > 0 && page) {
       const activeChild =
-        (statusParam as OrderStatusType | undefined) ??
+        statusParam ??
         page.defaultChildSlug ??
         childStatusSlugs[0];
       const statusConfig = getStatusConfigBySlug(activeChild);
@@ -168,7 +168,7 @@ export function resolveOrderQueueFromPath(
   }
 
   if (statusParam) {
-    const statusConfig = getStatusConfigBySlug(statusParam as OrderStatusType);
+    const statusConfig = getStatusConfigBySlug(statusParam);
     if (statusConfig) {
       return {
         queueSlug: statusParam,

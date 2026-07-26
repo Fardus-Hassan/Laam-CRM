@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ordersApi } from '@/features/orders/api/orders-api';
+import { ensureOrderStatusOnApi } from '@/features/orders/lib/ensure-order-status-api';
+import { mergeStatusSelectOptions } from '@/features/orders/lib/order-status-hierarchy';
 
 type OrderStatusDialogProps = {
   open: boolean;
@@ -44,7 +46,9 @@ export function OrderStatusDialog({
       .getFormOptions()
       .then((options) => {
         if (cancelled) return;
-        const next = options.statuses.map((s) => ({ value: s.value, label: s.label }));
+        const next = mergeStatusSelectOptions(
+          options.statuses.map((s) => ({ value: s.value, label: s.label })),
+        );
         if (currentStatus && !next.some((s) => s.value === currentStatus)) {
           next.unshift({ value: currentStatus, label: currentStatus });
         }
@@ -69,8 +73,17 @@ export function OrderStatusDialog({
   async function handleSave() {
     setSaving(true);
     try {
+      const selected = statusOptions.find((option) => option.value === status);
+      if (process.env.NEXT_PUBLIC_USE_API === 'true') {
+        await ensureOrderStatusOnApi({
+          value: status,
+          label: selected?.label ?? status,
+        });
+      }
       await onSelect(status);
       onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update status');
     } finally {
       setSaving(false);
     }
@@ -92,8 +105,8 @@ export function OrderStatusDialog({
           />
         </FormField>
         <p className="text-xs text-muted-foreground">
-          Statuses come from your organization order form settings. Confirming cuts stock;
-          cancelling restocks if stock was deducted.
+          Custom statuses are registered to your org on update. Confirming cuts stock; cancelling
+          restocks if stock was deducted.
         </p>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

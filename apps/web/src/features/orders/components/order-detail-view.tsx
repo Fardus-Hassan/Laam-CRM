@@ -270,7 +270,15 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
               'xl:overflow-y-auto',
             )}
           >
-            <MoneySummaryPanel mode="readonly" order={order} />
+            <MoneySummaryPanel
+              mode="readonly"
+              order={order}
+              onCollected={() => {
+                void ordersApi.getOrder(order.orderNumber).then((updated) => {
+                  if (updated) setOrder(updated);
+                });
+              }}
+            />
             <CustomerOrderHistoryCard phone={order.customerPhone} currentOrderId={order.id} />
             <OrderTimeline events={order.timeline} />
             {courierTracking ? <CourierTrackingCard tracking={courierTracking} /> : null}

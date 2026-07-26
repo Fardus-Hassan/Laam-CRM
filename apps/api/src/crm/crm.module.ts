@@ -36,6 +36,8 @@ import { CourierIntegrationsController } from './courier-integrations.controller
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { SmsSettingsController, OrderSmsController } from './sms.controller';
 import { SmsService } from './sms.service';
+import { OrderPaymentsService } from './order-payments.service';
+import { FailedOrdersService } from './failed-orders.service';
 import { ProductBrandsController } from './product-brands.controller';
 import { ProductsController } from './products.controller';
 import { RecycleBinController } from './recycle-bin.controller';
@@ -82,6 +84,8 @@ import { RbacService } from './rbac.service';
     CarrybeeSyncService,
     CourierIntegrationsService,
     SmsService,
+    OrderPaymentsService,
+    FailedOrdersService,
     CouponsService,
     InventoryCatalogService,
     InventoryOperationsService,

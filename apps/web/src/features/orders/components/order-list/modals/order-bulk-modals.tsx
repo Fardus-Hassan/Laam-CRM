@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { BulkActionId, OrderListRow } from '@laam/types';
+import type { BulkActionId, OrderListRow, TenantUser } from '@laam/types';
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
@@ -20,8 +20,7 @@ import { getOrderStatuses } from '@/features/orders/data/order-status-store';
 import { exportOrdersToCsv } from '@/features/orders/lib/export-orders-csv';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { orderSmsApi, smsSettingsApi } from '@/features/settings/api/sms-settings-api';
-
-const EMPLOYEES = ['Sakib Ahmed', 'Mitu Rahman', 'Imran Hossain', 'Tania Sultana', 'Arif Mahmud'];
+import { rbacApi } from '@/features/rbac/api/rbac-api';
 
 type BulkModalState =
   | { type: 'sms'; orderIds: string[] }
@@ -49,7 +48,24 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
   const [smsSending, setSmsSending] = React.useState(false);
   const [status, setStatus] = React.useState('confirmed');
   const [employee, setEmployee] = React.useState('');
+  const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
   const [followUpDate, setFollowUpDate] = React.useState('');
+
+  React.useEffect(() => {
+    if (state?.type !== 'transfer') return;
+    let cancelled = false;
+    void rbacApi
+      .listUsers('')
+      .then((list) => {
+        if (!cancelled) setTeamUsers(list.filter((u) => u.status === 'active'));
+      })
+      .catch(() => {
+        if (!cancelled) setTeamUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state?.type]);
 
   React.useEffect(() => {
     if (state?.type !== 'sms') return;
@@ -134,13 +150,22 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleCourierSubmit() {
     if (state?.type !== 'courier') return;
-    await bulkAction({
-      action: 'courier_submit',
-      orderIds: state.orderIds,
-      courier: state.courier,
-    });
-    onSuccess?.();
-    onClose();
+    const courier = state.courier.toLowerCase();
+    if (courier !== 'pathao' && courier !== 'carrybee') {
+      toast.error('Bulk submit supports Pathao and Carrybee only');
+      return;
+    }
+    try {
+      await bulkAction({
+        action: 'courier_submit',
+        orderIds: state.orderIds,
+        courier,
+      });
+      onSuccess?.();
+      onClose();
+    } catch {
+      // toast already shown by mutation hook
+    }
   }
 
   async function handleTransferSubmit() {
@@ -268,8 +293,11 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <FormSearchSelect
               value={employee}
               onChange={setEmployee}
-              options={EMPLOYEES.map((name) => ({ value: name, label: name }))}
-              placeholder="Search employee"
+              options={teamUsers.map((u) => ({
+                value: u.name,
+                label: u.email ? `${u.name} · ${u.email}` : u.name,
+              }))}
+              placeholder={teamUsers.length ? 'Search employee' : 'No team members'}
             />
           </FormField>
           <DialogFooter>

@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
-import { FormInput } from '@/components/form/form-input';
+import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,13 +37,14 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { downloadCsv } from '@/lib/export-csv';
 import { formatCurrency } from '@/lib/format';
+import { rangeFromISO, toISODateRange } from '@/lib/date-range';
 import { cn } from '@/lib/utils';
+import type { DateRange } from 'react-day-picker';
 
 export function InventoryReportsDashboard() {
   const [data, setData] = React.useState<InventoryReportsResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [dateFrom, setDateFrom] = React.useState('');
-  const [dateTo, setDateTo] = React.useState('');
+  const [draftRange, setDraftRange] = React.useState<DateRange | undefined>(undefined);
   const [appliedFrom, setAppliedFrom] = React.useState('');
   const [appliedTo, setAppliedTo] = React.useState('');
 
@@ -66,20 +67,17 @@ export function InventoryReportsDashboard() {
     load();
   }, [load]);
 
-  function applyPeriod() {
-    if (dateFrom && dateTo && dateFrom > dateTo) {
-      toast.error('From date must be on or before To date');
-      return;
-    }
-    setAppliedFrom(dateFrom);
-    setAppliedTo(dateTo);
-  }
-
   function clearPeriod() {
-    setDateFrom('');
-    setDateTo('');
+    setDraftRange(undefined);
     setAppliedFrom('');
     setAppliedTo('');
+  }
+
+  function handleRangeChange(range: DateRange | undefined) {
+    setDraftRange(range);
+    const iso = toISODateRange(range);
+    setAppliedFrom(iso?.from ?? '');
+    setAppliedTo(iso?.to ?? '');
   }
 
   function exportCsv() {
@@ -177,15 +175,15 @@ export function InventoryReportsDashboard() {
 
         <Card className={ORDER_CARD_CLASS}>
           <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'flex flex-wrap items-end gap-3')}>
-            <FormField label="From" className="w-[10rem]">
-              <FormInput type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <FormField label="Period" className="min-w-[16rem]">
+              <DateRangePicker
+                align="start"
+                className="w-full"
+                placeholder="All Time"
+                value={draftRange ?? rangeFromISO(appliedFrom || undefined, appliedTo || undefined)}
+                onChange={handleRangeChange}
+              />
             </FormField>
-            <FormField label="To" className="w-[10rem]">
-              <FormInput type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-            </FormField>
-            <Button type="button" size="sm" onClick={applyPeriod}>
-              Apply
-            </Button>
             {appliedFrom || appliedTo ? (
               <Button type="button" size="sm" variant="ghost" onClick={clearPeriod}>
                 Clear

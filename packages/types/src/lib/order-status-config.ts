@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-import { orderStatusTypeSchema } from './dashboard.js';
-
 export const orderStatusDisplayModeSchema = z.enum([
   'sidebar',
   'nested_tab',
@@ -48,11 +46,16 @@ export type OrderPageKind = z.infer<typeof orderPageKindSchema>;
 
 export const orderStatusConfigSchema = z.object({
   id: z.string(),
-  slug: orderStatusTypeSchema,
+  /** Org-defined slug (not limited to built-in enum). */
+  slug: z
+    .string()
+    .min(1)
+    .regex(/^[a-z][a-z0-9_]*$/, 'Use lowercase letters, numbers, underscores'),
   label: z.string(),
   labelBn: z.string().optional(),
   color: z.string(),
   group: orderWorkflowGroupSchema,
+  /** Parent queue folder (e.g. pendings) OR another status slug. */
   parentSlug: z.string().optional(),
   displayMode: orderStatusDisplayModeSchema,
   /** Explicit override — when set, wins over displayMode for sidebar link visibility. */
@@ -62,7 +65,7 @@ export const orderStatusConfigSchema = z.object({
   sidebarOrder: z.number().optional(),
   isTerminal: z.boolean().default(false),
   isDefault: z.boolean().default(false),
-  allowedTransitions: z.array(orderStatusTypeSchema).default([]),
+  allowedTransitions: z.array(z.string()).default([]),
   bulkActions: z.array(bulkActionIdSchema).default([]),
   showInGroupByStatus: z.boolean().default(true),
 });
@@ -76,8 +79,8 @@ export const orderQueuePageSchema = z.object({
   kind: orderPageKindSchema,
   displayMode: orderStatusDisplayModeSchema,
   sidebarOrder: z.number(),
-  childStatusSlugs: z.array(orderStatusTypeSchema).optional(),
-  defaultChildSlug: orderStatusTypeSchema.optional(),
+  childStatusSlugs: z.array(z.string()).optional(),
+  defaultChildSlug: z.string().optional(),
   title: z.string(),
   description: z.string(),
   showInNav: z.boolean().default(true),
@@ -86,7 +89,7 @@ export const orderQueuePageSchema = z.object({
 export type OrderQueuePage = z.infer<typeof orderQueuePageSchema>;
 
 export const orderStatusCountSchema = z.object({
-  slug: orderStatusTypeSchema,
+  slug: z.string().min(1),
   count: z.number().int().nonnegative(),
   unitCount: z.number().int().nonnegative().optional(),
 });

@@ -563,11 +563,13 @@ export function quickSearchMockOrders(query: string, limit = 8): OrderDetail[] {
 }
 
 function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean {
-  if (query.status && order.status !== query.status) {
-    return false;
+  if (query.status) {
+    const match = order.status === query.status;
+    if (query.excludeStatus ? match : !match) return false;
   }
-  if (query.source && order.source !== query.source) {
-    return false;
+  if (query.source) {
+    const match = order.source === query.source;
+    if (query.excludeSource ? match : !match) return false;
   }
   if (query.paymentStatus && order.paymentStatus !== query.paymentStatus) {
     return false;
@@ -575,9 +577,23 @@ function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean
   if (query.employee && order.assignedAgentName !== query.employee) {
     return false;
   }
-  if (query.district && !order.shippingArea.toLowerCase().includes(query.district.toLowerCase())) {
-    return false;
+  if (query.district) {
+    const d = query.district.toLowerCase();
+    const match =
+      order.shippingArea.toLowerCase().includes(d) ||
+      (order.district?.toLowerCase().includes(d) ?? false);
+    if (query.excludeDistrict ? match : !match) return false;
   }
+  if (query.pathaoCity) {
+    const city = order.pathaoCity?.toLowerCase() ?? '';
+    if (!city.includes(query.pathaoCity.toLowerCase())) return false;
+  }
+  if (query.pathaoZone) {
+    const zone = order.pathaoZone?.toLowerCase() ?? '';
+    if (!zone.includes(query.pathaoZone.toLowerCase())) return false;
+  }
+  if (query.noteStatus === 'has_note' && !order.notes?.trim()) return false;
+  if (query.noteStatus === 'no_note' && order.notes?.trim()) return false;
   if (query.product) {
     const productMatch = order.lineItems.some((line) =>
       line.productName.toLowerCase().includes(query.product!.toLowerCase()),
@@ -589,6 +605,52 @@ function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean
   if (query.search?.trim()) {
     if (!orderMatchesSearch(order, query.search)) {
       return false;
+    }
+  }
+  if (query.dateFrom || query.dateTo) {
+    const t = new Date(order.createdAt).getTime();
+    if (query.dateFrom) {
+      const from = new Date(query.dateFrom);
+      from.setHours(0, 0, 0, 0);
+      if (t < from.getTime()) return false;
+    }
+    if (query.dateTo) {
+      const to = new Date(query.dateTo);
+      to.setHours(23, 59, 59, 999);
+      if (t > to.getTime()) return false;
+    }
+  } else if (query.dateRange && query.dateRange !== 'all_time' && query.dateRange !== 'custom') {
+    // fallback for presets without ISO (legacy)
+    if (query.dateRange === 'last_30') {
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      if (new Date(order.createdAt).getTime() < cutoff) return false;
+    }
+    if (query.dateRange === 'this_month') {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      if (new Date(order.createdAt).getTime() < start) return false;
+    }
+  }
+  if (query.courierDateFrom || query.courierDateTo) {
+    if (!order.courierBookedAt) return false;
+    const t = new Date(order.courierBookedAt).getTime();
+    if (query.courierDateFrom) {
+      const from = new Date(query.courierDateFrom);
+      from.setHours(0, 0, 0, 0);
+      if (t < from.getTime()) return false;
+    }
+    if (query.courierDateTo) {
+      const to = new Date(query.courierDateTo);
+      to.setHours(23, 59, 59, 999);
+      if (t > to.getTime()) return false;
+    }
+  }
+  if (query.courier === 'pathao' || query.courier === 'carrybee' || query.courier === 'steadfast') {
+    const provider = order.courierProvider?.toLowerCase();
+    const match = provider === query.courier;
+    if (query.excludeCourier ? match : provider && !match) {
+      if (!query.excludeCourier && provider && !match) return false;
+      if (query.excludeCourier && match) return false;
     }
   }
   if (query.followUpDue && !isFollowUpDue(order.createdAt, order.status)) {

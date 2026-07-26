@@ -2,7 +2,6 @@ import type {
   BulkActionId,
   OrderQueuePage,
   OrderStatusConfig,
-  OrderStatusType,
 } from '@laam/types';
 
 import { getOrderStatuses } from '@/features/orders/data/order-status-store';
@@ -333,7 +332,7 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
   },
 ];
 
-export function getStatusConfigBySlug(slug: OrderStatusType): OrderStatusConfig | undefined {
+export function getStatusConfigBySlug(slug: string): OrderStatusConfig | undefined {
   return getOrderStatuses().find((item) => item.slug === slug);
 }
 
@@ -353,13 +352,9 @@ export function getNestedTabStatusesForParent(parentSlug: string): OrderStatusCo
     .sort((a, b) => (a.sidebarOrder ?? 99) - (b.sidebarOrder ?? 99));
 }
 
-export function getQueueChildStatusSlugs(queueSlug: string): OrderStatusType[] {
-  const dynamic = getNestedTabStatusesForParent(queueSlug).map((item) => item.slug);
-  if (dynamic.length > 0) {
-    return dynamic;
-  }
-
-  return getQueuePageBySlug(queueSlug)?.childStatusSlugs ?? [];
+/** Child status slugs for a queue/status parent — derived from config only (no hardcoded fallbacks). */
+export function getQueueChildStatusSlugs(queueSlug: string): string[] {
+  return getNestedTabStatusesForParent(queueSlug).map((item) => item.slug);
 }
 
 export function getGroupByStatusItems(): OrderStatusConfig[] {

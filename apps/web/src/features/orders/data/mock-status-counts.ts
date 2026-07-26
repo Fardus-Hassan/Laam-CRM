@@ -1,4 +1,4 @@
-import type { OrderStatusCount, OrderStatusType } from '@laam/types';
+import type { OrderStatusCount } from '@laam/types';
 
 import { MOCK_ORDER_STATUSES } from '@/features/orders/data/mock-status-config';
 import { getStatusCount as getLiveStatusCount } from '@/features/orders/data/order-status-counts-store';
@@ -27,20 +27,20 @@ export const MOCK_STATUS_COUNTS: OrderStatusCount[] = [
   { slug: 'others', count: 1428, unitCount: 1435 },
 ];
 
-const countMap = new Map<OrderStatusType, OrderStatusCount>(
+const countMap = new Map<string, OrderStatusCount>(
   MOCK_STATUS_COUNTS.map((item) => [item.slug, item]),
 );
 
 const useHttpApi = process.env.NEXT_PUBLIC_USE_API === 'true';
 
-export function getStatusCount(slug: OrderStatusType): number {
+export function getStatusCount(slug: string): number {
   if (useHttpApi) {
     return getLiveStatusCount(slug);
   }
   return countMap.get(slug)?.count ?? 0;
 }
 
-export function getStatusUnitCount(slug: OrderStatusType): number {
+export function getStatusUnitCount(slug: string): number {
   if (useHttpApi) {
     return getLiveStatusCount(slug);
   }

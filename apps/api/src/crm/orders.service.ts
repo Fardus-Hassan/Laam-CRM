@@ -28,6 +28,7 @@ import { CourierIntegrationsService } from './courier-integrations.service';
 import { FollowupsService } from './followups.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { LeadsService } from './leads.service';
+import { OrderPaymentsService } from './order-payments.service';
 import { PathaoCourierService } from './pathao-courier.service';
 import { PathaoSyncService } from './pathao-sync.service';
 import { buildCourierStatsFromStatusCounts } from './order-courier-stats.util';
@@ -44,6 +45,8 @@ export type OrderFormOptionsResponse = {
   districts: OrderFormOptionDto[];
   orderTags: OrderFormOptionDto[];
   customerTags: OrderFormOptionDto[];
+  pathaoCities: OrderFormOptionDto[];
+  pathaoZones: OrderFormOptionDto[];
   defaultCourierNote: string;
   defaultShipping: number;
 };
@@ -197,6 +200,7 @@ export class OrdersService {
     private readonly pathao: PathaoCourierService,
     private readonly carrybee: CarrybeeCourierService,
     private readonly courierIntegrations: CourierIntegrationsService,
+    private readonly orderPayments: OrderPaymentsService,
     @Inject(forwardRef(() => PathaoSyncService))
     private readonly pathaoSync: PathaoSyncService,
     @Inject(forwardRef(() => CarrybeeSyncService))
@@ -294,13 +298,55 @@ export class OrdersService {
     const noteRow = rows.find((r) => r.kind === 'default_courier_note');
     const shippingRow = rows.find((r) => r.kind === 'default_shipping');
 
+    const [districtRows, cityRows, zoneRows] = await Promise.all([
+      this.prisma.order.findMany({
+        where: { organizationId, OR: [{ district: { not: null } }, { shippingArea: { not: '' } }] },
+        select: { district: true, shippingArea: true },
+        distinct: ['district'],
+        take: 200,
+      }),
+      this.prisma.order.findMany({
+        where: { organizationId, pathaoCity: { not: null } },
+        select: { pathaoCity: true },
+        distinct: ['pathaoCity'],
+        take: 200,
+      }),
+      this.prisma.order.findMany({
+        where: { organizationId, pathaoZone: { not: null } },
+        select: { pathaoZone: true },
+        distinct: ['pathaoZone'],
+        take: 200,
+      }),
+    ]);
+
+    const configuredDistricts = pick('district');
+    const liveDistrictMap = new Map(configuredDistricts.map((d) => [d.value.toLowerCase(), d]));
+    for (const row of districtRows) {
+      const label = (row.district || row.shippingArea || '').trim();
+      if (!label) continue;
+      const key = label.toLowerCase();
+      if (!liveDistrictMap.has(key)) {
+        liveDistrictMap.set(key, { value: label, label });
+      }
+    }
+
     return {
       statuses: pick('status'),
       paymentMethods: pick('payment_method'),
       sources: pick('source'),
-      districts: pick('district'),
+      districts: [...liveDistrictMap.values()].sort((a, b) => a.label.localeCompare(b.label)),
       orderTags: pick('order_tag'),
       customerTags: pick('customer_tag'),
+      pathaoCities: cityRows
+        .map((r) => r.pathaoCity?.trim())
+        .filter((v): v is string => Boolean(v))
+        .map((v) => ({ value: v, label: v }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      pathaoZones: zoneRows
+        .map((r) => r.pathaoZone?.trim())
+        .filter((v): v is string => Boolean(v))
+        .map((v) => ({ value: v, label: v }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
       defaultCourierNote: noteRow?.label ?? DEFAULT_COURIER_NOTE,
       defaultShipping: Number(shippingRow?.label ?? 120) || 120,
     };
@@ -349,6 +395,54 @@ export class OrdersService {
     } catch {
       throw new BadRequestException('Option with this value already exists');
     }
+  }
+
+  /** Upsert a status into org form options so create/update order can use it. */
+  async ensureStatusFormOption(
+    organizationId: string,
+    input: { value: string; label?: string },
+  ): Promise<{ value: string; label: string; created: boolean }> {
+    await this.ensureFormOptions(organizationId);
+    const value = input.value.trim().replace(/\s+/g, '_').toLowerCase();
+    if (!value || !/^[a-z][a-z0-9_]*$/.test(value)) {
+      throw new BadRequestException('Invalid status slug');
+    }
+    const label =
+      input.label?.trim() ||
+      value
+        .split('_')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+
+    const existing = await this.prisma.orderFormOption.findFirst({
+      where: { organizationId, kind: 'status', value },
+    });
+    if (existing) {
+      await this.prisma.orderFormOption.update({
+        where: { id: existing.id },
+        data: {
+          label: label || existing.label,
+          isActive: true,
+        },
+      });
+      return { value, label: label || existing.label, created: false };
+    }
+
+    const maxSort = await this.prisma.orderFormOption.aggregate({
+      where: { organizationId, kind: 'status' },
+      _max: { sortOrder: true },
+    });
+    await this.prisma.orderFormOption.create({
+      data: {
+        organizationId,
+        kind: 'status',
+        value,
+        label,
+        sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
+        isActive: true,
+      },
+    });
+    return { value, label, created: true };
   }
 
   async updateFormOption(
@@ -414,19 +508,30 @@ export class OrdersService {
     }
 
     const followUpCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
-    const followupsDue = await this.prisma.order.count({
-      where: {
-        organizationId,
-        skipFollowup: false,
-        createdAt: { lte: followUpCutoff },
-        OR: [
-          { status: { startsWith: 'pending' } },
-          { status: { in: ['hold', 'hold_followup'] } },
-        ],
-      },
-    });
+    const [followupsDue, failed] = await Promise.all([
+      this.prisma.order.count({
+        where: {
+          organizationId,
+          skipFollowup: false,
+          createdAt: { lte: followUpCutoff },
+          OR: [
+            { status: { startsWith: 'pending' } },
+            { status: { in: ['hold', 'hold_followup'] } },
+          ],
+        },
+      }),
+      this.prisma.failedOrder.count({
+        where: {
+          organizationId,
+          queueStatus: 'pending',
+          createdAt: {
+            gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+          },
+        },
+      }),
+    ]);
 
-    return { byStatus, followupsDue, failed: 0 };
+    return { byStatus, followupsDue, failed };
   }
 
   async bulkSetFollowUp(
@@ -612,6 +717,38 @@ export class OrdersService {
       };
     }
 
+    if (payload.action === 'courier_submit') {
+      const courier = (payload.courier ?? '').trim().toLowerCase();
+      if (courier !== 'pathao' && courier !== 'carrybee') {
+        throw new BadRequestException(
+          'Bulk courier submit supports pathao or carrybee only',
+        );
+      }
+      let successCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+      for (const orderId of ids) {
+        try {
+          if (courier === 'pathao') {
+            await this.bookWithPathao(organizationId, orderId, actor);
+          } else {
+            await this.bookWithCarrybee(organizationId, orderId, actor);
+          }
+          successCount += 1;
+        } catch (e) {
+          failedCount += 1;
+          const msg = e instanceof Error ? e.message : 'Book failed';
+          if (errors.length < 5) errors.push(msg);
+        }
+      }
+      const detail = errors.length ? ` Examples: ${errors.join(' · ')}` : '';
+      return {
+        successCount,
+        failedCount,
+        message: `Booked ${successCount}/${ids.length} via ${courier}.${detail}`,
+      };
+    }
+
     throw new BadRequestException(
       `Bulk action "${payload.action}" is not implemented yet`,
     );
@@ -619,33 +756,160 @@ export class OrdersService {
 
   async list(
     organizationId: string,
-    query: Partial<OrderListQuery> & { page?: number; pageSize?: number },
+    query: Partial<OrderListQuery> & {
+      page?: number;
+      pageSize?: number;
+      dateFrom?: string;
+      dateTo?: string;
+    },
   ): Promise<OrderListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const where: Record<string, unknown> = { organizationId };
+    const andFilters: Record<string, unknown>[] = [];
 
-    if (query.status) where.status = query.status;
-    if (query.source) where.source = query.source;
+    if (query.status) {
+      if (query.excludeStatus) {
+        andFilters.push({ status: { not: query.status } });
+      } else {
+        where.status = query.status;
+      }
+    }
+    if (query.source) {
+      if (query.excludeSource) {
+        andFilters.push({ source: { not: query.source } });
+      } else {
+        where.source = query.source;
+      }
+    }
     if (query.paymentStatus) where.paymentStatus = query.paymentStatus;
-    if (query.district) where.district = query.district;
+    if (query.district?.trim()) {
+      const d = query.district.trim();
+      const districtMatch = {
+        OR: [
+          { district: { contains: d, mode: 'insensitive' } },
+          { shippingArea: { contains: d, mode: 'insensitive' } },
+        ],
+      };
+      if (query.excludeDistrict) {
+        andFilters.push({ NOT: districtMatch });
+      } else {
+        andFilters.push(districtMatch);
+      }
+    }
+    if (query.employee?.trim()) {
+      where.assignedAgentName = query.employee.trim();
+    }
     if (query.courierStatusSlug) where.courierStatusSlug = query.courierStatusSlug;
-    if (query.courier === 'pathao') where.courierProvider = 'pathao';
-    if (query.courier === 'carrybee') where.courierProvider = 'carrybee';
+    if (query.courier === 'pathao' || query.courier === 'carrybee' || query.courier === 'steadfast') {
+      if (query.excludeCourier) {
+        andFilters.push({
+          OR: [
+            { courierProvider: { not: query.courier } },
+            { courierProvider: null },
+          ],
+        });
+      } else {
+        where.courierProvider = query.courier;
+      }
+    } else if (query.courier?.trim()) {
+      if (query.excludeCourier) {
+        andFilters.push({
+          OR: [
+            { courierProvider: { not: query.courier.trim() } },
+            { courierProvider: null },
+          ],
+        });
+      } else {
+        where.courierProvider = query.courier.trim();
+      }
+    }
+
+    if (query.product?.trim()) {
+      where.lineItems = {
+        some: {
+          productName: { contains: query.product.trim(), mode: 'insensitive' },
+        },
+      };
+    }
+
+    if (query.pathaoCity?.trim()) {
+      where.pathaoCity = { contains: query.pathaoCity.trim(), mode: 'insensitive' };
+    }
+    if (query.pathaoZone?.trim()) {
+      where.pathaoZone = { contains: query.pathaoZone.trim(), mode: 'insensitive' };
+    }
+
+    if (query.noteStatus === 'has_note') {
+      andFilters.push({
+        notes: { not: null },
+        NOT: { notes: '' },
+      });
+    } else if (query.noteStatus === 'no_note') {
+      andFilters.push({
+        OR: [{ notes: null }, { notes: '' }],
+      });
+    }
+
+    const createdAtFilter = resolveCreatedAtFilter(
+      query.dateRange,
+      query.dateFrom,
+      query.dateTo,
+    );
+    if (createdAtFilter) where.createdAt = createdAtFilter;
+
+    const courierBookedFilter = resolveCreatedAtFilter(
+      query.courierDateRange,
+      query.courierDateFrom,
+      query.courierDateTo,
+    );
+    if (courierBookedFilter) where.courierBookedAt = courierBookedFilter;
+
+    if (query.followUpDue === true) {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const dueFollowups = await this.prisma.followup.findMany({
+        where: {
+          organizationId,
+          orderId: { not: null },
+          scheduleDate: { lte: startOfToday },
+          skipped: false,
+          followupStatus: { not: 'completed' },
+        },
+        select: { orderId: true },
+      });
+      const dueOrderIds = [
+        ...new Set(
+          dueFollowups
+            .map((f) => f.orderId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      where.id = { in: dueOrderIds.length > 0 ? dueOrderIds : ['__none__'] };
+    }
+
     if (query.search?.trim()) {
       const q = query.search.trim();
-      where.OR = [
-        { orderNumber: { contains: q, mode: 'insensitive' } },
-        { customerName: { contains: q, mode: 'insensitive' } },
-        { customerPhone: { contains: q } },
-      ];
+      andFilters.push({
+        OR: [
+          { orderNumber: { contains: q, mode: 'insensitive' } },
+          { customerName: { contains: q, mode: 'insensitive' } },
+          { customerPhone: { contains: q } },
+        ],
+      });
     }
+
+    if (andFilters.length > 0) {
+      where.AND = andFilters;
+    }
+
+    const orderBy = resolveOrderListSort(query.sortBy, query.sortDir);
 
     const [total, rows] = await Promise.all([
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
@@ -1210,6 +1474,18 @@ export class OrdersService {
       actor,
     );
 
+    await this.orderPayments.ensureForOrder(
+      organizationId,
+      {
+        id: created.id,
+        amount: created.amount,
+        paidAmount: created.paidAmount,
+        paymentStatus: created.paymentStatus,
+        paymentMethod: created.paymentMethod,
+      },
+      actor,
+    );
+
     return this.toDetailEnriched(organizationId, created);
   }
 
@@ -1625,13 +1901,37 @@ export class OrdersService {
     });
 
     if (input.status && input.status !== existing.status) {
-      return this.updateStatus(
+      const detail = await this.updateStatus(
         organizationId,
         updated.id,
         input.status,
         actor,
       );
+      await this.orderPayments.ensureForOrder(
+        organizationId,
+        {
+          id: updated.id,
+          amount: updated.amount,
+          paidAmount: updated.paidAmount,
+          paymentStatus: updated.paymentStatus,
+          paymentMethod: updated.paymentMethod,
+        },
+        actor,
+      );
+      return detail;
     }
+
+    await this.orderPayments.ensureForOrder(
+      organizationId,
+      {
+        id: updated.id,
+        amount: updated.amount,
+        paidAmount: updated.paidAmount,
+        paymentStatus: updated.paymentStatus,
+        paymentMethod: updated.paymentMethod,
+      },
+      actor,
+    );
 
     return this.toDetailEnriched(organizationId, updated);
   }
@@ -2249,4 +2549,102 @@ export class OrdersService {
     }
     return 'note';
   }
+}
+
+function resolveCreatedAtFilter(
+  dateRange?: string,
+  dateFrom?: string,
+  dateTo?: string,
+): { gte?: Date; lte?: Date } | undefined {
+  // Explicit ISO bounds win (custom + pinned presets from client)
+  if (dateFrom?.trim() || dateTo?.trim()) {
+    const filter: { gte?: Date; lte?: Date } = {};
+    if (dateFrom?.trim()) {
+      const gte = new Date(dateFrom.trim());
+      if (!Number.isNaN(gte.getTime())) {
+        gte.setHours(0, 0, 0, 0);
+        filter.gte = gte;
+      }
+    }
+    if (dateTo?.trim()) {
+      const lte = new Date(dateTo.trim());
+      if (!Number.isNaN(lte.getTime())) {
+        lte.setHours(23, 59, 59, 999);
+        filter.lte = lte;
+      }
+    }
+    if (filter.gte || filter.lte) return filter;
+  }
+
+  if (!dateRange || dateRange === 'all_time') return undefined;
+
+  const now = new Date();
+  const startOfDay = (d: Date) => {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  };
+  const endOfDay = (d: Date) => {
+    const x = new Date(d);
+    x.setHours(23, 59, 59, 999);
+    return x;
+  };
+
+  switch (dateRange) {
+    case 'today':
+      return { gte: startOfDay(now), lte: endOfDay(now) };
+    case 'yesterday': {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      return { gte: startOfDay(y), lte: endOfDay(y) };
+    }
+    case 'last_7': {
+      const gte = startOfDay(now);
+      gte.setDate(gte.getDate() - 6);
+      return { gte, lte: endOfDay(now) };
+    }
+    case 'last_30': {
+      const gte = startOfDay(now);
+      gte.setDate(gte.getDate() - 29);
+      return { gte, lte: endOfDay(now) };
+    }
+    case 'this_month':
+      return { gte: new Date(now.getFullYear(), now.getMonth(), 1), lte: endOfDay(now) };
+    case 'last_month': {
+      const gte = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lte = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+      return { gte, lte };
+    }
+    case 'this_year':
+      return { gte: new Date(now.getFullYear(), 0, 1), lte: endOfDay(now) };
+    case 'last_year':
+      return {
+        gte: new Date(now.getFullYear() - 1, 0, 1),
+        lte: new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999),
+      };
+    case 'custom':
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+function resolveOrderListSort(
+  sortBy?: string,
+  sortDir?: 'asc' | 'desc',
+): Record<string, 'asc' | 'desc'> {
+  const dir = sortDir === 'asc' ? 'asc' : 'desc';
+  const allowed = new Set([
+    'createdAt',
+    'updatedAt',
+    'amount',
+    'orderNumber',
+    'customerName',
+    'status',
+    'paymentStatus',
+  ]);
+  if (sortBy && allowed.has(sortBy)) {
+    return { [sortBy]: dir };
+  }
+  return { createdAt: 'desc' };
 }

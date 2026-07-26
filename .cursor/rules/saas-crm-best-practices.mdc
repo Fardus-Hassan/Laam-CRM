@@ -1,0 +1,34 @@
+---
+description: SaaS multi-tenant CRM industry best practices for Laam
+alwaysApply: true
+---
+
+# Laam CRM — SaaS best practices
+
+When building or changing features, prefer industry SaaS CRM norms. Do not invent parallel patterns.
+
+## Multi-tenant & security
+- Every business query is **org-scoped** (`organizationId`). Never leak cross-tenant data.
+- Secrets (courier, SMS, payment keys) are **per-org**, encrypted at rest, **masked on GET**, never hardcoded or logged.
+- Mutations require permissions; audit sensitive actions (status, courier book, SMS, payments).
+
+## API ↔ UI honesty
+- If the UI exposes a control, the API must honor it — or hide/disable the control.
+- No fake success toasts for unimplemented endpoints.
+- Mock/demo data only when `NEXT_PUBLIC_USE_API` is false; API mode must not show fabricated finance/P&L.
+
+## Domain (order-centric ops)
+- Status changes go through one service path (stock cut/restock, activity log, side effects).
+- Courier: book/sync per provider; bulk actions call the same book path as single-order.
+- Payments/COD: real ledger rows — never “mock paid” in live mode.
+- Idempotent external calls where practical (courier book, SMS unique id).
+
+## Data & errors
+- Validate payloads (Zod / shared `@laam/types`).
+- Return clear, actionable errors (whitelist, missing creds, invalid phone) — not bare `fetch failed`.
+- Prefer soft-delete / recycle patterns already in the codebase over hard deletes.
+
+## Product decisions (when owner is silent)
+- Choose the safer, auditable option over convenience.
+- Ship Pathao + Carrybee depth before adding more couriers.
+- Prefer fixing misleading filters/stubs before new screens.

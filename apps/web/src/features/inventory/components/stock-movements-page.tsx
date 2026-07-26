@@ -9,6 +9,7 @@ import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
+import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,9 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { downloadCsv } from '@/lib/export-csv';
+import { rangeFromISO, toISODateRange } from '@/lib/date-range';
 import { cn } from '@/lib/utils';
+import type { DateRange } from 'react-day-picker';
 
 const PAGE_SIZE = 50;
 
@@ -70,6 +73,17 @@ export function StockMovementsPage() {
   const [warehouseId, setWarehouseId] = React.useState('');
   const [dateFrom, setDateFrom] = React.useState('');
   const [dateTo, setDateTo] = React.useState('');
+  const dateRangeValue = React.useMemo(
+    () => rangeFromISO(dateFrom || undefined, dateTo || undefined),
+    [dateFrom, dateTo],
+  );
+
+  function handleDateRangeChange(range: DateRange | undefined) {
+    const iso = toISODateRange(range);
+    setDateFrom(iso?.from ?? '');
+    setDateTo(iso?.to ?? '');
+    setPage(1);
+  }
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -211,25 +225,14 @@ export function StockMovementsPage() {
                 searchable={false}
               />
             </FormField>
-            <FormField label="From / to">
-              <div className="flex gap-2">
-                <FormInput
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => {
-                    setDateFrom(e.target.value);
-                    setPage(1);
-                  }}
-                />
-                <FormInput
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => {
-                    setDateTo(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
+            <FormField label="Period" className="min-w-[16rem]">
+              <DateRangePicker
+                align="start"
+                className="w-full"
+                placeholder="All Time"
+                value={dateRangeValue}
+                onChange={handleDateRangeChange}
+              />
             </FormField>
           </CardContent>
         </Card>

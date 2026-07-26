@@ -33,32 +33,64 @@ function buildActiveFilterChips(
   if (!hideStatus && filters.status) {
     chips.push({
       key: 'status',
-      label: getStatusConfigBySlug(filters.status)?.label ?? filters.status,
+      label: `${filters.excludeStatus ? 'Not ' : ''}${getStatusConfigBySlug(filters.status)?.label ?? filters.status}`,
     });
   }
   if (filters.source) {
-    chips.push({ key: 'source', label: ORDER_SOURCE_LABELS[filters.source] });
+    chips.push({
+      key: 'source',
+      label: `${filters.excludeSource ? 'Not ' : ''}${ORDER_SOURCE_LABELS[filters.source]}`,
+    });
   }
   if (filters.employee) {
     chips.push({ key: 'employee', label: filters.employee });
   }
   if (filters.district) {
-    chips.push({ key: 'district', label: filters.district });
+    chips.push({
+      key: 'district',
+      label: `${filters.excludeDistrict ? 'Not ' : ''}${filters.district}`,
+    });
   }
   if (filters.paymentStatus) {
     chips.push({ key: 'paymentStatus', label: filters.paymentStatus.toUpperCase() });
   }
   if (filters.courier) {
-    chips.push({ key: 'courier', label: filters.courier });
+    chips.push({
+      key: 'courier',
+      label: `${filters.excludeCourier ? 'Not ' : ''}${filters.courier}`,
+    });
   }
   if (filters.courierStatusSlug) {
     chips.push({ key: 'courierStatusSlug', label: filters.courierStatusSlug });
   }
+  if (filters.pathaoCity) {
+    chips.push({ key: 'pathaoCity', label: `City: ${filters.pathaoCity}` });
+  }
+  if (filters.pathaoZone) {
+    chips.push({ key: 'pathaoZone', label: `Zone: ${filters.pathaoZone}` });
+  }
+  if (filters.noteStatus === 'has_note') {
+    chips.push({ key: 'noteStatus', label: 'Has note' });
+  }
+  if (filters.noteStatus === 'no_note') {
+    chips.push({ key: 'noteStatus', label: 'No note' });
+  }
   if (filters.product) {
     chips.push({ key: 'product', label: `Product: ${filters.product}` });
   }
-  if (filters.dateRange && filters.dateRange !== 'last_30') {
-    chips.push({ key: 'dateRange', label: filters.dateRange.replace('_', ' ') });
+  if (filters.dateRange && filters.dateRange !== 'all_time') {
+    const label =
+      filters.dateFrom && filters.dateTo
+        ? `Created ${filters.dateFrom} → ${filters.dateTo}`
+        : `Created: ${filters.dateRange.replace(/_/g, ' ')}`;
+    chips.push({ key: 'dateRange', label });
+  }
+  if (filters.courierDateRange && filters.courierDateRange !== 'all_time') {
+    const label =
+      filters.courierDateFrom && filters.courierDateTo
+        ? `Courier ${filters.courierDateFrom} → ${filters.courierDateTo}`
+        : `Courier: ${filters.courierDateRange.replace(/_/g, ' ')}`;
+    chips.push({ key: 'courierDateRange', label });
   }
 
   return chips;

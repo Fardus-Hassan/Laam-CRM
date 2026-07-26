@@ -55,7 +55,12 @@ export function useOrderMutations() {
     setIsLoading(true);
     try {
       const result: BulkActionResult = await ordersApi.bulkAction(payload);
-      toast.success(result.message ?? `Updated ${result.successCount} order(s)`);
+      const msg = result.message ?? `Updated ${result.successCount} order(s)`;
+      if (result.failedCount > 0) {
+        toast.warning(msg);
+      } else {
+        toast.success(msg);
+      }
       return result;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Bulk action failed');

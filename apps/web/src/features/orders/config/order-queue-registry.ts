@@ -1,5 +1,3 @@
-import type { OrderStatusType } from '@laam/types';
-
 import {
   MOCK_ORDER_QUEUE_PAGES,
   MOCK_ORDER_STATUSES,
@@ -15,7 +13,7 @@ export type OrderQueueDefinition = {
   label: string;
   href: string;
   kind: OrderQueueKind;
-  filterStatus?: OrderStatusType;
+  filterStatus?: string;
   title: string;
   description: string;
   showInNav?: boolean;
@@ -58,23 +56,23 @@ const registryByStatus = new Map(
   ORDER_QUEUE_REGISTRY.filter((q) => q.filterStatus).map((q) => [q.filterStatus!, q]),
 );
 
-export function getOrderQueueByStatus(status: OrderStatusType): OrderQueueDefinition | undefined {
+export function getOrderQueueByStatus(status: string): OrderQueueDefinition | undefined {
   return registryByStatus.get(status);
 }
 
-export function getOrderQueuePageCopy(status: OrderStatusType | 'all') {
+export function getOrderQueuePageCopy(status: string | 'all') {
   if (status === 'all') {
     return ORDER_QUEUE_REGISTRY.find((q) => q.id === 'all')!;
   }
   return getOrderQueueByStatus(status) ?? ORDER_QUEUE_REGISTRY.find((q) => q.id === 'all')!;
 }
 
-export function parseOrderQueueStatus(value: string | undefined): OrderStatusType | undefined {
+export function parseOrderQueueStatus(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
   }
   const match = MOCK_ORDER_STATUSES.find((s) => s.slug === value);
-  return match?.slug ?? (value as OrderStatusType);
+  return match?.slug ?? value;
 }
 
 export const ORDER_QUEUE_NAV_ITEMS = ORDER_QUEUE_REGISTRY.filter((q) => q.showInNav);

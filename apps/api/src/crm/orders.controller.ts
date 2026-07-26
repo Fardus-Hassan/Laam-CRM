@@ -27,6 +27,8 @@ import {
 } from '../common/decorators';
 import { actorFromUser } from '../common/actor.util';
 import { ObjectStorageService } from './object-storage.service';
+import { OrderPaymentsService } from './order-payments.service';
+import { FailedOrdersService } from './failed-orders.service';
 import { OrdersService, type CreateOrderInput } from './orders.service';
 
 class CreateOrderLineDto {
@@ -252,6 +254,20 @@ class CreateOrderDto {
   attachmentUrls?: string[];
 }
 
+class EnqueueFailedOrderDto extends CreateOrderDto {
+  @IsOptional()
+  @IsString()
+  failedType?: string;
+
+  @IsOptional()
+  @IsString()
+  website?: string;
+
+  @IsOptional()
+  @IsString()
+  lastUpdateNote?: string;
+}
+
 class UpdateOrderDto {
   @IsOptional()
   @IsString()
@@ -432,16 +448,75 @@ class UpdateOrderDto {
   attachmentUrls?: string[];
 }
 
+function parseBoolQuery(value?: string): boolean | undefined {
+  if (value === 'true' || value === '1') return true;
+  if (value === 'false' || value === '0') return false;
+  return undefined;
+}
+
 @ApiTags('CRM — Orders')
 @Controller('crm/orders')
 export class OrdersController {
   constructor(
     private readonly orders: OrdersService,
+    private readonly payments: OrderPaymentsService,
+    private readonly failedOrders: FailedOrdersService,
     private readonly storage: ObjectStorageService,
   ) {}
 
   private actor(user: AuthUserPayload) {
     return actorFromUser(user);
+  }
+
+  private toCreateInput(body: CreateOrderDto): CreateOrderInput {
+    return {
+      customerName: body.customerName,
+      customerPhone: body.customerPhone,
+      customerEmail: body.customerEmail,
+      altMobile: body.altMobile,
+      shippingAddress: body.shippingAddress,
+      shippingArea: body.shippingArea ?? body.district ?? '',
+      district: body.district,
+      source: body.source as CreateOrderInput['source'],
+      status: (body.status ?? 'pending') as CreateOrderInput['status'],
+      paymentStatus: body.paymentStatus as CreateOrderInput['paymentStatus'],
+      paymentMethod: body.paymentMethod,
+      deliveryCharge: body.deliveryCharge ?? 0,
+      discount: body.discount ?? 0,
+      paidAmount: body.paidAmount,
+      lineItems: body.lineItems,
+      notes: body.notes,
+      customerNote: body.customerNote,
+      courierNote: body.courierNote,
+      packingNote: body.packingNote,
+      assignedAgentName: body.assignedAgentName,
+      skipFollowup: body.skipFollowup,
+      couponCode: body.couponCode,
+      leadId: body.leadId,
+      customerTag: body.customerTag,
+      orderTag: body.orderTag,
+      referenceNo: body.referenceNo,
+      orderDate: body.orderDate,
+      courierChargedToMe: body.courierChargedToMe,
+      pathaoCity: body.pathaoCity,
+      pathaoZone: body.pathaoZone,
+      pathaoArea: body.pathaoArea,
+      pathaoCityId: body.pathaoCityId,
+      pathaoZoneId: body.pathaoZoneId,
+      pathaoAreaId: body.pathaoAreaId,
+      carrybeeCity: body.carrybeeCity,
+      carrybeeZone: body.carrybeeZone,
+      carrybeeArea: body.carrybeeArea,
+      carrybeeCityId: body.carrybeeCityId,
+      carrybeeZoneId: body.carrybeeZoneId,
+      carrybeeAreaId: body.carrybeeAreaId,
+      utmSource: body.utmSource,
+      utmId: body.utmId,
+      utmContent: body.utmContent,
+      utmCampaign: body.utmCampaign,
+      attachmentNames: body.attachmentNames,
+      attachmentUrls: body.attachmentUrls,
+    };
   }
 
   @Get('meta/form-options')
@@ -523,6 +598,22 @@ export class OrdersController {
     return this.orders.createFormOption(user.organizationId!, body);
   }
 
+  @Post('meta/statuses/ensure')
+  @RequirePermissions('orders.create', 'orders.confirm', 'settings.manage')
+  @ApiOperation({
+    summary: 'Ensure a status exists in org form options (ops + settings can call)',
+  })
+  ensureStatus(
+    @CurrentUser() user: AuthUserPayload,
+    @Body() body: { value?: string; label?: string },
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.ensureStatusFormOption(user.organizationId!, {
+      value: body.value ?? '',
+      label: body.label,
+    });
+  }
+
   @Patch('meta/form-options/:id')
   @RequirePermissions('orders.create', 'settings.manage')
   @ApiOperation({ summary: 'Update form option' })
@@ -593,6 +684,26 @@ export class OrdersController {
     @Query('search') search?: string,
     @Query('courier') courier?: string,
     @Query('courierStatusSlug') courierStatusSlug?: string,
+    @Query('employee') employee?: string,
+    @Query('district') district?: string,
+    @Query('excludeDistrict') excludeDistrict?: string,
+    @Query('excludeStatus') excludeStatus?: string,
+    @Query('excludeSource') excludeSource?: string,
+    @Query('excludeCourier') excludeCourier?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('product') product?: string,
+    @Query('pathaoCity') pathaoCity?: string,
+    @Query('pathaoZone') pathaoZone?: string,
+    @Query('noteStatus') noteStatus?: string,
+    @Query('dateRange') dateRange?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('courierDateRange') courierDateRange?: string,
+    @Query('courierDateFrom') courierDateFrom?: string,
+    @Query('courierDateTo') courierDateTo?: string,
+    @Query('followUpDue') followUpDue?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '20',
   ) {
@@ -603,9 +714,151 @@ export class OrdersController {
       search,
       courier: courier as never,
       courierStatusSlug,
+      employee,
+      district,
+      excludeDistrict: parseBoolQuery(excludeDistrict),
+      excludeStatus: parseBoolQuery(excludeStatus),
+      excludeSource: parseBoolQuery(excludeSource),
+      excludeCourier: parseBoolQuery(excludeCourier),
+      paymentStatus: paymentStatus as never,
+      product,
+      pathaoCity,
+      pathaoZone,
+      noteStatus: noteStatus as 'all' | 'has_note' | 'no_note' | undefined,
+      dateRange: dateRange as never,
+      dateFrom,
+      dateTo,
+      courierDateRange: courierDateRange as never,
+      courierDateFrom,
+      courierDateTo,
+      followUpDue:
+        followUpDue === 'true' || followUpDue === '1'
+          ? true
+          : followUpDue === 'false' || followUpDue === '0'
+            ? false
+            : undefined,
+      sortBy,
+      sortDir: sortDir === 'asc' || sortDir === 'desc' ? sortDir : undefined,
       page: Number(page) || 1,
       pageSize: Number(pageSize) || 20,
     });
+  }
+
+  @Get('payments')
+  @RequirePermissions('orders.view')
+  @ApiOperation({ summary: 'List order payment ledger rows' })
+  listPayments(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('method') method?: string,
+    @Query('dateRange') dateRange?: string,
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '20',
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.payments.list(user.organizationId!, {
+      search,
+      status: status as never,
+      method: method as never,
+      dateRange: dateRange as never,
+      page: Number(page) || 1,
+      pageSize: Number(pageSize) || 20,
+    });
+  }
+
+  @Post('payments/:paymentId/reconcile')
+  @RequirePermissions('orders.confirm', 'orders.create', 'orders.assign')
+  @ApiOperation({ summary: 'Reconcile payment — mark order fully paid' })
+  reconcilePayment(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('paymentId') paymentId: string,
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.payments.reconcile(
+      user.organizationId!,
+      paymentId,
+      actorFromUser(user),
+    );
+  }
+
+  @Post(':id/payments')
+  @RequirePermissions('orders.confirm', 'orders.create', 'orders.assign')
+  @ApiOperation({ summary: 'Record a collection against an order' })
+  recordPayment(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body: { amount?: number; method?: string; note?: string },
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.payments.recordCollection(
+      user.organizationId!,
+      id,
+      {
+        amount: Number(body.amount),
+        method: body.method,
+        note: body.note,
+      },
+      actorFromUser(user),
+    );
+  }
+
+  @Get('failed')
+  @RequirePermissions('orders.view')
+  @ApiOperation({ summary: 'List failed order intake queue' })
+  listFailed(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('search') search?: string,
+    @Query('failedType') failedType?: string,
+    @Query('noteStatus') noteStatus?: string,
+    @Query('website') website?: string,
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '10',
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.failedOrders.list(user.organizationId!, {
+      search,
+      failedType: failedType as 'duplicate' | 'blocked' | 'other' | undefined,
+      noteStatus: noteStatus as 'all' | 'has_note' | 'no_note' | undefined,
+      website,
+      page: Number(page) || 1,
+      pageSize: Number(pageSize) || 10,
+    });
+  }
+
+  @Post('failed')
+  @RequirePermissions('orders.create')
+  @ApiOperation({
+    summary: 'Enqueue failed intake (website webhook / duplicate divert)',
+  })
+  enqueueFailed(@CurrentUser() user: AuthUserPayload, @Body() body: EnqueueFailedOrderDto) {
+    this.orders.requireOrg(user.organizationId);
+    return this.failedOrders.enqueue(
+      user.organizationId!,
+      {
+        ...this.toCreateInput(body),
+        failedType: body.failedType as 'duplicate' | 'blocked' | 'other' | undefined,
+        website: body.website,
+        lastUpdateNote: body.lastUpdateNote,
+      },
+      this.actor(user),
+    );
+  }
+
+  @Post('failed/:id/retry')
+  @RequirePermissions('orders.create', 'orders.confirm')
+  @ApiOperation({ summary: 'Retry a failed order — creates a real pending order' })
+  retryFailed(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.orders.requireOrg(user.organizationId);
+    return this.failedOrders.retry(user.organizationId!, id, this.actor(user));
+  }
+
+  @Delete('failed/:id')
+  @RequirePermissions('orders.create', 'orders.confirm')
+  @ApiOperation({ summary: 'Dismiss a failed order from the intake queue' })
+  dismissFailed(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.orders.requireOrg(user.organizationId);
+    return this.failedOrders.dismiss(user.organizationId!, id);
   }
 
   @Get(':idOrNumber')
@@ -624,55 +877,7 @@ export class OrdersController {
   @ApiOperation({ summary: 'Create order' })
   create(@CurrentUser() user: AuthUserPayload, @Body() body: CreateOrderDto) {
     this.orders.requireOrg(user.organizationId);
-    const input: CreateOrderInput = {
-      customerName: body.customerName,
-      customerPhone: body.customerPhone,
-      customerEmail: body.customerEmail,
-      altMobile: body.altMobile,
-      shippingAddress: body.shippingAddress,
-      shippingArea: body.shippingArea ?? body.district ?? '',
-      district: body.district,
-      source: body.source as CreateOrderInput['source'],
-      status: (body.status ?? 'pending') as CreateOrderInput['status'],
-      paymentStatus: body.paymentStatus as CreateOrderInput['paymentStatus'],
-      paymentMethod: body.paymentMethod,
-      deliveryCharge: body.deliveryCharge ?? 0,
-      discount: body.discount ?? 0,
-      paidAmount: body.paidAmount,
-      lineItems: body.lineItems,
-      notes: body.notes,
-      customerNote: body.customerNote,
-      courierNote: body.courierNote,
-      packingNote: body.packingNote,
-      assignedAgentName: body.assignedAgentName,
-      skipFollowup: body.skipFollowup,
-      couponCode: body.couponCode,
-      leadId: body.leadId,
-      customerTag: body.customerTag,
-      orderTag: body.orderTag,
-      referenceNo: body.referenceNo,
-      orderDate: body.orderDate,
-      courierChargedToMe: body.courierChargedToMe,
-      pathaoCity: body.pathaoCity,
-      pathaoZone: body.pathaoZone,
-      pathaoArea: body.pathaoArea,
-      pathaoCityId: body.pathaoCityId,
-      pathaoZoneId: body.pathaoZoneId,
-      pathaoAreaId: body.pathaoAreaId,
-      carrybeeCity: body.carrybeeCity,
-      carrybeeZone: body.carrybeeZone,
-      carrybeeArea: body.carrybeeArea,
-      carrybeeCityId: body.carrybeeCityId,
-      carrybeeZoneId: body.carrybeeZoneId,
-      carrybeeAreaId: body.carrybeeAreaId,
-      utmSource: body.utmSource,
-      utmId: body.utmId,
-      utmContent: body.utmContent,
-      utmCampaign: body.utmCampaign,
-      attachmentNames: body.attachmentNames,
-      attachmentUrls: body.attachmentUrls,
-    };
-    return this.orders.create(user.organizationId!, input, this.actor(user));
+    return this.orders.create(user.organizationId!, this.toCreateInput(body), this.actor(user));
   }
 
   @Post('attachments')

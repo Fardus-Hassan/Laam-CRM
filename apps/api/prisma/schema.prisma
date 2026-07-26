@@ -48,6 +48,8 @@ model Organization {
   smsIntegration           SmsIntegration?
   smsTemplates             SmsTemplate[]
   smsLogs                  SmsLog[]
+  orderPayments            OrderPayment[]
+  failedOrders             FailedOrder[]
 }
 
 /// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
@@ -426,6 +428,7 @@ model Order {
   updatedAt          DateTime @updatedAt
   lineItems          OrderItem[]
   activities         OrderActivity[]
+  payments           OrderPayment[]
 
   @@unique([organizationId, orderNumber])
   @@index([organizationId])
@@ -435,6 +438,64 @@ model Order {
   @@index([organizationId, courierStatusSlug])
   @@index([organizationId, courierProvider, courierConsignmentId])
   @@index([courierProvider, courierStatusSyncedAt])
+}
+
+/// Website / sync intake that failed (duplicate, blocked, invalid) — org-scoped queue.
+model FailedOrder {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerName     String
+  customerPhone    String
+  address          String
+  /// Product name previews for list UI
+  products         String[]     @default([])
+  /// pending | recovered | dismissed
+  queueStatus      String       @default("pending")
+  /// duplicate | blocked | other
+  failedType       String
+  website          String?
+  lastUpdateNote   String?
+  /// Full CreateOrderPayload JSON for retry → create
+  payload          Json
+  recoveredOrderId String?
+  recoveredAt      DateTime?
+  dismissedAt      DateTime?
+  createdByUserId  String?
+  createdByName    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, queueStatus, createdAt])
+  @@index([organizationId, failedType])
+  @@index([organizationId, website])
+  @@index([organizationId, createdAt])
+}
+
+/// COD / advance collection ledger — one tracking row per order (org-scoped).
+model OrderPayment {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId          String
+  order            Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// cod | bkash | nagad | bank | cash
+  method           String       @default("cod")
+  /// pending | collected | reconciled
+  status           String       @default("pending")
+  collectedAmount  Float        @default(0)
+  note             String?
+  collectedAt      DateTime?
+  reconciledAt     DateTime?
+  createdByUserId  String?
+  createdByName    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, orderId])
+  @@index([organizationId, status])
+  @@index([organizationId, method])
+  @@index([organizationId, createdAt])
 }
 
 model Followup {

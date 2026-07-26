@@ -177,11 +177,52 @@ export const orderListQuerySchema = z.object({
   source: orderSourceSchema.optional(),
   employee: z.string().optional(),
   district: z.string().optional(),
+  /** When true with district — exclude matching districts instead of include */
+  excludeDistrict: z.boolean().optional(),
+  excludeStatus: z.boolean().optional(),
+  excludeSource: z.boolean().optional(),
+  excludeCourier: z.boolean().optional(),
   paymentStatus: paymentStatusSchema.optional(),
   courier: z.string().optional(),
   courierStatusSlug: z.string().optional(),
   product: z.string().optional(),
-  dateRange: z.enum(['last_30', 'this_month', 'custom', 'all_time']).optional(),
+  pathaoCity: z.string().optional(),
+  pathaoZone: z.string().optional(),
+  noteStatus: z.enum(['all', 'has_note', 'no_note']).optional(),
+  dateRange: z
+    .enum([
+      'today',
+      'yesterday',
+      'last_7',
+      'last_30',
+      'this_month',
+      'last_month',
+      'this_year',
+      'last_year',
+      'all_time',
+      'custom',
+    ])
+    .optional(),
+  /** ISO date (YYYY-MM-DD) — used with custom or to pin preset bounds */
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  /** Courier booked / submitted at — same presets as dateRange */
+  courierDateRange: z
+    .enum([
+      'today',
+      'yesterday',
+      'last_7',
+      'last_30',
+      'this_month',
+      'last_month',
+      'this_year',
+      'last_year',
+      'all_time',
+      'custom',
+    ])
+    .optional(),
+  courierDateFrom: z.string().optional(),
+  courierDateTo: z.string().optional(),
   followUpDue: z.boolean().optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().default(20),
@@ -253,6 +294,8 @@ export const failedOrderListResponseSchema = z.object({
   page: z.number(),
   pageSize: z.number(),
   report: failedOrderReportSchema,
+  /** Distinct websites in queue (for filter dropdown). */
+  websites: z.array(z.string()).default([]),
 });
 
 export type FailedOrderListResponse = z.infer<typeof failedOrderListResponseSchema>;
@@ -358,6 +401,15 @@ export const createOrderPayloadSchema = z.object({
 
 export type CreateOrderPayload = z.infer<typeof createOrderPayloadSchema>;
 
+/** Enqueue a failed intake row (website webhook / manual divert). */
+export const enqueueFailedOrderPayloadSchema = createOrderPayloadSchema.extend({
+  failedType: failedOrderTypeSchema.optional(),
+  website: z.string().optional(),
+  lastUpdateNote: z.string().optional(),
+});
+
+export type EnqueueFailedOrderPayload = z.infer<typeof enqueueFailedOrderPayloadSchema>;
+
 export const orderFormOptionSchema = z.object({
   value: z.string(),
   label: z.string(),
@@ -372,6 +424,9 @@ export const orderFormOptionsResponseSchema = z.object({
   districts: z.array(orderFormOptionSchema),
   orderTags: z.array(orderFormOptionSchema),
   customerTags: z.array(orderFormOptionSchema),
+  /** Distinct Pathao cities from org orders (filter dropdown). */
+  pathaoCities: z.array(orderFormOptionSchema).default([]),
+  pathaoZones: z.array(orderFormOptionSchema).default([]),
   defaultCourierNote: z.string(),
   defaultShipping: z.number(),
 });

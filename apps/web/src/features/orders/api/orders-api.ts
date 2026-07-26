@@ -116,6 +116,14 @@ export function createMockOrdersApi(): OrdersApi {
         districts: MOCK_DISTRICTS.map((d) => ({ value: d, label: d })),
         orderTags: MOCK_ORDER_TAGS.map((t) => ({ value: t, label: t })),
         customerTags: MOCK_ORDER_TAGS.map((t) => ({ value: t, label: t })),
+        pathaoCities: [
+          { value: 'Dhaka', label: 'Dhaka' },
+          { value: 'Chittagong', label: 'Chittagong' },
+        ],
+        pathaoZones: [
+          { value: 'Gulshan', label: 'Gulshan' },
+          { value: 'Mirpur', label: 'Mirpur' },
+        ],
         defaultCourierNote: DEFAULT_COURIER_NOTE,
         defaultShipping: 120,
       };
