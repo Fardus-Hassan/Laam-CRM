@@ -7,6 +7,7 @@ import type {
   OrderFormOptionsResponse,
 } from '@laam/types';
 import { MapPin, StickyNote } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { FormField } from '@/components/form/form-field';
@@ -59,10 +60,8 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [formOptions, setFormOptions] = React.useState<OrderFormOptionsResponse | null>(null);
 
-  const { confirmOrder, cancelOrder, changeStatus, updateOrder } = useOrderDetailMutations(
-    order,
-    setOrder,
-  );
+  const { confirmOrder, cancelOrder, deleteOrder, changeStatus, updateOrder } =
+    useOrderDetailMutations(order, setOrder);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -143,6 +142,15 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
           order={order}
           onConfirm={confirmOrder}
           onCancel={cancelOrder}
+          onDelete={async () => {
+            try {
+              await deleteOrder();
+              toast.success('Order moved to recycle bin');
+              window.location.href = '/dashboard/orders';
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : 'Delete failed');
+            }
+          }}
           onAssign={() => setAssignOpen(true)}
           onStatusClick={() => setStatusOpen(true)}
           onPrint={(type) => setPrintType(type)}

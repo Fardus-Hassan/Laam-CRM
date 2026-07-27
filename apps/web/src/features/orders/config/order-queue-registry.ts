@@ -35,7 +35,7 @@ export const ORDER_QUEUE_REGISTRY: OrderQueueDefinition[] = [
     label: page.label,
     href: page.href,
     kind: mapPageKind(page.kind),
-    filterStatus: page.childStatusSlugs?.[0],
+    filterStatus: page.defaultChildSlug,
     title: page.title,
     description: page.description,
     showInNav: page.showInNav,

@@ -38,6 +38,11 @@ export function SmsIntegrationSettingsPage() {
   const [paramsTemplate, setParamsTemplate] = React.useState(GENNET_DEFAULT_PARAMS);
   const [headersJson, setHeadersJson] = React.useState('');
   const [testPhone, setTestPhone] = React.useState('');
+  const [autoSms, setAutoSms] = React.useState(false);
+  const [statusMapText, setStatusMapText] = React.useState(
+    'confirmed=confirm\nin_courier=in_courier\ndelivered=delivered',
+  );
+  const [savingAutomation, setSavingAutomation] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -50,6 +55,12 @@ export function SmsIntegrationSettingsPage() {
         setHttpMethod(s.httpMethod);
         if (s.apiUrlMasked) setApiUrl(s.apiUrlMasked);
         if (s.paramsTemplateMasked) setParamsTemplate(s.paramsTemplateMasked);
+        setAutoSms(s.autoSmsOnStatusChange ?? false);
+        setStatusMapText(
+          Object.entries(s.statusSmsMap ?? {})
+            .map(([status, template]) => `${status}=${template}`)
+            .join('\n'),
+        );
       })
       .catch((error) => {
         toast.error(error instanceof Error ? error.message : 'Failed to load SMS settings');
@@ -244,6 +255,61 @@ export function SmsIntegrationSettingsPage() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className={ORDER_CARD_CLASS}>
+          <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+            <CardTitle className="text-sm">Auto SMS on status change</CardTitle>
+          </CardHeader>
+          <CardContent className={cn('space-y-3', ORDER_SECTION_BODY_CLASS)}>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={autoSms}
+                onChange={(e) => setAutoSms(e.target.checked)}
+              />
+              Enable automatic SMS when order status changes
+            </label>
+            <FormField
+              label="Status → template map"
+              hint="One per line: status_slug=template_slug (e.g. confirmed=confirm)"
+            >
+              <FormTextarea
+                rows={5}
+                value={statusMapText}
+                onChange={(e) => setStatusMapText(e.target.value)}
+                className="font-mono text-xs"
+              />
+            </FormField>
+            <Can permission="settings.manage">
+              <Button
+                type="button"
+                disabled={savingAutomation}
+                onClick={() => {
+                  setSavingAutomation(true);
+                  const statusSmsMap: Record<string, string> = {};
+                  for (const line of statusMapText.split('\n')) {
+                    const [status, template] = line.split('=').map((part) => part.trim());
+                    if (status && template) statusSmsMap[status] = template;
+                  }
+                  void smsSettingsApi
+                    .saveAutomation({ autoSmsOnStatusChange: autoSms, statusSmsMap })
+                    .then((s) => {
+                      setSettings(s);
+                      toast.success('Automation settings saved');
+                    })
+                    .catch((error) =>
+                      toast.error(
+                        error instanceof Error ? error.message : 'Failed to save automation',
+                      ),
+                    )
+                    .finally(() => setSavingAutomation(false));
+                }}
+              >
+                {savingAutomation ? 'Saving…' : 'Save automation'}
+              </Button>
+            </Can>
           </CardContent>
         </Card>
 

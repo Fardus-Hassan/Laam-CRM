@@ -16,13 +16,14 @@ import {
   ORDER_SECTION_GRID_GAP,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { orderStatusConfigApi } from '@/features/orders/api/order-status-config-api';
 import {
-  appendOrderStatus,
   getOrderStatuses,
   ORDER_STATUSES_CHANGED,
+  setServerOrderStatuses,
   upsertOrderStatusOverride,
 } from '@/features/orders/data/order-status-store';
-import { ensureOrderStatusOnApi, syncLocalStatusesToApi } from '@/features/orders/lib/ensure-order-status-api';
+import { useOrderStatusConfig } from '@/features/orders/hooks/use-order-status-config';
 import {
   getStatusParentOptions,
   resolveDisplayModeFromFlags,
@@ -47,7 +48,8 @@ function slugify(value: string) {
 }
 
 export function OrderStatusesSettingsPage() {
-  const [statuses, setStatuses] = React.useState<OrderStatusConfig[]>(() => getOrderStatuses());
+  const { statuses: liveStatuses, isLoading } = useOrderStatusConfig();
+  const [statuses, setStatuses] = React.useState<OrderStatusConfig[]>(liveStatuses);
   const [draft, setDraft] = React.useState({
     label: '',
     slug: '',
@@ -59,25 +61,15 @@ export function OrderStatusesSettingsPage() {
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
+    setStatuses(liveStatuses);
+  }, [liveStatuses]);
+
+  React.useEffect(() => {
     function refresh() {
       setStatuses(getOrderStatuses());
     }
     window.addEventListener(ORDER_STATUSES_CHANGED, refresh);
     return () => window.removeEventListener(ORDER_STATUSES_CHANGED, refresh);
-  }, []);
-
-  React.useEffect(() => {
-    if (!useApi) return;
-    let cancelled = false;
-    void syncLocalStatusesToApi(
-      getOrderStatuses().map((status) => ({ slug: status.slug, label: status.label })),
-    ).then((result) => {
-      if (cancelled || result.failed === 0) return;
-      toast.warning(`${result.failed} status(es) could not sync to API`);
-    });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const parentOptionsForDraft = React.useMemo(
@@ -91,22 +83,42 @@ export function OrderStatusesSettingsPage() {
     [draft.slug, statuses],
   );
 
-  async function syncStatusToApiFormOptions(slug: string, label: string) {
-    if (!useApi) return;
-    try {
-      await ensureOrderStatusOnApi({ value: slug, label });
-    } catch (error) {
-      toast.warning(
-        error instanceof Error
-          ? `Nav saved locally, but API status sync failed: ${error.message}`
-          : 'Nav saved locally, but API status sync failed',
-      );
+  async function persistStatus(next: OrderStatusConfig) {
+    if (!useApi) {
+      upsertOrderStatusOverride(next);
+      setStatuses(getOrderStatuses());
+      return next;
     }
+
+    const saved = await orderStatusConfigApi.upsert({
+      id: next.id.startsWith('status-') ? undefined : next.id,
+      slug: next.slug,
+      label: next.label,
+      labelBn: next.labelBn,
+      color: next.color,
+      group: next.group,
+      parentSlug: next.parentSlug,
+      displayMode: next.displayMode,
+      showInSidebar: next.showInSidebar,
+      showInNestedTabs: next.showInNestedTabs,
+      sidebarOrder: next.sidebarOrder,
+      isTerminal: next.isTerminal,
+      isDefault: next.isDefault,
+      allowedTransitions: next.allowedTransitions,
+      bulkActions: next.bulkActions,
+      showInGroupByStatus: next.showInGroupByStatus,
+    });
+
+    const current = getOrderStatuses();
+    const merged = [...current.filter((item) => item.slug !== saved.slug), saved];
+    setServerOrderStatuses(merged);
+    setStatuses(merged);
+    return saved;
   }
 
   async function handleAdd() {
     const label = draft.label.trim();
-    let slug = draft.slug.trim() ? slugify(draft.slug) : slugify(label);
+    const slug = draft.slug.trim() ? slugify(draft.slug) : slugify(label);
     if (!label || !slug) {
       toast.error('Label is required');
       return;
@@ -130,7 +142,7 @@ export function OrderStatusesSettingsPage() {
     try {
       const showInSidebar = draft.showInSidebar;
       const showInNestedTabs = draft.showInNestedTabs;
-      appendOrderStatus({
+      await persistStatus({
         id: `status-${slug}`,
         slug,
         label,
@@ -148,9 +160,6 @@ export function OrderStatusesSettingsPage() {
         sidebarOrder: 90 + statuses.length,
       });
 
-      await syncStatusToApiFormOptions(slug, label);
-
-      setStatuses(getOrderStatuses());
       setDraft({
         label: '',
         slug: '',
@@ -161,26 +170,29 @@ export function OrderStatusesSettingsPage() {
       });
       toast.success(
         showInSidebar
-          ? 'Status added — check Orders sidebar'
-          : 'Status added — enable “Show in sidebar” to appear in nav',
+          ? 'Status saved for this organization'
+          : 'Status saved — enable “Show in sidebar” to appear in nav',
       );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save status');
     } finally {
       setSaving(false);
     }
   }
 
   async function updateStatus(status: OrderStatusConfig, patch: Partial<OrderStatusConfig>) {
-    const nextParent = patch.parentSlug !== undefined ? patch.parentSlug || undefined : status.parentSlug;
+    const nextParent =
+      'parentSlug' in patch ? patch.parentSlug || undefined : status.parentSlug;
     if (wouldCreateParentCycle(statuses, status.slug, nextParent)) {
       toast.error('That parent would create a cycle');
       return;
     }
 
     const nextShowSidebar =
-      patch.showInSidebar !== undefined ? patch.showInSidebar : statusShowsInSidebar(status);
+      'showInSidebar' in patch ? Boolean(patch.showInSidebar) : statusShowsInSidebar(status);
     const nextShowTabs =
-      patch.showInNestedTabs !== undefined
-        ? patch.showInNestedTabs
+      'showInNestedTabs' in patch
+        ? Boolean(patch.showInNestedTabs)
         : statusShowsInNestedTabs(status);
 
     const next: OrderStatusConfig = {
@@ -192,20 +204,27 @@ export function OrderStatusesSettingsPage() {
       displayMode: resolveDisplayModeFromFlags(nextShowSidebar, nextShowTabs),
     };
 
-    upsertOrderStatusOverride(next);
-    setStatuses(getOrderStatuses());
-    if (patch.label) {
-      await syncStatusToApiFormOptions(next.slug, next.label);
+    try {
+      await persistStatus(next);
+      toast.success(`${next.label} updated`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update status');
     }
-    toast.success(`${next.label} updated`);
   }
 
   return (
     <PageShell
       title="Order Statuses"
-      description="Define statuses, where they appear in the Orders nav, and optional parent nesting."
+      description={
+        useApi
+          ? 'Organization-wide status config (saved to server — shared by all users).'
+          : 'Define statuses, where they appear in the Orders nav, and optional parent nesting.'
+      }
     >
       <div className="space-y-4">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading organization statuses…</p>
+        ) : null}
         <Card className="gap-0 py-0 shadow-none">
           <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
             <CardTitle className="text-sm">Add status</CardTitle>
@@ -221,11 +240,11 @@ export function OrderStatusesSettingsPage() {
               <FormInput
                 value={draft.label}
                 onChange={(event) => {
-                  const label = event.target.value;
+                  const nextLabel = event.target.value;
                   setDraft((current) => ({
                     ...current,
-                    label,
-                    slug: current.slug ? current.slug : slugify(label),
+                    label: nextLabel,
+                    slug: current.slug ? current.slug : slugify(nextLabel),
                   }));
                 }}
                 placeholder="e.g. Pending 4"
@@ -267,7 +286,7 @@ export function OrderStatusesSettingsPage() {
                 />
                 Show as nested tab under parent
               </label>
-              <Button type="button" onClick={() => void handleAdd()} disabled={saving}>
+              <Button type="button" onClick={() => void handleAdd()} disabled={saving || isLoading}>
                 {saving ? 'Saving…' : 'Add status'}
               </Button>
             </div>
@@ -308,7 +327,9 @@ export function OrderStatusesSettingsPage() {
                           <FormSelect
                             value={status.parentSlug ?? ''}
                             onChange={(parentSlug) =>
-                              void updateStatus(status, { parentSlug: parentSlug || undefined })
+                              void updateStatus(status, {
+                                parentSlug: parentSlug ? parentSlug : undefined,
+                              })
                             }
                             options={parentOptions}
                             searchable
@@ -343,20 +364,70 @@ export function OrderStatusesSettingsPage() {
             </div>
             <div className="mt-3 space-y-1 text-xs text-muted-foreground">
               <p>
-                <strong>Parent = None</strong> → appears under Orders as its own sidebar link (if
-                sidebar is on).
+                <strong>Parent = None</strong> + sidebar on → own link under Orders.
               </p>
               <p>
-                <strong>Parent = queue</strong> (e.g. Call confirm) → nests under that queue folder.
+                <strong>Parent = queue</strong> + sidebar → nested under that queue.
               </p>
               <p>
-                <strong>Parent = another status</strong> → nests under that status in the sidebar.
+                <strong>Nested tab</strong> on → tabs on that parent page.
               </p>
-              <p>
-                Pending / Pending 2 / Pending 3 show under Call confirm because their parent is set
-                to that queue — clear parent to move them out. New statuses default to sidebar on,
-                parent none.
-              </p>
+              <p>Changes save to the organization database for every user.</p>
+            </div>
+            <div className="mt-4 rounded-lg border border-border/70 p-3">
+              <p className="mb-2 text-sm font-medium">Add custom queue folder</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <FormInput
+                  placeholder="Label (e.g. VIP Desk)"
+                  id="new-queue-label"
+                />
+                <FormInput placeholder="Slug (vip_desk)" id="new-queue-slug" />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    const label = (
+                      document.getElementById('new-queue-label') as HTMLInputElement | null
+                    )?.value?.trim();
+                    const slugRaw = (
+                      document.getElementById('new-queue-slug') as HTMLInputElement | null
+                    )?.value?.trim();
+                    if (!label) {
+                      toast.error('Queue label required');
+                      return;
+                    }
+                    const slug =
+                      slugRaw ||
+                      label
+                        .toLowerCase()
+                        .replace(/[^a-z0-9_\s-]/g, '')
+                        .replace(/[\s-]+/g, '_');
+                    void import('@/features/orders/api/order-queue-config-api').then(async (m) => {
+                      try {
+                        await m.orderQueueConfigApi.upsert({
+                          slug,
+                          label,
+                          description: `${label} queue`,
+                          showInNav: true,
+                          sidebarOrder: 35,
+                        });
+                        const queues = await m.orderQueueConfigApi.list();
+                        const { setServerOrderQueues } = await import(
+                          '@/features/orders/data/order-status-store'
+                        );
+                        setServerOrderQueues(queues);
+                        toast.success('Queue folder added');
+                      } catch (error) {
+                        toast.error(
+                          error instanceof Error ? error.message : 'Failed to add queue',
+                        );
+                      }
+                    });
+                  }}
+                >
+                  Add folder
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

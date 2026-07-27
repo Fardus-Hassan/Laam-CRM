@@ -50,6 +50,9 @@ export type OrderFilterValues = Pick<
   | 'courier'
   | 'courierStatusSlug'
   | 'product'
+  | 'productId'
+  | 'amountMin'
+  | 'amountMax'
   | 'pathaoCity'
   | 'pathaoZone'
   | 'noteStatus'
@@ -73,6 +76,9 @@ const EMPTY_FILTERS: OrderFilterValues = {
   courier: undefined,
   courierStatusSlug: undefined,
   product: undefined,
+  productId: undefined,
+  amountMin: undefined,
+  amountMax: undefined,
   pathaoCity: undefined,
   pathaoZone: undefined,
   noteStatus: undefined,
@@ -117,6 +123,9 @@ export function OrderFilterPanel({
   const [pathaoZoneOptions, setPathaoZoneOptions] = React.useState<
     Array<{ value: string; label: string }>
   >([]);
+  const [productOptions, setProductOptions] = React.useState<
+    Array<{ value: string; label: string }>
+  >([]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -148,6 +157,27 @@ export function OrderFilterPanel({
         setDistrictOptions([]);
         setPathaoCityOptions([]);
         setPathaoZoneOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void import('@/features/inventory/api/inventory-api')
+      .then((m) => m.inventoryApi.listProducts({ page: 1, pageSize: 200 }))
+      .then((res) => {
+        if (cancelled) return;
+        setProductOptions(
+          (res.items ?? []).map((product) => ({
+            value: product.id,
+            label: product.sku ? `${product.name} (${product.sku})` : product.name,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setProductOptions([]);
       });
     return () => {
       cancelled = true;
@@ -455,10 +485,56 @@ export function OrderFilterPanel({
             searchable={false}
           />
         </FormField>
-        <FormField label="Product search" className="sm:col-span-2">
+        <FormField label="Amount min">
+          <FormInput
+            type="number"
+            min={0}
+            value={values.amountMin ?? ''}
+            onChange={(event) =>
+              patch({
+                amountMin:
+                  event.target.value === '' ? undefined : Number(event.target.value),
+              })
+            }
+            placeholder="0"
+          />
+        </FormField>
+        <FormField label="Amount max">
+          <FormInput
+            type="number"
+            min={0}
+            value={values.amountMax ?? ''}
+            onChange={(event) =>
+              patch({
+                amountMax:
+                  event.target.value === '' ? undefined : Number(event.target.value),
+              })
+            }
+            placeholder="Any"
+          />
+        </FormField>
+        <FormField label="Product (catalog)" className="sm:col-span-2">
+          <FormSearchSelect
+            value={values.productId ?? ''}
+            onChange={(productId) =>
+              patch({
+                productId: productId || undefined,
+                product: undefined,
+              })
+            }
+            options={productOptions}
+            placeholder="Select product…"
+          />
+        </FormField>
+        <FormField label="Product name contains" className="sm:col-span-2">
           <FormInput
             value={values.product ?? ''}
-            onChange={(event) => patch({ product: event.target.value || undefined })}
+            onChange={(event) =>
+              patch({
+                product: event.target.value || undefined,
+                productId: undefined,
+              })
+            }
             placeholder="Search product name"
           />
         </FormField>

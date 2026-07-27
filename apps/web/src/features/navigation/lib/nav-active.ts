@@ -54,9 +54,13 @@ export function isNavUrlActive(
 
   if (navParams.length === 0) {
     for (const key of NAV_DISCRIMINATOR_PARAMS) {
-      if (currentSearch.has(key)) {
-        return false;
+      if (!currentSearch.has(key)) continue;
+      // Queue folder pages use ?status= as in-page tabs (e.g. Call confirm),
+      // not as a different sidebar route — keep the folder item active.
+      if (key === 'status' && isOrderQueuePath(pathname)) {
+        continue;
       }
+      return false;
     }
     return true;
   }
@@ -75,6 +79,10 @@ function parseNavUrl(url: string) {
   const params = new URLSearchParams(search ?? '');
 
   return { pathname, params };
+}
+
+function isOrderQueuePath(pathname: string) {
+  return /\/dashboard\/orders\/queues\//.test(pathname);
 }
 
 /** Query keys that distinguish sibling nav items sharing the same pathname. */

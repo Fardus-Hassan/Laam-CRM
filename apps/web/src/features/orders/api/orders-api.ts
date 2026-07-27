@@ -46,6 +46,7 @@ export type OrdersApi = {
   quickSearchOrders: (query: string, limit?: number) => Promise<OrderListRow[]>;
   getFormOptions: () => Promise<OrderFormOptionsResponse>;
   lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
+  deleteOrder: (id: string) => Promise<void>;
 };
 
 export function createMockOrdersApi(): OrdersApi {
@@ -143,6 +144,14 @@ export function createMockOrdersApi(): OrdersApi {
         customerTag: profile.customerTag,
         stats: profile.stats,
       };
+    },
+    async deleteOrder(id) {
+      await delay(120);
+      const store = await import('@/features/orders/data/mock-orders');
+      const index = store.mockOrderStore.findIndex(
+        (order) => order.id === id || order.orderNumber === id,
+      );
+      if (index >= 0) store.mockOrderStore.splice(index, 1);
     },
   };
 }
@@ -271,6 +280,11 @@ export function createHttpOrdersApi(): OrdersApi {
       return apiRequest<OrderCustomerLookup | null>(
         `${crmEndpoints.orders}/meta/customer-lookup?${params}`,
       );
+    },
+    async deleteOrder(id) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      await apiRequest(`${crmEndpoints.orders}/${id}`, { method: 'DELETE' });
     },
   };
 }

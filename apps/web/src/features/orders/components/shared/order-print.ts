@@ -1,8 +1,16 @@
 import type { OrderDetail } from '@laam/types';
+import JsBarcode from 'jsbarcode';
 
 import { formatCurrency } from '@/lib/format';
 
-export type OrderPrintType = 'invoice' | 'packing' | 'label';
+export type OrderPrintType = 'invoice' | 'packing' | 'label' | 'barcode';
+
+export function parseOrderPrintType(value: string | null | undefined): OrderPrintType {
+  if (value === 'packing' || value === 'label' || value === 'barcode' || value === 'invoice') {
+    return value;
+  }
+  return 'invoice';
+}
 
 export function formatPrintDate(iso?: string) {
   const d = iso ? new Date(iso) : new Date();
@@ -20,6 +28,24 @@ export function escapeHtml(value: string) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function buildBarcodeSvg(value: string): string {
+  if (typeof document === 'undefined') {
+    return `<div style="font-family:monospace;font-size:18px;font-weight:700">${escapeHtml(value)}</div>`;
+  }
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  JsBarcode(svg, value, {
+    format: 'CODE128',
+    displayValue: true,
+    fontSize: 15,
+    height: 64,
+    margin: 0,
+    textMargin: 3,
+    width: 2.1,
+  });
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  return svg.outerHTML;
 }
 
 export function absoluteUrl(url: string) {
@@ -127,9 +153,115 @@ const SHARED_PRINT_STYLES = `
     font-size: 16px;
     font-weight: 700;
   }
+  .barcode-sheet {
+    border: 1px solid #111;
+    padding: 2mm 5mm;
+    text-align: center;
+    width: 100%;
+    height: 92mm;
+    max-height: 92mm;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  .barcode-sheet .brand {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #444;
+    margin: 0 0 1mm;
+    line-height: 1.1;
+  }
+  .barcode-sheet .barcode-wrap {
+    width: 100%;
+    height: 50mm;
+    max-height: 50mm;
+    overflow: hidden;
+  }
+  .barcode-sheet .name {
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: 1mm;
+    line-height: 1.1;
+  }
+  .barcode-sheet .phone {
+    font-size: 11px;
+    margin-top: 0.3mm;
+    line-height: 1.1;
+  }
+  .barcode-sheet .meta {
+    margin-top: 0.6mm;
+    font-size: 10px;
+    color: #444;
+    line-height: 1.1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .barcode-sheet .cod {
+    margin-top: 1mm;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .barcode-sheet svg {
+    display: block;
+    width: 100% !important;
+    max-width: 190mm;
+    height: 50mm !important;
+    max-height: 50mm !important;
+  }
+  .barcode-a4-page {
+    position: relative;
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    page-break-after: always;
+    break-after: page;
+  }
+  .barcode-a4-page:last-of-type {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .barcode-a4-page .barcode-slot {
+    position: absolute;
+    left: 0;
+    width: 210mm;
+    height: 99mm;
+    padding: 3.5mm 8mm;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .barcode-a4-page .barcode-slot:nth-child(1) { top: 0; }
+  .barcode-a4-page .barcode-slot:nth-child(2) { top: 99mm; }
+  .barcode-a4-page .barcode-slot:nth-child(3) { top: 198mm; }
+  body.barcode-print {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 210mm;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
   @media print {
-    body { padding: 0; }
+    html, body.barcode-print {
+      width: 210mm !important;
+      height: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
     .sheet { max-width: none; }
+    .barcode-a4-page {
+      width: 210mm;
+      height: 297mm;
+      overflow: hidden;
+    }
   }
 `;
 
@@ -278,7 +410,37 @@ function buildLabelSheet(order: OrderDetail, opts: BrandPrintOpts): string {
   </div>`;
 }
 
-function wrapPrintDocument(title: string, primaryColor: string, bodyInner: string): string {
+function buildBarcodeSheet(order: OrderDetail, opts: BrandPrintOpts): string {
+  const due = Math.max(0, order.amount - (order.paidAmount ?? 0));
+  const code = order.orderNumber.trim() || order.id;
+  const productLine = order.lineItems
+    .slice(0, 2)
+    .map((line) => `${line.productName} ×${line.quantity}`)
+    .join(' · ');
+  return `
+  <div class="barcode-sheet">
+    <div class="brand">${escapeHtml(opts.brandName)}</div>
+    <div class="barcode-wrap">${buildBarcodeSvg(code)}</div>
+    <div class="name">${escapeHtml(order.customerName)}</div>
+    <div class="phone">${escapeHtml(order.customerPhone)}</div>
+    ${
+      productLine
+        ? `<div class="meta">${escapeHtml(productLine)}${
+            order.lineItems.length > 2 ? ` (+${order.lineItems.length - 2})` : ''
+          }</div>`
+        : ''
+    }
+    <div class="cod">COD: ${escapeHtml(formatCurrency(due))}</div>
+  </div>`;
+}
+
+function wrapPrintDocument(
+  title: string,
+  primaryColor: string,
+  bodyInner: string,
+  opts?: { bodyClass?: string },
+): string {
+  const bodyClass = opts?.bodyClass ? ` class="${escapeHtml(opts.bodyClass)}"` : '';
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -289,7 +451,7 @@ function wrapPrintDocument(title: string, primaryColor: string, bodyInner: strin
     ${SHARED_PRINT_STYLES}
   </style>
 </head>
-<body>
+<body${bodyClass}>
 ${bodyInner}
 </body>
 </html>`;
@@ -323,35 +485,58 @@ export function buildBulkPrintDocumentHtml({
     throw new Error('No orders to print');
   }
 
-  const sheets = orders
-    .map((order, index) => {
-      const sheet =
-        type === 'label'
-          ? buildLabelSheet(order, { brandName, logoUrl, primaryColor })
-          : buildInvoiceOrPackingSheet(order, type, { brandName, logoUrl, primaryColor });
-      const breakClass = index < orders.length - 1 ? ' page-break' : '';
-      return `<div class="print-page${breakClass}">${sheet}</div>`;
-    })
-    .join('\n');
+  const brandOpts = { brandName, logoUrl, primaryColor };
+
+  let sheets: string;
+  if (type === 'barcode') {
+    const perPage = 3;
+    const pages: string[] = [];
+    for (let i = 0; i < orders.length; i += perPage) {
+      const chunk = orders.slice(i, i + perPage);
+      const slots = Array.from({ length: perPage }, (_, slotIndex) => {
+        const order = chunk[slotIndex];
+        const inner = order ? buildBarcodeSheet(order, brandOpts) : '';
+        return `<div class="barcode-slot">${inner}</div>`;
+      }).join('\n');
+      pages.push(`<div class="barcode-a4-page">${slots}</div>`);
+    }
+    sheets = pages.join('\n');
+  } else {
+    sheets = orders
+      .map((order, index) => {
+        const sheet =
+          type === 'label'
+            ? buildLabelSheet(order, brandOpts)
+            : buildInvoiceOrPackingSheet(order, type, brandOpts);
+        const breakClass = index < orders.length - 1 ? ' page-break' : '';
+        return `<div class="print-page${breakClass}">${sheet}</div>`;
+      })
+      .join('\n');
+  }
 
   const title =
-    type === 'label'
-      ? `${brandName} — shipping labels (${orders.length})`
-      : type === 'packing'
-        ? `${brandName} — packing slips (${orders.length})`
-        : `${brandName} — invoices (${orders.length})`;
+    type === 'barcode'
+      ? `${brandName} — barcodes (${orders.length})`
+      : type === 'label'
+        ? `${brandName} — shipping labels (${orders.length})`
+        : type === 'packing'
+          ? `${brandName} — packing slips (${orders.length})`
+          : `${brandName} — invoices (${orders.length})`;
 
-  return wrapPrintDocument(title, primaryColor, sheets);
+  return wrapPrintDocument(title, primaryColor, sheets, {
+    bodyClass: type === 'barcode' ? 'barcode-print' : undefined,
+  });
 }
 
 export function printHtmlDocument(html: string) {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('title', 'Print document');
+  // Must be A4-sized off-screen — 0×0 iframes break mm layout / page breaks in Chrome.
   iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
+  iframe.style.left = '-10000px';
+  iframe.style.top = '0';
+  iframe.style.width = '210mm';
+  iframe.style.height = '297mm';
   iframe.style.border = '0';
   iframe.style.opacity = '0';
   iframe.style.pointerEvents = 'none';
@@ -377,9 +562,10 @@ export function printHtmlDocument(html: string) {
       frameWindow.focus();
       frameWindow.print();
     } finally {
-      window.setTimeout(cleanup, 1000);
+      window.setTimeout(cleanup, 1500);
     }
   };
 
-  window.setTimeout(triggerPrint, 400);
+  // Wait for SVG barcodes / layout to settle before printing.
+  window.setTimeout(triggerPrint, 600);
 }

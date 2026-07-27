@@ -1,13 +1,24 @@
 import type { OrderStatusConfig, OrderStatusDisplayMode } from '@laam/types';
 
 import { MOCK_ORDER_QUEUE_PAGES } from '@/features/orders/data/mock-status-config';
-import { getOrderStatuses } from '@/features/orders/data/order-status-store';
+import { getOrderQueuePages, getOrderStatuses } from '@/features/orders/data/order-status-store';
 import {
   statusShowsInNestedTabs,
   statusShowsInSidebar,
 } from '@/features/orders/lib/order-status-visibility';
 
 /** Structural queue folders that can own nested statuses (not themselves statuses). */
+export function getStatusQueueFolderSlugs(): Set<string> {
+  return new Set(
+    getOrderQueuePages()
+      .filter(
+        (page) => page.kind === 'list' && page.slug !== 'all' && page.slug !== 'more_statuses',
+      )
+      .map((page) => page.slug),
+  );
+}
+
+/** @deprecated Prefer getStatusQueueFolderSlugs() for live org queues. */
 export const STATUS_QUEUE_FOLDER_SLUGS = new Set(
   MOCK_ORDER_QUEUE_PAGES.filter(
     (page) => page.kind === 'list' && page.slug !== 'all' && page.slug !== 'more_statuses',
@@ -53,13 +64,14 @@ export type StatusParentOption = {
 /** Parent = queue folder OR another status (cycle-safe). */
 export function getStatusParentOptions(excludeSlug?: string): StatusParentOption[] {
   const statuses = getOrderStatuses();
-  const queues = MOCK_ORDER_QUEUE_PAGES.filter((page) =>
-    STATUS_QUEUE_FOLDER_SLUGS.has(page.slug),
-  ).map((page) => ({
-    value: page.slug,
-    label: `${page.label} (queue)`,
-    kind: 'queue' as const,
-  }));
+  const folderSlugs = getStatusQueueFolderSlugs();
+  const queues = getOrderQueuePages()
+    .filter((page) => folderSlugs.has(page.slug))
+    .map((page) => ({
+      value: page.slug,
+      label: `${page.label} (queue)`,
+      kind: 'queue' as const,
+    }));
 
   const statusParents = statuses
     .filter((status) => status.slug !== excludeSlug)

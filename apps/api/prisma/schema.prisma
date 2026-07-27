@@ -50,6 +50,8 @@ model Organization {
   smsLogs                  SmsLog[]
   orderPayments            OrderPayment[]
   failedOrders             FailedOrder[]
+  orgOrderStatuses          OrgOrderStatus[]
+  orgOrderQueues           OrgOrderQueue[]
 }
 
 /// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
@@ -82,6 +84,10 @@ model SmsIntegration {
   enabled          Boolean      @default(false)
   /// AES-GCM JSON: apiUrl, httpMethod, paramsTemplate, headersJson?
   credentialsEnc   String?
+  /// When true, status changes may auto-send mapped templates.
+  autoSmsOnStatusChange Boolean  @default(false)
+  /// Map of order status slug → SMS template slug, e.g. { "confirmed": "confirm" }
+  statusSmsMap     Json?
   lastSentAt       DateTime?
   lastError        String?
   createdAt        DateTime     @default(now())
@@ -422,6 +428,7 @@ model Order {
   attachmentNames    String[] @default([])
   attachmentUrls     String[] @default([])
   stockDeductedAt    DateTime?
+  deletedAt          DateTime?
   createdByUserId    String?
   createdByName      String?
   createdAt          DateTime @default(now())
@@ -435,6 +442,7 @@ model Order {
   @@index([organizationId, status])
   @@index([organizationId, customerPhone])
   @@index([organizationId, createdAt])
+  @@index([organizationId, deletedAt])
   @@index([organizationId, courierStatusSlug])
   @@index([organizationId, courierProvider, courierConsignmentId])
   @@index([courierProvider, courierStatusSyncedAt])
@@ -606,6 +614,66 @@ model OrderFormOption {
 
   @@unique([organizationId, kind, value])
   @@index([organizationId, kind, isActive])
+}
+
+/// Org-scoped order status definitions (nav, tabs, workflow) — source of truth for CRM statuses.
+model OrgOrderStatus {
+  id                  String       @id @default(uuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug                String
+  label               String
+  labelBn             String?
+  color               String       @default("hsl(174 58% 42%)")
+  /// intake | confirm | fulfillment | delivery | returns | terminal | special
+  group               String       @default("intake")
+  /// Queue folder (pendings, followups) or another status slug
+  parentSlug          String?
+  /// sidebar | nested_tab | filter_only | sidebar_and_tab
+  displayMode         String       @default("filter_only")
+  showInSidebar       Boolean?
+  showInNestedTabs    Boolean?
+  sidebarOrder        Int?
+  isTerminal          Boolean      @default(false)
+  isDefault           Boolean      @default(false)
+  isSystem            Boolean      @default(false)
+  isActive            Boolean      @default(true)
+  allowedTransitions  String[]     @default([])
+  bulkActions         String[]     @default([])
+  showInGroupByStatus Boolean      @default(true)
+  sortOrder           Int          @default(0)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, parentSlug])
+}
+
+/// Org-configurable Orders sidebar queue folders (Call confirm, Follow-ups, custom…).
+model OrgOrderQueue {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug             String
+  label            String
+  description      String       @default("")
+  /// list | form | failed | tool | payments
+  kind             String       @default("list")
+  href             String
+  sidebarOrder     Int          @default(10)
+  showInNav        Boolean      @default(true)
+  defaultChildSlug String?
+  /// When true, list applies follow-up-due age filter
+  followUpDue      Boolean      @default(false)
+  isSystem         Boolean      @default(false)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, showInNav])
 }
 
 /// Product manufacturer / label brand (not tenant CRM theming).

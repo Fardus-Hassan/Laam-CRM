@@ -41,6 +41,7 @@ type OrderActionBarProps = {
   order: OrderDetail;
   onConfirm?: () => void;
   onCancel?: () => void;
+  onDelete?: () => void;
   onAssign?: () => void;
   onStatusClick?: () => void;
   onPrint?: (type: 'invoice' | 'packing') => void;
@@ -57,6 +58,7 @@ export function OrderActionBar({
   order,
   onConfirm,
   onCancel,
+  onDelete,
   onAssign,
   onStatusClick,
   onPrint,
@@ -253,6 +255,14 @@ export function OrderActionBar({
                   >
                     Cancel order
                   </DropdownMenuItem>
+                  {onDelete ? (
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={onDelete}
+                    >
+                      Move to recycle bin
+                    </DropdownMenuItem>
+                  ) : null}
                 </>
               ) : null}
             </DropdownMenuContent>

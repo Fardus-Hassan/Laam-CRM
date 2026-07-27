@@ -23,6 +23,16 @@ export const smsSettingsApi = {
     });
   },
 
+  saveAutomation(payload: {
+    autoSmsOnStatusChange?: boolean;
+    statusSmsMap?: Record<string, string>;
+  }): Promise<SmsIntegrationSettings> {
+    return apiRequest<SmsIntegrationSettings>('/crm/settings/sms/automation', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
   disconnect(): Promise<SmsIntegrationSettings> {
     return apiRequest<SmsIntegrationSettings>('/crm/settings/sms', {
       method: 'DELETE',

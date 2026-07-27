@@ -11,6 +11,9 @@ export const smsIntegrationSettingsSchema = z.object({
   httpMethod: smsHttpMethodSchema,
   paramsTemplateMasked: z.string().nullable(),
   hasHeaders: z.boolean(),
+  autoSmsOnStatusChange: z.boolean().default(false),
+  /** status slug → template slug */
+  statusSmsMap: z.record(z.string(), z.string()).default({}),
   lastSentAt: z.string().nullable(),
   lastError: z.string().nullable(),
   updatedAt: z.string(),
@@ -26,6 +29,8 @@ export const upsertSmsIntegrationPayloadSchema = z.object({
   paramsTemplate: z.string().optional(),
   /** Optional JSON object string for headers. Leave blank to keep. Empty string clears. */
   headersJson: z.string().optional().nullable(),
+  autoSmsOnStatusChange: z.boolean().optional(),
+  statusSmsMap: z.record(z.string(), z.string()).optional(),
 });
 
 export type UpsertSmsIntegrationPayload = z.infer<

@@ -73,20 +73,39 @@ export const orderStatusConfigSchema = z.object({
 export type OrderStatusConfig = z.infer<typeof orderStatusConfigSchema>;
 
 export const orderQueuePageSchema = z.object({
+  id: z.string().optional(),
   slug: z.string(),
   label: z.string(),
   href: z.string(),
   kind: orderPageKindSchema,
-  displayMode: orderStatusDisplayModeSchema,
+  displayMode: orderStatusDisplayModeSchema.default('sidebar'),
   sidebarOrder: z.number(),
   childStatusSlugs: z.array(z.string()).optional(),
   defaultChildSlug: z.string().optional(),
   title: z.string(),
   description: z.string(),
   showInNav: z.boolean().default(true),
+  followUpDue: z.boolean().optional(),
+  isSystem: z.boolean().optional(),
 });
 
 export type OrderQueuePage = z.infer<typeof orderQueuePageSchema>;
+
+export const upsertOrderQueuePageSchema = z.object({
+  id: z.string().optional(),
+  slug: z
+    .string()
+    .min(1)
+    .regex(/^[a-z][a-z0-9_]*$/, 'Use lowercase letters, numbers, underscores'),
+  label: z.string().min(1),
+  description: z.string().optional(),
+  sidebarOrder: z.number().int().optional(),
+  showInNav: z.boolean().optional(),
+  defaultChildSlug: z.string().optional().nullable(),
+  followUpDue: z.boolean().optional(),
+});
+
+export type UpsertOrderQueuePagePayload = z.infer<typeof upsertOrderQueuePageSchema>;
 
 export const orderStatusCountSchema = z.object({
   slug: z.string().min(1),
@@ -95,6 +114,34 @@ export const orderStatusCountSchema = z.object({
 });
 
 export type OrderStatusCount = z.infer<typeof orderStatusCountSchema>;
+
+export const upsertOrderStatusConfigSchema = orderStatusConfigSchema
+  .omit({ id: true })
+  .partial({
+    labelBn: true,
+    parentSlug: true,
+    showInSidebar: true,
+    showInNestedTabs: true,
+    sidebarOrder: true,
+    isTerminal: true,
+    isDefault: true,
+    allowedTransitions: true,
+    bulkActions: true,
+    showInGroupByStatus: true,
+  })
+  .extend({
+    id: z.string().optional(),
+    slug: z
+      .string()
+      .min(1)
+      .regex(/^[a-z][a-z0-9_]*$/, 'Use lowercase letters, numbers, underscores'),
+    label: z.string().min(1),
+    color: z.string().min(1),
+    group: orderWorkflowGroupSchema,
+    displayMode: orderStatusDisplayModeSchema,
+  });
+
+export type UpsertOrderStatusConfigPayload = z.infer<typeof upsertOrderStatusConfigSchema>;
 
 export const orderNavStatusCountsSchema = z.object({
   byStatus: z.record(z.string(), z.number().int().nonnegative()),

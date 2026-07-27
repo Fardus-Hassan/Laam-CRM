@@ -514,6 +514,25 @@ export function bulkUpdateMockOrders(payload: OrderBulkActionPayload): BulkActio
       continue;
     }
 
+    if (payload.action === 'courier_unlink') {
+      const hadLink = Boolean(
+        order.courierProvider || order.courierConsignmentId || order.courierTrackingCode,
+      );
+      if (!hadLink) continue;
+      const index = mockOrderStore.findIndex((o) => o.id === order.id);
+      if (index < 0) continue;
+      mockOrderStore[index] = {
+        ...order,
+        courierProvider: undefined,
+        courierConsignmentId: undefined,
+        courierTrackingCode: undefined,
+        courierStatus: undefined,
+        courierStatusSlug: undefined,
+      };
+      successCount += 1;
+      continue;
+    }
+
     const patch: UpdateOrderPayload = {};
     if (payload.action === 'status_change' && payload.status) {
       patch.status = payload.status;

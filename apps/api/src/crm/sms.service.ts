@@ -80,6 +80,8 @@ export class SmsService {
         httpMethod: 'GET',
         paramsTemplateMasked: null,
         hasHeaders: false,
+        autoSmsOnStatusChange: false,
+        statusSmsMap: {},
         lastSentAt: null,
         lastError: null,
         updatedAt: new Date().toISOString(),
@@ -95,6 +97,11 @@ export class SmsService {
       }
     }
 
+    const statusSmsMap =
+      row.statusSmsMap && typeof row.statusSmsMap === 'object' && !Array.isArray(row.statusSmsMap)
+        ? (row.statusSmsMap as Record<string, string>)
+        : {};
+
     return {
       provider: 'custom',
       enabled: row.enabled,
@@ -105,6 +112,8 @@ export class SmsService {
         ? maskParamsTemplate(secrets.paramsTemplate)
         : null,
       hasHeaders: Boolean(secrets?.headersJson?.trim()),
+      autoSmsOnStatusChange: row.autoSmsOnStatusChange ?? false,
+      statusSmsMap,
       lastSentAt: row.lastSentAt?.toISOString() ?? null,
       lastError: row.lastError,
       updatedAt: row.updatedAt.toISOString(),
@@ -166,11 +175,17 @@ export class SmsService {
         provider: 'custom',
         enabled: input.enabled ?? false,
         credentialsEnc: encryptSecret(JSON.stringify(next)),
+        autoSmsOnStatusChange: input.autoSmsOnStatusChange ?? false,
+        statusSmsMap: input.statusSmsMap ?? {},
         lastError: null,
       },
       update: {
         enabled: input.enabled ?? existing?.enabled ?? false,
         credentialsEnc: encryptSecret(JSON.stringify(next)),
+        ...(input.autoSmsOnStatusChange !== undefined
+          ? { autoSmsOnStatusChange: input.autoSmsOnStatusChange }
+          : {}),
+        ...(input.statusSmsMap !== undefined ? { statusSmsMap: input.statusSmsMap } : {}),
         lastError: null,
       },
     });
@@ -181,6 +196,39 @@ export class SmsService {
 
   async disconnect(organizationId: string): Promise<SmsIntegrationSettings> {
     await this.prisma.smsIntegration.deleteMany({ where: { organizationId } });
+    return this.getPublic(organizationId);
+  }
+
+  /** Update auto-SMS toggle/map without requiring credential re-entry. */
+  async updateStatusAutomation(
+    organizationId: string,
+    input: { autoSmsOnStatusChange?: boolean; statusSmsMap?: Record<string, string> },
+  ): Promise<SmsIntegrationSettings> {
+    const existing = await this.prisma.smsIntegration.findUnique({
+      where: { organizationId },
+    });
+    if (!existing) {
+      await this.prisma.smsIntegration.create({
+        data: {
+          organizationId,
+          provider: 'custom',
+          enabled: false,
+          autoSmsOnStatusChange: input.autoSmsOnStatusChange ?? false,
+          statusSmsMap: input.statusSmsMap ?? {},
+        },
+      });
+    } else {
+      await this.prisma.smsIntegration.update({
+        where: { organizationId },
+        data: {
+          ...(input.autoSmsOnStatusChange !== undefined
+            ? { autoSmsOnStatusChange: input.autoSmsOnStatusChange }
+            : {}),
+          ...(input.statusSmsMap !== undefined ? { statusSmsMap: input.statusSmsMap } : {}),
+        },
+      });
+    }
+    await this.ensureDefaultTemplates(organizationId);
     return this.getPublic(organizationId);
   }
 
@@ -313,6 +361,35 @@ export class SmsService {
       failedCount,
       message: `SMS sent to ${successCount} order(s)`,
     };
+  }
+
+  /** Fire-and-forget from order status change when org toggle + map are set. */
+  async tryAutoSmsOnStatusChange(
+    organizationId: string,
+    orderId: string,
+    statusSlug: string,
+  ): Promise<void> {
+    const integration = await this.prisma.smsIntegration.findUnique({
+      where: { organizationId },
+    });
+    if (!integration?.enabled || !integration.autoSmsOnStatusChange) return;
+
+    const map =
+      integration.statusSmsMap &&
+      typeof integration.statusSmsMap === 'object' &&
+      !Array.isArray(integration.statusSmsMap)
+        ? (integration.statusSmsMap as Record<string, string>)
+        : {};
+    const templateSlug = map[statusSlug]?.trim();
+    if (!templateSlug) return;
+
+    await this.ensureDefaultTemplates(organizationId);
+    const template = await this.prisma.smsTemplate.findFirst({
+      where: { organizationId, slug: templateSlug, enabled: true },
+    });
+    if (!template?.message?.trim()) return;
+
+    await this.sendToOrder(organizationId, orderId, template.message);
   }
 
   private async ensureDefaultTemplates(organizationId: string): Promise<void> {

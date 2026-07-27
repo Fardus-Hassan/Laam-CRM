@@ -26,6 +26,7 @@ import {
 import {
   absoluteUrl,
   buildBulkPrintDocumentHtml,
+  parseOrderPrintType,
   printHtmlDocument,
   type OrderPrintType,
 } from '@/features/orders/components/shared/order-print';
@@ -56,16 +57,28 @@ const BULK_PRINT_STEPS = [
   { id: 'print', label: 'Print' },
 ];
 
+const TEMPLATE_OPTIONS: { value: OrderPrintType; label: string }[] = [
+  { value: 'invoice', label: 'Invoice' },
+  { value: 'packing', label: 'Packing slip' },
+  { value: 'label', label: 'Shipping label' },
+  { value: 'barcode', label: 'Barcode sticker' },
+];
+
 export function BulkPrintPage() {
   const searchParams = useSearchParams();
   const brand = useBrand();
-  const [step, setStep] = React.useState(1);
-  const [orderIdsInput, setOrderIdsInput] = React.useState(searchParams.get('ids') ?? '');
-  const [template, setTemplate] = React.useState<OrderPrintType>('invoice');
+  const initialType = parseOrderPrintType(searchParams.get('type'));
+  const initialIds = searchParams.get('ids') ?? '';
+  const shouldAutoPrint = searchParams.get('autoprint') === '1';
+
+  const [step, setStep] = React.useState(initialIds ? 2 : 1);
+  const [orderIdsInput, setOrderIdsInput] = React.useState(initialIds);
+  const [template, setTemplate] = React.useState<OrderPrintType>(initialType);
   const [orders, setOrders] = React.useState<OrderDetail[]>([]);
   const [missing, setMissing] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [printing, setPrinting] = React.useState(false);
+  const autoStartedRef = React.useRef(false);
 
   const previewRows: PreviewRow[] = orders.map((order) => ({
     id: order.id,
@@ -75,78 +88,111 @@ export function BulkPrintPage() {
     amount: order.amount,
   }));
 
-  async function loadPreview() {
-    const ids = [
-      ...new Set(
-        orderIdsInput
-          .split(/[\s,]+/)
-          .map((s) => s.trim())
-          .filter(Boolean),
-      ),
-    ];
-    if (ids.length === 0) {
-      toast.error('Enter at least one order ID or number');
-      return;
-    }
-    setLoading(true);
-    try {
-      const found: OrderDetail[] = [];
-      const notFound: string[] = [];
-      for (const id of ids) {
-        const order = await ordersApi.getOrder(id);
-        if (order) found.push(order);
-        else notFound.push(id);
-      }
-      setOrders(found);
-      setMissing(notFound);
-      if (found.length === 0) {
-        toast.error('No matching orders found');
+  const openPrint = React.useCallback(
+    (list: OrderDetail[], printType: OrderPrintType) => {
+      if (list.length === 0) {
+        toast.error('No orders to print');
         return;
       }
-      if (notFound.length > 0) {
-        toast.warning(`${notFound.length} ID(s) not found — continuing with ${found.length}`);
+      setPrinting(true);
+      try {
+        const logoUrl =
+          brand.logos.light?.trim() ||
+          brand.logos.dark?.trim() ||
+          brand.logos.favicon?.trim() ||
+          '';
+        const html = buildBulkPrintDocumentHtml({
+          orders: list,
+          type: printType,
+          brandName: brand.name?.trim() || 'Store',
+          logoUrl: absoluteUrl(logoUrl),
+          primaryColor: brand.colors.primary || '#127A3B',
+        });
+        printHtmlDocument(html);
+        setStep(3);
+        toast.success(
+          printType === 'barcode'
+            ? `Print dialog opened for ${list.length} barcode(s)`
+            : `Print dialog opened for ${list.length} document(s)`,
+        );
+      } catch {
+        toast.error('Could not open print dialog. Try again.');
+      } finally {
+        setPrinting(false);
       }
-      setStep(2);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not load orders');
-    } finally {
-      setLoading(false);
-    }
+    },
+    [brand],
+  );
+
+  const loadOrders = React.useCallback(
+    async (idsRaw: string, opts?: { autoPrint?: boolean; printType?: OrderPrintType }) => {
+      const ids = [
+        ...new Set(
+          idsRaw
+            .split(/[\s,]+/)
+            .map((s) => s.trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (ids.length === 0) {
+        toast.error('Enter at least one order ID or number');
+        return [];
+      }
+      setLoading(true);
+      try {
+        const found: OrderDetail[] = [];
+        const notFound: string[] = [];
+        for (const id of ids) {
+          const order = await ordersApi.getOrder(id);
+          if (order) found.push(order);
+          else notFound.push(id);
+        }
+        setOrders(found);
+        setMissing(notFound);
+        if (found.length === 0) {
+          toast.error('No matching orders found');
+          setStep(1);
+          return [];
+        }
+        if (notFound.length > 0) {
+          toast.warning(`${notFound.length} ID(s) not found — continuing with ${found.length}`);
+        }
+        setStep(2);
+        if (opts?.autoPrint) {
+          openPrint(found, opts.printType ?? template);
+        }
+        return found;
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not load orders');
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    [openPrint, template],
+  );
+
+  React.useEffect(() => {
+    if (!initialIds || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    void loadOrders(initialIds, {
+      autoPrint: shouldAutoPrint,
+      printType: initialType,
+    });
+  }, [initialIds, initialType, loadOrders, shouldAutoPrint]);
+
+  async function loadPreview() {
+    await loadOrders(orderIdsInput);
   }
 
   function handlePrint() {
-    if (orders.length === 0) {
-      toast.error('No orders to print');
-      return;
-    }
-    setPrinting(true);
-    try {
-      const logoUrl =
-        brand.logos.light?.trim() ||
-        brand.logos.dark?.trim() ||
-        brand.logos.favicon?.trim() ||
-        '';
-      const html = buildBulkPrintDocumentHtml({
-        orders,
-        type: template,
-        brandName: brand.name?.trim() || 'Store',
-        logoUrl: absoluteUrl(logoUrl),
-        primaryColor: brand.colors.primary || '#127A3B',
-      });
-      printHtmlDocument(html);
-      setStep(3);
-      toast.success(`Print dialog opened for ${orders.length} document(s)`);
-    } catch {
-      toast.error('Could not open print dialog. Try again.');
-    } finally {
-      setPrinting(false);
-    }
+    openPrint(orders, template);
   }
 
   return (
     <PageShell
       title="Bulk Print"
-      description="Print invoices, packing slips, or shipping labels for multiple orders."
+      description="Print invoices, packing slips, shipping labels, or barcode stickers."
     >
       <div className={ORDER_PAGE_GAP}>
         <Stepper steps={BULK_PRINT_STEPS} currentStep={step} />
@@ -176,6 +222,7 @@ export function BulkPrintPage() {
             <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
               <CardTitle className="text-sm">
                 Template & preview ({orders.length} orders)
+                {loading ? ' — loading…' : ''}
               </CardTitle>
             </CardHeader>
             <CardContent className={cn('space-y-3', ORDER_SECTION_BODY_CLASS)}>
@@ -183,11 +230,7 @@ export function BulkPrintPage() {
                 <FormSelect
                   value={template}
                   onChange={(value) => setTemplate(value as OrderPrintType)}
-                  options={[
-                    { value: 'invoice', label: 'Invoice' },
-                    { value: 'packing', label: 'Packing slip' },
-                    { value: 'label', label: 'Shipping label' },
-                  ]}
+                  options={TEMPLATE_OPTIONS}
                   searchable={false}
                 />
               </FormField>
@@ -210,7 +253,11 @@ export function BulkPrintPage() {
                   Back
                 </Button>
                 <Button type="button" onClick={handlePrint} disabled={printing || orders.length === 0}>
-                  {printing ? 'Opening…' : 'Print / Save PDF'}
+                  {printing
+                    ? 'Opening…'
+                    : template === 'barcode'
+                      ? 'Print barcodes'
+                      : 'Print / Save PDF'}
                 </Button>
               </div>
             </CardContent>

@@ -20,6 +20,10 @@ import { LeadsService } from './leads.service';
 import { NotificationsController } from './notifications.controller';
 import { ObjectStorageService } from './object-storage.service';
 import { OrgCategoriesController } from './org-categories.controller';
+import { OrgOrderStatusesController } from './org-order-statuses.controller';
+import { OrgOrderStatusesService } from './org-order-statuses.service';
+import { OrgOrderQueuesController } from './org-order-queues.controller';
+import { OrgOrderQueuesService } from './org-order-queues.service';
 import { CouponsController } from './coupons.controller';
 import { CouponsService } from './coupons.service';
 import { FollowupsController } from './followups.controller';
@@ -66,6 +70,8 @@ import { RbacService } from './rbac.service';
     NotificationsController,
     ProductBrandsController,
     OrgCategoriesController,
+    OrgOrderStatusesController,
+    OrgOrderQueuesController,
     ProductsController,
     InventoryOperationsController,
     InventoryReportsController,
@@ -88,12 +94,22 @@ import { RbacService } from './rbac.service';
     FailedOrdersService,
     CouponsService,
     InventoryCatalogService,
+    OrgOrderStatusesService,
+    OrgOrderQueuesService,
     InventoryOperationsService,
     InventoryReportsService,
     InventoryAdvancedService,
     InventoryUomService,
     ObjectStorageService,
   ],
-  exports: [RbacService, BrandingService, InventoryCatalogService, InventoryUomService, ObjectStorageService],
+  exports: [
+    RbacService,
+    BrandingService,
+    InventoryCatalogService,
+    InventoryUomService,
+    ObjectStorageService,
+    OrgOrderStatusesService,
+    OrgOrderQueuesService,
+  ],
 })
 export class CrmModule {}

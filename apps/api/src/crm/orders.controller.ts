@@ -5,7 +5,6 @@ import {
   Get,
   HttpCode,
   MaxFileSizeValidator,
-  NotImplementedException,
   Param,
   ParseFilePipe,
   Patch,
@@ -692,6 +691,9 @@ export class OrdersController {
     @Query('excludeCourier') excludeCourier?: string,
     @Query('paymentStatus') paymentStatus?: string,
     @Query('product') product?: string,
+    @Query('productId') productId?: string,
+    @Query('amountMin') amountMin?: string,
+    @Query('amountMax') amountMax?: string,
     @Query('pathaoCity') pathaoCity?: string,
     @Query('pathaoZone') pathaoZone?: string,
     @Query('noteStatus') noteStatus?: string,
@@ -722,6 +724,9 @@ export class OrdersController {
       excludeCourier: parseBoolQuery(excludeCourier),
       paymentStatus: paymentStatus as never,
       product,
+      productId,
+      amountMin: amountMin != null && amountMin !== '' ? Number(amountMin) : undefined,
+      amountMax: amountMax != null && amountMax !== '' ? Number(amountMax) : undefined,
       pathaoCity,
       pathaoZone,
       noteStatus: noteStatus as 'all' | 'has_note' | 'no_note' | undefined,
@@ -959,9 +964,10 @@ export class OrdersController {
 
   @Delete(':id')
   @RequirePermissions('orders.cancel')
-  @HttpCode(204)
-  @ApiOperation({ summary: 'Cancel/delete order (not implemented)' })
-  remove(@Param('id') _id: string) {
-    throw new NotImplementedException('Order delete is not implemented yet');
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Soft-delete order (recycle bin + restock if needed)' })
+  remove(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.softDelete(user.organizationId!, id, this.actor(user));
   }
 }

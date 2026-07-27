@@ -34,7 +34,12 @@ type OrderBulkActionsProps = {
   variant?: 'card' | 'compact';
 };
 
-const PRINT_ACTIONS = new Set<BulkActionId>(['print_selected', 'print_barcode', 'print_info']);
+const PRINT_TYPE_BY_ACTION: Partial<Record<BulkActionId, 'invoice' | 'packing' | 'label' | 'barcode'>> = {
+  print_selected: 'invoice',
+  print_barcode: 'barcode',
+  print_info: 'packing',
+  print_info_2: 'label',
+};
 
 export function OrderBulkActions({
   actionIds,
@@ -58,30 +63,42 @@ export function OrderBulkActions({
   }
 
   function handleAction(actionId: BulkActionId, label: string) {
-    if (PRINT_ACTIONS.has(actionId)) {
-      if (selectedCount === 0) {
-        toast.error('Select at least one order');
-        return;
-      }
+    if (selectedCount === 0 && BULK_ACTIONS_REGISTRY[actionId]?.requiresSelection) {
+      toast.error('Select at least one order');
+      return;
+    }
+
+    const printType = PRINT_TYPE_BY_ACTION[actionId];
+    if (printType) {
       const ids = selectedOrderIds.join(',');
-      router.push(`/dashboard/orders/tools/bulk-print?ids=${encodeURIComponent(ids)}`);
+      const params = new URLSearchParams({
+        ids,
+        type: printType,
+        autoprint: '1',
+      });
+      router.push(`/dashboard/orders/tools/bulk-print?${params.toString()}`);
+      return;
+    }
+
+    if (actionId === 'courier_unlink') {
+      const ok = window.confirm(
+        `Unlink courier on ${selectedCount} order(s)?\n\nThis clears the local booking link so you can rebook. It does not cancel the shipment at Pathao/Carrybee.`,
+      );
+      if (!ok) return;
+      void bulkAction({
+        action: 'courier_unlink',
+        orderIds: selectedOrderIds,
+      }).then(() => onSuccess?.());
       return;
     }
 
     const modal = bulkActionToModal(actionId, selectedOrderIds);
     if (modal) {
-      if (selectedCount === 0) {
-        toast.error('Select at least one order');
-        return;
-      }
       setBulkModal(modal);
       return;
     }
 
-    void bulkAction({
-      action: 'print',
-      orderIds: selectedOrderIds,
-    }).then(() => onSuccess?.());
+    toast.error(`Bulk action "${label}" is not implemented yet`);
   }
 
   const actionButtons = (

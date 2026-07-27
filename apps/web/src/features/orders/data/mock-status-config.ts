@@ -4,7 +4,7 @@ import type {
   OrderStatusConfig,
 } from '@laam/types';
 
-import { getOrderStatuses } from '@/features/orders/data/order-status-store';
+import { getOrderQueuePages, getOrderStatuses } from '@/features/orders/data/order-status-store';
 import {
   statusShowsInNestedTabs,
   statusShowsInSidebar,
@@ -257,7 +257,8 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
     kind: 'list',
     displayMode: 'sidebar',
     sidebarOrder: 10,
-    childStatusSlugs: ['pending', 'pending_2', 'pending_3'],
+    // Nested tabs come from statuses with parentSlug=pendings + nested-tab visibility
+    // (see getQueueChildStatusSlugs) — not a hardcoded list.
     defaultChildSlug: 'pending',
     title: 'Call confirm',
     description:
@@ -337,7 +338,8 @@ export function getStatusConfigBySlug(slug: string): OrderStatusConfig | undefin
 }
 
 export function getQueuePageBySlug(slug: string): OrderQueuePage | undefined {
-  return MOCK_ORDER_QUEUE_PAGES.find((item) => item.slug === slug);
+  return getOrderQueuePages().find((item) => item.slug === slug) ??
+    MOCK_ORDER_QUEUE_PAGES.find((item) => item.slug === slug);
 }
 
 export function getSidebarStatuses(): OrderStatusConfig[] {

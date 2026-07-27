@@ -186,6 +186,11 @@ export const orderListQuerySchema = z.object({
   courier: z.string().optional(),
   courierStatusSlug: z.string().optional(),
   product: z.string().optional(),
+  /** Catalog product id — preferred over free-text product name */
+  productId: z.string().optional(),
+  /** Order grand total range */
+  amountMin: z.number().nonnegative().optional(),
+  amountMax: z.number().nonnegative().optional(),
   pathaoCity: z.string().optional(),
   pathaoZone: z.string().optional(),
   noteStatus: z.enum(['all', 'has_note', 'no_note']).optional(),
@@ -514,6 +519,7 @@ export const orderBulkActionTypeSchema = z.enum([
   'sms',
   'status_change',
   'courier_submit',
+  'courier_unlink',
   'transfer_employee',
   'export',
   'print',
@@ -627,6 +633,8 @@ export {
   orderNavStatusCountsSchema,
   orderStatusDisplayModeSchema,
   orderWorkflowGroupSchema,
+  upsertOrderStatusConfigSchema,
+  upsertOrderQueuePageSchema,
   type BulkActionId,
   type OrderPageKind,
   type OrderQueuePage,
@@ -635,4 +643,6 @@ export {
   type OrderNavStatusCounts,
   type OrderStatusDisplayMode,
   type OrderWorkflowGroup,
+  type UpsertOrderStatusConfigPayload,
+  type UpsertOrderQueuePagePayload,
 } from './order-status-config.js';

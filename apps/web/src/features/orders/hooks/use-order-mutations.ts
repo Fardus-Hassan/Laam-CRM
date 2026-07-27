@@ -107,6 +107,11 @@ export function useOrderDetailMutations(order: OrderDetail | null, onUpdated?: (
     onUpdated?.(updated);
   }, [order, onUpdated, updateOrder]);
 
+  const deleteOrder = React.useCallback(async () => {
+    if (!order) return;
+    await ordersApi.deleteOrder(order.id);
+  }, [order]);
+
   const changeStatus = React.useCallback(
     async (status: string) => {
       if (!order) return;
@@ -118,5 +123,5 @@ export function useOrderDetailMutations(order: OrderDetail | null, onUpdated?: (
     [order, onUpdated, updateOrder],
   );
 
-  return { isLoading, confirmOrder, cancelOrder, changeStatus, updateOrder };
+  return { isLoading, confirmOrder, cancelOrder, deleteOrder, changeStatus, updateOrder };
 }

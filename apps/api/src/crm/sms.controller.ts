@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { IsBoolean, IsObject, IsOptional } from 'class-validator';
 import {
   sendBulkOrderSmsPayloadSchema,
   sendOrderSmsPayloadSchema,
@@ -18,6 +19,16 @@ import { SmsService } from './sms.service';
 
 function parseBody<T>(schema: { parse: (data: unknown) => T }, body: unknown): T {
   return schema.parse(body);
+}
+
+class SmsAutomationDto {
+  @IsOptional()
+  @IsBoolean()
+  autoSmsOnStatusChange?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  statusSmsMap?: Record<string, string>;
 }
 
 @ApiTags('CRM — SMS')
@@ -50,6 +61,14 @@ export class SmsSettingsController {
   disconnect(@CurrentUser() user: AuthUserPayload) {
     this.sms.requireOrg(user.organizationId);
     return this.sms.disconnect(user.organizationId!);
+  }
+
+  @Put('automation')
+  @RequirePermissions('settings.manage')
+  @ApiOperation({ summary: 'Update auto SMS on status-change settings' })
+  updateAutomation(@CurrentUser() user: AuthUserPayload, @Body() body: SmsAutomationDto) {
+    this.sms.requireOrg(user.organizationId);
+    return this.sms.updateStatusAutomation(user.organizationId!, body);
   }
 
   @Post('test')

@@ -29,7 +29,9 @@ import { FollowupsService } from './followups.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { LeadsService } from './leads.service';
 import { OrderPaymentsService } from './order-payments.service';
+import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { PathaoCourierService } from './pathao-courier.service';
+import { SmsService } from './sms.service';
 import { PathaoSyncService } from './pathao-sync.service';
 import { buildCourierStatsFromStatusCounts } from './order-courier-stats.util';
 
@@ -139,6 +141,9 @@ const STOCK_CUT_STATUSES = new Set([
   'in_courier',
 ]);
 
+/** Customer return completed — restock inventory (manual approve = move to this status). */
+const STOCK_RETURN_RESTOCK_STATUSES = new Set(['returned']);
+
 const DEFAULT_STATUSES: OrderFormOptionDto[] = [
   { value: 'pending', label: 'Pending' },
   { value: 'pending_2', label: 'Pending 2' },
@@ -201,6 +206,8 @@ export class OrdersService {
     private readonly carrybee: CarrybeeCourierService,
     private readonly courierIntegrations: CourierIntegrationsService,
     private readonly orderPayments: OrderPaymentsService,
+    private readonly orgOrderStatuses: OrgOrderStatusesService,
+    private readonly sms: SmsService,
     @Inject(forwardRef(() => PathaoSyncService))
     private readonly pathaoSync: PathaoSyncService,
     @Inject(forwardRef(() => CarrybeeSyncService))
@@ -287,6 +294,7 @@ export class OrdersService {
 
   async getFormOptions(organizationId: string): Promise<OrderFormOptionsResponse> {
     await this.ensureFormOptions(organizationId);
+    await this.orgOrderStatuses.ensureSeeded(organizationId);
     const rows = await this.prisma.orderFormOption.findMany({
       where: { organizationId, isActive: true },
       orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }],
@@ -397,7 +405,7 @@ export class OrdersService {
     }
   }
 
-  /** Upsert a status into org form options so create/update order can use it. */
+  /** Upsert a status into org status config + form options whitelist. */
   async ensureStatusFormOption(
     organizationId: string,
     input: { value: string; label?: string },
@@ -414,35 +422,28 @@ export class OrdersService {
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
 
-    const existing = await this.prisma.orderFormOption.findFirst({
-      where: { organizationId, kind: 'status', value },
+    const before = await this.prisma.orgOrderStatus.findUnique({
+      where: { organizationId_slug: { organizationId, slug: value } },
     });
-    if (existing) {
-      await this.prisma.orderFormOption.update({
-        where: { id: existing.id },
-        data: {
-          label: label || existing.label,
-          isActive: true,
-        },
-      });
-      return { value, label: label || existing.label, created: false };
-    }
 
-    const maxSort = await this.prisma.orderFormOption.aggregate({
-      where: { organizationId, kind: 'status' },
-      _max: { sortOrder: true },
+    await this.orgOrderStatuses.upsert(organizationId, {
+      slug: value,
+      label,
+      color: before?.color ?? 'hsl(174 58% 42%)',
+      group: (before?.group as 'intake') ?? 'intake',
+      displayMode: (before?.displayMode as 'filter_only') ?? 'filter_only',
+      parentSlug: before?.parentSlug ?? undefined,
+      showInSidebar: before?.showInSidebar ?? false,
+      showInNestedTabs: before?.showInNestedTabs ?? false,
+      sidebarOrder: before?.sidebarOrder ?? undefined,
+      isTerminal: before?.isTerminal ?? false,
+      isDefault: before?.isDefault ?? false,
+      allowedTransitions: before?.allowedTransitions ?? [],
+      bulkActions: (before?.bulkActions as never[]) ?? [],
+      showInGroupByStatus: before?.showInGroupByStatus ?? true,
     });
-    await this.prisma.orderFormOption.create({
-      data: {
-        organizationId,
-        kind: 'status',
-        value,
-        label,
-        sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
-        isActive: true,
-      },
-    });
-    return { value, label, created: true };
+
+    return { value, label, created: !before };
   }
 
   async updateFormOption(
@@ -749,6 +750,72 @@ export class OrdersService {
       };
     }
 
+    if (payload.action === 'courier_unlink') {
+      let successCount = 0;
+      let skippedCount = 0;
+      for (const orderId of ids) {
+        const existing = await this.prisma.order.findFirst({
+          where: { id: orderId, organizationId, deletedAt: null },
+        });
+        if (!existing) {
+          skippedCount += 1;
+          continue;
+        }
+        const hadLink = Boolean(
+          existing.courierProvider ||
+            existing.courierConsignmentId ||
+            existing.courierTrackingCode,
+        );
+        if (!hadLink) {
+          skippedCount += 1;
+          continue;
+        }
+        const prev = [
+          existing.courierProvider,
+          existing.courierConsignmentId ?? existing.courierTrackingCode,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        await this.prisma.$transaction(async (tx) => {
+          await tx.order.update({
+            where: { id: existing.id },
+            data: {
+              courierProvider: null,
+              courierConsignmentId: null,
+              courierTrackingCode: null,
+              courierCollectAmount: null,
+              courierBookedAt: null,
+              courierStatus: null,
+              courierStatusSlug: null,
+              courierStatusSyncedAt: null,
+            },
+          });
+          await tx.orderActivity.create({
+            data: {
+              organizationId,
+              orderId: existing.id,
+              type: 'note',
+              label: 'Courier unlinked',
+              description: prev
+                ? `Cleared local link (${prev}). Remote consignment not cancelled.`
+                : 'Cleared local courier link. Remote consignment not cancelled.',
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+            },
+          });
+        });
+        successCount += 1;
+      }
+      const failedCount = ids.length - successCount;
+      const skipNote =
+        skippedCount > 0 ? ` ${skippedCount} had no courier link or were missing.` : '';
+      return {
+        successCount,
+        failedCount,
+        message: `Unlinked courier on ${successCount} order(s).${skipNote}`,
+      };
+    }
+
     throw new BadRequestException(
       `Bulk action "${payload.action}" is not implemented yet`,
     );
@@ -765,7 +832,7 @@ export class OrdersService {
   ): Promise<OrderListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const where: Record<string, unknown> = { organizationId };
+    const where: Record<string, unknown> = { organizationId, deletedAt: null };
     const andFilters: Record<string, unknown>[] = [];
 
     if (query.status) {
@@ -825,12 +892,25 @@ export class OrdersService {
       }
     }
 
-    if (query.product?.trim()) {
-      where.lineItems = {
-        some: {
-          productName: { contains: query.product.trim(), mode: 'insensitive' },
+    if (query.productId?.trim()) {
+      andFilters.push({
+        lineItems: { some: { productId: query.productId.trim() } },
+      });
+    } else if (query.product?.trim()) {
+      andFilters.push({
+        lineItems: {
+          some: {
+            productName: { contains: query.product.trim(), mode: 'insensitive' },
+          },
         },
-      };
+      });
+    }
+
+    if (query.amountMin != null || query.amountMax != null) {
+      const amount: Record<string, number> = {};
+      if (query.amountMin != null) amount.gte = query.amountMin;
+      if (query.amountMax != null) amount.lte = query.amountMax;
+      where.amount = amount;
     }
 
     if (query.pathaoCity?.trim()) {
@@ -993,7 +1073,7 @@ export class OrdersService {
 
   async getByOrderNumber(organizationId: string, orderNumber: string): Promise<OrderDetail> {
     const row = await this.prisma.order.findFirst({
-      where: { organizationId, orderNumber },
+      where: { organizationId, orderNumber, deletedAt: null },
       include: {
         lineItems: { orderBy: { createdAt: 'asc' } },
         activities: { orderBy: { createdAt: 'asc' } },
@@ -1005,7 +1085,7 @@ export class OrdersService {
 
   async getById(organizationId: string, id: string): Promise<OrderDetail> {
     const row = await this.prisma.order.findFirst({
-      where: { organizationId, id },
+      where: { organizationId, id, deletedAt: null },
       include: {
         lineItems: { orderBy: { createdAt: 'asc' } },
         activities: { orderBy: { createdAt: 'asc' } },
@@ -1262,7 +1342,7 @@ export class OrdersService {
     const options = await this.getFormOptions(organizationId);
     const status = input.status || options.statuses[0]?.value || 'pending';
     const source = input.source || options.sources[0]?.value || 'call';
-    if (!options.statuses.some((s) => s.value === status)) {
+    if (!(await this.orgOrderStatuses.isValidStatus(organizationId, status))) {
       throw new BadRequestException(`Invalid order status: ${status}`);
     }
     if (!options.sources.some((s) => s.value === source)) {
@@ -1499,14 +1579,14 @@ export class OrdersService {
       throw new BadRequestException('status is required');
     }
     const status = nextStatus.trim();
-    const options = await this.getFormOptions(organizationId);
-    if (!options.statuses.some((s) => s.value === status)) {
+    if (!(await this.orgOrderStatuses.isValidStatus(organizationId, status))) {
       throw new BadRequestException(`Invalid order status: ${status}`);
     }
 
     const existing = await this.prisma.order.findFirst({
       where: {
         organizationId,
+        deletedAt: null,
         OR: [{ id: idOrNumber }, { orderNumber: idOrNumber }],
       },
       include: { lineItems: true },
@@ -1523,7 +1603,10 @@ export class OrdersService {
       !STOCK_CUT_STATUSES.has(prev) &&
       !existing.stockDeductedAt;
     const shouldRestock =
-      status === 'cancelled' && Boolean(existing.stockDeductedAt);
+      (status === 'cancelled' ||
+        (STOCK_RETURN_RESTOCK_STATUSES.has(status) &&
+          !STOCK_RETURN_RESTOCK_STATUSES.has(prev))) &&
+      Boolean(existing.stockDeductedAt);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (shouldCut) {
@@ -1593,7 +1676,123 @@ export class OrdersService {
       });
     });
 
+    // Best-effort auto SMS — never fail the status change
+    void this.sms.tryAutoSmsOnStatusChange(organizationId, updated.id, status).catch(() => undefined);
+
     return this.toDetailEnriched(organizationId, updated);
+  }
+
+  /** Soft-delete → recycle bin; restock if stock was previously cut. */
+  async softDelete(
+    organizationId: string,
+    idOrNumber: string,
+    actor: ActorLabel,
+  ): Promise<{ ok: true }> {
+    const existing = await this.prisma.order.findFirst({
+      where: {
+        organizationId,
+        deletedAt: null,
+        OR: [{ id: idOrNumber }, { orderNumber: idOrNumber }],
+      },
+      include: { lineItems: true },
+    });
+    if (!existing) throw new NotFoundException('Order not found');
+
+    await this.prisma.$transaction(async (tx) => {
+      if (existing.stockDeductedAt) {
+        await this.inventory.applyOrderStockDeltas(
+          tx,
+          organizationId,
+          existing.lineItems.map((l) => ({
+            productId: l.productId,
+            variantId: l.variantId,
+            quantity: l.quantity,
+            productName: l.productName,
+          })),
+          {
+            sign: 1,
+            orderNumber: existing.orderNumber,
+            actor: { userId: actor.userId, name: actor.name },
+          },
+        );
+      }
+
+      await tx.order.update({
+        where: { id: existing.id },
+        data: {
+          deletedAt: new Date(),
+          stockDeductedAt: existing.stockDeductedAt ? null : existing.stockDeductedAt,
+          activities: {
+            create: {
+              organizationId,
+              type: 'note',
+              label: 'Order moved to recycle bin',
+              description: existing.stockDeductedAt
+                ? 'Soft-deleted and stock restocked'
+                : 'Soft-deleted',
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+            },
+          },
+        },
+      });
+    });
+
+    return { ok: true };
+  }
+
+  async restoreDeleted(organizationId: string, orderId: string, actor: ActorLabel) {
+    const existing = await this.prisma.order.findFirst({
+      where: { organizationId, id: orderId, deletedAt: { not: null } },
+    });
+    if (!existing) throw new NotFoundException('Deleted order not found');
+
+    await this.prisma.order.update({
+      where: { id: existing.id },
+      data: {
+        deletedAt: null,
+        activities: {
+          create: {
+            organizationId,
+            type: 'note',
+            label: 'Order restored from recycle bin',
+            actorUserId: actor.userId ?? null,
+            actorName: actor.name ?? null,
+          },
+        },
+      },
+    });
+    return { ok: true };
+  }
+
+  async purgeDeleted(organizationId: string, orderId: string) {
+    const existing = await this.prisma.order.findFirst({
+      where: { organizationId, id: orderId, deletedAt: { not: null } },
+    });
+    if (!existing) throw new NotFoundException('Deleted order not found');
+    await this.prisma.order.delete({ where: { id: existing.id } });
+    return { ok: true };
+  }
+
+  async listDeletedForRecycleBin(organizationId: string, search?: string) {
+    const rows = await this.prisma.order.findMany({
+      where: {
+        organizationId,
+        deletedAt: { not: null },
+        ...(search?.trim()
+          ? {
+              OR: [
+                { orderNumber: { contains: search.trim(), mode: 'insensitive' as const } },
+                { customerName: { contains: search.trim(), mode: 'insensitive' as const } },
+                { customerPhone: { contains: search.trim(), mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { deletedAt: 'desc' },
+      take: 200,
+    });
+    return rows;
   }
 
   async update(
@@ -2410,6 +2609,7 @@ export class OrdersService {
     stockDeductedAt?: Date | null;
     leadId: string | null;
     createdAt: Date;
+    updatedAt: Date;
     lineItems: Array<{
       id: string;
       productId?: string | null;

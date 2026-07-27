@@ -1,4 +1,4 @@
-import type { OrderStatusConfig, Permission } from '@laam/types';
+import type { OrderQueuePage, OrderStatusConfig, Permission } from '@laam/types';
 
 import type { NavChildDefinition } from '@/features/navigation/types/universal-nav';
 import {
@@ -6,11 +6,10 @@ import {
   getFollowupsDueBadgeCount,
   getStatusCount,
 } from '@/features/orders/data/order-status-counts-store';
-import { MOCK_ORDER_QUEUE_PAGES } from '@/features/orders/data/mock-status-config';
-import { getOrderStatuses } from '@/features/orders/data/order-status-store';
+import { getOrderQueuePages, getOrderStatuses } from '@/features/orders/data/order-status-store';
 import {
   getSidebarChildStatuses,
-  STATUS_QUEUE_FOLDER_SLUGS,
+  getStatusQueueFolderSlugs,
 } from '@/features/orders/lib/order-status-hierarchy';
 import { statusShowsInSidebar } from '@/features/orders/lib/order-status-visibility';
 
@@ -18,11 +17,11 @@ export type OrdersNavChild = NavChildDefinition & {
   badge?: number;
 };
 
-const TOOL_SLUGS = new Set(['failed', 'bulk_print', 'send_courier_barcode', 'payments']);
-const QUEUE_SLUGS = new Set(['create_new', 'all', 'pendings', 'followups']);
+const TOOL_KINDS = new Set(['failed', 'tool', 'payments']);
 
 function statusNavUrl(status: OrderStatusConfig): string {
-  if (status.parentSlug && STATUS_QUEUE_FOLDER_SLUGS.has(status.parentSlug)) {
+  const folders = getStatusQueueFolderSlugs();
+  if (status.parentSlug && folders.has(status.parentSlug)) {
     return `/dashboard/orders/queues/${status.parentSlug}?status=${status.slug}`;
   }
   return `/dashboard/orders?status=${status.slug}`;
@@ -67,18 +66,19 @@ function statusToNavItem(
 }
 
 function pageToNavItem(
-  page: (typeof MOCK_ORDER_QUEUE_PAGES)[number],
+  page: OrderQueuePage,
   sidebarStatuses: OrderStatusConfig[],
+  folders: Set<string>,
 ): OrdersNavChild {
   let badge: number | undefined;
 
   if (page.slug === 'failed') {
     const count = getFailedOrdersBadgeCount();
     badge = count > 0 ? count : undefined;
-  } else if (page.slug === 'followups') {
+  } else if (page.followUpDue || page.slug === 'followups') {
     const count = getFollowupsDueBadgeCount();
     badge = count > 0 ? count : undefined;
-  } else if (STATUS_QUEUE_FOLDER_SLUGS.has(page.slug)) {
+  } else if (folders.has(page.slug)) {
     const childSlugs = getSidebarChildStatuses(page.slug).map((status) => status.slug);
     badge = sumStatusBadges(childSlugs);
   }
@@ -103,16 +103,17 @@ function pageToNavItem(
 function isTopLevelSidebarStatus(
   status: OrderStatusConfig,
   sidebarSlugs: Set<string>,
+  folders: Set<string>,
 ): boolean {
   if (!status.parentSlug) return true;
-  if (STATUS_QUEUE_FOLDER_SLUGS.has(status.parentSlug)) return false;
+  if (folders.has(status.parentSlug)) return false;
   if (sidebarSlugs.has(status.parentSlug)) return false;
-  // Orphaned parent reference → surface as top-level so it is not lost
   return true;
 }
 
 export function buildOrdersNav(): OrdersNavChild[] {
-  const navPages = MOCK_ORDER_QUEUE_PAGES.filter(
+  const folders = getStatusQueueFolderSlugs();
+  const navPages = getOrderQueuePages().filter(
     (page) => page.showInNav && page.slug !== 'more_statuses',
   );
 
@@ -123,18 +124,27 @@ export function buildOrdersNav(): OrdersNavChild[] {
   const sidebarSlugs = new Set(sidebarStatuses.map((status) => status.slug));
 
   const queuePages = navPages
-    .filter((page) => QUEUE_SLUGS.has(page.slug))
+    .filter((page) => page.kind === 'form' || page.kind === 'list')
+    .filter((page) => !TOOL_KINDS.has(page.kind) || page.slug === 'all' || page.slug === 'create_new' || folders.has(page.slug) || page.slug === 'pendings' || page.slug === 'followups')
     .sort((a, b) => a.sidebarOrder - b.sidebarOrder)
-    .map((page) => pageToNavItem(page, sidebarStatuses));
+    .map((page) => pageToNavItem(page, sidebarStatuses, folders));
+
+  // Deduplicate by slug — prefer earlier (form/list queue) entries
+  const seen = new Set<string>();
+  const uniqueQueues = queuePages.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 
   const topLevelStatuses = sidebarStatuses
-    .filter((status) => isTopLevelSidebarStatus(status, sidebarSlugs))
+    .filter((status) => isTopLevelSidebarStatus(status, sidebarSlugs, folders))
     .map((status) => statusToNavItem(status, sidebarStatuses, new Set()));
 
   const toolPages = navPages
-    .filter((page) => TOOL_SLUGS.has(page.slug))
+    .filter((page) => TOOL_KINDS.has(page.kind))
     .sort((a, b) => a.sidebarOrder - b.sidebarOrder)
-    .map((page) => pageToNavItem(page, sidebarStatuses));
+    .map((page) => pageToNavItem(page, sidebarStatuses, folders));
 
-  return [...queuePages, ...topLevelStatuses, ...toolPages];
+  return [...uniqueQueues, ...topLevelStatuses, ...toolPages];
 }
