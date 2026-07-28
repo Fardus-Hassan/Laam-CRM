@@ -28,6 +28,7 @@ const EXPIRY_WINDOW_OPTIONS = [
 export function ReconciliationPage() {
   const [data, setData] = React.useState<InventoryReconciliationResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [posting, setPosting] = React.useState(false);
   const [lots, setLots] = React.useState<InventoryLot[]>([]);
   const [lotsLoading, setLotsLoading] = React.useState(true);
   const [expiryWindow, setExpiryWindow] = React.useState('60');
@@ -51,7 +52,10 @@ export function ReconciliationPage() {
   React.useEffect(() => {
     setLotsLoading(true);
     void inventoryApi
-      .listLots(expiryWindow ? Number(expiryWindow) : undefined)
+      .listLots({
+        expiringWithinDays: expiryWindow ? Number(expiryWindow) : undefined,
+        pageSize: 50,
+      })
       .then((res) => setLots(res.items))
       .catch((error) => {
         setLots([]);
@@ -59,6 +63,27 @@ export function ReconciliationPage() {
       })
       .finally(() => setLotsLoading(false));
   }, [expiryWindow]);
+
+  async function postAdjust() {
+    if (!data || data.isBalanced) return;
+    if (
+      !window.confirm(
+        `Post an adjusting journal for difference ${formatCurrency(data.difference)}? This aligns inventory GL with stock valuation.`,
+      )
+    ) {
+      return;
+    }
+    setPosting(true);
+    try {
+      const result = await inventoryApi.postReconciliationAdjust();
+      toast.success(`Posted adjusting entry (${formatCurrency(result.differencePosted)})`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not post adjusting entry');
+    } finally {
+      setPosting(false);
+    }
+  }
 
   return (
     <PageShell
@@ -79,6 +104,16 @@ export function ReconciliationPage() {
               <Badge variant={data.isBalanced ? 'default' : 'destructive'}>
                 {data.isBalanced ? 'Balanced' : 'Out of balance'}
               </Badge>
+            ) : null}
+            {data && !data.isBalanced ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={posting}
+                onClick={() => void postAdjust()}
+              >
+                Post adjusting entry
+              </Button>
             ) : null}
             <Button type="button" size="sm" variant="outline" onClick={load}>
               <RefreshCw className="size-3.5" />

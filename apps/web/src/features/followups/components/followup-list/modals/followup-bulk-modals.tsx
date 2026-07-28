@@ -19,7 +19,7 @@ import {
   FOLLOWUP_STATUS_LABELS,
 } from '@/features/followups/config/followup-filters';
 import type { FollowupsApi } from '@/features/followups/api/followups-api';
-import { CUSTOMER_AGENTS } from '@/features/customers/data/mock-customers';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 import { useFollowupMutations } from '@/features/followups/hooks/use-followup-mutations';
 import type { FollowupStatus } from '@laam/types';
 
@@ -63,6 +63,7 @@ const TAG_OPTIONS = [
 
 export function FollowupBulkModals({ state, onClose, onSuccess }: FollowupBulkModalsProps) {
   const { bulkAction, isLoading } = useFollowupMutations();
+  const { agents } = useAgentOptions();
   const [scheduleDate, setScheduleDate] = React.useState('');
   const [employee, setEmployee] = React.useState('');
   const [tag, setTag] = React.useState('');
@@ -157,7 +158,7 @@ export function FollowupBulkModals({ state, onClose, onSuccess }: FollowupBulkMo
             <FormSearchSelect
               value={employee}
               onChange={setEmployee}
-              options={CUSTOMER_AGENTS.map((name) => ({ value: name, label: name }))}
+              options={agents.map((name) => ({ value: name, label: name }))}
               placeholder="Select agent…"
             />
           </FormField>

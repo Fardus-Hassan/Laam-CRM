@@ -10,7 +10,7 @@ import { FormTextarea } from '@/components/form/form-textarea';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { upsertMockCustomerFromImport } from '@/features/customers/data/mock-customers';
+import { customersApi } from '@/features/customers/api/customers-api';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -19,6 +19,7 @@ import {
 
 export default function CreateCustomerPage() {
   const router = useRouter();
+  const [saving, setSaving] = React.useState(false);
   const [name, setName] = React.useState('');
   const [phone, setPhone] = React.useState('');
   const [email, setEmail] = React.useState('');
@@ -26,21 +27,29 @@ export default function CreateCustomerPage() {
   const [district, setDistrict] = React.useState('Dhaka');
   const [notes, setNotes] = React.useState('');
 
-  function handleSave() {
+  async function handleSave() {
     if (!name.trim() || phone.replace(/\D/g, '').length < 8) {
       toast.error('Name and valid phone are required');
       return;
     }
-    const customer = upsertMockCustomerFromImport({
-      name: name.trim(),
-      phone,
-      email: email || undefined,
-      address: address || undefined,
-      district,
-      notes: notes || undefined,
-    });
-    toast.success(`Customer ${customer.name} saved`);
-    router.push(`/dashboard/companies/${customer.id}`);
+    setSaving(true);
+    try {
+      const customer = await customersApi.createCustomer({
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
+        district: district.trim() || undefined,
+        notes: notes.trim() || undefined,
+        source: 'manual',
+      });
+      toast.success(`Customer ${customer.name} saved`);
+      router.push(`/dashboard/customers/${customer.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save customer');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -69,8 +78,12 @@ export default function CreateCustomerPage() {
           </CardContent>
         </Card>
         <div className="flex gap-2">
-          <Button type="button" onClick={handleSave}>Save customer</Button>
-          <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
+          <Button type="button" onClick={() => void handleSave()} disabled={saving}>
+            {saving ? 'Saving…' : 'Save customer'}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => router.back()} disabled={saving}>
+            Cancel
+          </Button>
         </div>
       </div>
     </PageShell>

@@ -5,6 +5,9 @@ import { BrandingController } from './branding.controller';
 import { BrandingService } from './branding.service';
 import { CompaniesController } from './companies.controller';
 import { ContactsController } from './contacts.controller';
+import { ContactsService } from './contacts.service';
+import { CustomersController } from './customers.controller';
+import { CustomersService } from './customers.service';
 import { DashboardController } from './dashboard.controller';
 import { DealsController, PipelineController } from './deals.controller';
 import { InventoryAdvancedController } from './inventory-advanced.controller';
@@ -53,6 +56,7 @@ import { RbacService } from './rbac.service';
   controllers: [
     DashboardController,
     LeadsController,
+    CustomersController,
     ContactsController,
     CompaniesController,
     DealsController,
@@ -82,6 +86,8 @@ import { RbacService } from './rbac.service';
     RbacService,
     BrandingService,
     LeadsService,
+    CustomersService,
+    ContactsService,
     FollowupsService,
     OrdersService,
     PathaoCourierService,

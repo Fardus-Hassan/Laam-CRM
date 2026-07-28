@@ -56,6 +56,14 @@ export function ContactDetailView({ contact }: { contact: ContactDetail }) {
               <MessageCircle className="size-4" />
               WhatsApp
             </Button>
+            {contact.inventorySupplierId ? (
+              <Button type="button" size="sm" variant="outline" asChild>
+                <Link href="/dashboard/inventory/suppliers">
+                  <Building2 className="size-4" />
+                  Inventory supplier
+                </Link>
+              </Button>
+            ) : null}
             {isCustomer ? (
               <Button type="button" size="sm" asChild>
                 <Link href={`/dashboard/orders/new?phone=${encodeURIComponent(contact.phone)}`}>

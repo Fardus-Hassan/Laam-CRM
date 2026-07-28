@@ -282,6 +282,26 @@ export function InventoryReportsDashboard() {
                   ))}
                 </ul>
               )}
+              {data?.expiringLots && data.expiringLots.length > 0 ? (
+                <div className="mt-4 border-t pt-3">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Expiring lots (60d)
+                  </p>
+                  <ul className="space-y-2">
+                    {data.expiringLots.slice(0, 5).map((lot) => (
+                      <li key={lot.id} className="flex justify-between gap-2 text-xs">
+                        <span className="truncate font-mono">{lot.lotNumber}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {lot.daysToExpiry != null ? `${lot.daysToExpiry}d` : '—'} · qty {lot.quantity}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Button type="button" size="sm" variant="ghost" className="mt-2" asChild>
+                    <Link href="/dashboard/inventory/lots">All lots</Link>
+                  </Button>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

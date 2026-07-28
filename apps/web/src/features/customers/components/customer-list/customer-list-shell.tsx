@@ -133,20 +133,20 @@ export function CustomerListShell() {
   }
 
   function handleFollowUpClick(row: CustomerListItem) {
-    void import('@/features/followups/data/mock-followups').then(({ createMockFollowupForCustomer }) => {
-      createMockFollowupForCustomer({
-        customerId: row.id,
-        customerNumber: row.customerNumber,
-        name: row.name,
-        phone: row.phone,
-        address: row.address,
-        district: row.district,
-        agentName: row.assignedAgentName,
-        note: 'Follow-up from customers list',
-      });
-      toast.success(`Follow-up created for ${row.name}`);
-      handleRefresh();
-    });
+    void (async () => {
+      try {
+        const { followupsApi } = await import('@/features/followups/api/followups-api');
+        await followupsApi.createFollowup({
+          customerId: row.id,
+          note: 'Follow-up from customers list',
+          assignedAgentName: row.assignedAgentName,
+        });
+        toast.success(`Follow-up created for ${row.name}`);
+        handleRefresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to create follow-up');
+      }
+    })();
   }
 
   return (

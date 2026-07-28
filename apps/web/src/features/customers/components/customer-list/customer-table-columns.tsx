@@ -55,7 +55,7 @@ export function buildCustomerTableColumns(options?: {
       meta: { label: 'ID', priority: 'primary', align: 'top' },
       cell: ({ row }) => (
         <Link
-          href={`/dashboard/companies/${row.original.id}`}
+          href={`/dashboard/customers/${row.original.id}`}
           className="font-semibold tabular-nums text-primary hover:underline"
         >
           {row.original.customerNumber}
@@ -264,7 +264,7 @@ export function buildCustomerTableColumns(options?: {
             </Link>
           </Button>
           <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" asChild>
-            <Link href={`/dashboard/companies/${row.original.id}`}>View</Link>
+            <Link href={`/dashboard/customers/${row.original.id}`}>View</Link>
           </Button>
         </div>
       ),

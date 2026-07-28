@@ -37,6 +37,7 @@ export const contactListItemSchema = z.object({
   followUpDue: z.string().optional(),
   customerId: z.string().optional(),
   leadId: z.string().optional(),
+  inventorySupplierId: z.string().optional(),
 });
 
 export type ContactListItem = z.infer<typeof contactListItemSchema>;
@@ -111,6 +112,10 @@ export const createContactPayloadSchema = z.object({
   address: z.string().optional(),
   assignedAgentName: z.string().optional(),
   notes: z.string().optional(),
+  /** Link to Inventory → Suppliers (purchase vendors). */
+  inventorySupplierId: z.string().optional(),
+  /** When true and contactType=supplier, upsert InventorySupplier by name/phone. */
+  syncInventorySupplier: z.boolean().optional(),
 });
 
 export type CreateContactPayload = z.infer<typeof createContactPayloadSchema>;

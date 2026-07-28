@@ -95,6 +95,10 @@ describe('InventoryCatalogService', () => {
   let prisma: ReturnType<typeof createPrismaMock>['prisma'];
   let tx: ReturnType<typeof createPrismaMock>['tx'];
   let service: InventoryCatalogService;
+  let advanced: {
+    consumeStock: jest.Mock;
+    receiveStock: jest.Mock;
+  };
 
   beforeEach(() => {
     ({ prisma, tx } = createPrismaMock());
@@ -102,7 +106,16 @@ describe('InventoryCatalogService', () => {
       resolveVariantBaseUomId: jest.fn(async () => 'uom-pcs'),
       ensureDefaultUnits: jest.fn(),
     };
-    service = new InventoryCatalogService(prisma as never, uom as never);
+    advanced = {
+      consumeStock: jest.fn(),
+      receiveStock: jest.fn(),
+    };
+    service = new InventoryCatalogService(prisma as never, uom as never, {
+      ...advanced,
+      ensureDefaultWarehouse: jest.fn(),
+      applyWarehouseDelta: jest.fn(),
+      postInventoryJournal: jest.fn(),
+    } as never);
   });
 
   describe('requireOrg', () => {
@@ -267,30 +280,25 @@ describe('InventoryCatalogService', () => {
 
     it('rejects a decrement that would drive stock below zero', async () => {
       tx.product.findFirst.mockResolvedValue({ id: 'prod-1' });
-      // Guarded updateMany matches nothing because stock < |delta| …
-      tx.productVariant.updateMany.mockResolvedValue({ count: 0 });
-      // … but the variant itself exists, so this is an insufficient-stock case.
-      tx.productVariant.findFirst.mockResolvedValue({ id: 'var-1' });
+      advanced.consumeStock.mockRejectedValue(
+        new BadRequestException('Insufficient stock in source warehouse'),
+      );
 
       const error = await service
         .adjustStock(ORG, 'prod-1', { variantId: 'var-1', delta: -10, reason: 'damage' })
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(BadRequestException);
-      expect((error as BadRequestException).message).toBe(
-        'Insufficient stock for this adjustment',
-      );
-
-      expect(tx.productVariant.updateMany).toHaveBeenCalledWith({
-        where: expect.objectContaining({
-          id: 'var-1',
+      expect(advanced.consumeStock).toHaveBeenCalledWith(
+        tx,
+        ORG,
+        expect.objectContaining({
           productId: 'prod-1',
-          organizationId: ORG,
-          stock: { gte: 10 },
+          variantId: 'var-1',
+          quantity: 10,
+          reason: 'damage',
         }),
-        data: { stock: { increment: -10 } },
-      });
-      expect(tx.inventoryStockMovement.create).not.toHaveBeenCalled();
+      );
     });
   });
 
@@ -332,7 +340,13 @@ describe('InventoryCatalogService', () => {
         ),
         ensureDefaultUnits: jest.fn(),
       };
-      service = new InventoryCatalogService(prisma as never, uom as never);
+      service = new InventoryCatalogService(prisma as never, uom as never, {
+      consumeStock: jest.fn(),
+      receiveStock: jest.fn(),
+      ensureDefaultWarehouse: jest.fn(),
+      applyWarehouseDelta: jest.fn(),
+      postInventoryJournal: jest.fn(),
+    } as never);
 
       prisma.orgCategory.count.mockResolvedValue(10);
       prisma.orgCategory.findFirst.mockResolvedValue({

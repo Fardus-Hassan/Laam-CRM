@@ -36,6 +36,7 @@ export class InventoryReportsService {
       recentReturns,
       recentProduction,
       recentMovements,
+      expiringLotRows,
     ] = await Promise.all([
       this.prisma.productVariant.findMany({
         where: {
@@ -72,7 +73,7 @@ export class InventoryReportsService {
       this.prisma.inventoryPurchaseReturn.count({
         where: {
           organizationId,
-          status: { not: 'completed' },
+          status: { in: ['pending', 'approved'] },
         },
       }),
       this.prisma.inventoryPurchase.findMany({
@@ -116,6 +117,29 @@ export class InventoryReportsService {
         },
         orderBy: { createdAt: 'desc' },
         take: 12,
+      }),
+      this.prisma.inventoryLot.findMany({
+        where: {
+          organizationId,
+          status: 'active',
+          quantity: { gt: 0 },
+          expiresAt: { not: null, lte: (() => {
+            const d = new Date();
+            d.setUTCDate(d.getUTCDate() + 60);
+            return d;
+          })() },
+        },
+        include: {
+          variant: {
+            select: {
+              sku: true,
+              product: { select: { name: true } },
+            },
+          },
+          warehouse: { select: { code: true, name: true } },
+        },
+        orderBy: { expiresAt: 'asc' },
+        take: 20,
       }),
     ]);
 
@@ -265,6 +289,23 @@ export class InventoryReportsService {
         categories: sortBreakdown(categoryMap),
         brands: sortBreakdown(brandMap),
       },
+      expiringLots: (() => {
+        const now = Date.now();
+        return expiringLotRows.map((row) => ({
+          id: row.id,
+          lotNumber: row.lotNumber,
+          productName: row.variant.product.name,
+          variantSku: row.variant.sku,
+          quantity: row.quantity,
+          expiresAt: row.expiresAt?.toISOString(),
+          daysToExpiry: row.expiresAt
+            ? Math.ceil((row.expiresAt.getTime() - now) / (24 * 60 * 60 * 1000))
+            : undefined,
+          warehouseName: row.warehouse
+            ? `${row.warehouse.code} · ${row.warehouse.name}`
+            : undefined,
+        }));
+      })(),
     };
   }
 

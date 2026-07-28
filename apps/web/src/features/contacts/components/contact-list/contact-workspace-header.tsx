@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -26,9 +27,16 @@ export function ContactWorkspaceHeader({
   return (
     <div className={cn('flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between', className)}>
       <div className="min-w-0">
-        <h2 className="text-base font-semibold tracking-tight">Contact workspace</h2>
+        <h2 className="text-base font-semibold tracking-tight">Suppliers & partners</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Buyers, suppliers, courier partners — one place to call, message, and follow up.
+          B2B outreach contacts. For purchase vendors with stock and POs, use{' '}
+          <Link
+            href="/dashboard/inventory/suppliers"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Inventory → Suppliers
+          </Link>
+          .
         </p>
         {refreshedLabel ? (
           <p className="mt-1 text-xs text-muted-foreground">{refreshedLabel}</p>

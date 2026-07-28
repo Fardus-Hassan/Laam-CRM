@@ -1,9 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { UnitOfMeasure, UnitOfMeasureListResponse } from '@laam/types';
+import type {
+  CreateUnitOfMeasurePayload,
+  UnitOfMeasure,
+  UnitOfMeasureListResponse,
+  UpdateUnitOfMeasurePayload,
+} from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { toNumber } from './inventory-catalog.service';
+import { isUniqueConstraintError, toNumber } from './inventory-catalog.service';
 
 const DEFAULT_UNITS: Array<{
   code: string;
@@ -87,6 +92,91 @@ export class InventoryUomService {
       items: rows.map((row) => this.toDto(row)),
       total: rows.length,
     };
+  }
+
+  async createUnit(
+    organizationId: string,
+    input: CreateUnitOfMeasurePayload,
+  ): Promise<UnitOfMeasure> {
+    await this.ensureDefaultUnits(organizationId);
+    const code = input.code.trim();
+    const name = input.name.trim();
+    if (!code || !name) throw new BadRequestException('Code and name are required');
+    try {
+      const created = await this.prisma.unitOfMeasure.create({
+        data: {
+          organizationId,
+          code,
+          name,
+          dimension: input.dimension ?? 'count',
+          factorToDimensionBase: new Prisma.Decimal(input.factorToDimensionBase ?? 1),
+          isSystem: false,
+        },
+      });
+      return this.toDto(created);
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException(`Unit code "${code}" already exists`);
+      }
+      throw error;
+    }
+  }
+
+  async updateUnit(
+    organizationId: string,
+    unitId: string,
+    input: UpdateUnitOfMeasurePayload,
+  ): Promise<UnitOfMeasure> {
+    const existing = await this.prisma.unitOfMeasure.findFirst({
+      where: { id: unitId, organizationId },
+    });
+    if (!existing) throw new NotFoundException('Unit of measure not found');
+    if (existing.isSystem && (input.code !== undefined || input.dimension !== undefined)) {
+      throw new BadRequestException('System units cannot change code or dimension');
+    }
+    try {
+      const updated = await this.prisma.unitOfMeasure.update({
+        where: { id: unitId },
+        data: {
+          ...(input.code !== undefined ? { code: input.code.trim() } : {}),
+          ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+          ...(input.dimension !== undefined ? { dimension: input.dimension } : {}),
+          ...(input.factorToDimensionBase !== undefined
+            ? { factorToDimensionBase: new Prisma.Decimal(input.factorToDimensionBase) }
+            : {}),
+        },
+      });
+      return this.toDto(updated);
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException('Unit code already exists');
+      }
+      throw error;
+    }
+  }
+
+  async deleteUnit(organizationId: string, unitId: string): Promise<void> {
+    const existing = await this.prisma.unitOfMeasure.findFirst({
+      where: { id: unitId, organizationId },
+      select: { id: true, isSystem: true, code: true },
+    });
+    if (!existing) throw new NotFoundException('Unit of measure not found');
+    if (existing.isSystem) {
+      throw new BadRequestException(`System unit "${existing.code}" cannot be deleted`);
+    }
+    const inUse = await this.prisma.productVariant.count({
+      where: { organizationId, baseUomId: unitId },
+    });
+    if (inUse > 0) {
+      throw new ConflictException('Unit is used as a product base unit and cannot be deleted');
+    }
+    const conversions = await this.prisma.variantUomConversion.count({
+      where: { uomId: unitId },
+    });
+    if (conversions > 0) {
+      throw new ConflictException('Unit is used in product conversions and cannot be deleted');
+    }
+    await this.prisma.unitOfMeasure.delete({ where: { id: unitId } });
   }
 
   async resolveUnit(

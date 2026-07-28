@@ -25,11 +25,13 @@ import type {
   PurchaseReturnDetail,
   PurchaseReturnListItem,
   PurchaseReturnListResponse,
+  ReceivePurchasePayload,
   RunProductionBatchPayload,
   StockAdjustmentListResponse,
   SupplierListItem,
   SupplierListResponse,
   UpdateMixerRecipePayload,
+  UpdatePurchasePayload,
   UpdateSupplierPayload,
 } from '@laam/types';
 
@@ -62,38 +64,51 @@ export class InventoryOperationsService {
     private readonly uom: InventoryUomService,
   ) {}
 
-  async listSuppliers(organizationId: string, search?: string): Promise<SupplierListResponse> {
-    const query = search?.trim();
-    const rows = await this.prisma.inventorySupplier.findMany({
-      where: {
-        organizationId,
-        ...(query
-          ? {
-              OR: [
-                { name: { contains: query, mode: 'insensitive' as const } },
-                { phone: { contains: query } },
-                { contactPerson: { contains: query, mode: 'insensitive' as const } },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        purchases: {
-          select: {
-            paymentStatus: true,
-            stockStatus: true,
-            purchaseDate: true,
-            lines: { select: { quantity: true, unitCost: true, productId: true } },
+  async listSuppliers(
+    organizationId: string,
+    opts?: { search?: string; page?: number; pageSize?: number },
+  ): Promise<SupplierListResponse> {
+    const query = opts?.search?.trim();
+    const page = Math.max(1, opts?.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const where = {
+      organizationId,
+      ...(query
+        ? {
+            OR: [
+              { name: { contains: query, mode: 'insensitive' as const } },
+              { phone: { contains: query } },
+              { contactPerson: { contains: query, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const [total, rows] = await Promise.all([
+      this.prisma.inventorySupplier.count({ where }),
+      this.prisma.inventorySupplier.findMany({
+        where,
+        include: {
+          purchases: {
+            select: {
+              paymentStatus: true,
+              stockStatus: true,
+              purchaseDate: true,
+              lines: { select: { quantity: true, unitCost: true, productId: true } },
+            },
+            orderBy: { purchaseDate: 'desc' },
           },
-          orderBy: { purchaseDate: 'desc' },
         },
-      },
-      orderBy: { name: 'asc' },
-    });
+        orderBy: { name: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
 
     return {
       items: rows.map((supplier) => this.toSupplierListItem(supplier)),
-      total: rows.length,
+      total,
+      page,
+      pageSize,
     };
   }
 
@@ -203,40 +218,65 @@ export class InventoryOperationsService {
 
   async listPurchases(
     organizationId: string,
-    search?: string,
+    opts?: { search?: string; page?: number; pageSize?: number; stockStatus?: string },
   ): Promise<PurchaseListResponse> {
-    const query = search?.trim();
-    const rows = await this.prisma.inventoryPurchase.findMany({
-      where: {
-        organizationId,
-        ...(query
-          ? {
-              OR: [
-                { purchaseNumber: { contains: query, mode: 'insensitive' as const } },
-                { supplier: { name: { contains: query, mode: 'insensitive' as const } } },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        supplier: { select: { name: true } },
-        lines: { select: { quantity: true, unitCost: true } },
-      },
-      orderBy: [{ purchaseDate: 'desc' }, { createdAt: 'desc' }],
-    });
+    const query = opts?.search?.trim();
+    const page = Math.max(1, opts?.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const where: Prisma.InventoryPurchaseWhereInput = {
+      organizationId,
+      ...(opts?.stockStatus ? { stockStatus: opts.stockStatus } : {}),
+      ...(query
+        ? {
+            OR: [
+              { purchaseNumber: { contains: query, mode: 'insensitive' as const } },
+              { supplier: { name: { contains: query, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {}),
+    };
+    const [total, rows, unpaidAgg, pendingReceipt] = await Promise.all([
+      this.prisma.inventoryPurchase.count({ where }),
+      this.prisma.inventoryPurchase.findMany({
+        where,
+        include: {
+          supplier: { select: { name: true } },
+          lines: { select: { quantity: true, unitCost: true } },
+        },
+        orderBy: [{ purchaseDate: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.inventoryPurchase.findMany({
+        where: {
+          organizationId,
+          stockStatus: { not: 'cancelled' },
+          paymentStatus: { not: 'paid' },
+        },
+        include: { lines: { select: { quantity: true, unitCost: true } } },
+      }),
+      this.prisma.inventoryPurchase.count({
+        where: { organizationId, stockStatus: { in: ['pending', 'partial'] } },
+      }),
+    ]);
     const items = rows.map((purchase) => this.toPurchaseListItem(purchase));
 
     return {
       items,
-      total: items.length,
+      total,
+      page,
+      pageSize,
       summary: {
-        unpaidTotal: items
-          .filter(
-            (purchase) =>
-              purchase.paymentStatus !== 'paid' && purchase.stockStatus !== 'cancelled',
-          )
-          .reduce((sum, purchase) => sum + purchase.totalAmount, 0),
-        pendingReceipt: items.filter((purchase) => purchase.stockStatus === 'pending').length,
+        unpaidTotal: unpaidAgg.reduce(
+          (sum, purchase) =>
+            sum +
+            purchase.lines.reduce(
+              (lineSum, line) => lineSum + line.quantity * toNumber(line.unitCost),
+              0,
+            ),
+          0,
+        ),
+        pendingReceipt,
       },
     };
   }
@@ -255,7 +295,26 @@ export class InventoryOperationsService {
       },
     });
     if (!purchase) throw new NotFoundException('Purchase order not found');
-    return this.toPurchaseDetail(purchase);
+
+    let receivedRows: Array<{ id: string; receivedQuantity: number }> = [];
+    try {
+      receivedRows = await this.prisma.$queryRaw<Array<{ id: string; receivedQuantity: number }>>`
+        SELECT id, COALESCE("receivedQuantity", 0)::int AS "receivedQuantity"
+        FROM "InventoryPurchaseLine"
+        WHERE "purchaseId" = ${purchaseId}
+      `;
+    } catch {
+      receivedRows = [];
+    }
+    const receivedById = new Map(receivedRows.map((row) => [row.id, row.receivedQuantity]));
+
+    return this.toPurchaseDetail({
+      ...purchase,
+      lines: purchase.lines.map((line) => ({
+        ...line,
+        receivedQuantity: receivedById.get(line.id) ?? 0,
+      })),
+    });
   }
 
   async updatePurchasePayment(
@@ -388,11 +447,131 @@ export class InventoryOperationsService {
     }
   }
 
+  async updatePurchase(
+    organizationId: string,
+    purchaseId: string,
+    input: UpdatePurchasePayload,
+  ): Promise<PurchaseDetail> {
+    const existing = await this.prisma.inventoryPurchase.findFirst({
+      where: { id: purchaseId, organizationId },
+      include: { lines: true },
+    });
+    if (!existing) throw new NotFoundException('Purchase order not found');
+    if (existing.stockStatus !== 'pending') {
+      throw new ConflictException(
+        `Only pending purchases can be edited (${existing.purchaseNumber} is ${existing.stockStatus})`,
+      );
+    }
+    if (existing.lines.some((line) => ((line as { receivedQuantity?: number }).receivedQuantity ?? 0) > 0)) {
+      throw new ConflictException('Cannot edit a purchase after stock has been received');
+    }
+
+    if (input.supplierId) {
+      const supplier = await this.prisma.inventorySupplier.findFirst({
+        where: { id: input.supplierId, organizationId, status: 'active' },
+        select: { id: true },
+      });
+      if (!supplier) throw new BadRequestException('Invalid or inactive supplier');
+    }
+
+    let normalizedLines:
+      | Array<{
+          productId: string;
+          variantId: string;
+          quantity: number;
+          unitCost: Prisma.Decimal;
+        }>
+      | undefined;
+
+    if (input.lines) {
+      const uniqueVariantIds = [...new Set(input.lines.map((line) => line.variantId))];
+      const variants = await this.prisma.productVariant.findMany({
+        where: {
+          id: { in: uniqueVariantIds },
+          organizationId,
+          product: { deletedAt: null },
+        },
+        select: { id: true, productId: true },
+      });
+      const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+      for (const line of input.lines) {
+        const variant = variantById.get(line.variantId);
+        if (!variant || variant.productId !== line.productId) {
+          throw new BadRequestException('A purchase line contains an invalid product variant');
+        }
+      }
+      normalizedLines = await Promise.all(
+        input.lines.map(async (line) => {
+          const { baseQuantity } = await this.uom.convertToVariantBase(
+            organizationId,
+            line.variantId,
+            line.quantity,
+            { uomId: line.uomId, uomCode: line.uomCode },
+          );
+          return {
+            productId: line.productId,
+            variantId: line.variantId,
+            quantity: baseQuantity,
+            unitCost: new Prisma.Decimal(line.unitCost),
+          };
+        }),
+      );
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        if (normalizedLines) {
+          await tx.inventoryPurchaseLine.deleteMany({ where: { purchaseId } });
+        }
+        await tx.inventoryPurchase.update({
+          where: { id: purchaseId },
+          data: {
+            ...(input.supplierId ? { supplierId: input.supplierId } : {}),
+            ...(input.purchaseNumber
+              ? { purchaseNumber: input.purchaseNumber.trim().toUpperCase() }
+              : {}),
+            ...(input.paymentStatus ? { paymentStatus: input.paymentStatus } : {}),
+            ...(input.purchaseDate
+              ? { purchaseDate: this.parseDate(input.purchaseDate, 'purchaseDate') }
+              : {}),
+            ...(input.dueDate !== undefined
+              ? {
+                  dueDate: input.dueDate
+                    ? this.parseDate(input.dueDate, 'dueDate')
+                    : null,
+                }
+              : {}),
+            ...(input.notes !== undefined
+              ? { notes: input.notes?.trim() ? input.notes.trim() : null }
+              : {}),
+            ...(normalizedLines
+              ? {
+                  lines: {
+                    create: normalizedLines,
+                  },
+                }
+              : {}),
+          },
+        });
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException('A purchase with this number already exists');
+      }
+      throw error;
+    }
+
+    return this.getPurchase(organizationId, purchaseId);
+  }
+
   async receivePurchase(
     organizationId: string,
     purchaseId: string,
+    input: ReceivePurchasePayload = {},
     actor?: Actor,
   ): Promise<PurchaseListItem> {
+    const receiptId = randomUUID();
+
     await this.prisma.$transaction(async (tx) => {
       const purchase = await tx.inventoryPurchase.findFirst({
         where: { id: purchaseId, organizationId },
@@ -400,7 +579,7 @@ export class InventoryOperationsService {
       });
       if (!purchase) throw new NotFoundException('Purchase order not found');
       if (purchase.stockStatus === 'received') {
-        throw new ConflictException(`${purchase.purchaseNumber} is already received`);
+        throw new ConflictException(`${purchase.purchaseNumber} is already fully received`);
       }
       if (purchase.stockStatus === 'cancelled') {
         throw new ConflictException(`${purchase.purchaseNumber} is cancelled`);
@@ -410,23 +589,71 @@ export class InventoryOperationsService {
         where: {
           id: purchaseId,
           organizationId,
-          stockStatus: { notIn: ['received', 'cancelled'] },
+          stockStatus: { in: ['pending', 'partial'] },
         },
         data: {
-          stockStatus: 'received',
           receivedAt: new Date(),
           receivedById: actor?.userId ?? null,
           receivedByName: actor?.name ?? null,
         },
       });
       if (claimed.count !== 1) {
-        throw new ConflictException(`${purchase.purchaseNumber} is already received`);
+        throw new ConflictException(
+          `${purchase.purchaseNumber} cannot be received in its current state`,
+        );
       }
 
-      const warehouse = await this.advanced.ensureDefaultWarehouse(organizationId, tx);
-      let inventoryAmount = 0;
+      let warehouse =
+        input.warehouseId != null
+          ? await tx.warehouse.findFirst({
+              where: { id: input.warehouseId, organizationId, isActive: true },
+            })
+          : null;
+      if (input.warehouseId && !warehouse) {
+        throw new BadRequestException('Invalid or inactive warehouse');
+      }
+      warehouse ??= await this.advanced.ensureDefaultWarehouse(organizationId, tx);
 
-      for (const line of purchase.lines) {
+      const receiveByLineId = new Map(
+        (input.lines ?? []).map((line) => [line.lineId, line] as const),
+      );
+      const receiveAllRemaining = !input.lines?.length;
+
+      const lines = purchase.lines as Array<{
+        id: string;
+        productId: string;
+        variantId: string;
+        quantity: number;
+        receivedQuantity?: number;
+        unitCost: unknown;
+      }>;
+
+      let inventoryAmount = 0;
+      let receivedAny = false;
+
+      for (const line of lines) {
+        const alreadyReceived = line.receivedQuantity ?? 0;
+        const remaining = Math.max(0, line.quantity - alreadyReceived);
+        if (remaining <= 0) continue;
+
+        const requested = receiveAllRemaining
+          ? remaining
+          : (receiveByLineId.get(line.id)?.quantity ?? 0);
+        if (requested <= 0) continue;
+        if (!Number.isInteger(requested)) {
+          throw new BadRequestException('Receive quantity must be a whole number');
+        }
+        if (requested > remaining) {
+          throw new BadRequestException(
+            `Cannot receive ${requested} for line ${line.id.slice(0, 8)} — only ${remaining} remaining`,
+          );
+        }
+
+        const expiresAtRaw = receiveByLineId.get(line.id)?.expiresAt;
+        const expiresAt = expiresAtRaw?.trim()
+          ? this.parseDate(expiresAtRaw, 'expiresAt')
+          : null;
+
         const variant = await tx.productVariant.findFirst({
           where: {
             id: line.variantId,
@@ -441,31 +668,41 @@ export class InventoryOperationsService {
         }
 
         const unitCost = toNumber(line.unitCost);
-        inventoryAmount += line.quantity * unitCost;
-        const lotNumber = `PO-${purchase.purchaseNumber}-${line.id.slice(0, 8)}`.toUpperCase();
+        inventoryAmount += requested * unitCost;
+        receivedAny = true;
+
+        const lotNumber =
+          `PO-${purchase.purchaseNumber}-${line.id.slice(0, 8)}-${receiptId.slice(0, 8)}`.toUpperCase();
         const lot = await tx.inventoryLot.create({
           data: {
             organizationId,
             variantId: line.variantId,
             warehouseId: warehouse.id,
             lotNumber,
-            quantity: line.quantity,
-            unitCost: line.unitCost,
+            quantity: requested,
+            unitCost: line.unitCost as Prisma.Decimal,
             receivedAt: new Date(),
+            expiresAt,
             status: 'active',
           },
         });
 
+        await tx.$executeRaw`
+          UPDATE "InventoryPurchaseLine"
+          SET "receivedQuantity" = COALESCE("receivedQuantity", 0) + ${requested}
+          WHERE "id" = ${line.id}
+        `;
+
         await tx.productVariant.update({
           where: { id: variant.id },
-          data: { costPrice: line.unitCost },
+          data: { costPrice: line.unitCost as Prisma.Decimal },
         });
 
         await this.advanced.applyWarehouseDelta(tx, organizationId, {
           warehouseId: warehouse.id,
           productId: line.productId,
           variantId: line.variantId,
-          delta: line.quantity,
+          delta: requested,
           reason: 'purchase_received',
           note: `Received ${purchase.purchaseNumber}`,
           unitCost,
@@ -476,8 +713,27 @@ export class InventoryOperationsService {
         });
       }
 
+      if (!receivedAny) {
+        throw new BadRequestException('No quantities selected to receive');
+      }
+
+      const refreshedLines = await tx.$queryRaw<
+        Array<{ quantity: number; receivedQuantity: number }>
+      >`
+        SELECT quantity, COALESCE("receivedQuantity", 0)::int AS "receivedQuantity"
+        FROM "InventoryPurchaseLine"
+        WHERE "purchaseId" = ${purchaseId}
+      `;
+      const fullyReceived = refreshedLines.every(
+        (line) => line.receivedQuantity >= line.quantity,
+      );
+      await tx.inventoryPurchase.update({
+        where: { id: purchaseId },
+        data: { stockStatus: fullyReceived ? 'received' : 'partial' },
+      });
+
       await this.advanced.postInventoryJournal(tx, organizationId, {
-        eventKey: `purchase-receipt:${purchase.id}`,
+        eventKey: `purchase-receipt:${purchase.id}:${receiptId}`,
         sourceType: 'purchase',
         sourceId: purchase.id,
         description: `Stock received ${purchase.purchaseNumber}`,
@@ -498,18 +754,38 @@ export class InventoryOperationsService {
     return this.toPurchaseListItem(row);
   }
 
-  async listAdjustments(organizationId: string): Promise<StockAdjustmentListResponse> {
-    const rows = await this.prisma.inventoryStockMovement.findMany({
-      where: {
-        organizationId,
-        reason: { in: [...ADJUSTMENT_REASONS] },
-      },
-      include: {
-        product: { select: { name: true, sku: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
+  async listAdjustments(
+    organizationId: string,
+    opts?: { page?: number; pageSize?: number; search?: string },
+  ): Promise<StockAdjustmentListResponse> {
+    const page = Math.max(1, opts?.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const query = opts?.search?.trim();
+    const where: Prisma.InventoryStockMovementWhereInput = {
+      organizationId,
+      reason: { in: [...ADJUSTMENT_REASONS] },
+      ...(query
+        ? {
+            OR: [
+              { product: { name: { contains: query, mode: 'insensitive' as const } } },
+              { product: { sku: { contains: query, mode: 'insensitive' as const } } },
+              { note: { contains: query, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const [total, rows] = await Promise.all([
+      this.prisma.inventoryStockMovement.count({ where }),
+      this.prisma.inventoryStockMovement.findMany({
+        where,
+        include: {
+          product: { select: { name: true, sku: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
 
     return {
       items: rows.map((row) => ({
@@ -525,7 +801,9 @@ export class InventoryOperationsService {
         adjustedBy: row.actorName ?? 'System',
         adjustedAt: row.createdAt.toISOString(),
       })),
-      total: rows.length,
+      total,
+      page,
+      pageSize,
     };
   }
 
@@ -566,16 +844,41 @@ export class InventoryOperationsService {
 
   // ─── Purchase returns ─────────────────────────────────────────────────────
 
-  async listPurchaseReturns(organizationId: string): Promise<PurchaseReturnListResponse> {
-    const rows = await this.prisma.inventoryPurchaseReturn.findMany({
-      where: { organizationId },
-      include: { lines: { select: { quantity: true, unitCost: true } } },
-      orderBy: [{ returnDate: 'desc' }, { createdAt: 'desc' }],
-    });
+  async listPurchaseReturns(
+    organizationId: string,
+    opts?: { page?: number; pageSize?: number; search?: string },
+  ): Promise<PurchaseReturnListResponse> {
+    const page = Math.max(1, opts?.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const query = opts?.search?.trim();
+    const where: Prisma.InventoryPurchaseReturnWhereInput = {
+      organizationId,
+      ...(query
+        ? {
+            OR: [
+              { returnNumber: { contains: query, mode: 'insensitive' as const } },
+              { purchaseNumber: { contains: query, mode: 'insensitive' as const } },
+              { supplierName: { contains: query, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const [total, rows] = await Promise.all([
+      this.prisma.inventoryPurchaseReturn.count({ where }),
+      this.prisma.inventoryPurchaseReturn.findMany({
+        where,
+        include: { lines: { select: { quantity: true, unitCost: true } } },
+        orderBy: [{ returnDate: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
 
     return {
       items: rows.map((row) => this.toPurchaseReturnListItem(row)),
-      total: rows.length,
+      total,
+      page,
+      pageSize,
     };
   }
 
@@ -677,6 +980,37 @@ export class InventoryOperationsService {
       }
       throw error;
     }
+  }
+
+  async rejectPurchaseReturn(
+    organizationId: string,
+    returnId: string,
+  ): Promise<PurchaseReturnListItem> {
+    const existing = await this.prisma.inventoryPurchaseReturn.findFirst({
+      where: { id: returnId, organizationId },
+      include: { lines: { select: { quantity: true, unitCost: true } } },
+    });
+    if (!existing) throw new NotFoundException('Purchase return not found');
+    if (existing.status === 'completed') {
+      throw new ConflictException(`${existing.returnNumber} is already completed`);
+    }
+    if (existing.status === 'rejected') {
+      throw new ConflictException(`${existing.returnNumber} is already rejected`);
+    }
+
+    const claimed = await this.prisma.inventoryPurchaseReturn.updateMany({
+      where: {
+        id: returnId,
+        organizationId,
+        status: { in: ['pending', 'approved'] },
+      },
+      data: { status: 'rejected' },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException(`${existing.returnNumber} could not be rejected`);
+    }
+
+    return this.toPurchaseReturnListItem({ ...existing, status: 'rejected' });
   }
 
   async approvePurchaseReturn(
@@ -906,6 +1240,8 @@ export class InventoryOperationsService {
           delta: -input.usedUnits,
           reason: 'production_consume',
           note: `Production — ${input.quantity}${input.unit} ${input.name}`,
+          sourceType: 'production',
+          sourceId: batchNumber,
           actor,
         });
       }
@@ -917,6 +1253,10 @@ export class InventoryOperationsService {
           delta: line.units,
           reason: 'production_output',
           note: `Production ${line.variantLabel} ×${line.units}`,
+          unitCost: line.costPerUnit || preview.costPerUnit,
+          lotNumber: `PRD-${batchNumber}-${line.variantId.slice(0, 6)}`,
+          sourceType: 'production',
+          sourceId: batchNumber,
           actor,
         });
         await tx.productVariant.update({
@@ -1284,45 +1624,51 @@ export class InventoryOperationsService {
       sourceType?: string;
       sourceId?: string;
       actor?: Actor;
+      expiresAt?: Date | null;
+      lotNumber?: string;
     },
   ): Promise<void> {
-    const warehouse = await this.advanced.ensureDefaultWarehouse(organizationId, tx);
-    let unitCost = input.unitCost;
-    if (unitCost == null) {
-      const variant = await tx.productVariant.findFirst({
-        where: { id: input.variantId, organizationId },
-        select: { costPrice: true },
+    const qty = Math.abs(Math.trunc(input.delta));
+    if (qty <= 0) return;
+
+    if (input.delta < 0) {
+      const writeoffReasons = ['damage', 'expiry', 'theft_loss', 'gift_sample'];
+      await this.advanced.consumeStock(tx, organizationId, {
+        productId: input.productId,
+        variantId: input.variantId,
+        quantity: qty,
+        preferFefo: true,
+        reason: input.reason,
+        note: input.note,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        actor: input.actor,
+        // purchase_return journal is posted once by completePurchaseReturn
+        journalKind: writeoffReasons.includes(input.reason) ? 'writeoff' : undefined,
+        journalEventKey: input.sourceId
+          ? `writeoff:${input.sourceId}:${input.variantId}`
+          : undefined,
+        journalDescription: `Stock write-off (${input.reason})`,
       });
-      unitCost = variant?.costPrice == null ? undefined : toNumber(variant.costPrice);
+      return;
     }
 
-    await this.advanced.applyWarehouseDelta(tx, organizationId, {
-      warehouseId: warehouse.id,
+    await this.advanced.receiveStock(tx, organizationId, {
       productId: input.productId,
       variantId: input.variantId,
-      delta: input.delta,
+      quantity: qty,
+      unitCost: input.unitCost,
+      createLot: true,
+      lot: {
+        lotNumber: input.lotNumber ?? `${input.reason.slice(0, 10)}-${randomUUID().slice(0, 8)}`,
+        expiresAt: input.expiresAt ?? null,
+      },
       reason: input.reason,
       note: input.note,
-      unitCost,
       sourceType: input.sourceType,
       sourceId: input.sourceId,
       actor: input.actor,
     });
-
-    if (
-      input.delta < 0 &&
-      ['damage', 'expiry', 'theft_loss', 'gift_sample'].includes(input.reason) &&
-      unitCost != null
-    ) {
-      await this.advanced.postInventoryJournal(tx, organizationId, {
-        eventKey: `writeoff:${input.sourceId ?? randomUUID()}`,
-        sourceType: 'stock_adjustment',
-        sourceId: input.sourceId ?? input.variantId,
-        description: `Stock write-off (${input.reason})`,
-        amount: Math.abs(input.delta) * unitCost,
-        kind: 'writeoff',
-      });
-    }
   }
 
   private parseDate(value: string, field: string): Date {
@@ -1398,6 +1744,7 @@ export class InventoryOperationsService {
       productId: string;
       variantId: string;
       quantity: number;
+      receivedQuantity?: number;
       unitCost: unknown;
       product: { name: string; sku: string };
       variant: { label: string; sku: string };
@@ -1410,6 +1757,7 @@ export class InventoryOperationsService {
       receivedByName: purchase.receivedByName ?? undefined,
       lines: purchase.lines.map((line) => {
         const unitCost = toNumber(line.unitCost);
+        const receivedQuantity = line.receivedQuantity ?? 0;
         return {
           id: line.id,
           productId: line.productId,
@@ -1419,6 +1767,8 @@ export class InventoryOperationsService {
           variantLabel: line.variant.label,
           variantSku: line.variant.sku,
           quantity: line.quantity,
+          receivedQuantity,
+          remainingQuantity: Math.max(0, line.quantity - receivedQuantity),
           unitCost,
           lineTotal: line.quantity * unitCost,
         };

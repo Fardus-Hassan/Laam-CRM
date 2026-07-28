@@ -8,7 +8,7 @@ import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { Button } from '@/components/ui/button';
 import { LEAD_SOURCE_LABELS } from '@/features/leads/config/lead-filters';
-import { LEAD_AGENTS } from '@/features/leads/data/mock-leads';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 import { cn } from '@/lib/utils';
 
 export type LeadFilterValues = {
@@ -46,6 +46,7 @@ export function LeadListToolbar({
   onAgentChange,
   className,
 }: LeadListToolbarProps) {
+  const { agents } = useAgentOptions();
   const hasActiveFilters = Boolean(filters.source || filters.agent);
 
   return (
@@ -102,7 +103,7 @@ export function LeadListToolbar({
           <FormSearchSelect
             value={filters.agent ?? ''}
             onChange={(value) => onAgentChange(value || undefined)}
-            options={LEAD_AGENTS.map((name) => ({ value: name, label: name }))}
+            options={agents.map((name) => ({ value: name, label: name }))}
             placeholder="Filter by agent"
           />
         </div>

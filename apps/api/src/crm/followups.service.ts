@@ -57,6 +57,9 @@ export class FollowupsService {
       customerNotes?: string | null;
       lineItems?: Array<{ productName: string; quantity: number }>;
       skipFollowup?: boolean;
+      /** Real Customer.id when available (preferred over phone-* legacy keys). */
+      customerId?: string | null;
+      customerNumber?: string | null;
     },
     actor?: ActorLabel,
   ): Promise<FollowupDetail | null> {
@@ -102,14 +105,18 @@ export class FollowupsService {
     ];
 
     const phoneDigits = input.phone.replace(/\D/g, '') || input.phone;
+    const customerId = input.customerId?.trim() || `phone-${phoneDigits}`;
+    const customerNumber =
+      input.customerNumber?.trim() || input.orderNumber;
+
     const row = await this.prisma.followup.create({
       data: {
         organizationId,
         queue: 1,
         orderId: input.orderId,
         orderNumber: input.orderNumber,
-        customerId: `phone-${phoneDigits}`,
-        customerNumber: input.orderNumber,
+        customerId,
+        customerNumber,
         scheduleDate: schedule,
         skipped: false,
         name: input.customerName.trim(),
@@ -127,6 +134,88 @@ export class FollowupsService {
         source: input.source,
         activities: activities as unknown as Prisma.InputJsonValue,
       },
+    });
+
+    if (input.customerId) {
+      await this.prisma.customer.updateMany({
+        where: { id: input.customerId, organizationId },
+        data: { hasFollowUp: true, followUpDue: schedule },
+      });
+    }
+
+    return this.toDetail(row);
+  }
+
+  /**
+   * Create a standalone follow-up from the Customers workspace.
+   */
+  async createForCustomer(
+    organizationId: string,
+    input: {
+      customerId: string;
+      scheduleDate?: string;
+      note?: string;
+      assignedAgentName?: string;
+      queue?: FollowupQueue;
+    },
+    actor?: ActorLabel,
+  ): Promise<FollowupDetail> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: input.customerId, organizationId },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const schedule = input.scheduleDate
+      ? new Date(input.scheduleDate)
+      : new Date();
+    schedule.setHours(0, 0, 0, 0);
+
+    const now = new Date();
+    const activities: ActivityJson[] = [
+      {
+        id: `act-cust-${customer.id}-${Date.now()}`,
+        label: 'Follow-up created from customer',
+        description: input.note?.trim() || undefined,
+        timestamp: now.toISOString(),
+        actorName: actor?.name ?? input.assignedAgentName ?? undefined,
+      },
+    ];
+
+    const row = await this.prisma.followup.create({
+      data: {
+        organizationId,
+        queue: input.queue ?? 1,
+        orderId: null,
+        orderNumber: null,
+        customerId: customer.id,
+        customerNumber: customer.customerNumber,
+        scheduleDate: schedule,
+        skipped: false,
+        name: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        area: customer.area,
+        district: customer.district,
+        customerNotes: customer.notes,
+        followupNotes: input.note?.trim() || null,
+        followupStatus: 'no_status',
+        type: customer.orderCount >= 2 ? 'repeat' : 'listed',
+        recentProducts: [],
+        tags: [],
+        smsStatus: 'not_sent',
+        assignedAgentName:
+          input.assignedAgentName?.trim() ||
+          customer.assignedAgentName ||
+          actor?.name ||
+          null,
+        source: 'call',
+        activities: activities as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { hasFollowUp: true, followUpDue: schedule },
     });
 
     return this.toDetail(row);
@@ -288,6 +377,41 @@ export class FollowupsService {
         activities: activities as unknown as Prisma.InputJsonValue,
       },
     });
+
+    // Keep Customer follow-up flags in sync when status/schedule changes
+    if (
+      !existing.customerId.startsWith('phone-') &&
+      (patch.followupStatus !== undefined ||
+        patch.scheduleDate !== undefined ||
+        patch.skipped !== undefined)
+    ) {
+      const open = await this.prisma.followup.count({
+        where: {
+          organizationId,
+          customerId: existing.customerId,
+          skipped: false,
+          followupStatus: { notIn: ['done', 'converted'] },
+        },
+      });
+      const nextDue = await this.prisma.followup.findFirst({
+        where: {
+          organizationId,
+          customerId: existing.customerId,
+          skipped: false,
+          followupStatus: { notIn: ['done', 'converted'] },
+          scheduleDate: { not: null },
+        },
+        orderBy: { scheduleDate: 'asc' },
+        select: { scheduleDate: true },
+      });
+      await this.prisma.customer.updateMany({
+        where: { id: existing.customerId, organizationId },
+        data: {
+          hasFollowUp: open > 0,
+          followUpDue: nextDue?.scheduleDate ?? null,
+        },
+      });
+    }
 
     return this.toDetail(row);
   }

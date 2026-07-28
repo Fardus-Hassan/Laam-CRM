@@ -133,7 +133,7 @@ export function SuppliersListShell() {
   const load = React.useCallback(() => {
     setLoading(true);
     void inventoryApi
-      .listSuppliers(search)
+      .listSuppliers({ search })
       .then((r) => setItems(r.items))
       .catch((error) => {
         setItems([]);
@@ -366,40 +366,49 @@ export function SuppliersListShell() {
 
 export function PurchaseListShell() {
   const [search, setSearch] = React.useState('');
+  const [page, setPage] = React.useState(1);
+  const pageSize = 50;
   const [data, setData] = React.useState<{
     items: PurchaseListItem[];
+    total: number;
     summary: { unpaidTotal: number; pendingReceipt: number };
   } | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  React.useEffect(() => {
     setLoading(true);
     void inventoryApi
-      .listPurchases(search)
-      .then(setData)
+      .listPurchases({ search, page, pageSize })
+      .then((res) =>
+        setData({
+          items: res.items,
+          total: res.total,
+          summary: res.summary,
+        }),
+      )
       .catch((error) => {
         setData(null);
         toast.error(error instanceof Error ? error.message : 'Could not load purchases');
       })
       .finally(() => setLoading(false));
-  }, [search]);
-
-  async function receiveStock(p: PurchaseListItem) {
-    try {
-      await inventoryApi.receivePurchase(p.id);
-      toast.success(`Stock received for ${p.purchaseNumber} — posted to accounting`);
-      setData(await inventoryApi.listPurchases(search));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not receive stock');
-    }
-  }
+  }, [search, page]);
 
   async function cancelPurchase(p: PurchaseListItem) {
     if (!window.confirm(`Cancel ${p.purchaseNumber}?`)) return;
     try {
       await inventoryApi.cancelPurchase(p.id);
       toast.success(`${p.purchaseNumber} cancelled`);
-      setData(await inventoryApi.listPurchases(search));
+      setData(
+        await inventoryApi.listPurchases({ search, page, pageSize }).then((res) => ({
+          items: res.items,
+          total: res.total,
+          summary: res.summary,
+        })),
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not cancel purchase');
     }
@@ -435,7 +444,7 @@ export function PurchaseListShell() {
     >
       <CrmSummaryStrip
         items={[
-          { id: 'count', label: 'Orders', value: data ? String(data.items.length) : '—' },
+          { id: 'count', label: 'Orders', value: data ? String(data.total) : '—' },
           { id: 'unpaid', label: 'Unpaid total', value: data ? formatCurrency(data.summary.unpaidTotal) : '—' },
           { id: 'pending', label: 'Pending receipt', value: data ? String(data.summary.pendingReceipt) : '—' },
         ]}
@@ -469,14 +478,18 @@ export function PurchaseListShell() {
               <Button type="button" size="sm" variant="ghost" asChild>
                 <Link href={`/dashboard/inventory/purchase/${p.id}`}>View</Link>
               </Button>
-              {p.stockStatus === 'pending' ? (
+              {p.stockStatus === 'pending' || p.stockStatus === 'partial' ? (
                 <>
-                  <Button type="button" size="sm" variant="outline" onClick={() => void receiveStock(p)}>
-                    Receive
+                  <Button type="button" size="sm" variant="outline" asChild>
+                    <Link href={`/dashboard/inventory/purchase/${p.id}`}>
+                      {p.stockStatus === 'partial' ? 'Receive more' : 'Receive'}
+                    </Link>
                   </Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => void cancelPurchase(p)}>
-                    Cancel
-                  </Button>
+                  {p.stockStatus === 'pending' ? (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => void cancelPurchase(p)}>
+                      Cancel
+                    </Button>
+                  ) : null}
                 </>
               ) : p.stockStatus === 'received' ? (
                 <span className="self-center text-xs text-muted-foreground">Done</span>
@@ -510,14 +523,18 @@ export function PurchaseListShell() {
                 <Button type="button" size="sm" variant="outline" className="w-full" asChild>
                   <Link href={`/dashboard/inventory/purchase/${p.id}`}>View details</Link>
                 </Button>
-                {p.stockStatus === 'pending' ? (
+                {p.stockStatus === 'pending' || p.stockStatus === 'partial' ? (
                   <>
-                    <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => void receiveStock(p)}>
-                      Receive stock
+                    <Button type="button" size="sm" variant="outline" className="w-full" asChild>
+                      <Link href={`/dashboard/inventory/purchase/${p.id}`}>
+                        {p.stockStatus === 'partial' ? 'Receive more' : 'Receive stock'}
+                      </Link>
                     </Button>
-                    <Button type="button" size="sm" variant="ghost" className="w-full" onClick={() => void cancelPurchase(p)}>
-                      Cancel
-                    </Button>
+                    {p.stockStatus === 'pending' ? (
+                      <Button type="button" size="sm" variant="ghost" className="w-full" onClick={() => void cancelPurchase(p)}>
+                        Cancel
+                      </Button>
+                    ) : null}
                   </>
                 ) : null}
               </div>
@@ -525,6 +542,33 @@ export function PurchaseListShell() {
           ),
         }))}
       />
+      {data && data.total > pageSize ? (
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground">
+            Page {page} of {Math.max(1, Math.ceil(data.total / pageSize))} · {data.total} orders
+          </span>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={page * pageSize >= data.total}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </InventoryPageLayout>
   );
 }

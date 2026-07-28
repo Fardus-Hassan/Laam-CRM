@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import type { FollowupFilter, FollowupQueue, FollowupStatus } from '@laam/types';
@@ -70,11 +70,36 @@ export class FollowupsController {
   }
 
   @Post('bulk')
-  @RequirePermissions('orders.edit')
+  @RequirePermissions('orders.create', 'orders.confirm', 'companies.edit')
   @ApiOperation({ summary: 'Bulk update follow-ups' })
   bulk(@CurrentUser() user: AuthUserPayload, @Body() body: BulkFollowupsDto) {
     this.followups.requireOrg(user.organizationId);
     return this.followups.bulkAction(user.organizationId!, body, this.actor(user));
+  }
+
+  @Post()
+  @RequirePermissions('orders.create', 'orders.confirm', 'companies.edit')
+  @ApiOperation({ summary: 'Create follow-up for a customer' })
+  create(
+    @CurrentUser() user: AuthUserPayload,
+    @Body()
+    body: {
+      customerId: string;
+      scheduleDate?: string;
+      note?: string;
+      assignedAgentName?: string;
+      queue?: 1 | 2 | 3;
+    },
+  ) {
+    this.followups.requireOrg(user.organizationId);
+    if (!body?.customerId?.trim()) {
+      throw new BadRequestException('customerId is required');
+    }
+    return this.followups.createForCustomer(
+      user.organizationId!,
+      body,
+      this.actor(user),
+    );
   }
 
   @Get(':id')
@@ -86,7 +111,7 @@ export class FollowupsController {
   }
 
   @Patch(':id')
-  @RequirePermissions('orders.edit')
+  @RequirePermissions('orders.create', 'orders.confirm', 'companies.edit')
   @ApiOperation({ summary: 'Update follow-up' })
   update(
     @CurrentUser() user: AuthUserPayload,

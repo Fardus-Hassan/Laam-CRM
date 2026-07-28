@@ -514,6 +514,12 @@ export function getMockPurchase(purchaseId: string): PurchaseDetail {
   const variant = product?.variants[0];
   const quantity = Math.max(1, purchase.itemCount);
   const unitCost = variant?.costPrice ?? Math.round(purchase.totalAmount / quantity);
+  const receivedQuantity =
+    purchase.stockStatus === 'received'
+      ? quantity
+      : purchase.stockStatus === 'partial'
+        ? Math.floor(quantity / 2)
+        : 0;
   return {
     ...purchase,
     lines: [
@@ -526,6 +532,8 @@ export function getMockPurchase(purchaseId: string): PurchaseDetail {
         variantLabel: variant?.label ?? 'Standard',
         variantSku: variant?.sku ?? 'DEMO-STD',
         quantity,
+        receivedQuantity,
+        remainingQuantity: Math.max(0, quantity - receivedQuantity),
         unitCost,
         lineTotal: quantity * unitCost,
       },
@@ -560,8 +568,11 @@ export function cancelMockPurchase(purchaseId: string): PurchaseListItem {
   return { ...purchase };
 }
 
-/** Receive PO stock once — updates PO status, stock, and accounting. */
-export function receiveMockPurchase(purchaseId: string): PurchaseListItem {
+/** Receive PO stock (full remaining by default) — updates PO status, stock, and accounting. */
+export function receiveMockPurchase(
+  purchaseId: string,
+  _payload?: { warehouseId?: string; lines?: { lineId: string; quantity: number; expiresAt?: string }[] },
+): PurchaseListItem {
   const purchase = MOCK_PURCHASES.find((p) => p.id === purchaseId);
   if (!purchase) {
     throw new Error('Purchase order not found');

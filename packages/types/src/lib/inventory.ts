@@ -233,6 +233,8 @@ export type SupplierListItem = z.infer<typeof supplierListItemSchema>;
 export const supplierListResponseSchema = z.object({
   items: z.array(supplierListItemSchema),
   total: z.number(),
+  page: z.number().int().optional(),
+  pageSize: z.number().int().optional(),
 });
 
 export type SupplierListResponse = z.infer<typeof supplierListResponseSchema>;
@@ -279,6 +281,8 @@ export type PurchaseListItem = z.infer<typeof purchaseListItemSchema>;
 export const purchaseListResponseSchema = z.object({
   items: z.array(purchaseListItemSchema),
   total: z.number(),
+  page: z.number().int().optional(),
+  pageSize: z.number().int().optional(),
   summary: z.object({
     unpaidTotal: z.number(),
     pendingReceipt: z.number(),
@@ -296,6 +300,8 @@ export const purchaseDetailLineSchema = z.object({
   variantLabel: z.string(),
   variantSku: z.string(),
   quantity: z.number().int(),
+  receivedQuantity: z.number().int(),
+  remainingQuantity: z.number().int(),
   unitCost: z.number(),
   lineTotal: z.number(),
 });
@@ -340,6 +346,46 @@ export const createPurchasePayloadSchema = z.object({
 
 export type CreatePurchasePayload = z.infer<typeof createPurchasePayloadSchema>;
 
+/** Edit header + replace lines while stockStatus is still `pending` (nothing received). */
+export const updatePurchasePayloadSchema = z.object({
+  supplierId: z.string().min(1).optional(),
+  purchaseNumber: z.string().min(1).max(64).optional(),
+  paymentStatus: purchasePaymentStatusSchema.optional(),
+  purchaseDate: z.string().optional(),
+  dueDate: z.string().nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+  lines: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        variantId: z.string().min(1),
+        quantity: z.number().positive(),
+        unitCost: z.number().nonnegative(),
+        uomId: z.string().optional(),
+        uomCode: z.string().max(32).optional(),
+      }),
+    )
+    .min(1)
+    .max(100)
+    .optional(),
+});
+
+export type UpdatePurchasePayload = z.infer<typeof updatePurchasePayloadSchema>;
+
+export const receivePurchaseLinePayloadSchema = z.object({
+  lineId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  expiresAt: z.string().optional(),
+});
+
+export const receivePurchasePayloadSchema = z.object({
+  warehouseId: z.string().min(1).optional(),
+  /** When omitted, receive all remaining qty on every line. */
+  lines: z.array(receivePurchaseLinePayloadSchema).min(1).max(100).optional(),
+});
+
+export type ReceivePurchasePayload = z.infer<typeof receivePurchasePayloadSchema>;
+
 // Purchase returns
 export const purchaseReturnListItemSchema = z.object({
   id: z.string(),
@@ -348,7 +394,7 @@ export const purchaseReturnListItemSchema = z.object({
   supplierName: z.string(),
   itemCount: z.number().int(),
   totalAmount: z.number(),
-  status: z.enum(['pending', 'approved', 'completed']),
+  status: z.enum(['pending', 'approved', 'completed', 'rejected']),
   returnDate: z.string(),
   reason: z.string().optional(),
 });
@@ -358,6 +404,8 @@ export type PurchaseReturnListItem = z.infer<typeof purchaseReturnListItemSchema
 export const purchaseReturnListResponseSchema = z.object({
   items: z.array(purchaseReturnListItemSchema),
   total: z.number(),
+  page: z.number().int().optional(),
+  pageSize: z.number().int().optional(),
 });
 
 export type PurchaseReturnListResponse = z.infer<typeof purchaseReturnListResponseSchema>;
@@ -441,6 +489,8 @@ export type StockAdjustmentListItem = z.infer<typeof stockAdjustmentListItemSche
 export const stockAdjustmentListResponseSchema = z.object({
   items: z.array(stockAdjustmentListItemSchema),
   total: z.number(),
+  page: z.number().int().optional(),
+  pageSize: z.number().int().optional(),
 });
 
 export type StockAdjustmentListResponse = z.infer<typeof stockAdjustmentListResponseSchema>;
@@ -764,6 +814,20 @@ export const inventoryReportsResponseSchema = z.object({
     categories: z.array(inventoryReportBreakdownItemSchema),
     brands: z.array(inventoryReportBreakdownItemSchema),
   }),
+  expiringLots: z
+    .array(
+      z.object({
+        id: z.string(),
+        lotNumber: z.string(),
+        productName: z.string().optional(),
+        variantSku: z.string().optional(),
+        quantity: z.number().int(),
+        expiresAt: z.string().optional(),
+        daysToExpiry: z.number().int().optional(),
+        warehouseName: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export type InventoryReportsResponse = z.infer<typeof inventoryReportsResponseSchema>;

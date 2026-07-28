@@ -9,6 +9,11 @@ function createMocks() {
     inventoryPurchase: {
       findFirst: jest.fn(),
       updateMany: jest.fn(),
+      update: jest.fn(),
+    },
+    inventoryPurchaseLine: {
+      update: jest.fn(),
+      findMany: jest.fn(),
     },
     productVariant: {
       findFirst: jest.fn(),
@@ -23,22 +28,31 @@ function createMocks() {
     inventoryStockLevel: {
       upsert: jest.fn(),
     },
+    $executeRaw: jest.fn(),
+    $queryRaw: jest.fn(async () => [{ quantity: 5, receivedQuantity: 5 }]),
   };
   const prisma = {
     inventorySupplier: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      count: jest.fn(),
     },
     inventoryPurchase: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      count: jest.fn(),
     },
     productVariant: {
       findMany: jest.fn(),
     },
     inventoryStockMovement: {
       findMany: jest.fn(),
+      count: jest.fn(),
+    },
+    inventoryPurchaseReturn: {
+      findMany: jest.fn(),
+      count: jest.fn(),
     },
     $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
   };
@@ -72,6 +86,7 @@ describe('InventoryOperationsService', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('maps manual stock movements to adjustment history', async () => {
+    prisma.inventoryStockMovement.count.mockResolvedValue(1);
     prisma.inventoryStockMovement.findMany.mockResolvedValue([
       {
         id: 'movement-1',
@@ -136,6 +151,7 @@ describe('InventoryOperationsService', () => {
           productId: 'product-1',
           variantId: 'variant-1',
           quantity: 5,
+          receivedQuantity: 0,
           unitCost: 100,
         },
       ],
@@ -154,11 +170,12 @@ describe('InventoryOperationsService', () => {
       notes: null,
     });
 
-    const result = await service.receivePurchase(ORG, 'purchase-1', {
+    const result = await service.receivePurchase(ORG, 'purchase-1', {}, {
       userId: 'user-1',
       name: 'Admin',
     });
 
+    expect(tx.$executeRaw).toHaveBeenCalled();
     expect(advanced.applyWarehouseDelta).toHaveBeenCalledWith(
       tx,
       ORG,

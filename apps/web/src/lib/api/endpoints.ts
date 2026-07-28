@@ -19,6 +19,7 @@ export const crmEndpoints = {
   dashboard: '/crm/dashboard',
   dashboardStats: '/crm/dashboard/stats',
   contacts: '/crm/contacts',
+  customers: '/crm/customers',
   companies: '/crm/companies',
   leads: '/crm/leads',
   orders: '/crm/orders',

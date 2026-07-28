@@ -82,7 +82,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
             {
               id: 'contacts',
               title: 'Suppliers & partners',
-              url: '/dashboard/contacts',
+              url: '/dashboard/contacts?segment=supplier',
               permissions: pv('contacts.view'),
             },
           ],

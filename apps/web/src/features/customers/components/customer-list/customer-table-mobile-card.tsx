@@ -49,7 +49,7 @@ export function CustomerTableMobileCard({
           <div className="flex flex-wrap items-center gap-2">
             <CustomerStatusBadge status={row.status} />
             <Link
-              href={`/dashboard/companies/${row.id}`}
+              href={`/dashboard/customers/${row.id}`}
               className="text-base font-semibold text-primary hover:underline"
             >
               #{row.customerNumber}

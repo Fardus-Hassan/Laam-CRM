@@ -6,7 +6,9 @@ import type {
   CreatePurchasePayload,
   CreatePurchaseReturnPayload,
   CreateSupplierPayload,
+  CreateUnitOfMeasurePayload,
   CreateWarehousePayload,
+  InventoryLot,
   InventoryLotListResponse,
   InventoryProductDetail,
   InventoryReconciliationResponse,
@@ -14,6 +16,7 @@ import type {
   InventoryReportsResponse,
   MixerRecipeListItem,
   MixerRecipeListResponse,
+  PostReconciliationAdjustResponse,
   ProductListQuery,
   ProductListResponse,
   ProductStatus,
@@ -26,6 +29,7 @@ import type {
   PurchaseReturnDetail,
   PurchaseReturnListItem,
   PurchaseReturnListResponse,
+  ReceivePurchasePayload,
   RunProductionBatchPayload,
   StockAdjustmentListResponse,
   StockMovementListQuery,
@@ -33,10 +37,14 @@ import type {
   SupplierListItem,
   SupplierListResponse,
   TransferStockPayload,
+  UnitOfMeasure,
   UnitOfMeasureListResponse,
+  UpdateInventoryLotPayload,
   UpdateMixerRecipePayload,
   UpdateProductPayload,
+  UpdatePurchasePayload,
   UpdateSupplierPayload,
+  UpdateUnitOfMeasurePayload,
   UpdateWarehousePayload,
   Warehouse,
   WarehouseListResponse,
@@ -106,25 +114,47 @@ export type InventoryApi = {
     category?: string;
     stockDelta?: number;
   }) => Promise<{ successCount: number; failedCount: number; message?: string }>;
-  listSuppliers: (search?: string) => Promise<SupplierListResponse>;
+  listSuppliers: (opts?: {
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => Promise<SupplierListResponse>;
   createSupplier: (payload: CreateSupplierPayload) => Promise<SupplierListItem>;
   updateSupplier: (id: string, payload: UpdateSupplierPayload) => Promise<SupplierListItem>;
   deleteSupplier: (id: string) => Promise<void>;
-  listPurchases: (search?: string) => Promise<PurchaseListResponse>;
+  listPurchases: (opts?: {
+    search?: string;
+    page?: number;
+    pageSize?: number;
+    stockStatus?: string;
+  }) => Promise<PurchaseListResponse>;
   getPurchase: (purchaseId: string) => Promise<PurchaseDetail>;
   createPurchase: (payload: CreatePurchasePayload) => Promise<PurchaseListItem>;
+  updatePurchase: (purchaseId: string, payload: UpdatePurchasePayload) => Promise<PurchaseDetail>;
   updatePurchasePayment: (
     purchaseId: string,
     paymentStatus: PurchasePaymentStatus,
   ) => Promise<PurchaseListItem>;
   cancelPurchase: (purchaseId: string) => Promise<PurchaseListItem>;
-  receivePurchase: (purchaseId: string) => Promise<PurchaseListItem>;
-  listPurchaseReturns: () => Promise<PurchaseReturnListResponse>;
+  receivePurchase: (
+    purchaseId: string,
+    payload?: ReceivePurchasePayload,
+  ) => Promise<PurchaseListItem>;
+  listPurchaseReturns: (opts?: {
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => Promise<PurchaseReturnListResponse>;
   getPurchaseReturn: (returnId: string) => Promise<PurchaseReturnDetail>;
   createPurchaseReturn: (payload: CreatePurchaseReturnPayload) => Promise<PurchaseReturnListItem>;
   approvePurchaseReturn: (returnId: string) => Promise<PurchaseReturnListItem>;
+  rejectPurchaseReturn: (returnId: string) => Promise<PurchaseReturnListItem>;
   completePurchaseReturn: (returnId: string) => Promise<void>;
-  listAdjustments: () => Promise<StockAdjustmentListResponse>;
+  listAdjustments: (opts?: {
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => Promise<StockAdjustmentListResponse>;
   createAdjustment: (payload: CreateAdjustmentPayload) => Promise<void>;
   listMixerRecipes: () => Promise<MixerRecipeListResponse>;
   createMixerRecipe: (payload: CreateMixerRecipePayload) => Promise<MixerRecipeListItem>;
@@ -139,9 +169,21 @@ export type InventoryApi = {
   createWarehouse: (payload: CreateWarehousePayload) => Promise<Warehouse>;
   updateWarehouse: (id: string, payload: UpdateWarehousePayload) => Promise<Warehouse>;
   transferStock: (payload: TransferStockPayload) => Promise<void>;
-  listLots: (expiringWithinDays?: number) => Promise<InventoryLotListResponse>;
+  listLots: (opts?: {
+    expiringWithinDays?: number;
+    status?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+    fefo?: boolean;
+  }) => Promise<InventoryLotListResponse>;
+  updateLot: (id: string, payload: UpdateInventoryLotPayload) => Promise<InventoryLot>;
   getReconciliation: () => Promise<InventoryReconciliationResponse>;
+  postReconciliationAdjust: () => Promise<PostReconciliationAdjustResponse>;
   listUnits: () => Promise<UnitOfMeasureListResponse>;
+  createUnit: (payload: CreateUnitOfMeasurePayload) => Promise<UnitOfMeasure>;
+  updateUnit: (id: string, payload: UpdateUnitOfMeasurePayload) => Promise<UnitOfMeasure>;
+  deleteUnit: (id: string) => Promise<void>;
 };
 
 function delay(ms: number) {
@@ -225,9 +267,9 @@ export function createMockInventoryApi(): InventoryApi {
       const result = bulkUpdateMockProducts(payload);
       return { ...result, message: `Updated ${result.successCount} product(s)` };
     },
-    async listSuppliers(search) {
+    async listSuppliers(opts) {
       await delay(100);
-      const q = search?.trim().toLowerCase() ?? '';
+      const q = opts?.search?.trim().toLowerCase() ?? '';
       const items = MOCK_SUPPLIERS.filter(
         (s) =>
           !q ||
@@ -235,7 +277,10 @@ export function createMockInventoryApi(): InventoryApi {
           s.phone.includes(q) ||
           (s.contactPerson?.toLowerCase().includes(q) ?? false),
       );
-      return { items, total: items.length };
+      const page = opts?.page ?? 1;
+      const pageSize = opts?.pageSize ?? 50;
+      const start = (page - 1) * pageSize;
+      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
     },
     async createSupplier(payload) {
       await delay(100);
@@ -249,9 +294,9 @@ export function createMockInventoryApi(): InventoryApi {
       await delay(80);
       deleteMockSupplier(id);
     },
-    async listPurchases(search) {
+    async listPurchases(opts) {
       await delay(100);
-      return filterMockPurchases(search);
+      return filterMockPurchases(opts?.search);
     },
     async getPurchase(purchaseId) {
       await delay(80);
@@ -261,6 +306,11 @@ export function createMockInventoryApi(): InventoryApi {
       await delay(120);
       return createMockPurchase(payload);
     },
+    async updatePurchase(purchaseId, payload) {
+      await delay(100);
+      if (payload.paymentStatus) updateMockPurchasePayment(purchaseId, payload.paymentStatus);
+      return getMockPurchase(purchaseId);
+    },
     async updatePurchasePayment(purchaseId, paymentStatus) {
       await delay(80);
       return updateMockPurchasePayment(purchaseId, paymentStatus);
@@ -269,13 +319,21 @@ export function createMockInventoryApi(): InventoryApi {
       await delay(80);
       return cancelMockPurchase(purchaseId);
     },
-    async receivePurchase(purchaseId) {
+    async receivePurchase(purchaseId, payload) {
       await delay(120);
-      return receiveMockPurchase(purchaseId);
+      return receiveMockPurchase(purchaseId, payload);
     },
-    async listPurchaseReturns() {
+    async listPurchaseReturns(opts) {
       await delay(80);
-      return { items: MOCK_PURCHASE_RETURNS, total: MOCK_PURCHASE_RETURNS.length };
+      const page = opts?.page ?? 1;
+      const pageSize = opts?.pageSize ?? 50;
+      const start = (page - 1) * pageSize;
+      return {
+        items: MOCK_PURCHASE_RETURNS.slice(start, start + pageSize),
+        total: MOCK_PURCHASE_RETURNS.length,
+        page,
+        pageSize,
+      };
     },
     async getPurchaseReturn(returnId) {
       await delay(80);
@@ -289,13 +347,31 @@ export function createMockInventoryApi(): InventoryApi {
       await delay(80);
       return approveMockPurchaseReturn(returnId);
     },
+    async rejectPurchaseReturn(returnId) {
+      await delay(80);
+      const item = MOCK_PURCHASE_RETURNS.find((r) => r.id === returnId);
+      if (!item) throw new Error('Purchase return not found');
+      if (item.status === 'completed' || item.status === 'rejected') {
+        throw new Error(`${item.returnNumber} cannot be rejected`);
+      }
+      item.status = 'rejected';
+      return { ...item };
+    },
     async completePurchaseReturn(returnId) {
       await delay(100);
       completeMockPurchaseReturn(returnId);
     },
-    async listAdjustments() {
+    async listAdjustments(opts) {
       await delay(80);
-      return { items: MOCK_ADJUSTMENTS, total: MOCK_ADJUSTMENTS.length };
+      const page = opts?.page ?? 1;
+      const pageSize = opts?.pageSize ?? 50;
+      const start = (page - 1) * pageSize;
+      return {
+        items: MOCK_ADJUSTMENTS.slice(start, start + pageSize),
+        total: MOCK_ADJUSTMENTS.length,
+        page,
+        pageSize,
+      };
     },
     async createAdjustment(payload) {
       await delay(100);
@@ -353,18 +429,62 @@ export function createMockInventoryApi(): InventoryApi {
       await delay(120);
       transferMockStock(payload);
     },
-    async listLots(expiringWithinDays) {
+    async listLots(opts) {
       await delay(60);
-      return listMockLots(expiringWithinDays);
+      return listMockLots(opts?.expiringWithinDays);
+    },
+    async updateLot(id, payload) {
+      await delay(60);
+      const res = listMockLots();
+      const lot = res.items.find((item) => item.id === id);
+      if (!lot) throw new Error('Lot not found');
+      return {
+        ...lot,
+        ...(payload.expiresAt !== undefined
+          ? { expiresAt: payload.expiresAt ?? undefined }
+          : {}),
+        ...(payload.status ? { status: payload.status } : {}),
+        ...(payload.barcode !== undefined ? { barcode: payload.barcode ?? undefined } : {}),
+      };
     },
     async getReconciliation() {
       await delay(80);
       return getMockReconciliation();
     },
+    async postReconciliationAdjust() {
+      await delay(100);
+      return {
+        ok: true as const,
+        differencePosted: 0,
+        journalId: 'mock-journal',
+        eventKey: 'mock-recon',
+      };
+    },
     async listUnits() {
       await delay(40);
       const { MOCK_UNITS } = await import('@/features/inventory/data/mock-inventory');
       return { items: MOCK_UNITS, total: MOCK_UNITS.length };
+    },
+    async createUnit(payload) {
+      await delay(60);
+      return {
+        id: `uom-${Date.now()}`,
+        code: payload.code,
+        name: payload.name,
+        dimension: payload.dimension ?? 'count',
+        factorToDimensionBase: payload.factorToDimensionBase ?? 1,
+        isSystem: false,
+      };
+    },
+    async updateUnit(id, payload) {
+      await delay(60);
+      const { MOCK_UNITS } = await import('@/features/inventory/data/mock-inventory');
+      const existing = MOCK_UNITS.find((u) => u.id === id);
+      if (!existing) throw new Error('Unit not found');
+      return { ...existing, ...payload };
+    },
+    async deleteUnit(_id) {
+      await delay(40);
     },
   };
 }
@@ -451,10 +571,13 @@ export function createHttpInventoryApi(): InventoryApi {
         { method: 'POST', body: JSON.stringify(payload) },
       );
     },
-    async listSuppliers(search) {
+    async listSuppliers(opts) {
       const { apiRequest } = await import('@/lib/api/client');
-      const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      return apiRequest<SupplierListResponse>(`/crm/inventory/suppliers${params}`);
+      const params = new URLSearchParams();
+      if (opts?.search) params.set('search', opts.search);
+      params.set('page', String(opts?.page ?? 1));
+      params.set('pageSize', String(opts?.pageSize ?? 50));
+      return apiRequest<SupplierListResponse>(`/crm/inventory/suppliers?${params.toString()}`);
     },
     async createSupplier(payload) {
       const { apiRequest } = await import('@/lib/api/client');
@@ -474,10 +597,14 @@ export function createHttpInventoryApi(): InventoryApi {
       const { apiRequest } = await import('@/lib/api/client');
       await apiRequest(`/crm/inventory/suppliers/${id}`, { method: 'DELETE' });
     },
-    async listPurchases(search) {
+    async listPurchases(opts) {
       const { apiRequest } = await import('@/lib/api/client');
-      const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      return apiRequest<PurchaseListResponse>(`/crm/inventory/purchases${params}`);
+      const params = new URLSearchParams();
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.stockStatus) params.set('stockStatus', opts.stockStatus);
+      params.set('page', String(opts?.page ?? 1));
+      params.set('pageSize', String(opts?.pageSize ?? 50));
+      return apiRequest<PurchaseListResponse>(`/crm/inventory/purchases?${params.toString()}`);
     },
     async getPurchase(purchaseId) {
       const { apiRequest } = await import('@/lib/api/client');
@@ -487,6 +614,13 @@ export function createHttpInventoryApi(): InventoryApi {
       const { apiRequest } = await import('@/lib/api/client');
       return apiRequest<PurchaseListItem>('/crm/inventory/purchases', {
         method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+    async updatePurchase(purchaseId, payload) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<PurchaseDetail>(`/crm/inventory/purchases/${purchaseId}`, {
+        method: 'PATCH',
         body: JSON.stringify(payload),
       });
     },
@@ -503,15 +637,22 @@ export function createHttpInventoryApi(): InventoryApi {
         method: 'POST',
       });
     },
-    async receivePurchase(purchaseId) {
+    async receivePurchase(purchaseId, payload) {
       const { apiRequest } = await import('@/lib/api/client');
       return apiRequest<PurchaseListItem>(`/crm/inventory/purchases/${purchaseId}/receive`, {
         method: 'POST',
+        body: JSON.stringify(payload ?? {}),
       });
     },
-    async listPurchaseReturns() {
+    async listPurchaseReturns(opts) {
       const { apiRequest } = await import('@/lib/api/client');
-      return apiRequest<PurchaseReturnListResponse>('/crm/inventory/purchase-returns');
+      const params = new URLSearchParams();
+      if (opts?.search) params.set('search', opts.search);
+      params.set('page', String(opts?.page ?? 1));
+      params.set('pageSize', String(opts?.pageSize ?? 50));
+      return apiRequest<PurchaseReturnListResponse>(
+        `/crm/inventory/purchase-returns?${params.toString()}`,
+      );
     },
     async getPurchaseReturn(returnId) {
       const { apiRequest } = await import('@/lib/api/client');
@@ -531,13 +672,26 @@ export function createHttpInventoryApi(): InventoryApi {
         { method: 'POST' },
       );
     },
+    async rejectPurchaseReturn(returnId) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<PurchaseReturnListItem>(
+        `/crm/inventory/purchase-returns/${returnId}/reject`,
+        { method: 'POST' },
+      );
+    },
     async completePurchaseReturn(returnId) {
       const { apiRequest } = await import('@/lib/api/client');
       await apiRequest(`/crm/inventory/purchase-returns/${returnId}/complete`, { method: 'POST' });
     },
-    async listAdjustments() {
+    async listAdjustments(opts) {
       const { apiRequest } = await import('@/lib/api/client');
-      return apiRequest<StockAdjustmentListResponse>('/crm/inventory/adjustments');
+      const params = new URLSearchParams();
+      if (opts?.search) params.set('search', opts.search);
+      params.set('page', String(opts?.page ?? 1));
+      params.set('pageSize', String(opts?.pageSize ?? 50));
+      return apiRequest<StockAdjustmentListResponse>(
+        `/crm/inventory/adjustments?${params.toString()}`,
+      );
     },
     async createAdjustment(payload) {
       const { apiRequest } = await import('@/lib/api/client');
@@ -638,18 +792,57 @@ export function createHttpInventoryApi(): InventoryApi {
         body: JSON.stringify(payload),
       });
     },
-    async listLots(expiringWithinDays) {
+    async listLots(opts) {
       const { apiRequest } = await import('@/lib/api/client');
-      const params = expiringWithinDays ? `?expiringWithinDays=${expiringWithinDays}` : '';
-      return apiRequest<InventoryLotListResponse>(`/crm/inventory/lots${params}`);
+      const params = new URLSearchParams();
+      if (opts?.expiringWithinDays != null) {
+        params.set('expiringWithinDays', String(opts.expiringWithinDays));
+      }
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.fefo) params.set('fefo', '1');
+      params.set('page', String(opts?.page ?? 1));
+      params.set('pageSize', String(opts?.pageSize ?? 50));
+      return apiRequest<InventoryLotListResponse>(`/crm/inventory/lots?${params.toString()}`);
+    },
+    async updateLot(id, payload) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<InventoryLot>(`/crm/inventory/lots/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
     },
     async getReconciliation() {
       const { apiRequest } = await import('@/lib/api/client');
       return apiRequest<InventoryReconciliationResponse>('/crm/inventory/reconciliation');
     },
+    async postReconciliationAdjust() {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<PostReconciliationAdjustResponse>('/crm/inventory/reconciliation/adjust', {
+        method: 'POST',
+      });
+    },
     async listUnits() {
       const { apiRequest } = await import('@/lib/api/client');
       return apiRequest<UnitOfMeasureListResponse>('/crm/inventory/units');
+    },
+    async createUnit(payload) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<UnitOfMeasure>('/crm/inventory/units', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+    async updateUnit(id, payload) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<UnitOfMeasure>(`/crm/inventory/units/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+    },
+    async deleteUnit(id) {
+      const { apiRequest } = await import('@/lib/api/client');
+      await apiRequest(`/crm/inventory/units/${id}`, { method: 'DELETE' });
     },
   };
 }

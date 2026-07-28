@@ -119,6 +119,16 @@ export const followupListResponseSchema = z.object({
 
 export type FollowupListResponse = z.infer<typeof followupListResponseSchema>;
 
+export const createFollowupPayloadSchema = z.object({
+  customerId: z.string().min(1),
+  scheduleDate: z.string().optional(),
+  note: z.string().max(2000).optional(),
+  assignedAgentName: z.string().max(120).optional(),
+  queue: followupQueueSchema.optional(),
+});
+
+export type CreateFollowupPayload = z.infer<typeof createFollowupPayloadSchema>;
+
 export const updateFollowupPayloadSchema = z.object({
   scheduleDate: z.string().optional(),
   followupStatus: followupStatusSchema.optional(),

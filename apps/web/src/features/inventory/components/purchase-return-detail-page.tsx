@@ -60,6 +60,21 @@ export function PurchaseReturnDetailPage() {
     }
   }
 
+  async function reject() {
+    if (!detail) return;
+    if (!window.confirm(`Reject ${detail.returnNumber}? No stock will be moved.`)) return;
+    setBusy(true);
+    try {
+      await inventoryApi.rejectPurchaseReturn(detail.id);
+      toast.success(`${detail.returnNumber} rejected`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not reject return');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function complete() {
     if (!detail) return;
     if (
@@ -166,21 +181,34 @@ export function PurchaseReturnDetailPage() {
                   <CardTitle className="text-sm">Actions</CardTitle>
                 </CardHeader>
                 <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
-                  {detail.status === 'pending' ? (
-                    <Button type="button" size="sm" disabled={busy} onClick={() => void approve()}>
-                      Approve
-                    </Button>
-                  ) : null}
-                  {detail.status !== 'completed' ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void complete()}
-                    >
-                      Complete & deduct stock
-                    </Button>
+                  {detail.status === 'pending' || detail.status === 'approved' ? (
+                    <>
+                      {detail.status === 'pending' ? (
+                        <Button type="button" size="sm" disabled={busy} onClick={() => void approve()}>
+                          Approve
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => void complete()}
+                      >
+                        Complete & deduct stock
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        disabled={busy}
+                        onClick={() => void reject()}
+                      >
+                        Reject
+                      </Button>
+                    </>
+                  ) : detail.status === 'rejected' ? (
+                    <p className="text-sm text-muted-foreground">This return was rejected.</p>
                   ) : (
                     <p className="text-sm text-muted-foreground">This return is fully completed.</p>
                   )}

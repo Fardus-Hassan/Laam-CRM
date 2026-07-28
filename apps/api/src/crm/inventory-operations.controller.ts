@@ -23,7 +23,9 @@ import type {
   CreatePurchaseReturnPayload,
   CreateSupplierPayload,
   PurchasePaymentStatus,
+  ReceivePurchasePayload,
   UpdateMixerRecipePayload,
+  UpdatePurchasePayload,
   UpdateSupplierPayload,
 } from '@laam/types';
 
@@ -178,6 +180,76 @@ class UpdateSupplierDto {
 class UpdatePurchasePaymentDto {
   @IsIn(['unpaid', 'partial', 'paid'])
   paymentStatus!: PurchasePaymentStatus;
+}
+
+class UpdatePurchaseDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  supplierId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  purchaseNumber?: string;
+
+  @IsOptional()
+  @IsIn(['unpaid', 'partial', 'paid'])
+  paymentStatus?: PurchasePaymentStatus;
+
+  @IsOptional()
+  @IsString()
+  purchaseDate?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  dueDate?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(1000)
+  notes?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseLineDto)
+  lines?: PurchaseLineDto[];
+}
+
+class ReceivePurchaseLineDto {
+  @IsString()
+  @MinLength(1)
+  lineId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  expiresAt?: string;
+}
+
+class ReceivePurchaseDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  warehouseId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ReceivePurchaseLineDto)
+  lines?: ReceivePurchaseLineDto[];
 }
 
 class MixerRecipeInputDto {
@@ -462,9 +534,18 @@ export class InventoryOperationsController {
 
   @Get('suppliers')
   @RequirePermissions('inventory.view', 'inventory.purchase')
-  listSuppliers(@CurrentUser() user: AuthUserPayload, @Query('search') search?: string) {
+  listSuppliers(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('search') search?: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ) {
     this.catalog.requireOrg(user.organizationId);
-    return this.operations.listSuppliers(user.organizationId!, search);
+    return this.operations.listSuppliers(user.organizationId!, {
+      search,
+      page: Math.max(1, Number(pageRaw) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+    });
   }
 
   @Post('suppliers')
@@ -513,9 +594,20 @@ export class InventoryOperationsController {
 
   @Get('purchases')
   @RequirePermissions('inventory.view', 'inventory.purchase')
-  listPurchases(@CurrentUser() user: AuthUserPayload, @Query('search') search?: string) {
+  listPurchases(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('search') search?: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+    @Query('stockStatus') stockStatus?: string,
+  ) {
     this.catalog.requireOrg(user.organizationId);
-    return this.operations.listPurchases(user.organizationId!, search);
+    return this.operations.listPurchases(user.organizationId!, {
+      search,
+      stockStatus,
+      page: Math.max(1, Number(pageRaw) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+    });
   }
 
   @Get('purchases/:id')
@@ -539,6 +631,26 @@ export class InventoryOperationsController {
       lines: body.lines,
     };
     return this.operations.createPurchase(user.organizationId!, payload);
+  }
+
+  @Patch('purchases/:id')
+  @RequirePermissions('inventory.purchase')
+  updatePurchase(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body: UpdatePurchaseDto,
+  ) {
+    this.catalog.requireOrg(user.organizationId);
+    const payload: UpdatePurchasePayload = {
+      supplierId: body.supplierId,
+      purchaseNumber: body.purchaseNumber,
+      paymentStatus: body.paymentStatus,
+      purchaseDate: body.purchaseDate,
+      dueDate: body.dueDate,
+      notes: body.notes,
+      lines: body.lines,
+    };
+    return this.operations.updatePurchase(user.organizationId!, id, payload);
   }
 
   @Patch('purchases/:id/payment-status')
@@ -565,16 +677,38 @@ export class InventoryOperationsController {
 
   @Post('purchases/:id/receive')
   @RequirePermissions('inventory.purchase')
-  receivePurchase(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+  receivePurchase(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body: ReceivePurchaseDto,
+  ) {
     this.catalog.requireOrg(user.organizationId);
-    return this.operations.receivePurchase(user.organizationId!, id, this.actor(user));
+    const payload: ReceivePurchasePayload = {
+      warehouseId: body.warehouseId,
+      lines: body.lines,
+    };
+    return this.operations.receivePurchase(
+      user.organizationId!,
+      id,
+      payload,
+      this.actor(user),
+    );
   }
 
   @Get('adjustments')
   @RequirePermissions('inventory.view', 'inventory.adjust')
-  listAdjustments(@CurrentUser() user: AuthUserPayload) {
+  listAdjustments(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('search') search?: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ) {
     this.catalog.requireOrg(user.organizationId);
-    return this.operations.listAdjustments(user.organizationId!);
+    return this.operations.listAdjustments(user.organizationId!, {
+      search,
+      page: Math.max(1, Number(pageRaw) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+    });
   }
 
   @Post('adjustments')
@@ -590,9 +724,18 @@ export class InventoryOperationsController {
 
   @Get('purchase-returns')
   @RequirePermissions('inventory.view', 'inventory.purchase')
-  listPurchaseReturns(@CurrentUser() user: AuthUserPayload) {
+  listPurchaseReturns(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('search') search?: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ) {
     this.catalog.requireOrg(user.organizationId);
-    return this.operations.listPurchaseReturns(user.organizationId!);
+    return this.operations.listPurchaseReturns(user.organizationId!, {
+      search,
+      page: Math.max(1, Number(pageRaw) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+    });
   }
 
   @Get('purchase-returns/:id')
@@ -626,6 +769,13 @@ export class InventoryOperationsController {
   approvePurchaseReturn(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
     this.catalog.requireOrg(user.organizationId);
     return this.operations.approvePurchaseReturn(user.organizationId!, id);
+  }
+
+  @Post('purchase-returns/:id/reject')
+  @RequirePermissions('inventory.purchase')
+  rejectPurchaseReturn(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.catalog.requireOrg(user.organizationId);
+    return this.operations.rejectPurchaseReturn(user.organizationId!, id);
   }
 
   @Post('purchase-returns/:id/complete')

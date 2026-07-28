@@ -50,8 +50,8 @@ export const CONTACT_SOURCE_LABELS: Record<OrderSource, string> = {
 
 export function getContactPageCopy() {
   return {
-    title: 'Contacts',
+    title: 'Suppliers & partners',
     description:
-      'Everyone you talk to — buyers, suppliers, courier partners, and others. Customers use the full order view.',
+      'B2B contacts — suppliers, courier partners, and others. Buyers live under Customers; purchase vendors with stock live under Inventory → Suppliers.',
   };
 }

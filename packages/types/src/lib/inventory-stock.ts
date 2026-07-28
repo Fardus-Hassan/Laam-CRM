@@ -145,9 +145,22 @@ export type InventoryLot = z.infer<typeof inventoryLotSchema>;
 export const inventoryLotListResponseSchema = z.object({
   items: z.array(inventoryLotSchema),
   total: z.number(),
+  page: z.number().int().optional(),
+  pageSize: z.number().int().optional(),
 });
 
 export type InventoryLotListResponse = z.infer<typeof inventoryLotListResponseSchema>;
+
+export const inventoryLotStatusSchema = z.enum(['active', 'quarantined', 'expired', 'depleted']);
+export type InventoryLotStatus = z.infer<typeof inventoryLotStatusSchema>;
+
+export const updateInventoryLotPayloadSchema = z.object({
+  expiresAt: z.string().nullable().optional(),
+  status: inventoryLotStatusSchema.optional(),
+  barcode: z.string().max(120).nullable().optional(),
+});
+
+export type UpdateInventoryLotPayload = z.infer<typeof updateInventoryLotPayloadSchema>;
 
 // Accounting reconciliation
 export const inventoryReconciliationResponseSchema = z.object({
@@ -181,4 +194,15 @@ export const inventoryReconciliationResponseSchema = z.object({
 
 export type InventoryReconciliationResponse = z.infer<
   typeof inventoryReconciliationResponseSchema
+>;
+
+export const postReconciliationAdjustResponseSchema = z.object({
+  ok: z.literal(true),
+  differencePosted: z.number(),
+  journalId: z.string(),
+  eventKey: z.string(),
+});
+
+export type PostReconciliationAdjustResponse = z.infer<
+  typeof postReconciliationAdjustResponseSchema
 >;

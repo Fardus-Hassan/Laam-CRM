@@ -6,12 +6,14 @@ import {
   FolderTree,
   History,
   Package,
+  Ruler,
   RotateCcw,
   Scale,
   ShoppingBag,
   Tag,
   Truck,
   Warehouse,
+  Layers,
 } from 'lucide-react';
 import type { Permission } from '@laam/types';
 
@@ -45,6 +47,20 @@ export const INVENTORY_SUB_NAV: InventorySubNavItem[] = [
     href: '/dashboard/inventory/warehouses',
     icon: Warehouse,
     permissions: ['inventory.view', 'inventory.warehouses'],
+  },
+  {
+    id: 'lots',
+    title: 'Lots',
+    href: '/dashboard/inventory/lots',
+    icon: Layers,
+    permissions: ['inventory.view'],
+  },
+  {
+    id: 'units',
+    title: 'Units',
+    href: '/dashboard/inventory/units',
+    icon: Ruler,
+    permissions: ['inventory.view', 'inventory.edit'],
   },
   {
     id: 'reconciliation',

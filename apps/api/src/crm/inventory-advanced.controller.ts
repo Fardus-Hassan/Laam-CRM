@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -10,17 +11,23 @@ import {
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import type {
+  CreateUnitOfMeasurePayload,
   CreateWarehousePayload,
   TransferStockPayload,
+  UpdateInventoryLotPayload,
+  UpdateUnitOfMeasurePayload,
   UpdateWarehousePayload,
+  UomDimension,
 } from '@laam/types';
 
 import {
@@ -32,6 +39,8 @@ import { actorFromUser } from '../common/actor.util';
 import { InventoryAdvancedService } from './inventory-advanced.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { InventoryUomService } from './inventory-uom.service';
+
+const UOM_DIMENSIONS = ['count', 'mass', 'volume', 'length', 'area', 'other'] as const;
 
 class CreateWarehouseDto {
   @IsString()
@@ -114,6 +123,69 @@ class TransferStockDto {
   note?: string;
 }
 
+class CreateUnitDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
+  code!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name!: string;
+
+  @IsOptional()
+  @IsIn(UOM_DIMENSIONS)
+  dimension?: UomDimension;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.000001)
+  factorToDimensionBase?: number;
+}
+
+class UpdateUnitDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsIn(UOM_DIMENSIONS)
+  dimension?: UomDimension;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.000001)
+  factorToDimensionBase?: number;
+}
+
+class UpdateLotDto {
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  expiresAt?: string | null;
+
+  @IsOptional()
+  @IsIn(['active', 'quarantined', 'expired', 'depleted'])
+  status?: 'active' | 'quarantined' | 'expired' | 'depleted';
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(120)
+  barcode?: string | null;
+}
+
 @Controller('crm/inventory')
 export class InventoryAdvancedController {
   constructor(
@@ -131,6 +203,44 @@ export class InventoryAdvancedController {
   listUnits(@CurrentUser() user: AuthUserPayload) {
     this.catalog.requireOrg(user.organizationId);
     return this.uom.listUnits(user.organizationId!);
+  }
+
+  @Post('units')
+  @RequirePermissions('inventory.edit', 'settings.manage')
+  createUnit(@CurrentUser() user: AuthUserPayload, @Body() body: CreateUnitDto) {
+    this.catalog.requireOrg(user.organizationId);
+    const payload: CreateUnitOfMeasurePayload = {
+      code: body.code,
+      name: body.name,
+      dimension: body.dimension ?? 'count',
+      factorToDimensionBase: body.factorToDimensionBase ?? 1,
+    };
+    return this.uom.createUnit(user.organizationId!, payload);
+  }
+
+  @Patch('units/:id')
+  @RequirePermissions('inventory.edit', 'settings.manage')
+  updateUnit(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body: UpdateUnitDto,
+  ) {
+    this.catalog.requireOrg(user.organizationId);
+    const payload: UpdateUnitOfMeasurePayload = {
+      code: body.code,
+      name: body.name,
+      dimension: body.dimension,
+      factorToDimensionBase: body.factorToDimensionBase,
+    };
+    return this.uom.updateUnit(user.organizationId!, id, payload);
+  }
+
+  @Delete('units/:id')
+  @RequirePermissions('inventory.edit', 'settings.manage')
+  async deleteUnit(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.catalog.requireOrg(user.organizationId);
+    await this.uom.deleteUnit(user.organizationId!, id);
+    return { ok: true };
   }
 
   @Get('stock-movements')
@@ -224,12 +334,40 @@ export class InventoryAdvancedController {
   listLots(
     @CurrentUser() user: AuthUserPayload,
     @Query('expiringWithinDays') expiringWithinDaysRaw?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+    @Query('fefo') fefoRaw?: string,
   ) {
     this.catalog.requireOrg(user.organizationId);
     const expiringWithinDays = expiringWithinDaysRaw
       ? Math.max(1, Number(expiringWithinDaysRaw) || 60)
       : undefined;
-    return this.advanced.listLots(user.organizationId!, { expiringWithinDays });
+    return this.advanced.listLots(user.organizationId!, {
+      expiringWithinDays,
+      status,
+      search,
+      fefo: fefoRaw === '1' || fefoRaw === 'true',
+      page: Math.max(1, Number(pageRaw) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+    });
+  }
+
+  @Patch('lots/:id')
+  @RequirePermissions('inventory.adjust')
+  updateLot(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body: UpdateLotDto,
+  ) {
+    this.catalog.requireOrg(user.organizationId);
+    const payload: UpdateInventoryLotPayload = {
+      expiresAt: body.expiresAt,
+      status: body.status,
+      barcode: body.barcode,
+    };
+    return this.advanced.updateLot(user.organizationId!, id, payload);
   }
 
   @Get('reconciliation')
@@ -237,5 +375,15 @@ export class InventoryAdvancedController {
   getReconciliation(@CurrentUser() user: AuthUserPayload) {
     this.catalog.requireOrg(user.organizationId);
     return this.advanced.getReconciliation(user.organizationId!);
+  }
+
+  @Post('reconciliation/adjust')
+  @RequirePermissions('inventory.adjust')
+  postReconciliationAdjust(@CurrentUser() user: AuthUserPayload) {
+    this.catalog.requireOrg(user.organizationId);
+    return this.advanced.postReconciliationAdjust(
+      user.organizationId!,
+      this.actor(user),
+    );
   }
 }

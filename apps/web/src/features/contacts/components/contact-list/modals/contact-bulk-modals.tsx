@@ -15,9 +15,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { ContactBulkActionId } from '@/features/contacts/config/contact-bulk-actions';
-import { CONTACT_AGENTS } from '@/features/contacts/data/mock-contacts';
 import type { ContactsApi } from '@/features/contacts/api/contacts-api';
 import { useContactMutations } from '@/features/contacts/hooks/use-contact-mutations';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 
 type ContactBulkModalState =
   | { type: 'note'; contactIds: string[] }
@@ -45,6 +45,7 @@ type ContactBulkModalsProps = {
 
 export function ContactBulkModals({ state, onClose, onSuccess }: ContactBulkModalsProps) {
   const { bulkAction, isLoading } = useContactMutations();
+  const { agents } = useAgentOptions();
   const [note, setNote] = React.useState('');
   const [followUpDate, setFollowUpDate] = React.useState('');
   const [employee, setEmployee] = React.useState('');
@@ -161,7 +162,7 @@ export function ContactBulkModals({ state, onClose, onSuccess }: ContactBulkModa
             <FormSearchSelect
               value={employee}
               onChange={setEmployee}
-              options={CONTACT_AGENTS.map((name) => ({ value: name, label: name }))}
+              options={agents.map((name) => ({ value: name, label: name }))}
               placeholder="Select agent…"
             />
           </FormField>

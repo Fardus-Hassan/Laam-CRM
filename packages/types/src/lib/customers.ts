@@ -110,3 +110,50 @@ export const customerListResponseSchema = z.object({
 });
 
 export type CustomerListResponse = z.infer<typeof customerListResponseSchema>;
+
+export const createCustomerPayloadSchema = z.object({
+  name: z.string().min(1).max(200),
+  phone: z.string().min(1).max(40),
+  email: z.string().email().optional().or(z.literal('')),
+  altMobile: z.string().max(40).optional(),
+  district: z.string().max(120).optional(),
+  area: z.string().max(120).optional(),
+  address: z.string().max(500).optional(),
+  notes: z.string().max(2000).optional(),
+  tags: z.array(z.string()).max(20).optional(),
+  status: customerStatusSchema.optional(),
+  source: z.string().max(64).optional(),
+  assignedAgentName: z.string().max(120).optional(),
+});
+
+export type CreateCustomerPayload = z.infer<typeof createCustomerPayloadSchema>;
+
+export const updateCustomerPayloadSchema = createCustomerPayloadSchema.partial().extend({
+  hasFollowUp: z.boolean().optional(),
+  followUpDue: z.string().nullable().optional(),
+});
+
+export type UpdateCustomerPayload = z.infer<typeof updateCustomerPayloadSchema>;
+
+export const mergeCustomersPayloadSchema = z.object({
+  primaryId: z.string().min(1),
+  duplicateIds: z.array(z.string().min(1)).min(1).max(20),
+});
+
+export type MergeCustomersPayload = z.infer<typeof mergeCustomersPayloadSchema>;
+
+export const customerDuplicateGroupSchema = z.object({
+  phone: z.string(),
+  phoneNormalized: z.string(),
+  customers: z.array(customerDetailSchema),
+});
+
+export type CustomerDuplicateGroup = z.infer<typeof customerDuplicateGroupSchema>;
+
+export const customerDuplicatesResponseSchema = z.object({
+  groups: z.array(customerDuplicateGroupSchema),
+});
+
+export type CustomerDuplicatesResponse = z.infer<
+  typeof customerDuplicatesResponseSchema
+>;

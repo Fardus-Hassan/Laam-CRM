@@ -28,6 +28,24 @@ export const unitOfMeasureListResponseSchema = z.object({
 
 export type UnitOfMeasureListResponse = z.infer<typeof unitOfMeasureListResponseSchema>;
 
+export const createUnitOfMeasurePayloadSchema = z.object({
+  code: z.string().min(1).max(32),
+  name: z.string().min(1).max(120),
+  dimension: uomDimensionSchema.default('count'),
+  factorToDimensionBase: z.number().positive().default(1),
+});
+
+export type CreateUnitOfMeasurePayload = z.infer<typeof createUnitOfMeasurePayloadSchema>;
+
+export const updateUnitOfMeasurePayloadSchema = z.object({
+  code: z.string().min(1).max(32).optional(),
+  name: z.string().min(1).max(120).optional(),
+  dimension: uomDimensionSchema.optional(),
+  factorToDimensionBase: z.number().positive().optional(),
+});
+
+export type UpdateUnitOfMeasurePayload = z.infer<typeof updateUnitOfMeasurePayloadSchema>;
+
 export const variantUomConversionSchema = z.object({
   uomId: z.string(),
   uomCode: z.string().optional(),

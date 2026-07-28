@@ -25,9 +25,11 @@ import { CarrybeeCourierService } from './carrybee-courier.service';
 import { CarrybeeSyncService } from './carrybee-sync.service';
 import { CouponsService } from './coupons.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
+import { CustomersService } from './customers.service';
 import { FollowupsService } from './followups.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { LeadsService } from './leads.service';
+import { normalizeBdPhone } from './phone.util';
 import { OrderPaymentsService } from './order-payments.service';
 import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { PathaoCourierService } from './pathao-courier.service';
@@ -201,6 +203,7 @@ export class OrdersService {
     private readonly coupons: CouponsService,
     private readonly inventory: InventoryCatalogService,
     private readonly leads: LeadsService,
+    private readonly customers: CustomersService,
     private readonly followups: FollowupsService,
     private readonly pathao: PathaoCourierService,
     private readonly carrybee: CarrybeeCourierService,
@@ -627,6 +630,7 @@ export class OrdersService {
               quantity: l.quantity,
             })),
             skipFollowup: false,
+            customerId: order.customerId,
           },
           actor,
         );
@@ -1332,6 +1336,38 @@ export class OrdersService {
     const normalized = phone.trim();
     if (!normalized) return null;
 
+    const phoneKey = normalizeBdPhone(normalized);
+    const profile = phoneKey
+      ? await this.prisma.customer.findUnique({
+          where: {
+            organizationId_phoneNormalized: {
+              organizationId,
+              phoneNormalized: phoneKey,
+            },
+          },
+        })
+      : null;
+
+    if (profile) {
+      await this.customers.refreshStats(organizationId, profile.id);
+      const fresh = await this.prisma.customer.findFirstOrThrow({
+        where: { id: profile.id },
+      });
+      return {
+        mobile: fresh.phone,
+        name: fresh.name,
+        email: fresh.email ?? '',
+        address: fresh.address ?? '',
+        district: fresh.district ?? fresh.area ?? '',
+        orderSource: fresh.source ?? '',
+        customerTag: fresh.tags[0] ?? '',
+        stats: {
+          totalOrders: fresh.orderCount,
+          completedDelivered: fresh.deliveredCount,
+        },
+      };
+    }
+
     const orders = await this.prisma.order.findMany({
       where: { organizationId, customerPhone: normalized },
       orderBy: { createdAt: 'desc' },
@@ -1443,11 +1479,29 @@ export class OrdersService {
       'Unknown';
 
     const created = await this.prisma.$transaction(async (tx) => {
+      const customer = await this.customers.ensureFromOrder(
+        organizationId,
+        {
+          name: input.customerName.trim(),
+          phone: input.customerPhone.trim(),
+          email: input.customerEmail,
+          altMobile: input.altMobile,
+          district: input.district?.trim() || shippingArea,
+          area: shippingArea,
+          address: input.shippingAddress.trim(),
+          source,
+          assignedAgentName: input.assignedAgentName?.trim() || actor.name || null,
+          notes: input.customerNote,
+        },
+        tx,
+      );
+
       const order = await tx.order.create({
         data: {
           organizationId,
           orderNumber,
           status,
+          customerId: customer.id,
           customerName: input.customerName.trim(),
           customerPhone: input.customerPhone.trim(),
           customerEmail: input.customerEmail?.trim() || null,
@@ -1551,6 +1605,7 @@ export class OrdersService {
           activities: { orderBy: { createdAt: 'asc' } },
         },
       });
+      await this.customers.refreshStats(organizationId, customer.id, tx);
       return order;
     });
 
@@ -1585,6 +1640,7 @@ export class OrdersService {
           quantity: l.quantity,
         })),
         skipFollowup: Boolean(input.skipFollowup),
+        customerId: created.customerId,
       },
       actor,
     );
@@ -1657,6 +1713,7 @@ export class OrdersService {
           {
             sign: -1,
             orderNumber: existing.orderNumber,
+            orderId: existing.id,
             actor: { userId: actor.userId, name: actor.name },
           },
         );
@@ -1689,6 +1746,7 @@ export class OrdersService {
             {
               sign: 1,
               orderNumber: existing.orderNumber,
+              orderId: existing.id,
               actor: { userId: actor.userId, name: actor.name },
             },
           );
@@ -1805,6 +1863,7 @@ export class OrdersService {
           {
             sign: 1,
             orderNumber: existing.orderNumber,
+            orderId: existing.id,
             actor: { userId: actor.userId, name: actor.name },
           },
         );
@@ -1866,21 +1925,31 @@ export class OrdersService {
 
     await this.prisma.$transaction(async (tx) => {
       if (existing.stockDeductedAt) {
-        await this.inventory.applyOrderStockDeltas(
-          tx,
-          organizationId,
-          existing.lineItems.map((l) => ({
-            productId: l.productId,
-            variantId: l.variantId,
-            quantity: l.quantity,
-            productName: l.productName,
-          })),
-          {
-            sign: 1,
-            orderNumber: existing.orderNumber,
-            actor: { userId: actor.userId, name: actor.name },
-          },
-        );
+        const restockLines = existing.lineItems
+          .map((l) => {
+            const already = (l as { returnedQuantity?: number }).returnedQuantity ?? 0;
+            const qty = Math.max(0, l.quantity - already);
+            return {
+              productId: l.productId,
+              variantId: l.variantId,
+              quantity: qty,
+              productName: l.productName,
+            };
+          })
+          .filter((l) => l.quantity > 0);
+        if (restockLines.length > 0) {
+          await this.inventory.applyOrderStockDeltas(
+            tx,
+            organizationId,
+            restockLines,
+            {
+              sign: 1,
+              orderNumber: existing.orderNumber,
+              orderId: existing.id,
+              actor: { userId: actor.userId, name: actor.name },
+            },
+          );
+        }
       }
 
       await tx.order.update({

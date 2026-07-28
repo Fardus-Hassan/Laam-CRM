@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
@@ -28,6 +30,7 @@ import type {
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { InventoryAdvancedService } from './inventory-advanced.service';
 import { InventoryUomService } from './inventory-uom.service';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -213,6 +216,8 @@ export class InventoryCatalogService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uom: InventoryUomService,
+    @Inject(forwardRef(() => InventoryAdvancedService))
+    private readonly advanced: InventoryAdvancedService,
   ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
@@ -1107,7 +1112,58 @@ export class InventoryCatalogService {
         select: { id: true },
       });
       if (!product) throw new NotFoundException('Product not found');
-      await this.applyStockDelta(tx, organizationId, productId, input, actor);
+
+      let variantId = input.variantId;
+      if (!variantId) {
+        const first = await tx.productVariant.findFirst({
+          where: { productId, organizationId },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        if (!first) throw new BadRequestException('Product has no variants to adjust');
+        variantId = first.id;
+      }
+
+      const qty = Math.abs(input.delta);
+      if (input.delta < 0) {
+        const writeoffReasons = ['damage', 'expiry', 'theft_loss', 'gift_sample'];
+        await this.advanced.consumeStock(tx, organizationId, {
+          productId,
+          variantId,
+          quantity: qty,
+          preferFefo: true,
+          reason: input.reason,
+          note: input.note,
+          sourceType: 'stock_adjustment',
+          sourceId: productId,
+          actor,
+          journalKind: writeoffReasons.includes(input.reason) ? 'writeoff' : undefined,
+          journalEventKey: `writeoff:${productId}:${variantId}:${Date.now()}`,
+          journalDescription: `Stock write-off (${input.reason})`,
+        });
+      } else {
+        await this.advanced.receiveStock(tx, organizationId, {
+          productId,
+          variantId,
+          quantity: qty,
+          createLot: true,
+          lot: { lotNumber: `ADJ-${Date.now().toString(36)}` },
+          reason: input.reason,
+          note: input.note,
+          sourceType: 'stock_adjustment',
+          sourceId: productId,
+          actor,
+        });
+      }
+
+      await this.logActivity(tx, organizationId, {
+        entityType: 'product',
+        entityId: productId,
+        productId,
+        action: 'stock_adjusted',
+        label: `Stock ${input.delta > 0 ? '+' : ''}${input.delta} (${input.reason})`,
+        actor,
+      });
     });
 
     return this.getProduct(organizationId, productId);
@@ -1603,8 +1659,8 @@ export class InventoryCatalogService {
   }
 
   /**
-   * Decrements (or restores) variant stock for order lines inside an existing
-   * transaction. Positive `sign` restores; negative consumes.
+   * Decrements (or restores) stock for order lines — warehouse + FEFO lots + COGS.
+   * Positive `sign` restores; negative consumes.
    */
   async applyOrderStockDeltas(
     tx: Tx,
@@ -1618,23 +1674,120 @@ export class InventoryCatalogService {
     options: {
       sign: 1 | -1;
       orderNumber: string;
+      orderId?: string;
       actor?: Actor;
     },
   ): Promise<void> {
     for (const line of lines) {
       if (!line.productId || line.quantity <= 0) continue;
-      await this.applyStockDelta(
-        tx,
-        organizationId,
-        line.productId,
-        {
-          variantId: line.variantId ?? undefined,
-          delta: options.sign * line.quantity,
-          reason: options.sign < 0 ? 'order_sale' : 'order_restock',
-          note: `Order ${options.orderNumber} · ${line.productName}`,
-        },
-        options.actor,
-      );
+
+      let variantId = line.variantId ?? undefined;
+      if (!variantId) {
+        const first = await tx.productVariant.findFirst({
+          where: { productId: line.productId, organizationId },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        if (!first) {
+          throw new BadRequestException(
+            `Product "${line.productName}" has no variants for stock movement`,
+          );
+        }
+        variantId = first.id;
+      }
+
+      const note = `Order ${options.orderNumber} · ${line.productName}`;
+      const sourceId = options.orderId ?? options.orderNumber;
+
+      if (options.sign < 0) {
+        await this.advanced.consumeStock(tx, organizationId, {
+          productId: line.productId,
+          variantId,
+          quantity: line.quantity,
+          preferFefo: true,
+          reason: 'order_sale',
+          note,
+          sourceType: 'order',
+          sourceId,
+          actor: options.actor,
+          journalKind: 'sale_cogs',
+          journalEventKey: `sale-cogs:${sourceId}:${variantId}`,
+          journalDescription: `COGS ${options.orderNumber} · ${line.productName}`,
+        });
+      } else {
+        // Reverse COGS for restock — scale original sale_cogs by restocked qty.
+        const saleKey = `sale-cogs:${sourceId}:${variantId}`;
+        const saleJournal = await tx.accountingJournalEntry.findFirst({
+          where: { organizationId, eventKey: saleKey },
+          include: { lines: { select: { debit: true } } },
+        });
+        let unitCost: number | undefined;
+        let journalAmount: number | undefined;
+        if (saleJournal) {
+          const originalAmount = saleJournal.lines.reduce(
+            (max, l) => Math.max(max, Number(l.debit || 0)),
+            0,
+          );
+          const soldLine = options.orderId
+            ? await tx.orderItem.findFirst({
+                where: {
+                  orderId: options.orderId,
+                  OR: [{ variantId }, { productId: line.productId }],
+                },
+                select: { quantity: true, returnedQuantity: true },
+              })
+            : null;
+          const soldQty = Math.max(1, soldLine?.quantity ?? line.quantity);
+          unitCost = originalAmount / soldQty;
+          journalAmount = unitCost * line.quantity;
+          const alreadyReturned = soldLine?.returnedQuantity ?? 0;
+          await this.advanced.receiveStock(tx, organizationId, {
+            productId: line.productId,
+            variantId,
+            quantity: line.quantity,
+            unitCost,
+            createLot: true,
+            lot: {
+              lotNumber:
+                `RST-${options.orderNumber}-${variantId.slice(0, 6)}-${alreadyReturned}+${line.quantity}`.slice(
+                  0,
+                  64,
+                ),
+            },
+            reason: 'order_restock',
+            note,
+            sourceType: 'order',
+            sourceId,
+            actor: options.actor,
+            journalKind: 'sale_cogs_reversal',
+            journalEventKey: `sale-cogs-rev:${sourceId}:${variantId}:from${alreadyReturned}:q${line.quantity}`,
+            journalDescription: `COGS reverse ${options.orderNumber} · ${line.productName}`,
+            journalAmount,
+          });
+        } else {
+          await this.advanced.receiveStock(tx, organizationId, {
+            productId: line.productId,
+            variantId,
+            quantity: line.quantity,
+            createLot: true,
+            lot: {
+              lotNumber:
+                `RST-${options.orderNumber}-${variantId.slice(0, 6)}-${line.quantity}`.slice(
+                  0,
+                  64,
+                ),
+            },
+            reason: 'order_restock',
+            note,
+            sourceType: 'order',
+            sourceId,
+            actor: options.actor,
+            journalKind: 'sale_cogs_reversal',
+            journalEventKey: `sale-cogs-rev:${sourceId}:${variantId}:q${line.quantity}`,
+            journalDescription: `COGS reverse ${options.orderNumber} · ${line.productName}`,
+          });
+        }
+      }
     }
   }
 
