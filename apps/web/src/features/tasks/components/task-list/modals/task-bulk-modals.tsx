@@ -19,7 +19,7 @@ import {
   TASK_STATUS_LABELS,
 } from '@/features/tasks/config/task-filters';
 import type { TasksApi } from '@/features/tasks/api/tasks-api';
-import { CUSTOMER_AGENTS } from '@/features/customers/data/mock-customers';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 import { useTaskMutations } from '@/features/tasks/hooks/use-task-mutations';
 import type { TaskPriority, TaskStatus } from '@laam/types';
 
@@ -59,6 +59,7 @@ const PRIORITY_OPTIONS = (Object.keys(TASK_PRIORITY_LABELS) as TaskPriority[]).m
 
 export function TaskBulkModals({ state, onClose, onSuccess }: TaskBulkModalsProps) {
   const { bulkAction, isLoading } = useTaskMutations();
+  const { agents } = useAgentOptions();
   const [dueDate, setDueDate] = React.useState('');
   const [employee, setEmployee] = React.useState('');
   const [status, setStatus] = React.useState<TaskStatus>('pending');
@@ -111,7 +112,7 @@ export function TaskBulkModals({ state, onClose, onSuccess }: TaskBulkModalsProp
             <FormSearchSelect
               value={employee}
               onChange={setEmployee}
-              options={CUSTOMER_AGENTS.map((name) => ({ value: name, label: name }))}
+              options={agents.map((name) => ({ value: name, label: name }))}
               placeholder="Select agent…"
             />
           </FormField>

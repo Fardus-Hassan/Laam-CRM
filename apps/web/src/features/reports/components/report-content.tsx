@@ -7,6 +7,7 @@ import { SimpleBarChart } from '@/components/charts/simple-bar-chart';
 import { DualAxisLineChart } from '@/components/charts/dual-axis-line-chart';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -17,6 +18,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { FormField } from '@/components/form/form-field';
+import { FormInput } from '@/components/form/form-input';
+import { FormSearchSelect } from '@/components/form/form-search-select';
 import { reportsApi } from '@/features/reports/api/reports-api';
 import {
   ORDER_CARD_CLASS,
@@ -25,6 +29,12 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+
+function currentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 type ReportContentProps = {
   view: ReportViewId;
@@ -75,11 +85,18 @@ export function ReportContent({ view, period }: ReportContentProps) {
 
 function SummaryPanel({ period }: { period: ReportPeriod }) {
   const [data, setData] = React.useState<Awaited<ReturnType<typeof reportsApi.getSummary>> | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    void reportsApi.getSummary(period).then(setData);
+    setData(null);
+    setError(null);
+    void reportsApi
+      .getSummary(period)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load report'));
   }, [period]);
 
+  if (error) return <ErrorPlaceholder message={error} />;
   if (!data) return <LoadingPlaceholder />;
 
   return (
@@ -105,13 +122,19 @@ function SummaryPanel({ period }: { period: ReportPeriod }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.topProducts.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.name}</TableCell>
-                  <TableCell>{p.units}</TableCell>
-                  <TableCell>{formatCurrency(p.revenueBdt)}</TableCell>
+              {data.topProducts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={3} className="text-muted-foreground">No product sales in this period.</TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                data.topProducts.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-medium">{p.name}</TableCell>
+                    <TableCell>{p.units}</TableCell>
+                    <TableCell>{formatCurrency(p.revenueBdt)}</TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -122,7 +145,16 @@ function SummaryPanel({ period }: { period: ReportPeriod }) {
 
 function SalesPanel({ period }: { period: ReportPeriod }) {
   const [data, setData] = React.useState<Awaited<ReturnType<typeof reportsApi.getSales>> | null>(null);
-  React.useEffect(() => { void reportsApi.getSales(period).then(setData); }, [period]);
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setData(null);
+    setError(null);
+    void reportsApi
+      .getSales(period)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load report'));
+  }, [period]);
+  if (error) return <ErrorPlaceholder message={error} />;
   if (!data) return <LoadingPlaceholder />;
   return (
     <div className="space-y-4">
@@ -134,7 +166,16 @@ function SalesPanel({ period }: { period: ReportPeriod }) {
 
 function RevenuePanel({ period }: { period: ReportPeriod }) {
   const [data, setData] = React.useState<Awaited<ReturnType<typeof reportsApi.getRevenue>> | null>(null);
-  React.useEffect(() => { void reportsApi.getRevenue(period).then(setData); }, [period]);
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setData(null);
+    setError(null);
+    void reportsApi
+      .getRevenue(period)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load report'));
+  }, [period]);
+  if (error) return <ErrorPlaceholder message={error} />;
   if (!data) return <LoadingPlaceholder />;
   return (
     <div className="space-y-4">
@@ -162,19 +203,32 @@ function RepeatCustomersPanel({ period }: { period: ReportPeriod }) {
 
 function ProductRankPanel({ view, period }: { view: ReportViewId; period: ReportPeriod }) {
   const [rows, setRows] = React.useState<Awaited<ReturnType<typeof reportsApi.getRankedProducts>> | null>(null);
-  React.useEffect(() => { void reportsApi.getRankedProducts(view, period).then(setRows); }, [view, period]);
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setRows(null);
+    setError(null);
+    void reportsApi
+      .getRankedProducts(view, period)
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load report'));
+  }, [view, period]);
+  if (error) return <ErrorPlaceholder message={error} />;
   if (!rows) return <LoadingPlaceholder />;
   const isStock = view === 'low-stock' || view === 'high-stock';
   return (
     <DataTableCard
       title="Product ranking"
-      headers={['#', 'Product', 'SKU', isStock ? 'Stock' : 'Units', isStock ? '' : 'Revenue / Rate']}
+      headers={['#', 'Product', 'SKU', isStock ? 'Stock' : 'Units', isStock ? 'Reorder' : 'Revenue']}
       rows={rows.map((r) => [
         String(r.rank),
         r.name,
         r.sku ?? '—',
         `${r.value} ${r.unit ?? ''}`,
-        r.secondaryValue != null ? (isStock ? '' : view === 'top-return' ? `${r.secondaryValue}%` : formatCurrency(r.secondaryValue)) : '—',
+        r.secondaryValue != null
+          ? isStock
+            ? String(r.secondaryValue)
+            : formatCurrency(r.secondaryValue)
+          : '—',
       ])}
     />
   );
@@ -210,38 +264,244 @@ function EmployeePanel({ view, period }: { view: ReportViewId; period: ReportPer
 
 function TeamTargetsPanel({ period }: { period: ReportPeriod }) {
   const [rows, setRows] = React.useState<Awaited<ReturnType<typeof reportsApi.getTeamTargets>> | null>(null);
-  React.useEffect(() => { void reportsApi.getTeamTargets(period).then(setRows); }, [period]);
+  const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [draft, setDraft] = React.useState({
+    monthKey: currentMonthKey(),
+    scope: 'agent' as 'agent' | 'team',
+    subjectKey: '',
+    subjectLabel: '',
+    targetOrders: '100',
+    targetRevenueBdt: '250000',
+  });
+
+  const load = React.useCallback(() => {
+    setRows(null);
+    setError(null);
+    void reportsApi
+      .getTeamTargets(period)
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
+  }, [period]);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleSave() {
+    if (!draft.subjectKey.trim() || !draft.subjectLabel.trim()) {
+      toast.error('Name / key required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await reportsApi.upsertTarget({
+        monthKey: draft.monthKey,
+        scope: draft.scope,
+        subjectKey: draft.subjectKey.trim(),
+        subjectLabel: draft.subjectLabel.trim(),
+        targetOrders: Number(draft.targetOrders) || 0,
+        targetRevenueBdt: Number(draft.targetRevenueBdt) || 0,
+      });
+      toast.success('Target saved');
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save target');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (error) return <ErrorPlaceholder message={error} />;
   if (!rows) return <LoadingPlaceholder />;
   return (
-    <div className="space-y-3">
-      {rows.map((r) => (
-        <Card key={r.id} className={ORDER_CARD_CLASS}>
-          <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
-            <div className="flex items-center justify-between">
-              <p className="font-medium">{r.name}</p>
-              <Badge variant={r.progressPercent >= 100 ? 'success' : r.progressPercent >= 80 ? 'warning' : 'secondary'}>
-                {r.progressPercent}%
-              </Badge>
-            </div>
-            <Progress value={r.progressPercent} className="h-2" />
-            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-              <span>Orders: {r.actualOrders}/{r.targetOrders}</span>
-              <span>Revenue: {formatCurrency(r.actualRevenueBdt)}</span>
-              <span>Target: {formatCurrency(r.targetRevenueBdt)}</span>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+    <div className="space-y-4">
+      <Card className={ORDER_CARD_CLASS}>
+        <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+          <CardTitle className="text-sm">Set monthly target (agent or team)</CardTitle>
+        </CardHeader>
+        <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3')}>
+          <FormField label="Month (YYYY-MM)">
+            <FormInput
+              value={draft.monthKey}
+              onChange={(e) => setDraft((d) => ({ ...d, monthKey: e.target.value }))}
+              placeholder="2026-07"
+            />
+          </FormField>
+          <FormField label="Scope">
+            <FormSearchSelect
+              value={draft.scope}
+              onChange={(v) => setDraft((d) => ({ ...d, scope: v as 'agent' | 'team' }))}
+              options={[
+                { value: 'agent', label: 'Agent' },
+                { value: 'team', label: 'Team' },
+              ]}
+              searchable={false}
+            />
+          </FormField>
+          <FormField label={draft.scope === 'agent' ? 'Agent name (exact)' : 'Team id / key'}>
+            <FormInput
+              value={draft.subjectKey}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  subjectKey: e.target.value,
+                  subjectLabel: d.subjectLabel || e.target.value,
+                }))
+              }
+              placeholder={draft.scope === 'agent' ? 'Sakib Ahmed' : 'team-uuid'}
+            />
+          </FormField>
+          <FormField label="Display label">
+            <FormInput
+              value={draft.subjectLabel}
+              onChange={(e) => setDraft((d) => ({ ...d, subjectLabel: e.target.value }))}
+            />
+          </FormField>
+          <FormField label="Target orders">
+            <FormInput
+              type="number"
+              value={draft.targetOrders}
+              onChange={(e) => setDraft((d) => ({ ...d, targetOrders: e.target.value }))}
+            />
+          </FormField>
+          <FormField label="Target revenue (BDT)">
+            <FormInput
+              type="number"
+              value={draft.targetRevenueBdt}
+              onChange={(e) => setDraft((d) => ({ ...d, targetRevenueBdt: e.target.value }))}
+            />
+          </FormField>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Button type="button" size="sm" disabled={saving} onClick={() => void handleSave()}>
+              {saving ? 'Saving…' : 'Save target'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-3">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No targets or activity for this period yet.</p>
+        ) : (
+          rows.map((r) => (
+            <Card key={r.id} className={ORDER_CARD_CLASS}>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">{r.name}</p>
+                  <Badge variant={r.progressPercent >= 100 ? 'success' : r.progressPercent >= 80 ? 'warning' : 'secondary'}>
+                    {r.progressPercent}%
+                  </Badge>
+                </div>
+                <Progress value={Math.min(100, r.progressPercent)} className="h-2" />
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                  <span>Orders: {r.actualOrders}/{r.targetOrders || '—'}</span>
+                  <span>Revenue: {formatCurrency(r.actualRevenueBdt)}</span>
+                  <span>Target: {formatCurrency(r.targetRevenueBdt)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
     </div>
   );
 }
 
 function MarketingPanel({ period }: { period: ReportPeriod }) {
   const [data, setData] = React.useState<Awaited<ReturnType<typeof reportsApi.getMarketing>> | null>(null);
-  React.useEffect(() => { void reportsApi.getMarketing(period).then(setData); }, [period]);
+  const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [draft, setDraft] = React.useState({
+    monthKey: currentMonthKey(),
+    campaignName: '',
+    spendBdt: '',
+    notes: '',
+  });
+
+  const load = React.useCallback(() => {
+    setData(null);
+    setError(null);
+    void reportsApi
+      .getMarketing(period)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
+  }, [period]);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleSaveSpend() {
+    if (!draft.campaignName.trim()) {
+      toast.error('Campaign name required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await reportsApi.upsertMarketingSpend({
+        monthKey: draft.monthKey,
+        campaignName: draft.campaignName.trim(),
+        spendBdt: Number(draft.spendBdt) || 0,
+        notes: draft.notes.trim() || undefined,
+      });
+      toast.success('Ad spend saved (manual)');
+      setDraft((d) => ({ ...d, campaignName: '', spendBdt: '', notes: '' }));
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save spend');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (error) return <ErrorPlaceholder message={error} />;
   if (!data) return <LoadingPlaceholder />;
   return (
     <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Manual ad spend for now. Match campaign name to order UTM campaign for ROAS. Meta API can replace this later.
+      </p>
+      <Card className={ORDER_CARD_CLASS}>
+        <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+          <CardTitle className="text-sm">Add / update manual spend</CardTitle>
+        </CardHeader>
+        <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4')}>
+          <FormField label="Month">
+            <FormInput
+              value={draft.monthKey}
+              onChange={(e) => setDraft((d) => ({ ...d, monthKey: e.target.value }))}
+              placeholder="2026-07"
+            />
+          </FormField>
+          <FormField label="Campaign name">
+            <FormInput
+              value={draft.campaignName}
+              onChange={(e) => setDraft((d) => ({ ...d, campaignName: e.target.value }))}
+              placeholder="Same as UTM campaign"
+            />
+          </FormField>
+          <FormField label="Spend (BDT)">
+            <FormInput
+              type="number"
+              value={draft.spendBdt}
+              onChange={(e) => setDraft((d) => ({ ...d, spendBdt: e.target.value }))}
+            />
+          </FormField>
+          <FormField label="Notes">
+            <FormInput
+              value={draft.notes}
+              onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+            />
+          </FormField>
+          <div className="sm:col-span-2 lg:col-span-4">
+            <Button type="button" size="sm" disabled={saving} onClick={() => void handleSaveSpend()}>
+              {saving ? 'Saving…' : 'Save spend'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <CrmSummaryStrip
         items={[
           { id: 'spend', label: 'Ad spend', value: formatCurrency(data.spendBdt) },
@@ -250,8 +510,8 @@ function MarketingPanel({ period }: { period: ReportPeriod }) {
           { id: 'orders', label: 'Orders', value: String(data.orders) },
         ]}
       />
-      <ChartCard title="Spend vs leads">
-        <DualAxisLineChart data={data.trend} leftLabel="Spend" rightLabel="Leads" leftFormatter={(v) => formatCurrency(v)} />
+      <ChartCard title="Attributed revenue trend">
+        <DualAxisLineChart data={data.trend} leftLabel="Revenue" rightLabel="—" leftFormatter={(v) => formatCurrency(v)} />
       </ChartCard>
       <DataTableCard
         title="Campaigns"
@@ -323,6 +583,14 @@ function PlatformPanel() {
 
 function LoadingPlaceholder() {
   return <p className="py-12 text-center text-sm text-muted-foreground">Loading report…</p>;
+}
+
+function ErrorPlaceholder({ message }: { message: string }) {
+  return (
+    <p className="py-12 text-center text-sm text-destructive">
+      Could not load report: {message}
+    </p>
+  );
 }
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {

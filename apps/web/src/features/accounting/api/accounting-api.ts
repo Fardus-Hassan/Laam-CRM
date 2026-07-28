@@ -29,7 +29,11 @@ import {
   markReceivableCollected,
   MOCK_RECEIVABLES,
 } from '@/features/accounting/data/mock-accounting';
-import { getChartOfAccounts } from '@/features/accounting/data/chart-of-accounts-store';
+import {
+  getChartOfAccounts,
+  setChartOfAccountActive,
+  upsertChartOfAccount,
+} from '@/features/accounting/data/chart-of-accounts-store';
 
 export type AccountingApi = {
   getOverview: () => Promise<AccountingOverview>;
@@ -44,6 +48,12 @@ export type AccountingApi = {
   markPayablePaid: (id: string) => Promise<PayableItem>;
   listCashBank: () => Promise<{ items: CashBankAccount[] }>;
   listChartOfAccounts: () => Promise<{ items: ChartOfAccount[] }>;
+  createChartOfAccount: (payload: {
+    code: string;
+    name: string;
+    type: ChartOfAccount['type'];
+  }) => Promise<ChartOfAccount>;
+  setChartOfAccountActive: (id: string, isActive: boolean) => Promise<ChartOfAccount>;
   getProfitLoss: () => Promise<ProfitLossReport>;
   getBalanceSheet: () => Promise<BalanceSheetReport>;
 };
@@ -105,6 +115,21 @@ export function createMockAccountingApi(): AccountingApi {
     async listChartOfAccounts() {
       await delay(80);
       return { items: getChartOfAccounts() };
+    },
+    async createChartOfAccount(payload) {
+      await delay(80);
+      upsertChartOfAccount(payload);
+      const items = getChartOfAccounts();
+      const found = items.find((a) => a.code === payload.code.trim());
+      if (!found) throw new Error('Failed to create account');
+      return found;
+    },
+    async setChartOfAccountActive(id, isActive) {
+      await delay(60);
+      setChartOfAccountActive(id, isActive);
+      const found = getChartOfAccounts().find((a) => a.id === id);
+      if (!found) throw new Error('Account not found');
+      return found;
     },
     async getProfitLoss() {
       await delay(80);
@@ -180,6 +205,20 @@ export function createHttpAccountingApi(): AccountingApi {
     async listChartOfAccounts() {
       const { apiRequest } = await import('@/lib/api/client');
       return apiRequest(`${base}/chart-of-accounts`);
+    },
+    async createChartOfAccount(payload) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<ChartOfAccount>(`${base}/chart-of-accounts`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+    async setChartOfAccountActive(id, isActive) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<ChartOfAccount>(`${base}/chart-of-accounts/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isActive }),
+      });
     },
     async getProfitLoss() {
       const { apiRequest } = await import('@/lib/api/client');

@@ -18,8 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreateTaskSummaryPanel } from '@/features/tasks/components/create-task/create-task-summary-panel';
 import { CreateTaskTypePicker } from '@/features/tasks/components/create-task/create-task-type-picker';
 import { TASK_PRIORITY_LABELS } from '@/features/tasks/config/task-filters';
-import { CUSTOMER_AGENTS } from '@/features/customers/data/mock-customers';
-import { MOCK_CURRENT_AGENT } from '@/features/tasks/data/mock-tasks';
+import { useAuth } from '@/features/auth/hooks/use-auth';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 import { useTaskMutations } from '@/features/tasks/hooks/use-task-mutations';
 import {
   ORDER_CARD_CLASS,
@@ -49,6 +49,8 @@ const CUSTOMER_TASK_TYPES: TaskType[] = [
 
 export function CreateTaskPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { agents } = useAgentOptions();
   const { createTask, isLoading } = useTaskMutations();
   const [draft, setDraft] = React.useState({
     title: '',
@@ -57,11 +59,27 @@ export function CreateTaskPage() {
     priority: 'medium' as TaskPriority,
     dueDate: '',
     dueTime: '',
-    assignedAgentName: MOCK_CURRENT_AGENT,
+    assignedAgentName: '',
     customerName: '',
     customerPhone: '',
     notes: '',
   });
+
+  React.useEffect(() => {
+    if (draft.assignedAgentName) return;
+    const preferred = user?.name?.trim();
+    if (preferred) {
+      setDraft((current) =>
+        current.assignedAgentName ? current : { ...current, assignedAgentName: preferred },
+      );
+      return;
+    }
+    if (agents[0]) {
+      setDraft((current) =>
+        current.assignedAgentName ? current : { ...current, assignedAgentName: agents[0]! },
+      );
+    }
+  }, [user?.name, agents, draft.assignedAgentName]);
 
   function patch(values: Partial<typeof draft>) {
     setDraft((current) => ({ ...current, ...values }));
@@ -169,7 +187,7 @@ export function CreateTaskPage() {
                     <FormSearchSelect
                       value={draft.assignedAgentName}
                       onChange={(v) => patch({ assignedAgentName: v })}
-                      options={CUSTOMER_AGENTS.map((name) => ({ value: name, label: name }))}
+                      options={agents.map((name) => ({ value: name, label: name }))}
                       placeholder="Select agent…"
                     />
                   </FormField>

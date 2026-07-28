@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { AccountingController } from './accounting.controller';
+import { AccountingService } from './accounting.service';
 import { AuthModule } from '../auth/auth.module';
 import { BrandingController } from './branding.controller';
 import { BrandingService } from './branding.service';
@@ -50,6 +52,10 @@ import { ProductsController } from './products.controller';
 import { RecycleBinController } from './recycle-bin.controller';
 import { RbacController } from './rbac.controller';
 import { RbacService } from './rbac.service';
+import { ReportsController } from './reports.controller';
+import { ReportsService } from './reports.service';
+import { TasksController } from './tasks.controller';
+import { TasksService } from './tasks.service';
 
 @Module({
   imports: [AuthModule],
@@ -81,6 +87,9 @@ import { RbacService } from './rbac.service';
     InventoryReportsController,
     InventoryAdvancedController,
     RecycleBinController,
+    AccountingController,
+    ReportsController,
+    TasksController,
   ],
   providers: [
     RbacService,
@@ -89,6 +98,9 @@ import { RbacService } from './rbac.service';
     CustomersService,
     ContactsService,
     FollowupsService,
+    AccountingService,
+    ReportsService,
+    TasksService,
     OrdersService,
     PathaoCourierService,
     PathaoSyncService,

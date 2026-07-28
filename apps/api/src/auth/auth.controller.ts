@@ -14,6 +14,17 @@ import { CurrentUser, Public, type AuthUserPayload } from '../common/decorators'
 import { resolveTenantSlugFromRequest } from '../common/tenant.util';
 import { AuthService } from './auth.service';
 
+function clientIp(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0]!.trim();
+  }
+  if (Array.isArray(forwarded) && forwarded[0]) {
+    return forwarded[0].split(',')[0]!.trim();
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
 class LoginDto {
   @IsEmail()
   email!: string;
@@ -123,14 +134,29 @@ export class AuthController {
   @Post('login')
   login(@Body() body: LoginDto, @Req() req: Request) {
     const tenantSlug = resolveTenantSlugFromRequest(req);
-    return this.auth.login(body.email, body.password, tenantSlug, body.deviceId);
+    return this.auth.login(body.email, body.password, tenantSlug, body.deviceId, {
+      ip: clientIp(req),
+      userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+    });
   }
 
   @Public()
   @Post('login/verify-device')
   loginVerifyDevice(@Body() body: LoginVerifyDeviceDto, @Req() req: Request) {
     const tenantSlug = resolveTenantSlugFromRequest(req);
-    return this.auth.loginVerifyDevice(body.email, body.deviceId, body.code, tenantSlug);
+    return this.auth.loginVerifyDevice(
+      body.email,
+      body.deviceId,
+      body.code,
+      tenantSlug,
+      {
+        ip: clientIp(req),
+        userAgent:
+          typeof req.headers['user-agent'] === 'string'
+            ? req.headers['user-agent']
+            : undefined,
+      },
+    );
   }
 
   @Public()

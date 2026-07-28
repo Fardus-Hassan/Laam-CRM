@@ -44,13 +44,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  CHART_OF_ACCOUNTS_CHANGED,
-  getChartOfAccounts,
-  setChartOfAccountActive,
-  upsertChartOfAccount,
-} from '@/features/accounting/data/chart-of-accounts-store';
-import type { AccountType } from '@laam/types';
+import type { AccountType, ChartOfAccount } from '@laam/types';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDragToScroll } from '@/hooks/use-drag-to-scroll';
@@ -381,36 +375,59 @@ export function CashBankPage() {
 }
 
 export function ChartOfAccountsPage() {
-  const [items, setItems] = React.useState(() => getChartOfAccounts());
+  const [items, setItems] = React.useState<ChartOfAccount[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState({
     code: '',
     name: '',
-    type: 'asset' as AccountType,
+    type: 'expense' as AccountType,
   });
 
-  React.useEffect(() => {
-    function refresh() {
-      setItems(getChartOfAccounts());
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await accountingApi.listChartOfAccounts();
+      setItems(res.items);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load chart of accounts');
+    } finally {
+      setLoading(false);
     }
-    window.addEventListener(CHART_OF_ACCOUNTS_CHANGED, refresh);
-    return () => window.removeEventListener(CHART_OF_ACCOUNTS_CHANGED, refresh);
   }, []);
 
-  function handleCreate() {
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleCreate() {
     if (!draft.code.trim() || !draft.name.trim()) {
       toast.error('Code and name are required');
       return;
     }
 
+    setSaving(true);
     try {
-      upsertChartOfAccount(draft);
-      setItems(getChartOfAccounts());
+      await accountingApi.createChartOfAccount(draft);
       setOpen(false);
-      setDraft({ code: '', name: '', type: 'asset' });
+      setDraft({ code: '', name: '', type: 'expense' });
       toast.success('Account added');
+      await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save account');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggle(account: ChartOfAccount) {
+    try {
+      await accountingApi.setChartOfAccountActive(account.id, !account.isActive);
+      toast.success(account.isActive ? 'Account deactivated' : 'Account activated');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update account');
     }
   }
 
@@ -425,29 +442,30 @@ export function ChartOfAccountsPage() {
         </Button>
       }
     >
-      <SimpleTable
-        headers={['Code', 'Account name', 'Type', 'Balance', 'Status', 'Actions']}
-        rows={items.map((account) => [
-          <span key="c" className="font-mono">{account.code}</span>,
-          account.name,
-          <Badge key="t" variant="outline" className="text-[10px]">{ACCOUNT_TYPE_LABELS[account.type]}</Badge>,
-          formatCurrency(account.balance),
-          <Badge key="s" variant={account.isActive ? 'default' : 'secondary'}>{account.isActive ? 'Active' : 'Inactive'}</Badge>,
-          <Button
-            key="a"
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7"
-            onClick={() => {
-              setChartOfAccountActive(account.id, !account.isActive);
-              setItems(getChartOfAccounts());
-            }}
-          >
-            {account.isActive ? 'Deactivate' : 'Activate'}
-          </Button>,
-        ])}
-      />
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading accounts…</p>
+      ) : (
+        <SimpleTable
+          headers={['Code', 'Account name', 'Type', 'Balance', 'Status', 'Actions']}
+          rows={items.map((account) => [
+            <span key="c" className="font-mono">{account.code}</span>,
+            account.name,
+            <Badge key="t" variant="outline" className="text-[10px]">{ACCOUNT_TYPE_LABELS[account.type]}</Badge>,
+            formatCurrency(account.balance),
+            <Badge key="s" variant={account.isActive ? 'default' : 'secondary'}>{account.isActive ? 'Active' : 'Inactive'}</Badge>,
+            <Button
+              key="a"
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7"
+              onClick={() => void handleToggle(account)}
+            >
+              {account.isActive ? 'Deactivate' : 'Activate'}
+            </Button>,
+          ])}
+        />
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -480,7 +498,9 @@ export function ChartOfAccountsPage() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="button" onClick={handleCreate}>Save account</Button>
+            <Button type="button" disabled={saving} onClick={() => void handleCreate()}>
+              {saving ? 'Saving…' : 'Save account'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

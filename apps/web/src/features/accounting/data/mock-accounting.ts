@@ -349,6 +349,13 @@ export function createMockIncome(payload: CreateIncomePayload): IncomeListItem {
     id: `inc-${MOCK_INCOMES.length + 1}`,
     type: 'income',
     ...payload,
+    accountName:
+      payload.accountName ??
+      (payload.paymentMethod === 'bkash'
+        ? 'bKash Business'
+        : payload.paymentMethod === 'bank'
+          ? 'DBBL Current'
+          : 'Cash Register'),
     createdByName: 'Sakib Ahmed (sakib@laamcrm.com)',
     createdAt: new Date().toISOString(),
   };
@@ -362,6 +369,13 @@ export function createMockExpense(payload: CreateExpensePayload): ExpenseListIte
     id: `exp-${MOCK_EXPENSES.length + 1}`,
     type: 'expense',
     ...payload,
+    accountName:
+      payload.accountName ??
+      (payload.paymentMethod === 'bkash'
+        ? 'bKash Business'
+        : payload.paymentMethod === 'bank'
+          ? 'DBBL Current'
+          : 'Cash Register'),
     createdByName: 'Sakib Ahmed (sakib@laamcrm.com)',
     createdAt: new Date().toISOString(),
   };

@@ -15,6 +15,7 @@ import { NotificationsService } from '../crm/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { OtpChallengeResult } from './otp.service';
 import { OtpService } from './otp.service';
+import { summarizeUserAgent } from './user-agent.util';
 
 type UserWithOrg = {
   id: string;
@@ -73,6 +74,7 @@ export class AuthService {
     password: string,
     tenantSlug: string | null,
     deviceId: string,
+    meta?: { ip?: string; userAgent?: string },
   ): Promise<LoginResult> {
     if (!deviceId?.trim()) {
       throw new BadRequestException('Device id is required');
@@ -80,11 +82,29 @@ export class AuthService {
 
     const user = await this.findUserWithOrg(email);
     if (!user || user.status === 'suspended') {
+      await this.recordLoginAudit({
+        organizationId: user?.organizationId ?? null,
+        userId: user?.id ?? null,
+        userName: user?.name ?? email,
+        email,
+        status: 'failed',
+        deviceId,
+        meta,
+      });
       throw new UnauthorizedException('Invalid email or password');
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
+      await this.recordLoginAudit({
+        organizationId: user.organizationId,
+        userId: user.id,
+        userName: user.name,
+        email: user.email,
+        status: 'failed',
+        deviceId,
+        meta,
+      });
       if (user.organizationId) {
         try {
           await this.notifications.notifyUsersWithPermission({
@@ -109,7 +129,17 @@ export class AuthService {
       where: { userId_deviceId: { userId: user.id, deviceId: deviceId.trim() } },
     });
     if (trusted) {
-      return this.issueLoginSession(user);
+      const session = await this.issueLoginSession(user);
+      await this.recordLoginAudit({
+        organizationId: user.organizationId,
+        userId: user.id,
+        userName: user.name,
+        email: user.email,
+        status: 'success',
+        deviceId,
+        meta,
+      });
+      return session;
     }
 
     const delivery = this.otpDeliveryForUser(user);
@@ -146,6 +176,7 @@ export class AuthService {
     deviceId: string,
     code: string,
     tenantSlug: string | null,
+    meta?: { ip?: string; userAgent?: string },
   ): Promise<LoginSuccess> {
     if (!deviceId?.trim()) {
       throw new BadRequestException('Device id is required');
@@ -166,7 +197,17 @@ export class AuthService {
       update: { trustedAt: new Date() },
     });
 
-    return this.issueLoginSession(user);
+    const session = await this.issueLoginSession(user);
+    await this.recordLoginAudit({
+      organizationId: user.organizationId,
+      userId: user.id,
+      userName: user.name,
+      email: user.email,
+      status: 'success',
+      deviceId,
+      meta,
+    });
+    return session;
   }
 
   async getSession(userId: string): Promise<AuthSession | null> {
@@ -396,6 +437,38 @@ export class AuthService {
       role: user.systemRole,
       organizationId: user.organizationId,
     });
+  }
+
+  private async recordLoginAudit(input: {
+    organizationId: string | null;
+    userId: string | null;
+    userName: string;
+    email: string;
+    status: 'success' | 'failed';
+    deviceId: string;
+    meta?: { ip?: string; userAgent?: string };
+  }) {
+    try {
+      const ua = input.meta?.userAgent?.trim();
+      const device = ua
+        ? summarizeUserAgent(ua)
+        : summarizeUserAgent(`device:${input.deviceId.trim().slice(0, 64)}`);
+      await this.prisma.loginAudit.create({
+        data: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          userName: input.userName,
+          email: input.email.trim().toLowerCase(),
+          ip: input.meta?.ip?.trim() || 'unknown',
+          device,
+          status: input.status,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Login audit failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private async issueLoginSession(user: UserWithOrg): Promise<LoginSuccess> {

@@ -69,6 +69,58 @@ export function ReportsShell({ initialView, initialPeriod }: ReportsShellProps) 
       downloadCsv(filename, ['KPI', 'Value', 'Change'], data.kpis.map((k) => [k.label, k.value, k.change ?? '']));
       return;
     }
+    if (view === 'sales') {
+      const data = await reportsApi.getSales(period);
+      downloadCsv(filename, ['KPI', 'Value'], data.kpis.map((k) => [k.label, k.value]));
+      return;
+    }
+    if (view === 'revenue') {
+      const data = await reportsApi.getRevenue(period);
+      downloadCsv(
+        filename,
+        ['KPI', 'Value'],
+        [
+          ...data.kpis.map((k) => [k.label, k.value]),
+          ...data.breakdown.map((b) => [`Category: ${b.label}`, b.value]),
+        ],
+      );
+      return;
+    }
+    if (view === 'product-daily') {
+      const data = await reportsApi.getProductDaily(period);
+      downloadCsv(filename, ['Day', 'Units'], data.map((d) => [d.label, d.value]));
+      return;
+    }
+    if (view === 'team-targets') {
+      const rows = await reportsApi.getTeamTargets(period);
+      downloadCsv(
+        filename,
+        ['Name', 'Target orders', 'Actual orders', 'Target revenue', 'Actual revenue', 'Progress %'],
+        rows.map((r) => [
+          r.name,
+          r.targetOrders,
+          r.actualOrders,
+          r.targetRevenueBdt,
+          r.actualRevenueBdt,
+          r.progressPercent,
+        ]),
+      );
+      return;
+    }
+    if (view === 'upsales') {
+      const rows = await reportsApi.getUpsales(period);
+      downloadCsv(
+        filename,
+        ['Base', 'Upsell', 'Count', 'Revenue', 'Rate'],
+        rows.map((r) => [r.baseProduct, r.upsellProduct, r.count, r.revenueBdt, r.rate]),
+      );
+      return;
+    }
+    if (view === 'platform') {
+      const data = await reportsApi.getPlatform();
+      downloadCsv(filename, ['KPI', 'Value'], data.kpis.map((k) => [k.label, k.value]));
+      return;
+    }
     if (view === 'repeat-customers') {
       const rows = await reportsApi.getRepeatCustomers(period);
       downloadCsv(filename, ['Name', 'Mobile', 'Orders', 'Spent', 'Last order'], rows.map((r) => [r.name, r.mobile, r.orderCount, r.totalSpentBdt, r.lastOrderDate]));
@@ -95,7 +147,7 @@ export function ReportsShell({ initialView, initialPeriod }: ReportsShellProps) 
       return;
     }
     const ranked = await reportsApi.getRankedProducts(view, period);
-    downloadCsv(filename, ['Rank', 'Product', 'SKU', 'Value'], ranked.map((r) => [r.rank, r.name, r.sku ?? '', r.value]));
+    downloadCsv(filename, ['Rank', 'Product', 'SKU', 'Value', 'Secondary'], ranked.map((r) => [r.rank, r.name, r.sku ?? '', r.value, r.secondaryValue ?? '']));
   }
 
   return (

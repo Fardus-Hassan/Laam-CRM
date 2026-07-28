@@ -37,6 +37,7 @@ model Organization {
   warehouses               Warehouse[]
   inventoryLots            InventoryLot[]
   accountingJournalEntries AccountingJournalEntry[]
+  accountingAccounts       AccountingAccount[]
   unitsOfMeasure           UnitOfMeasure[]
   orders                   Order[]
   orderFormOptions         OrderFormOption[]
@@ -45,6 +46,7 @@ model Organization {
   customers                Customer[]
   contacts                 Contact[]
   followups                Followup[]
+  tasks                    Task[]
   courierIntegrations      CourierIntegration[]
   courierStatusMaps        CourierStatusMap[]
   smsIntegration           SmsIntegration?
@@ -54,6 +56,9 @@ model Organization {
   failedOrders             FailedOrder[]
   orgOrderStatuses          OrgOrderStatus[]
   orgOrderQueues           OrgOrderQueue[]
+  marketingSpends          MarketingSpend[]
+  performanceTargets       PerformanceTarget[]
+  loginAudits              LoginAudit[]
 }
 
 /// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
@@ -177,6 +182,7 @@ model User {
   otpChallenges       OtpChallenge[]
   trustedDevices      TrustedDevice[]
   notifications       Notification[]
+  loginAudits         LoginAudit[]
 
   @@index([organizationId])
   @@index([teamId])
@@ -601,6 +607,45 @@ model Followup {
   @@index([organizationId, followupStatus])
 }
 
+/// Agent / ops to-do items (calls, confirms, courier, etc.).
+model Task {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title             String
+  description       String?
+  /// call_customer | confirm_order | courier_followup | payment_followup | lead_followup | delivery_issue | general
+  taskType          String       @default("general")
+  /// pending | in_progress | done | cancelled
+  status            String       @default("pending")
+  /// low | medium | high | urgent
+  priority          String       @default("medium")
+  dueDate           DateTime?    @db.Date
+  dueTime           String?
+  assignedAgentName String?
+  createdByUserId   String?
+  createdByName     String?
+  /// order | lead | customer | followup | none
+  relatedType       String       @default("none")
+  relatedId         String?
+  relatedLabel      String?
+  customerName      String?
+  customerPhone     String?
+  notes             String?
+  tags              String[]     @default([])
+  activities        Json         @default("[]")
+  completedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, assignedAgentName])
+  @@index([organizationId, priority])
+  @@index([organizationId, taskType])
+  @@index([organizationId, createdAt])
+}
+
 model Coupon {
   id              String    @id @default(cuid())
   organizationId  String
@@ -975,6 +1020,26 @@ model InventoryLot {
   @@index([warehouseId])
 }
 
+model AccountingAccount {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String
+  name           String
+  /// asset | liability | equity | income | expense
+  type           String
+  isActive       Boolean      @default(true)
+  isSystem       Boolean      @default(false)
+  /// cash | bkash | nagad | bank — cash-book accounts only
+  cashKind       String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, type])
+  @@index([organizationId, isActive])
+}
+
 model AccountingJournalEntry {
   id             String                  @id @default(uuid())
   organizationId String
@@ -986,12 +1051,16 @@ model AccountingJournalEntry {
   sourceId       String
   eventKey       String
   status         String                  @default("posted")
+  /// income/expense/inventory category for filtering
+  category       String?
+  paymentMethod  String?
   postedAt       DateTime                @default(now())
   lines          AccountingJournalLine[]
 
   @@unique([organizationId, eventKey])
   @@index([organizationId, entryDate])
   @@index([organizationId, sourceType, sourceId])
+  @@index([organizationId, category])
 }
 
 model AccountingJournalLine {
@@ -1165,4 +1234,61 @@ model CatalogActivity {
   @@index([organizationId, createdAt])
   @@index([entityType, entityId, createdAt])
   @@index([productId, createdAt])
+}
+
+/// Manual Meta/ad campaign spend (Meta API later). monthKey = YYYY-MM.
+model MarketingSpend {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  monthKey       String
+  campaignName   String
+  spendBdt       Float
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, monthKey, campaignName])
+  @@index([organizationId, monthKey])
+}
+
+/// Monthly targets for agents (by name) or teams (by teamId).
+model PerformanceTarget {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  monthKey         String
+  /// agent | team
+  scope            String
+  /// agent display name OR team id
+  subjectKey       String
+  subjectLabel     String
+  targetOrders     Int          @default(0)
+  targetRevenueBdt Float        @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, monthKey, scope, subjectKey])
+  @@index([organizationId, monthKey])
+  @@index([organizationId, scope])
+}
+
+/// Login success/failure audit for security reports.
+model LoginAudit {
+  id             String        @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userName       String
+  email          String
+  ip             String        @default("unknown")
+  device         String        @default("unknown")
+  /// success | failed
+  status         String
+  loggedInAt     DateTime      @default(now())
+
+  @@index([organizationId, loggedInAt])
+  @@index([email, loggedInAt])
+  @@index([userId, loggedInAt])
 }

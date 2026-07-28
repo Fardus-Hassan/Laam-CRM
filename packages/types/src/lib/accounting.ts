@@ -218,7 +218,8 @@ export const createIncomePayloadSchema = z.object({
   description: z.string().min(1),
   amount: z.number().positive(),
   paymentMethod: paymentMethodSchema,
-  accountName: z.string(),
+  /** Optional UI hint — server resolves cash account from paymentMethod */
+  accountName: z.string().optional(),
   reference: z.string().optional(),
   relatedOrderId: z.string().optional(),
 });
@@ -231,7 +232,8 @@ export const createExpensePayloadSchema = z.object({
   description: z.string().min(1),
   amount: z.number().positive(),
   paymentMethod: paymentMethodSchema,
-  accountName: z.string(),
+  /** Optional UI hint — server resolves cash account from paymentMethod */
+  accountName: z.string().optional(),
   reference: z.string().optional(),
   relatedSupplier: z.string().optional(),
 });
