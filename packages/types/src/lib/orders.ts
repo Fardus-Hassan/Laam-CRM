@@ -87,6 +87,7 @@ export const orderLineItemSchema = z.object({
   productName: z.string(),
   sku: z.string().optional(),
   quantity: z.number().int().positive(),
+  returnedQuantity: z.number().int().nonnegative().optional(),
   unitPrice: z.number(),
   lineTotal: z.number(),
   productId: z.string().optional(),
@@ -97,6 +98,19 @@ export const orderLineItemSchema = z.object({
 });
 
 export type OrderLineItem = z.infer<typeof orderLineItemSchema>;
+
+export const returnOrderLinesPayloadSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        lineItemId: z.string().min(1),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+});
+
+export type ReturnOrderLinesPayload = z.infer<typeof returnOrderLinesPayloadSchema>;
 
 export const orderAttachmentSchema = z.object({
   id: z.string(),
@@ -520,6 +534,7 @@ export const orderBulkActionTypeSchema = z.enum([
   'status_change',
   'courier_submit',
   'courier_unlink',
+  'update_courier_status',
   'transfer_employee',
   'export',
   'print',

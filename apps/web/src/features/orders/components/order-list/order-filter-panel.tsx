@@ -392,7 +392,6 @@ export function OrderFilterPanel({
                 { value: '', label: 'All' },
                 { value: 'pathao', label: 'Pathao' },
                 { value: 'carrybee', label: 'Carrybee' },
-                { value: 'steadfast', label: 'Steadfast' },
               ]}
               placeholder="All"
             />

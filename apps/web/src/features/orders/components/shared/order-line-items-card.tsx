@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 type OrderLineItemsCardProps = {
   order: OrderDetail;
   onSaveLineItems?: (lineItems: OrderDetail['lineItems']) => void | Promise<void>;
+  onReturned?: (order: OrderDetail) => void;
 };
 
 function LineItemsEditSheet({
@@ -137,9 +138,50 @@ function ProductThumb({
   );
 }
 
-export function OrderLineItemsCard({ order, onSaveLineItems }: OrderLineItemsCardProps) {
+export function OrderLineItemsCard({
+  order,
+  onSaveLineItems,
+  onReturned,
+}: OrderLineItemsCardProps) {
   const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [returnOpen, setReturnOpen] = React.useState(false);
+  const [returnQty, setReturnQty] = React.useState<Record<string, number>>({});
+  const [returning, setReturning] = React.useState(false);
   const itemCount = order.lineItems.reduce((sum, line) => sum + line.quantity, 0);
+  const canReturn = order.lineItems.some(
+    (line) => (line.returnedQuantity ?? 0) < line.quantity,
+  );
+
+  React.useEffect(() => {
+    if (!returnOpen) return;
+    const next: Record<string, number> = {};
+    for (const line of order.lineItems) {
+      next[line.id] = 0;
+    }
+    setReturnQty(next);
+  }, [returnOpen, order.lineItems]);
+
+  async function submitReturn() {
+    const lines = Object.entries(returnQty)
+      .filter(([, qty]) => qty > 0)
+      .map(([lineItemId, quantity]) => ({ lineItemId, quantity }));
+    if (lines.length === 0) {
+      toast.error('Select at least one return quantity');
+      return;
+    }
+    setReturning(true);
+    try {
+      const { ordersApi } = await import('@/features/orders/api/orders-api');
+      const updated = await ordersApi.returnLines(order.id, { lines });
+      toast.success('Return recorded');
+      setReturnOpen(false);
+      onReturned?.(updated);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Return failed');
+    } finally {
+      setReturning(false);
+    }
+  }
 
   return (
     <>
@@ -154,6 +196,17 @@ export function OrderLineItemsCard({ order, onSaveLineItems }: OrderLineItemsCar
               {order.lineItems.length} line{order.lineItems.length === 1 ? '' : 's'} · {itemCount}{' '}
               qty
             </Badge>
+            {canReturn ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2.5 text-xs"
+                onClick={() => setReturnOpen(true)}
+              >
+                Return items
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="sm"
@@ -185,6 +238,7 @@ export function OrderLineItemsCard({ order, onSaveLineItems }: OrderLineItemsCar
           {order.lineItems.map((line, index) => {
             const unitDiscount = line.discount ?? 0;
             const gross = line.quantity * line.unitPrice;
+            const returned = line.returnedQuantity ?? 0;
             return (
               <div
                 key={line.id}
@@ -215,6 +269,9 @@ export function OrderLineItemsCard({ order, onSaveLineItems }: OrderLineItemsCar
                     <span className="tabular-nums">
                       {formatCurrency(line.unitPrice)} × {line.quantity}
                     </span>
+                    {returned > 0 ? (
+                      <span className="tabular-nums text-amber-700">Returned {returned}</span>
+                    ) : null}
                     {unitDiscount > 0 ? (
                       <span className="tabular-nums text-destructive">
                         −{formatCurrency(unitDiscount)} disc
@@ -244,6 +301,57 @@ export function OrderLineItemsCard({ order, onSaveLineItems }: OrderLineItemsCar
         onOpenChange={setSheetOpen}
         onSave={onSaveLineItems}
       />
+
+      <Sheet open={returnOpen} onOpenChange={setReturnOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Return items</SheetTitle>
+          </SheetHeader>
+          <SheetBody className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Enter how many units to return per line. Stock restocks for returned qty when stock
+              was previously deducted.
+            </p>
+            {order.lineItems.map((line) => {
+              const returned = line.returnedQuantity ?? 0;
+              const remaining = Math.max(0, line.quantity - returned);
+              return (
+                <div key={line.id} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{line.productName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Remaining {remaining} / {line.quantity}
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={remaining}
+                    className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm tabular-nums"
+                    value={returnQty[line.id] ?? 0}
+                    disabled={remaining === 0}
+                    onChange={(e) => {
+                      const raw = Number(e.target.value);
+                      const qty = Number.isFinite(raw)
+                        ? Math.max(0, Math.min(remaining, Math.floor(raw)))
+                        : 0;
+                      setReturnQty((prev) => ({ ...prev, [line.id]: qty }));
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </SheetBody>
+          <SheetFooter>
+            <Button type="button" variant="outline" onClick={() => setReturnOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void submitReturn()} disabled={returning}>
+              {returning ? 'Saving…' : 'Confirm return'}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

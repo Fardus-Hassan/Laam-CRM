@@ -12,13 +12,12 @@ export const MOCK_ORG_PROFILE: OrgProfile = {
   timezone: 'Asia/Dhaka',
   currency: 'BDT',
   orderPrefix: 'MH',
-  defaultCourier: 'steadfast',
+  defaultCourier: 'pathao',
 };
 
 export const MOCK_INTEGRATIONS: IntegrationConfig[] = [
-  { id: 'int-1', provider: 'steadfast', label: 'Steadfast Courier', status: 'connected', lastSyncAt: '2026-07-02T08:00:00Z' },
-  { id: 'int-2', provider: 'pathao', label: 'Pathao Courier', status: 'connected', lastSyncAt: '2026-07-01T22:00:00Z' },
-  { id: 'int-3', provider: 'redx', label: 'RedX Courier', status: 'disconnected' },
+  { id: 'int-1', provider: 'pathao', label: 'Pathao Courier', status: 'connected', lastSyncAt: '2026-07-02T08:00:00Z' },
+  { id: 'int-2', provider: 'carrybee', label: 'Carrybee Courier', status: 'connected', lastSyncAt: '2026-07-01T22:00:00Z' },
   { id: 'int-4', provider: 'facebook', label: 'Facebook Lead Ads', status: 'connected', lastSyncAt: '2026-07-02T06:30:00Z' },
   { id: 'int-5', provider: 'bkash', label: 'bKash Payment', status: 'connected', lastSyncAt: '2026-07-02T10:00:00Z' },
   { id: 'int-6', provider: 'nagad', label: 'Nagad Payment', status: 'pending' },

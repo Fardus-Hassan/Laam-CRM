@@ -105,7 +105,6 @@ export function SendCourierBarcodePage() {
                 onChange={setCourier}
                 options={[
                   { value: 'pathao', label: 'Pathao' },
-                  { value: 'steadfast', label: 'Steadfast' },
                   { value: 'carrybee', label: 'Carrybee' },
                 ]}
                 searchable={false}

@@ -370,7 +370,6 @@ export function bulkActionToModal(
   if (actionId === 'export') return { type: 'export', orderIds };
   if (actionId === 'set_followup') return { type: 'followup', orderIds };
   if (actionId === 'submit_pathao') return { type: 'courier', orderIds, courier: 'Pathao' };
-  if (actionId === 'submit_steadfast') return { type: 'courier', orderIds, courier: 'Steadfast' };
   if (actionId === 'submit_carrybee') return { type: 'courier', orderIds, courier: 'Carrybee' };
   return null;
 }

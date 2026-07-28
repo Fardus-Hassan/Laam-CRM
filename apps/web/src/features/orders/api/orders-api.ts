@@ -12,6 +12,7 @@ import type {
   OrderListResponse,
   OrderListRow,
   OrderListRowResponse,
+  ReturnOrderLinesPayload,
   UpdateOrderPayload,
 } from '@laam/types';
 
@@ -47,6 +48,7 @@ export type OrdersApi = {
   getFormOptions: () => Promise<OrderFormOptionsResponse>;
   lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
   deleteOrder: (id: string) => Promise<void>;
+  returnLines: (id: string, payload: ReturnOrderLinesPayload) => Promise<OrderDetail>;
 };
 
 export function createMockOrdersApi(): OrdersApi {
@@ -152,6 +154,27 @@ export function createMockOrdersApi(): OrdersApi {
         (order) => order.id === id || order.orderNumber === id,
       );
       if (index >= 0) store.mockOrderStore.splice(index, 1);
+    },
+    async returnLines(id, payload) {
+      await delay(120);
+      const order = getMockOrderById(id);
+      if (!order) throw new Error('Order not found');
+      const nextLines = order.lineItems.map((line) => {
+        const add = payload.lines.find((l) => l.lineItemId === line.id)?.quantity ?? 0;
+        const returnedQuantity = Math.min(
+          line.quantity,
+          (line.returnedQuantity ?? 0) + add,
+        );
+        return { ...line, returnedQuantity };
+      });
+      const allReturned = nextLines.every(
+        (l) => (l.returnedQuantity ?? 0) >= l.quantity,
+      );
+      return (
+        updateMockOrder(order.id, {
+          status: allReturned ? 'returned' : 'pending_return',
+        }) ?? order
+      );
     },
   };
 }
@@ -285,6 +308,14 @@ export function createHttpOrdersApi(): OrdersApi {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
       await apiRequest(`${crmEndpoints.orders}/${id}`, { method: 'DELETE' });
+    },
+    async returnLines(id, payload) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<OrderDetail>(`${crmEndpoints.orders}/${id}/return-lines`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
     },
   };
 }

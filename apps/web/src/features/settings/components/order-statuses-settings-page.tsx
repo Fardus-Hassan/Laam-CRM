@@ -374,59 +374,64 @@ export function OrderStatusesSettingsPage() {
               </p>
               <p>Changes save to the organization database for every user.</p>
             </div>
-            <div className="mt-4 rounded-lg border border-border/70 p-3">
-              <p className="mb-2 text-sm font-medium">Add custom queue folder</p>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <FormInput
-                  placeholder="Label (e.g. VIP Desk)"
-                  id="new-queue-label"
-                />
-                <FormInput placeholder="Slug (vip_desk)" id="new-queue-slug" />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    const label = (
-                      document.getElementById('new-queue-label') as HTMLInputElement | null
-                    )?.value?.trim();
-                    const slugRaw = (
-                      document.getElementById('new-queue-slug') as HTMLInputElement | null
-                    )?.value?.trim();
-                    if (!label) {
-                      toast.error('Queue label required');
-                      return;
-                    }
-                    const slug =
-                      slugRaw ||
-                      label
-                        .toLowerCase()
-                        .replace(/[^a-z0-9_\s-]/g, '')
-                        .replace(/[\s-]+/g, '_');
-                    void import('@/features/orders/api/order-queue-config-api').then(async (m) => {
-                      try {
-                        await m.orderQueueConfigApi.upsert({
-                          slug,
-                          label,
-                          description: `${label} queue`,
-                          showInNav: true,
-                          sidebarOrder: 35,
-                        });
-                        const queues = await m.orderQueueConfigApi.list();
-                        const { setServerOrderQueues } = await import(
-                          '@/features/orders/data/order-status-store'
-                        );
-                        setServerOrderQueues(queues);
-                        toast.success('Queue folder added');
-                      } catch (error) {
-                        toast.error(
-                          error instanceof Error ? error.message : 'Failed to add queue',
-                        );
+            <div className="mt-4 space-y-3 rounded-lg border border-border/70 p-3">
+              <p className="text-sm font-medium">Queue folders</p>
+              <QueueFoldersEditor />
+              <div className="rounded-md border border-dashed border-border/70 p-3">
+                <p className="mb-2 text-sm font-medium">Add custom queue folder</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <FormInput
+                    placeholder="Label (e.g. VIP Desk)"
+                    id="new-queue-label"
+                  />
+                  <FormInput placeholder="Slug (vip_desk)" id="new-queue-slug" />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      const label = (
+                        document.getElementById('new-queue-label') as HTMLInputElement | null
+                      )?.value?.trim();
+                      const slugRaw = (
+                        document.getElementById('new-queue-slug') as HTMLInputElement | null
+                      )?.value?.trim();
+                      if (!label) {
+                        toast.error('Queue label required');
+                        return;
                       }
-                    });
-                  }}
-                >
-                  Add folder
-                </Button>
+                      const slug =
+                        slugRaw ||
+                        label
+                          .toLowerCase()
+                          .replace(/[^a-z0-9_\s-]/g, '')
+                          .replace(/[\s-]+/g, '_');
+                      void import('@/features/orders/api/order-queue-config-api').then(async (m) => {
+                        try {
+                          await m.orderQueueConfigApi.upsert({
+                            slug,
+                            label,
+                            description: `${label} queue`,
+                            showInNav: true,
+                            sidebarOrder: 35,
+                          });
+                          const queues = await m.orderQueueConfigApi.list();
+                          const { setServerOrderQueues } = await import(
+                            '@/features/orders/data/order-status-store'
+                          );
+                          setServerOrderQueues(queues);
+                          toast.success('Queue folder added');
+                          window.dispatchEvent(new Event('laam-queues-changed'));
+                        } catch (error) {
+                          toast.error(
+                            error instanceof Error ? error.message : 'Failed to add queue',
+                          );
+                        }
+                      });
+                    }}
+                  >
+                    Add folder
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -435,3 +440,140 @@ export function OrderStatusesSettingsPage() {
     </PageShell>
   );
 }
+
+function QueueFoldersEditor() {
+  const [queues, setQueues] = React.useState<
+    Array<{
+      id?: string;
+      slug: string;
+      label: string;
+      showInNav: boolean;
+      isSystem?: boolean;
+      isActive?: boolean;
+    }>
+  >([]);
+  const [loading, setLoading] = React.useState(true);
+
+  const refresh = React.useCallback(async () => {
+    const { orderQueueConfigApi } = await import('@/features/orders/api/order-queue-config-api');
+    const rows = await orderQueueConfigApi.list({ includeInactive: true });
+    setQueues(
+      rows.map((q) => ({
+        id: q.id,
+        slug: q.slug,
+        label: q.label,
+        showInNav: q.showInNav,
+        isSystem: q.isSystem,
+        isActive: q.isActive,
+      })),
+    );
+    const { setServerOrderQueues } = await import('@/features/orders/data/order-status-store');
+    setServerOrderQueues(rows.filter((q) => q.isActive !== false));
+  }, []);
+
+  React.useEffect(() => {
+    void refresh()
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : 'Failed to load queues');
+      })
+      .finally(() => setLoading(false));
+    const onChange = () => void refresh();
+    window.addEventListener('laam-queues-changed', onChange);
+    return () => window.removeEventListener('laam-queues-changed', onChange);
+  }, [refresh]);
+
+  if (loading) {
+    return <p className="text-xs text-muted-foreground">Loading folders…</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {queues.map((queue) => {
+        const inactive = queue.isActive === false;
+        return (
+          <div
+            key={queue.id ?? queue.slug}
+            className={cn(
+              'flex flex-wrap items-center gap-2 rounded-md border border-border/60 px-2.5 py-2',
+              inactive && 'opacity-60',
+            )}
+          >
+            <FormInput
+              className="h-8 min-w-[140px] flex-1"
+              defaultValue={queue.label}
+              disabled={!queue.id || inactive}
+              onBlur={(e) => {
+                const next = e.target.value.trim();
+                if (!queue.id || !next || next === queue.label) return;
+                void import('@/features/orders/api/order-queue-config-api').then(async (m) => {
+                  try {
+                    await m.orderQueueConfigApi.rename(queue.id!, next);
+                    toast.success('Folder renamed');
+                    window.dispatchEvent(new Event('laam-queues-changed'));
+                    await refresh();
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : 'Rename failed');
+                    e.target.value = queue.label;
+                  }
+                });
+              }}
+            />
+            <span className="text-[11px] text-muted-foreground">{queue.slug}</span>
+            {queue.isSystem ? (
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                System
+              </span>
+            ) : null}
+            {inactive ? (
+              <span className="text-[10px] uppercase tracking-wide text-amber-700">Hidden</span>
+            ) : null}
+            <label className="ml-auto flex items-center gap-1.5 text-xs">
+              <Checkbox
+                checked={queue.showInNav && !inactive}
+                disabled={!queue.id || inactive}
+                onCheckedChange={(checked) => {
+                  if (!queue.id) return;
+                  void import('@/features/orders/api/order-queue-config-api').then(async (m) => {
+                    try {
+                      await m.orderQueueConfigApi.setShowInNav(queue.id!, checked === true);
+                      toast.success(checked === true ? 'Shown in nav' : 'Hidden from nav');
+                      window.dispatchEvent(new Event('laam-queues-changed'));
+                      await refresh();
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : 'Update failed');
+                    }
+                  });
+                }}
+              />
+              Nav
+            </label>
+            {!queue.isSystem && !inactive && queue.id ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-8 text-destructive"
+                onClick={() => {
+                  if (!window.confirm(`Remove folder "${queue.label}" from nav?`)) return;
+                  void import('@/features/orders/api/order-queue-config-api').then(async (m) => {
+                    try {
+                      await m.orderQueueConfigApi.deactivate(queue.id!);
+                      toast.success('Folder removed');
+                      window.dispatchEvent(new Event('laam-queues-changed'));
+                      await refresh();
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : 'Delete failed');
+                    }
+                  });
+                }}
+              >
+                Delete
+              </Button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+

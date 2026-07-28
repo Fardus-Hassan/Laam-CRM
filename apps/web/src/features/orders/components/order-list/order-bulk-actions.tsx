@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import type { BulkActionId, OrderListRow } from '@laam/types';
+import type { BulkActionId, OrderListRow, TenantUser } from '@laam/types';
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
@@ -21,6 +21,7 @@ import {
   OrderBulkModals,
 } from '@/features/orders/components/order-list/modals/order-bulk-modals';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
+import { rbacApi } from '@/features/rbac/api/rbac-api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -57,8 +58,25 @@ export function OrderBulkActions({
   );
   const [bulkModal, setBulkModal] = React.useState<ReturnType<typeof bulkActionToModal>>(null);
   const { bulkAction, isLoading } = useOrderMutations();
+  const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
 
-  if (visibleActions.length === 0) {
+  React.useEffect(() => {
+    if (variant !== 'card' || selectedCount === 0) return;
+    let cancelled = false;
+    void rbacApi
+      .listUsers('')
+      .then((list) => {
+        if (!cancelled) setTeamUsers(list.filter((u) => u.status === 'active'));
+      })
+      .catch(() => {
+        if (!cancelled) setTeamUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [variant, selectedCount]);
+
+  if (visibleActions.length === 0 && variant === 'compact') {
     return null;
   }
 
@@ -92,6 +110,14 @@ export function OrderBulkActions({
       return;
     }
 
+    if (actionId === 'update_courier_status') {
+      void bulkAction({
+        action: 'update_courier_status',
+        orderIds: selectedOrderIds,
+      }).then(() => onSuccess?.());
+      return;
+    }
+
     const modal = bulkActionToModal(actionId, selectedOrderIds);
     if (modal) {
       setBulkModal(modal);
@@ -100,6 +126,11 @@ export function OrderBulkActions({
 
     toast.error(`Bulk action "${label}" is not implemented yet`);
   }
+
+  const transferOptions = teamUsers.map((u) => ({
+    value: u.name,
+    label: u.email ? `${u.name} · ${u.email}` : u.name,
+  }));
 
   const actionButtons = (
     <div className="flex flex-wrap gap-2">
@@ -161,18 +192,21 @@ export function OrderBulkActions({
                 <FormSearchSelect
                   value=""
                   onChange={(employee) => {
-                    if (!employee) return;
+                    if (!employee || isLoading) return;
+                    if (transferOptions.length === 0) {
+                      toast.error('No active users found. Add team members in Settings → Users.');
+                      return;
+                    }
                     void bulkAction({
                       action: 'transfer_employee',
                       orderIds: selectedOrderIds,
                       employeeName: employee,
                     }).then(() => onSuccess?.());
                   }}
-                  options={['Sakib Ahmed', 'Mitu Rahman', 'Imran Hossain'].map((name) => ({
-                    value: name,
-                    label: name,
-                  }))}
-                  placeholder="Transfer to…"
+                  options={transferOptions}
+                  placeholder={
+                    transferOptions.length === 0 ? 'No active users' : 'Transfer to…'
+                  }
                 />
               </FormField>
             </div>

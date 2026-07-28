@@ -28,7 +28,6 @@ export const bulkActionIdSchema = z.enum([
   'print_info_2',
   'export',
   'submit_pathao',
-  'submit_steadfast',
   'submit_carrybee',
   'update_courier_status',
   'send_sms',
@@ -87,6 +86,7 @@ export const orderQueuePageSchema = z.object({
   showInNav: z.boolean().default(true),
   followUpDue: z.boolean().optional(),
   isSystem: z.boolean().optional(),
+  isActive: z.boolean().optional(),
 });
 
 export type OrderQueuePage = z.infer<typeof orderQueuePageSchema>;

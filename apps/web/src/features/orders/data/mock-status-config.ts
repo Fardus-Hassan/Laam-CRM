@@ -30,7 +30,6 @@ const PENDING_BULK: BulkActionId[] = [
 const CONFIRMED_BULK: BulkActionId[] = [
   ...PENDING_BULK,
   'submit_pathao',
-  'submit_steadfast',
   'submit_carrybee',
 ];
 

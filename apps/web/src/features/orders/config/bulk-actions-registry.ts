@@ -14,7 +14,6 @@ export const BULK_ACTIONS_REGISTRY: Record<BulkActionId, BulkActionDefinition> =
   print_info_2: { id: 'print_info_2', label: 'Print Info 2', requiresSelection: true },
   export: { id: 'export', label: 'Export', requiresSelection: true },
   submit_pathao: { id: 'submit_pathao', label: 'Submit Pathao', variant: 'secondary' },
-  submit_steadfast: { id: 'submit_steadfast', label: 'Submit Steadfast', variant: 'secondary' },
   submit_carrybee: { id: 'submit_carrybee', label: 'Submit CarryBee', variant: 'secondary' },
   update_courier_status: { id: 'update_courier_status', label: 'Update Courier Status' },
   send_sms: { id: 'send_sms', label: 'Send SMS', requiresSelection: true },
@@ -25,5 +24,7 @@ export const BULK_ACTIONS_REGISTRY: Record<BulkActionId, BulkActionDefinition> =
 };
 
 export function resolveBulkActions(ids: BulkActionId[]): BulkActionDefinition[] {
-  return ids.map((id) => BULK_ACTIONS_REGISTRY[id]).filter(Boolean);
+  return ids
+    .map((id) => BULK_ACTIONS_REGISTRY[id])
+    .filter((action): action is BulkActionDefinition => Boolean(action));
 }

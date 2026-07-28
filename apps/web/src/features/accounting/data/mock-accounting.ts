@@ -35,7 +35,7 @@ const INCOME_DESCS: Record<IncomeCategory, string[]> = {
 };
 
 const EXPENSE_DESCS: Record<ExpenseCategory, string[]> = {
-  courier: ['Pathao delivery charge', 'Steadfast parcel fee', 'Return courier cost'],
+  courier: ['Pathao delivery charge', 'Carrybee parcel fee', 'Return courier cost'],
   packaging: ['Gift box purchase', 'Honey jar labels', 'Bubble wrap stock'],
   facebook_ads: ['Facebook ad spend — Ramadan', 'Lead gen campaign'],
   purchase_payment: ['Honey supplier payment', 'Dates wholesale purchase'],

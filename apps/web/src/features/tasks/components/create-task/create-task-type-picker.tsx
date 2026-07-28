@@ -36,7 +36,7 @@ const TASK_TYPE_OPTIONS: {
   {
     id: 'courier_followup',
     label: TASK_TYPE_LABELS.courier_followup,
-    description: 'Check Pathao / Steadfast delivery status',
+    description: 'Check Pathao / Carrybee delivery status',
     icon: Truck,
   },
   {

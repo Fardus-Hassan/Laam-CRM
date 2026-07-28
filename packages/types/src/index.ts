@@ -26,6 +26,7 @@ export * from './lib/org-settings.js';
 export * from './lib/branding.js';
 export * from './lib/reports.js';
 export * from './lib/courier.js';
+export * from './lib/courier-providers.js';
 export * from './lib/courier-integration.js';
 export * from './lib/sms-integration.js';
 export * from './lib/support.js';

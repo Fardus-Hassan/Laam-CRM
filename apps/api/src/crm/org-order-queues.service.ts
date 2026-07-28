@@ -117,6 +117,61 @@ export class OrgOrderQueuesService {
     return rows.map((row) => this.toDto(row));
   }
 
+  /** Settings UI — includes hidden/inactive custom folders. */
+  async listForSettings(organizationId: string): Promise<OrderQueuePage[]> {
+    await this.ensureSeeded(organizationId);
+    const rows = await this.prisma.orgOrderQueue.findMany({
+      where: { organizationId },
+      orderBy: { sidebarOrder: 'asc' },
+    });
+    return rows.map((row) => this.toDto(row));
+  }
+
+  async setNavVisibility(
+    organizationId: string,
+    id: string,
+    showInNav: boolean,
+  ): Promise<OrderQueuePage> {
+    const existing = await this.prisma.orgOrderQueue.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) throw new BadRequestException('Queue not found');
+    const row = await this.prisma.orgOrderQueue.update({
+      where: { id: existing.id },
+      data: { showInNav },
+    });
+    return this.toDto(row);
+  }
+
+  async rename(organizationId: string, id: string, label: string): Promise<OrderQueuePage> {
+    const next = label.trim();
+    if (!next) throw new BadRequestException('Label required');
+    const existing = await this.prisma.orgOrderQueue.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) throw new BadRequestException('Queue not found');
+    const row = await this.prisma.orgOrderQueue.update({
+      where: { id: existing.id },
+      data: { label: next, description: existing.description || `${next} queue` },
+    });
+    return this.toDto(row);
+  }
+
+  async deactivate(organizationId: string, id: string): Promise<{ ok: true }> {
+    const existing = await this.prisma.orgOrderQueue.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) throw new BadRequestException('Queue not found');
+    if (existing.isSystem) {
+      throw new BadRequestException('System queue folders cannot be deleted');
+    }
+    await this.prisma.orgOrderQueue.update({
+      where: { id: existing.id },
+      data: { isActive: false, showInNav: false },
+    });
+    return { ok: true };
+  }
+
   async listFolderSlugs(organizationId: string): Promise<Set<string>> {
     const pages = await this.list(organizationId);
     return new Set(
@@ -227,6 +282,7 @@ export class OrgOrderQueuesService {
     defaultChildSlug: string | null;
     followUpDue: boolean;
     isSystem: boolean;
+    isActive?: boolean;
   }): OrderQueuePage {
     return {
       id: row.id,
@@ -242,6 +298,7 @@ export class OrgOrderQueuesService {
       showInNav: row.showInNav,
       followUpDue: row.followUpDue,
       isSystem: row.isSystem,
+      isActive: row.isActive ?? true,
     };
   }
 }

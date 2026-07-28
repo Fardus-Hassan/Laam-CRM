@@ -27,8 +27,6 @@ import {
 import { cn } from '@/lib/utils';
 
 const COMING_SOON = [
-  { id: 'steadfast', label: 'Steadfast Courier', icon: '🚚' },
-  { id: 'redx', label: 'RedX Courier', icon: '🔴' },
   { id: 'bkash', label: 'bKash Payment', icon: '💳' },
   { id: 'smtp', label: 'Email (SMTP)', icon: '✉️' },
 ] as const;

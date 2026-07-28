@@ -666,34 +666,23 @@ export class OrdersService {
       const status = payload.status?.trim();
       if (!status) throw new BadRequestException('status required for status_change');
       let successCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
       for (const orderId of ids) {
-        const existing = await this.prisma.order.findFirst({
-          where: { id: orderId, organizationId },
-        });
-        if (!existing) continue;
-        await this.prisma.$transaction(async (tx) => {
-          await tx.order.update({
-            where: { id: existing.id },
-            data: { status },
-          });
-          await tx.orderActivity.create({
-            data: {
-              organizationId,
-              orderId: existing.id,
-              type: 'status',
-              label: 'Status updated',
-              description: status,
-              actorUserId: actor.userId ?? null,
-              actorName: actor.name ?? null,
-            },
-          });
-        });
-        successCount += 1;
+        try {
+          await this.updateStatus(organizationId, orderId, status, actor);
+          successCount += 1;
+        } catch (e) {
+          failedCount += 1;
+          const msg = e instanceof Error ? e.message : 'Status update failed';
+          if (errors.length < 5) errors.push(msg);
+        }
       }
+      const detail = errors.length ? ` Examples: ${errors.join(' · ')}` : '';
       return {
         successCount,
-        failedCount: ids.length - successCount,
-        message: `Updated status for ${successCount} order(s)`,
+        failedCount,
+        message: `Updated status for ${successCount}/${ids.length} order(s).${detail}`,
       };
     }
 
@@ -747,6 +736,52 @@ export class OrdersService {
         successCount,
         failedCount,
         message: `Booked ${successCount}/${ids.length} via ${courier}.${detail}`,
+      };
+    }
+
+    if (payload.action === 'update_courier_status') {
+      let successCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+      for (const orderId of ids) {
+        const existing = await this.prisma.order.findFirst({
+          where: { id: orderId, organizationId, deletedAt: null },
+          select: {
+            id: true,
+            courierProvider: true,
+            courierConsignmentId: true,
+          },
+        });
+        if (!existing?.courierConsignmentId || !existing.courierProvider) {
+          failedCount += 1;
+          if (errors.length < 5) errors.push('No courier booking to sync');
+          continue;
+        }
+        try {
+          const provider = existing.courierProvider.toLowerCase();
+          if (provider === 'pathao') {
+            await this.syncPathaoStatus(organizationId, existing.id);
+          } else if (provider === 'carrybee') {
+            await this.syncCarrybeeStatus(organizationId, existing.id);
+          } else {
+            failedCount += 1;
+            if (errors.length < 5) {
+              errors.push(`Unsupported courier: ${existing.courierProvider}`);
+            }
+            continue;
+          }
+          successCount += 1;
+        } catch (e) {
+          failedCount += 1;
+          const msg = e instanceof Error ? e.message : 'Sync failed';
+          if (errors.length < 5) errors.push(msg);
+        }
+      }
+      const detail = errors.length ? ` Examples: ${errors.join(' · ')}` : '';
+      return {
+        successCount,
+        failedCount,
+        message: `Synced courier status for ${successCount}/${ids.length} order(s).${detail}`,
       };
     }
 
@@ -868,7 +903,7 @@ export class OrdersService {
       where.assignedAgentName = query.employee.trim();
     }
     if (query.courierStatusSlug) where.courierStatusSlug = query.courierStatusSlug;
-    if (query.courier === 'pathao' || query.courier === 'carrybee' || query.courier === 'steadfast') {
+    if (query.courier === 'pathao' || query.courier === 'carrybee') {
       if (query.excludeCourier) {
         andFilters.push({
           OR: [
@@ -1627,21 +1662,43 @@ export class OrdersService {
         );
       }
       if (shouldRestock) {
-        await this.inventory.applyOrderStockDeltas(
-          tx,
-          organizationId,
-          existing.lineItems.map((l) => ({
-            productId: l.productId,
-            variantId: l.variantId,
-            quantity: l.quantity,
-            productName: l.productName,
-          })),
-          {
-            sign: 1,
-            orderNumber: existing.orderNumber,
-            actor: { userId: actor.userId, name: actor.name },
-          },
-        );
+        const restockLines = existing.lineItems
+          .map((l) => {
+            const already = (l as { returnedQuantity?: number }).returnedQuantity ?? 0;
+            const qty = Math.max(0, l.quantity - already);
+            return {
+              productId: l.productId,
+              variantId: l.variantId,
+              quantity: qty,
+              productName: l.productName,
+              lineId: l.id,
+              fullQty: l.quantity,
+            };
+          })
+          .filter((l) => l.quantity > 0);
+        if (restockLines.length > 0) {
+          await this.inventory.applyOrderStockDeltas(
+            tx,
+            organizationId,
+            restockLines.map((l) => ({
+              productId: l.productId,
+              variantId: l.variantId,
+              quantity: l.quantity,
+              productName: l.productName,
+            })),
+            {
+              sign: 1,
+              orderNumber: existing.orderNumber,
+              actor: { userId: actor.userId, name: actor.name },
+            },
+          );
+        }
+        for (const line of existing.lineItems) {
+          await tx.orderItem.update({
+            where: { id: line.id },
+            data: { returnedQuantity: line.quantity },
+          });
+        }
       }
 
       return tx.order.update({
@@ -1680,6 +1737,115 @@ export class OrdersService {
     void this.sms.tryAutoSmsOnStatusChange(organizationId, updated.id, status).catch(() => undefined);
 
     return this.toDetailEnriched(organizationId, updated);
+  }
+
+  /** Partial or full line returns — restocks returned qty and sets pending_return / returned. */
+  async returnLines(
+    organizationId: string,
+    idOrNumber: string,
+    payload: { lines: Array<{ lineItemId: string; quantity: number }> },
+    actor: ActorLabel,
+  ): Promise<OrderDetail> {
+    const lines = payload.lines ?? [];
+    if (lines.length === 0) throw new BadRequestException('lines required');
+
+    const existing = await this.prisma.order.findFirst({
+      where: {
+        organizationId,
+        deletedAt: null,
+        OR: [{ id: idOrNumber }, { orderNumber: idOrNumber }],
+      },
+      include: { lineItems: true },
+    });
+    if (!existing) throw new NotFoundException('Order not found');
+
+    const byId = new Map(existing.lineItems.map((l) => [l.id, l]));
+    const deltas: Array<{
+      lineId: string;
+      addQty: number;
+      productId: string | null;
+      variantId: string | null;
+      productName: string;
+      nextReturned: number;
+    }> = [];
+
+    for (const row of lines) {
+      const line = byId.get(row.lineItemId);
+      if (!line) throw new BadRequestException(`Unknown line item: ${row.lineItemId}`);
+      const addQty = Math.floor(row.quantity);
+      if (addQty <= 0) throw new BadRequestException('Return quantity must be positive');
+      const already = (line as { returnedQuantity?: number }).returnedQuantity ?? 0;
+      const remaining = line.quantity - already;
+      if (addQty > remaining) {
+        throw new BadRequestException(
+          `Cannot return ${addQty} of ${line.productName} — only ${remaining} left`,
+        );
+      }
+      deltas.push({
+        lineId: line.id,
+        addQty,
+        productId: line.productId,
+        variantId: line.variantId,
+        productName: line.productName,
+        nextReturned: already + addQty,
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (existing.stockDeductedAt) {
+        await this.inventory.applyOrderStockDeltas(
+          tx,
+          organizationId,
+          deltas.map((d) => ({
+            productId: d.productId,
+            variantId: d.variantId,
+            quantity: d.addQty,
+            productName: d.productName,
+          })),
+          {
+            sign: 1,
+            orderNumber: existing.orderNumber,
+            actor: { userId: actor.userId, name: actor.name },
+          },
+        );
+      }
+
+      for (const d of deltas) {
+        await tx.orderItem.update({
+          where: { id: d.lineId },
+          data: { returnedQuantity: d.nextReturned },
+        });
+      }
+
+      const refreshed = await tx.orderItem.findMany({ where: { orderId: existing.id } });
+      const allReturned = refreshed.every(
+        (l) => ((l as { returnedQuantity?: number }).returnedQuantity ?? 0) >= l.quantity,
+      );
+      const nextStatus = allReturned ? 'returned' : 'pending_return';
+
+      await tx.order.update({
+        where: { id: existing.id },
+        data: {
+          status: nextStatus,
+          stockDeductedAt: allReturned ? null : existing.stockDeductedAt,
+          activities: {
+            create: {
+              organizationId,
+              type: 'note',
+              label: allReturned ? 'Return completed' : 'Partial return recorded',
+              description: deltas
+                .map((d) => `${d.productName} ×${d.addQty}`)
+                .join(', ')
+                .slice(0, 400),
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+            },
+          },
+        },
+      });
+    });
+
+    return this.getById(organizationId, existing.id);
   }
 
   /** Soft-delete → recycle bin; restock if stock was previously cut. */
@@ -2689,6 +2855,7 @@ export class OrdersService {
         productName: l.productName,
         sku: l.sku ?? undefined,
         quantity: l.quantity,
+        returnedQuantity: (l as { returnedQuantity?: number }).returnedQuantity ?? 0,
         unitPrice: l.unitPrice,
         lineTotal: l.lineTotal,
         productId: l.productId ?? undefined,

@@ -945,6 +945,30 @@ export class OrdersController {
     return this.orders.syncCarrybeeStatus(user.organizationId!, id);
   }
 
+  @Post(':id/return-lines')
+  @RequirePermissions('orders.confirm', 'orders.cancel', 'orders.create')
+  @ApiOperation({ summary: 'Record partial/full line returns and restock returned qty' })
+  returnLines(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body: { lines?: Array<{ lineItemId?: string; quantity?: number }> },
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.returnLines(
+      user.organizationId!,
+      id,
+      {
+        lines: (body.lines ?? [])
+          .filter((l) => l.lineItemId && l.quantity)
+          .map((l) => ({
+            lineItemId: String(l.lineItemId),
+            quantity: Number(l.quantity),
+          })),
+      },
+      this.actor(user),
+    );
+  }
+
   @Patch(':id')
   @RequirePermissions('orders.create', 'orders.confirm', 'orders.cancel', 'orders.assign')
   @ApiOperation({ summary: 'Update order fields and/or status' })

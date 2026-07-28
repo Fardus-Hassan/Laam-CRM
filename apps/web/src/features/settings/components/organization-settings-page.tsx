@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import type { OrgProfile } from '@laam/types';
+import { listActiveCourierProviders } from '@laam/types';
 import { Building2, Save } from 'lucide-react';
 
 import { Can } from '@/components/auth/can';
@@ -19,12 +20,10 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { cn } from '@/lib/utils';
 
-const COURIER_OPTIONS = [
-  { value: 'steadfast', label: 'Steadfast' },
-  { value: 'pathao', label: 'Pathao' },
-  { value: 'redx', label: 'RedX' },
-  { value: 'paperfly', label: 'Paperfly' },
-];
+const COURIER_OPTIONS = listActiveCourierProviders().map((p) => ({
+  value: p.id,
+  label: p.label,
+}));
 
 export function OrganizationSettingsPage() {
   const [profile, setProfile] = React.useState<OrgProfile | null>(null);

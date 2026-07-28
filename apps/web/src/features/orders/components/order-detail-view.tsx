@@ -167,6 +167,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
           <div className="min-w-0 space-y-4">
             <OrderLineItemsCard
               order={order}
+              onReturned={(updated) => setOrder(updated)}
               onSaveLineItems={async (lineItems) => {
                 const updated = await updateOrder(order.id, {
                   lineItems: lineItems.map((line) => ({

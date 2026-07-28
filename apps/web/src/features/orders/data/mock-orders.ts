@@ -664,7 +664,7 @@ function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean
       if (t > to.getTime()) return false;
     }
   }
-  if (query.courier === 'pathao' || query.courier === 'carrybee' || query.courier === 'steadfast') {
+  if (query.courier === 'pathao' || query.courier === 'carrybee') {
     const provider = order.courierProvider?.toLowerCase();
     const match = provider === query.courier;
     if (query.excludeCourier ? match : provider && !match) {

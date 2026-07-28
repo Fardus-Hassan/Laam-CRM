@@ -2,17 +2,35 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
-import type {
-  BulkActionId,
-  OrderStatusConfig,
-  OrderStatusDisplayMode,
-  OrderWorkflowGroup,
-  UpsertOrderStatusConfigPayload,
+import {
+  bulkActionIdSchema,
+  type BulkActionId,
+  type OrderStatusConfig,
+  type OrderStatusDisplayMode,
+  type OrderWorkflowGroup,
+  type UpsertOrderStatusConfigPayload,
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
 
 type SeedStatus = Omit<OrderStatusConfig, 'id'>;
+
+function sanitizeBulkActions(raw: unknown): BulkActionId[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BulkActionId[] = [];
+  for (const id of raw) {
+    const parsed = bulkActionIdSchema.safeParse(id);
+    if (parsed.success && !out.includes(parsed.data)) {
+      out.push(parsed.data);
+    }
+  }
+  return out;
+}
+
+function bulkActionsChanged(before: string[], after: BulkActionId[]): boolean {
+  if (before.length !== after.length) return true;
+  return before.some((id, index) => id !== after[index]);
+}
 
 const DEFAULT_BULK: BulkActionId[] = [
   'print_selected',
@@ -34,7 +52,6 @@ const PENDING_BULK: BulkActionId[] = [
 const CONFIRMED_BULK: BulkActionId[] = [
   ...PENDING_BULK,
   'submit_pathao',
-  'submit_steadfast',
   'submit_carrybee',
 ];
 
@@ -282,7 +299,7 @@ export class OrgOrderStatusesService {
       where: { organizationId, isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
     });
-    return rows.map((row) => this.toDto(row));
+    return this.toDtoListWithBulkCleanup(rows);
   }
 
   async listAll(organizationId: string): Promise<OrderStatusConfig[]> {
@@ -291,7 +308,7 @@ export class OrgOrderStatusesService {
       where: { organizationId },
       orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
     });
-    return rows.map((row) => this.toDto(row));
+    return this.toDtoListWithBulkCleanup(rows);
   }
 
   async isValidStatus(organizationId: string, slug: string): Promise<boolean> {
@@ -334,7 +351,7 @@ export class OrgOrderStatusesService {
       isTerminal: input.isTerminal ?? false,
       isDefault: input.isDefault ?? false,
       allowedTransitions: input.allowedTransitions ?? [],
-      bulkActions: input.bulkActions ?? [],
+      bulkActions: sanitizeBulkActions(input.bulkActions ?? []),
       showInGroupByStatus: input.showInGroupByStatus ?? true,
       isActive: true,
     };
@@ -462,6 +479,41 @@ export class OrgOrderStatusesService {
     });
   }
 
+  private async toDtoListWithBulkCleanup(
+    rows: Array<{
+      id: string;
+      slug: string;
+      label: string;
+      labelBn: string | null;
+      color: string;
+      group: string;
+      parentSlug: string | null;
+      displayMode: string;
+      showInSidebar: boolean | null;
+      showInNestedTabs: boolean | null;
+      sidebarOrder: number | null;
+      isTerminal: boolean;
+      isDefault: boolean;
+      allowedTransitions: string[];
+      bulkActions: string[];
+      showInGroupByStatus: boolean;
+    }>,
+  ): Promise<OrderStatusConfig[]> {
+    const result: OrderStatusConfig[] = [];
+    for (const row of rows) {
+      const cleaned = sanitizeBulkActions(row.bulkActions);
+      if (bulkActionsChanged(row.bulkActions, cleaned)) {
+        await this.prisma.orgOrderStatus.update({
+          where: { id: row.id },
+          data: { bulkActions: cleaned },
+        });
+        row.bulkActions = cleaned;
+      }
+      result.push(this.toDto(row));
+    }
+    return result;
+  }
+
   private toDto(row: {
     id: string;
     slug: string;
@@ -495,7 +547,7 @@ export class OrgOrderStatusesService {
       isTerminal: row.isTerminal,
       isDefault: row.isDefault,
       allowedTransitions: row.allowedTransitions,
-      bulkActions: row.bulkActions as BulkActionId[],
+      bulkActions: sanitizeBulkActions(row.bulkActions),
       showInGroupByStatus: row.showInGroupByStatus,
     };
   }
