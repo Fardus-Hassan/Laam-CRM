@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { carrybeeSettingsApi } from '@/features/settings/api/carrybee-settings-api';
 import { pathaoSettingsApi } from '@/features/settings/api/pathao-settings-api';
 import { smsSettingsApi } from '@/features/settings/api/sms-settings-api';
+import { websiteSettingsApi } from '@/features/settings/api/website-settings-api';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -35,6 +36,15 @@ function statusOf(cfg: { enabled?: boolean; hasCredentials?: boolean; lastError?
   if (cfg?.lastError) return 'error' as const;
   if (cfg?.enabled && cfg.hasCredentials) return 'connected' as const;
   return 'disconnected' as const;
+}
+
+function websiteHubStatus(
+  stores: Array<{ enabled: boolean; lastError: string | null }> | null,
+): 'connected' | 'error' | 'disconnected' {
+  if (!stores?.length) return 'disconnected';
+  if (stores.some((s) => s.lastError)) return 'error';
+  if (stores.some((s) => s.enabled)) return 'connected';
+  return 'disconnected';
 }
 
 function StatusBadge({ status }: { status: 'connected' | 'error' | 'disconnected' }) {
@@ -61,20 +71,27 @@ export function IntegrationsSettingsPage() {
   const [pathao, setPathao] = React.useState<PathaoIntegrationSettings | null>(null);
   const [carrybee, setCarrybee] = React.useState<CarrybeeIntegrationSettings | null>(null);
   const [sms, setSms] = React.useState<SmsIntegrationSettings | null>(null);
+  const [websitesConnected, setWebsitesConnected] = React.useState(0);
+  const [websiteStatus, setWebsiteStatus] = React.useState<
+    'connected' | 'error' | 'disconnected'
+  >('disconnected');
   const [loading, setLoading] = React.useState(true);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [p, c, s] = await Promise.all([
+      const [p, c, s, websites] = await Promise.all([
         pathaoSettingsApi.get().catch(() => null),
         carrybeeSettingsApi.get().catch(() => null),
         smsSettingsApi.get().catch(() => null),
+        websiteSettingsApi.list().catch(() => null),
       ]);
       setPathao(p);
       setCarrybee(c);
       setSms(s);
-      if (!p && !c && !s) toast.error('Failed to load integrations');
+      setWebsitesConnected(websites?.filter((w) => w.enabled).length ?? 0);
+      setWebsiteStatus(websiteHubStatus(websites));
+      if (!p && !c && !s && !websites) toast.error('Failed to load integrations');
     } finally {
       setLoading(false);
     }
@@ -179,6 +196,36 @@ export function IntegrationsSettingsPage() {
                     <Link href="/dashboard/settings/integrations/sms">
                       <Plug className="size-3.5" />
                       Configure SMS
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
+
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🛒</span>
+                    <CardTitle className="text-sm">Website / E-commerce</CardTitle>
+                  </div>
+                  <StatusBadge status={websiteStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  WooCommerce + custom sites → CRM orders via secure ingest token (idempotent).
+                </p>
+                {websitesConnected > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {websitesConnected} enabled store{websitesConnected === 1 ? '' : 's'}
+                  </p>
+                ) : null}
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/websites">
+                      <Plug className="size-3.5" />
+                      Configure websites
                     </Link>
                   </Button>
                 </Can>

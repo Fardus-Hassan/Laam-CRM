@@ -12,6 +12,7 @@ import { FormSelect } from '@/components/form/form-select';
 import { FormTextarea } from '@/components/form/form-textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import type { CreateOrderFormApi } from '@/features/orders/hooks/use-create-order-form';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +41,9 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
   } = form;
   const [pathaoOpen, setPathaoOpen] = React.useState(false);
   const [carrybeeOpen, setCarrybeeOpen] = React.useState(false);
+  const { connected, isProviderConnected, loading: couriersLoading } = useConnectedCouriers();
+  const showPathao = isProviderConnected('pathao');
+  const showCarrybee = isProviderConnected('carrybee');
 
   const districtOptions = React.useMemo(() => {
     const q = state.district.trim().toLowerCase();
@@ -57,7 +61,11 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
     ? `Carrybee: ${state.carrybeeLocation.label}`
     : state.pathaoLocation
       ? `Pathao: ${state.pathaoLocation.label}`
-      : 'Select Pathao or Carrybee location to auto-fill delivery address.';
+      : connected.length
+        ? `Select ${connected.map((c) => c.label).join(' or ')} location to auto-fill delivery address.`
+        : couriersLoading
+          ? 'Loading courier integrations…'
+          : 'No courier connected — set address manually, or connect Pathao/Carrybee in Settings → Integrations.';
 
   return (
     <>
@@ -126,7 +134,8 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
               className="min-w-0"
               labelAction={
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                  {state.pathaoLocation || state.carrybeeLocation ? (
+                  {(state.pathaoLocation || state.carrybeeLocation) &&
+                  (showPathao || showCarrybee) ? (
                     <Button
                       type="button"
                       size="sm"
@@ -140,23 +149,27 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
                       Clear
                     </Button>
                   ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    onClick={() => setPathaoOpen(true)}
-                  >
-                    {state.pathaoLocation ? 'Change Pathao' : 'Pathao'}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setCarrybeeOpen(true)}
-                  >
-                    {state.carrybeeLocation ? 'Change Carrybee' : 'Carrybee'}
-                  </Button>
+                  {showPathao ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => setPathaoOpen(true)}
+                    >
+                      {state.pathaoLocation ? 'Change Pathao' : 'Pathao'}
+                    </Button>
+                  ) : null}
+                  {showCarrybee ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setCarrybeeOpen(true)}
+                    >
+                      {state.carrybeeLocation ? 'Change Carrybee' : 'Carrybee'}
+                    </Button>
+                  ) : null}
                 </div>
               }
               hint={locationHint}
@@ -252,28 +265,32 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
         </CardContent>
       </Card>
 
-      <PathaoLocationDialog
-        open={pathaoOpen}
-        onOpenChange={setPathaoOpen}
-        value={state.pathaoLocation}
-        onConfirm={(location) => {
-          setCarrybeeLocation(null);
-          setPathaoLocation(location);
-          clearFieldError('address');
-          toast.success('Pathao location applied to address');
-        }}
-      />
-      <CarrybeeLocationDialog
-        open={carrybeeOpen}
-        onOpenChange={setCarrybeeOpen}
-        value={state.carrybeeLocation}
-        onConfirm={(location) => {
-          setPathaoLocation(null);
-          setCarrybeeLocation(location);
-          clearFieldError('address');
-          toast.success('Carrybee location applied to address');
-        }}
-      />
+      {showPathao ? (
+        <PathaoLocationDialog
+          open={pathaoOpen}
+          onOpenChange={setPathaoOpen}
+          value={state.pathaoLocation}
+          onConfirm={(location) => {
+            setCarrybeeLocation(null);
+            setPathaoLocation(location);
+            clearFieldError('address');
+            toast.success('Pathao location applied to address');
+          }}
+        />
+      ) : null}
+      {showCarrybee ? (
+        <CarrybeeLocationDialog
+          open={carrybeeOpen}
+          onOpenChange={setCarrybeeOpen}
+          value={state.carrybeeLocation}
+          onConfirm={(location) => {
+            setPathaoLocation(null);
+            setCarrybeeLocation(location);
+            clearFieldError('address');
+            toast.success('Carrybee location applied to address');
+          }}
+        />
+      ) : null}
     </>
   );
 }

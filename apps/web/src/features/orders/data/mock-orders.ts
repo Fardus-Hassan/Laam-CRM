@@ -452,12 +452,34 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
 
 export function checkMockDuplicate(query: DuplicateCheckQuery): DuplicateCheckResult {
   const phone = query.phone.replace(/\D/g, '');
-  const existing = getOrderStore().find(
-    (order) =>
-      order.customerPhone.replace(/\D/g, '') === phone &&
-      order.status !== 'cancelled' &&
-      order.status !== 'delivered',
-  );
+  const windowHours = query.windowHours && query.windowHours > 0 ? query.windowHours : 72;
+  const sinceMs = Date.now() - windowHours * 60 * 60 * 1000;
+  const productIds = new Set(query.productIds ?? []);
+
+  const existing = getOrderStore().find((order) => {
+    if (order.customerPhone.replace(/\D/g, '') !== phone) return false;
+    if (order.status === 'cancelled' || order.status === 'delivered' || order.status === 'completed') {
+      return false;
+    }
+    const createdMs = new Date(order.createdAt).getTime();
+    if (!Number.isFinite(createdMs) || createdMs < sinceMs) return false;
+    if (productIds.size) {
+      const orderProductIds = new Set(
+        (order.lineItems ?? []).flatMap((line) =>
+          [line.productId, line.variantId].filter((id): id is string => Boolean(id)),
+        ),
+      );
+      let overlap = false;
+      for (const id of productIds) {
+        if (orderProductIds.has(id)) {
+          overlap = true;
+          break;
+        }
+      }
+      if (!overlap) return false;
+    }
+    return true;
+  });
 
   if (!existing) {
     return { isDuplicate: false };
@@ -467,7 +489,9 @@ export function checkMockDuplicate(query: DuplicateCheckQuery): DuplicateCheckRe
     isDuplicate: true,
     existingOrderId: existing.id,
     existingOrderNumber: existing.orderNumber,
-    message: `Similar order ${existing.orderNumber} exists for this phone within the last 72 hours.`,
+    message: productIds.size
+      ? `Similar order ${existing.orderNumber} exists for this phone + product(s) within the last ${windowHours} hours.`
+      : `Similar order ${existing.orderNumber} exists for this phone within the last ${windowHours} hours.`,
   };
 }
 

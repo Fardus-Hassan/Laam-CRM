@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { ordersApi } from '@/features/orders/api/orders-api';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
+import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -40,9 +41,22 @@ const SCAN_COLUMNS: CrmColumnDef<OrderListRow>[] = [
 export function SendCourierBarcodePage() {
   const [barcode, setBarcode] = React.useState('');
   const [scannedRows, setScannedRows] = React.useState<OrderListRow[]>([]);
-  const [courier, setCourier] = React.useState('pathao');
+  const [courier, setCourier] = React.useState('');
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const { bulkAction, isLoading } = useOrderMutations();
+  const { connected, loading: couriersLoading } = useConnectedCouriers();
+
+  React.useEffect(() => {
+    if (!connected.length) {
+      setCourier('');
+      return;
+    }
+    if (!connected.some((c) => c.id === courier)) {
+      setCourier(connected[0]!.id);
+    }
+  }, [connected, courier]);
+
+  const courierOptions = connected.map((c) => ({ value: c.id, label: c.label }));
 
   async function handleScan() {
     const code = barcode.trim();
@@ -100,15 +114,20 @@ export function SendCourierBarcodePage() {
               </Button>
             </div>
             <FormField label="Courier">
-              <FormSelect
-                value={courier}
-                onChange={setCourier}
-                options={[
-                  { value: 'pathao', label: 'Pathao' },
-                  { value: 'carrybee', label: 'Carrybee' },
-                ]}
-                searchable={false}
-              />
+              {couriersLoading ? (
+                <p className="text-sm text-muted-foreground">Loading couriers…</p>
+              ) : courierOptions.length ? (
+                <FormSelect
+                  value={courier}
+                  onChange={setCourier}
+                  options={courierOptions}
+                  searchable={false}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No courier connected. Connect Pathao or Carrybee in Settings → Integrations.
+                </p>
+              )}
             </FormField>
           </CardContent>
         </Card>
@@ -138,7 +157,7 @@ export function SendCourierBarcodePage() {
 
         <Button
           type="button"
-          disabled={scannedRows.length === 0}
+          disabled={scannedRows.length === 0 || !courier}
           onClick={() => setConfirmOpen(true)}
         >
           Submit {scannedRows.length} order(s) to courier

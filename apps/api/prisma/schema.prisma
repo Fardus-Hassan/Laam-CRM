@@ -65,6 +65,7 @@ model Organization {
   billingSubscription      OrgBillingSubscription?
   billingInvoices          BillingInvoice[]
   billingPaymentMethods    BillingPaymentMethod[]
+  websiteStores            WebsiteStore[]
 }
 
 /// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
@@ -499,6 +500,11 @@ model Order {
   attachmentUrls     String[] @default([])
   stockDeductedAt    DateTime?
   deletedAt          DateTime?
+  /// Website / e-commerce connection that created this order (ingest).
+  websiteStoreId     String?
+  websiteStore       WebsiteStore? @relation(fields: [websiteStoreId], references: [id], onDelete: SetNull)
+  /// Idempotency key from source shop (Woo order id, custom order id).
+  externalOrderId    String?
   createdByUserId    String?
   createdByName      String?
   createdAt          DateTime @default(now())
@@ -508,6 +514,7 @@ model Order {
   payments           OrderPayment[]
 
   @@unique([organizationId, orderNumber])
+  @@unique([organizationId, websiteStoreId, externalOrderId])
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, customerPhone])
@@ -517,6 +524,33 @@ model Order {
   @@index([organizationId, courierStatusSlug])
   @@index([organizationId, courierProvider, courierConsignmentId])
   @@index([courierProvider, courierStatusSyncedAt])
+  @@index([organizationId, websiteStoreId])
+}
+
+/// Connected website / e-commerce store (WooCommerce or custom) for order ingest.
+model WebsiteStore {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  slug             String
+  /// woocommerce | custom
+  platform         String
+  enabled          Boolean      @default(true)
+  storeUrl         String?
+  /// SHA-256 hex of ingest token (plaintext shown once on create/rotate).
+  ingestTokenHash  String
+  /// Optional Woo REST keys + extras (AES-GCM JSON).
+  credentialsEnc   String?
+  lastIngestAt     DateTime?
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  orders           Order[]
+
+  @@unique([organizationId, slug])
+  @@unique([ingestTokenHash])
+  @@index([organizationId, enabled])
 }
 
 /// Website / sync intake that failed (duplicate, blocked, invalid) — org-scoped queue.

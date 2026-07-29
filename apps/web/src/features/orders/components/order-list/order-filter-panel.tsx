@@ -26,6 +26,7 @@ import {
   buildCourierStatusFilterOptions,
   parseCourierStatusFilterValue,
 } from '@/features/orders/lib/courier-status-filter-options';
+import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
 import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import {
@@ -126,6 +127,16 @@ export function OrderFilterPanel({
   const [productOptions, setProductOptions] = React.useState<
     Array<{ value: string; label: string }>
   >([]);
+  const { connected, isProviderConnected } = useConnectedCouriers();
+  const showPathao = isProviderConnected('pathao');
+  const showCarrybee = isProviderConnected('carrybee');
+  const courierFilterOptions = React.useMemo(
+    () => [
+      { value: '', label: 'All' },
+      ...connected.map((c) => ({ value: c.id, label: c.label })),
+    ],
+    [connected],
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -388,11 +399,7 @@ export function OrderFilterPanel({
             <FormSelect
               value={values.courier ?? ''}
               onChange={(courier) => patch({ courier: courier || undefined })}
-              options={[
-                { value: '', label: 'All' },
-                { value: 'pathao', label: 'Pathao' },
-                { value: 'carrybee', label: 'Carrybee' },
-              ]}
+              options={courierFilterOptions}
               placeholder="All"
             />
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -407,47 +414,60 @@ export function OrderFilterPanel({
             </label>
           </div>
         </FormField>
-        <FormField label="Courier status">
-          <FormSearchSelect
-            value={
-              values.courierStatusSlug
-                ? values.courier === 'pathao' || values.courier === 'carrybee'
-                  ? `${values.courier}:${values.courierStatusSlug}`
-                  : values.courierStatusSlug
-                : ''
-            }
-            onChange={(raw) => {
-              if (!raw) {
-                patch({ courierStatusSlug: undefined });
-                return;
+        {connected.length ? (
+          <FormField label="Courier status">
+            <FormSearchSelect
+              value={
+                values.courierStatusSlug
+                  ? values.courier === 'pathao' || values.courier === 'carrybee'
+                    ? `${values.courier}:${values.courierStatusSlug}`
+                    : values.courierStatusSlug
+                  : ''
               }
-              const parsed = parseCourierStatusFilterValue(raw);
-              patch({
-                courierStatusSlug: parsed.slug,
-                ...(parsed.provider ? { courier: parsed.provider } : {}),
-              });
-            }}
-            options={[{ value: '', label: 'All' }, ...courierStatusOptions]}
-            placeholder="All"
-            searchPlaceholder="Search Pathao or Carrybee…"
-          />
-        </FormField>
-        <FormField label="Pathao city">
-          <FormSearchSelect
-            value={values.pathaoCity ?? ''}
-            onChange={(pathaoCity) => patch({ pathaoCity: pathaoCity || undefined })}
-            options={pathaoCityOptions}
-            placeholder={pathaoCityOptions.length ? 'All' : 'No Pathao cities yet'}
-          />
-        </FormField>
-        <FormField label="Pathao zone">
-          <FormSearchSelect
-            value={values.pathaoZone ?? ''}
-            onChange={(pathaoZone) => patch({ pathaoZone: pathaoZone || undefined })}
-            options={pathaoZoneOptions}
-            placeholder={pathaoZoneOptions.length ? 'All' : 'No Pathao zones yet'}
-          />
-        </FormField>
+              onChange={(raw) => {
+                if (!raw) {
+                  patch({ courierStatusSlug: undefined });
+                  return;
+                }
+                const parsed = parseCourierStatusFilterValue(raw);
+                patch({
+                  courierStatusSlug: parsed.slug,
+                  ...(parsed.provider ? { courier: parsed.provider } : {}),
+                });
+              }}
+              options={[
+                { value: '', label: 'All' },
+                ...courierStatusOptions.filter((o) => {
+                  if (o.value.startsWith('pathao:')) return showPathao;
+                  if (o.value.startsWith('carrybee:')) return showCarrybee;
+                  return true;
+                }),
+              ]}
+              placeholder="All"
+              searchPlaceholder={`Search ${connected.map((c) => c.label).join(' or ')}…`}
+            />
+          </FormField>
+        ) : null}
+        {showPathao ? (
+          <>
+            <FormField label="Pathao city">
+              <FormSearchSelect
+                value={values.pathaoCity ?? ''}
+                onChange={(pathaoCity) => patch({ pathaoCity: pathaoCity || undefined })}
+                options={pathaoCityOptions}
+                placeholder={pathaoCityOptions.length ? 'All' : 'No Pathao cities yet'}
+              />
+            </FormField>
+            <FormField label="Pathao zone">
+              <FormSearchSelect
+                value={values.pathaoZone ?? ''}
+                onChange={(pathaoZone) => patch({ pathaoZone: pathaoZone || undefined })}
+                options={pathaoZoneOptions}
+                placeholder={pathaoZoneOptions.length ? 'All' : 'No Pathao zones yet'}
+              />
+            </FormField>
+          </>
+        ) : null}
         <FormField label="Payment Status">
           <FormSelect
             value={values.paymentStatus ?? ''}

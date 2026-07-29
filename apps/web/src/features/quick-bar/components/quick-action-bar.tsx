@@ -24,9 +24,9 @@ import {
   listEventsForDate,
   listStuckNotes,
 } from '@/features/quick-bar/data/quick-bar-store';
-import { getTodayFollowupCount } from '@/features/followups/data/mock-followups';
-import { getTodayTaskCount } from '@/features/tasks/data/mock-tasks';
-import { getLowStockCount } from '@/features/inventory/data/mock-inventory';
+import { followupsApi } from '@/features/followups/api/followups-api';
+import { tasksApi } from '@/features/tasks/api/tasks-api';
+import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { cn } from '@/lib/utils';
 
 const QUICK_LINKS = [
@@ -40,12 +40,38 @@ const QUICK_LINKS = [
 export function QuickActionBar() {
   const [open, setOpen] = React.useState(false);
   const [notesVersion, setNotesVersion] = React.useState(0);
+  const [followups, setFollowups] = React.useState(0);
+  const [tasks, setTasks] = React.useState(0);
+  const [lowStock, setLowStock] = React.useState(0);
 
   const stuckCount = listStuckNotes().length;
   const todayEvents = listEventsForDate(getTodayIsoDate()).length;
-  const followups = getTodayFollowupCount();
-  const tasks = getTodayTaskCount();
-  const lowStock = getLowStockCount();
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [taskRes, fuRes, invRes] = await Promise.all([
+          tasksApi.listTasks({ filter: 'today', page: 1, pageSize: 1 }),
+          followupsApi.listFollowups({ queue: 1, filter: 'today', page: 1, pageSize: 1 }),
+          inventoryApi.listProducts({ page: 1, pageSize: 1, filter: 'low_stock' }).catch(() => null),
+        ]);
+        if (cancelled) return;
+        setTasks(taskRes.summary?.todayCount ?? taskRes.total ?? 0);
+        setFollowups(fuRes.summary?.todayCount ?? fuRes.total ?? 0);
+        setLowStock(invRes?.summary?.lowStockCount ?? 0);
+      } catch {
+        if (!cancelled) {
+          setTasks(0);
+          setFollowups(0);
+          setLowStock(0);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleNewSticky() {
     createStickyNote('');

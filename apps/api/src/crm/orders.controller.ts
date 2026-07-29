@@ -644,10 +644,24 @@ export class OrdersController {
 
   @Get('check-duplicate')
   @RequirePermissions('orders.view', 'orders.create')
-  @ApiOperation({ summary: 'Check duplicate order by phone' })
-  checkDuplicate(@CurrentUser() user: AuthUserPayload, @Query('phone') phone?: string) {
+  @ApiOperation({ summary: 'Check duplicate order by phone (optional 72h window + products)' })
+  checkDuplicate(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('phone') phone?: string,
+    @Query('windowHours') windowHoursRaw?: string,
+    @Query('productIds') productIdsRaw?: string | string[],
+  ) {
     this.orders.requireOrg(user.organizationId);
-    return this.orders.checkDuplicate(user.organizationId!, phone ?? '');
+    const windowHours = windowHoursRaw ? Number(windowHoursRaw) : undefined;
+    const productIds = Array.isArray(productIdsRaw)
+      ? productIdsRaw
+      : typeof productIdsRaw === 'string' && productIdsRaw.trim()
+        ? productIdsRaw.split(',').map((id) => id.trim()).filter(Boolean)
+        : undefined;
+    return this.orders.checkDuplicate(user.organizationId!, phone ?? '', {
+      windowHours: Number.isFinite(windowHours) ? windowHours : undefined,
+      productIds,
+    });
   }
 
   @Get('by-phone')

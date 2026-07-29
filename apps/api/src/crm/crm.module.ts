@@ -64,6 +64,12 @@ import { SupportController } from './support.controller';
 import { SupportService } from './support.service';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
+import {
+  WebsiteIntegrationsController,
+  WebsiteOrdersIngestController,
+} from './website-orders.controller';
+import { WebsiteIntegrationsService } from './website-integrations.service';
+import { WebsiteOrdersIngestService } from './website-orders-ingest.service';
 
 @Module({
   imports: [AuthModule],
@@ -81,6 +87,8 @@ import { BillingService } from './billing.service';
     CarrybeeCourierController,
     CourierIntegrationsController,
     SmsSettingsController,
+    WebsiteIntegrationsController,
+    WebsiteOrdersIngestController,
     CouponsController,
     FollowupsController,
     RbacController,
@@ -124,6 +132,8 @@ import { BillingService } from './billing.service';
     CarrybeeSyncService,
     CourierIntegrationsService,
     SmsService,
+    WebsiteIntegrationsService,
+    WebsiteOrdersIngestService,
     OrderPaymentsService,
     FailedOrdersService,
     CouponsService,

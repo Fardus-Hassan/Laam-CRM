@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import type { OrgProfile } from '@laam/types';
-import { listActiveCourierProviders } from '@laam/types';
 import { Building2, Save } from 'lucide-react';
 
 import { Can } from '@/components/auth/can';
@@ -11,6 +10,7 @@ import { FormInput } from '@/components/form/form-input';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import { orgSettingsApi } from '@/features/settings/api/org-settings-api';
 import {
   ORDER_CARD_CLASS,
@@ -20,15 +20,15 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { cn } from '@/lib/utils';
 
-const COURIER_OPTIONS = listActiveCourierProviders().map((p) => ({
-  value: p.id,
-  label: p.label,
-}));
-
 export function OrganizationSettingsPage() {
   const [profile, setProfile] = React.useState<OrgProfile | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
+  const { connected, loading: couriersLoading } = useConnectedCouriers();
+  const courierOptions = connected.map((p) => ({
+    value: p.id,
+    label: p.label,
+  }));
 
   React.useEffect(() => {
     void orgSettingsApi.getSettings().then((s) => setProfile(s.profile));
@@ -105,11 +105,25 @@ export function OrganizationSettingsPage() {
             <FormField label="Default courier">
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={profile.defaultCourier}
+                value={
+                  courierOptions.some((c) => c.value === profile.defaultCourier)
+                    ? profile.defaultCourier
+                    : ''
+                }
                 onChange={(e) => setProfile({ ...profile, defaultCourier: e.target.value })}
+                disabled={couriersLoading || courierOptions.length === 0}
               >
-                {COURIER_OPTIONS.map((c) => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
+                <option value="">
+                  {couriersLoading
+                    ? 'Loading…'
+                    : courierOptions.length
+                      ? 'Select connected courier'
+                      : 'No courier connected'}
+                </option>
+                {courierOptions.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
                 ))}
               </select>
             </FormField>

@@ -34,6 +34,7 @@ import { OrderSmsDialog } from '@/features/orders/components/shared/order-sms-di
 import { ORDER_STICKY_ACTION_CLASS } from '@/features/orders/components/create-order/section-layout';
 import { pathaoCourierApi } from '@/features/orders/api/pathao-courier-api';
 import { carrybeeCourierApi } from '@/features/orders/api/carrybee-courier-api';
+import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
@@ -70,6 +71,9 @@ export function OrderActionBar({
   const [bookOpen, setBookOpen] = React.useState(false);
   const [courierLoading, setCourierLoading] = React.useState(false);
   const { can } = usePermissions();
+  const { isProviderConnected } = useConnectedCouriers();
+  const showPathao = isProviderConnected('pathao');
+  const showCarrybee = isProviderConnected('carrybee');
   const canConfirm =
     order.status === 'pending' || order.status === 'pending_2' || order.status === 'pending_3';
   const canCancel =
@@ -190,36 +194,40 @@ export function OrderActionBar({
             </Button>
           </Can>
           <Can permission="courier.manage">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8"
-              disabled={courierLoading || order.status === 'cancelled'}
-              onClick={handlePathaoClick}
-            >
-              <Truck className="size-3.5" />
-              {alreadyBooked && order.courierProvider === 'pathao'
-                ? 'Booked'
-                : courierLoading && bookProvider === 'pathao'
-                  ? 'Booking…'
-                  : 'Pathao'}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8"
-              disabled={courierLoading || order.status === 'cancelled'}
-              onClick={handleCarrybeeClick}
-            >
-              <Truck className="size-3.5" />
-              {alreadyBooked && order.courierProvider === 'carrybee'
-                ? 'Booked'
-                : courierLoading && bookProvider === 'carrybee'
-                  ? 'Booking…'
-                  : 'Carrybee'}
-            </Button>
+            {showPathao ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                disabled={courierLoading || order.status === 'cancelled'}
+                onClick={handlePathaoClick}
+              >
+                <Truck className="size-3.5" />
+                {alreadyBooked && order.courierProvider === 'pathao'
+                  ? 'Booked'
+                  : courierLoading && bookProvider === 'pathao'
+                    ? 'Booking…'
+                    : 'Pathao'}
+              </Button>
+            ) : null}
+            {showCarrybee ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                disabled={courierLoading || order.status === 'cancelled'}
+                onClick={handleCarrybeeClick}
+              >
+                <Truck className="size-3.5" />
+                {alreadyBooked && order.courierProvider === 'carrybee'
+                  ? 'Booked'
+                  : courierLoading && bookProvider === 'carrybee'
+                    ? 'Booking…'
+                    : 'Carrybee'}
+              </Button>
+            ) : null}
           </Can>
 
           <DropdownMenu>

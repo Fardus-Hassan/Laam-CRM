@@ -67,6 +67,8 @@ export type CreateOrderInput = CreateOrderPayload & {
   referenceNo?: string;
   orderDate?: string;
   courierChargedToMe?: number;
+  websiteStoreId?: string;
+  externalOrderId?: string;
   pathaoCity?: string;
   pathaoZone?: string;
   pathaoArea?: string;
@@ -1319,9 +1321,37 @@ export class OrdersService {
     );
   }
 
-  async checkDuplicate(organizationId: string, phone: string): Promise<DuplicateCheckResult> {
+  async checkDuplicate(
+    organizationId: string,
+    phone: string,
+    options?: { windowHours?: number; productIds?: string[] },
+  ): Promise<DuplicateCheckResult> {
+    const normalized = phone.trim();
+    if (!normalized) return { isDuplicate: false };
+
+    const windowHours = options?.windowHours && options.windowHours > 0 ? options.windowHours : 72;
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+    const productIds = (options?.productIds ?? []).filter(Boolean);
+
     const existing = await this.prisma.order.findFirst({
-      where: { organizationId, customerPhone: phone.trim() },
+      where: {
+        organizationId,
+        customerPhone: normalized,
+        createdAt: { gte: since },
+        status: { notIn: ['cancelled', 'delivered', 'completed'] },
+        ...(productIds.length
+          ? {
+              lineItems: {
+                some: {
+                  OR: [
+                    { productId: { in: productIds } },
+                    { variantId: { in: productIds } },
+                  ],
+                },
+              },
+            }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
       select: { id: true, orderNumber: true },
     });
@@ -1330,7 +1360,9 @@ export class OrdersService {
       isDuplicate: true,
       existingOrderId: existing.id,
       existingOrderNumber: existing.orderNumber,
-      message: `Recent order ${existing.orderNumber} found for this phone`,
+      message: productIds.length
+        ? `Similar order ${existing.orderNumber} found for this phone + product(s) within ${windowHours}h`
+        : `Similar order ${existing.orderNumber} found for this phone within ${windowHours}h`,
     };
   }
 
@@ -1569,6 +1601,8 @@ export class OrdersService {
           utmCampaign: input.utmCampaign?.trim() || null,
           attachmentNames: input.attachmentNames ?? [],
           attachmentUrls: input.attachmentUrls ?? [],
+          websiteStoreId: input.websiteStoreId?.trim() || null,
+          externalOrderId: input.externalOrderId?.trim() || null,
           createdByUserId: actor.userId ?? null,
           createdByName: actor.name ?? null,
           lineItems: {

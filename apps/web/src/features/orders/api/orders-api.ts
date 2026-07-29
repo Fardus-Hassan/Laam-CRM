@@ -249,6 +249,8 @@ export function createHttpOrdersApi(): OrdersApi {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
       const params = new URLSearchParams({ phone: query.phone });
+      if (query.windowHours) params.set('windowHours', String(query.windowHours));
+      if (query.productIds?.length) params.set('productIds', query.productIds.join(','));
       return apiRequest<DuplicateCheckResult>(`${crmEndpoints.orders}/check-duplicate?${params}`);
     },
     async bulkAction(payload) {

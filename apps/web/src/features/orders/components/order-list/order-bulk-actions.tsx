@@ -12,6 +12,7 @@ import {
   BULK_ACTIONS_REGISTRY,
   resolveBulkActions,
 } from '@/features/orders/config/bulk-actions-registry';
+import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
@@ -52,7 +53,13 @@ export function OrderBulkActions({
   variant = 'card',
 }: OrderBulkActionsProps) {
   const router = useRouter();
-  const actions = resolveBulkActions(actionIds);
+  const { submitBulkActionIds } = useConnectedCouriers();
+  const actions = resolveBulkActions(actionIds).filter((action) => {
+    if (action.id === 'submit_pathao' || action.id === 'submit_carrybee') {
+      return submitBulkActionIds.has(action.id);
+    }
+    return true;
+  });
   const visibleActions = actions.filter(
     (action) => !action.requiresSelection || selectedCount > 0,
   );

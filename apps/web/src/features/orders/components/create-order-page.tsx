@@ -102,7 +102,10 @@ export function CreateOrderPage() {
   async function handleMobileCheck() {
     form.lookupCustomer();
     if (!form.state.mobile.trim()) return;
-    const result = await checkDuplicate(form.state.mobile);
+    const productIds = form.state.lineItems
+      .flatMap((line) => [line.productId, line.variationId])
+      .filter((id): id is string => Boolean(id));
+    const result = await checkDuplicate(form.state.mobile, productIds.length ? productIds : undefined);
     if (result.isDuplicate && result.existingOrderNumber && result.existingOrderId) {
       setDuplicate({
         orderNumber: result.existingOrderNumber,
