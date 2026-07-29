@@ -56,6 +56,14 @@ import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
+import { CampaignsController } from './campaigns.controller';
+import { CampaignsService } from './campaigns.service';
+import { AutomationsController } from './automations.controller';
+import { AutomationsService } from './automations.service';
+import { SupportController } from './support.controller';
+import { SupportService } from './support.service';
+import { BillingController } from './billing.controller';
+import { BillingService } from './billing.service';
 
 @Module({
   imports: [AuthModule],
@@ -90,6 +98,10 @@ import { TasksService } from './tasks.service';
     AccountingController,
     ReportsController,
     TasksController,
+    CampaignsController,
+    AutomationsController,
+    SupportController,
+    BillingController,
   ],
   providers: [
     RbacService,
@@ -101,6 +113,10 @@ import { TasksService } from './tasks.service';
     AccountingService,
     ReportsService,
     TasksService,
+    CampaignsService,
+    AutomationsService,
+    SupportService,
+    BillingService,
     OrdersService,
     PathaoCourierService,
     PathaoSyncService,
@@ -128,6 +144,7 @@ import { TasksService } from './tasks.service';
     ObjectStorageService,
     OrgOrderStatusesService,
     OrgOrderQueuesService,
+    BillingService,
   ],
 })
 export class CrmModule {}

@@ -242,6 +242,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'activities.view',
     'activities.create',
     'inventory.view',
+    'support.view',
+    'support.create',
+    'support.manage',
   ],
   finance: [
     'dashboard.view',

@@ -3,6 +3,7 @@ import type { CreateTenantRequest } from '@laam/types';
 import { IsEmail, IsString, MinLength } from 'class-validator';
 
 import { CurrentUser, Roles, type AuthUserPayload } from '../common/decorators';
+import { BillingService } from '../crm/billing.service';
 import { PlatformService } from './platform.service';
 
 type CreateTenantBody = {
@@ -71,7 +72,16 @@ class AddTenantAdminDto {
 @Controller('platform')
 @Roles('super_admin')
 export class PlatformController {
-  constructor(private readonly platform: PlatformService) {}
+  constructor(
+    private readonly platform: PlatformService,
+    private readonly billing: BillingService,
+  ) {}
+
+  @Get('billing')
+  listBilling(@CurrentUser() user: AuthUserPayload) {
+    this.platform.assertSuperAdmin(user);
+    return this.billing.listPlatformBilling();
+  }
 
   @Get('tenants')
   listTenants(@CurrentUser() user: AuthUserPayload) {

@@ -57,6 +57,12 @@ export class FollowupsService {
       customerNotes?: string | null;
       lineItems?: Array<{ productName: string; quantity: number }>;
       skipFollowup?: boolean;
+      /** Override default queue (1–3). */
+      queue?: number;
+      /** Days from today for scheduleDate (0 = today). */
+      delayDays?: number;
+      /** Optional note stored on the follow-up. */
+      followupNotes?: string | null;
       /** Real Customer.id when available (preferred over phone-* legacy keys). */
       customerId?: string | null;
       customerNumber?: string | null;
@@ -85,7 +91,12 @@ export class FollowupsService {
 
     const schedule = new Date();
     schedule.setHours(0, 0, 0, 0);
-    // Default: due today so it appears in the follow-up queue immediately.
+    const delayDays = Math.max(0, Math.min(90, Math.floor(input.delayDays ?? 0)));
+    if (delayDays > 0) {
+      schedule.setDate(schedule.getDate() + delayDays);
+    }
+
+    const queue = Math.min(3, Math.max(1, Math.floor(input.queue ?? 1)));
 
     const now = new Date();
     const recentProducts: RecentProductJson[] = (input.lineItems ?? []).map((l) => ({
@@ -103,6 +114,15 @@ export class FollowupsService {
         actorName: actor?.name ?? input.assignedAgentName ?? undefined,
       },
     ];
+    if (input.followupNotes?.trim()) {
+      activities.push({
+        id: `act-${input.orderId}-note`,
+        label: 'Automation note',
+        description: input.followupNotes.trim(),
+        timestamp: now.toISOString(),
+        actorName: actor?.name ?? 'Automation',
+      });
+    }
 
     const phoneDigits = input.phone.replace(/\D/g, '') || input.phone;
     const customerId = input.customerId?.trim() || `phone-${phoneDigits}`;
@@ -112,7 +132,7 @@ export class FollowupsService {
     const row = await this.prisma.followup.create({
       data: {
         organizationId,
-        queue: 1,
+        queue,
         orderId: input.orderId,
         orderNumber: input.orderNumber,
         customerId,
@@ -125,6 +145,7 @@ export class FollowupsService {
         area: input.area?.trim() || null,
         district: input.district?.trim() || null,
         customerNotes: input.customerNotes?.trim() || null,
+        followupNotes: input.followupNotes?.trim() || null,
         followupStatus: 'no_status',
         type,
         recentProducts: recentProducts as unknown as Prisma.InputJsonValue,

@@ -62,6 +62,7 @@ export function createHttpSupportApi(): SupportApi {
       if (query.status) params.set('status', query.status);
       if (query.search) params.set('search', query.search);
       if (query.page) params.set('page', String(query.page));
+      if (query.pageSize) params.set('pageSize', String(query.pageSize));
       const qs = params.toString();
       return apiRequest(`/crm/support/tickets${qs ? `?${qs}` : ''}`);
     },

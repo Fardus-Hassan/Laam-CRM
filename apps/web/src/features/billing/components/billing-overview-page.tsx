@@ -46,6 +46,7 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'se
 export function BillingOverviewPage() {
   const [data, setData] = React.useState<BillingOverview | null>(null);
   const [recharging, setRecharging] = React.useState(false);
+  const [addingPm, setAddingPm] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     const overview = await billingApi.getOverview();
@@ -58,13 +59,13 @@ export function BillingOverviewPage() {
 
   const sub = data?.subscription;
 
-  async function handleRecharge() {
-    if (!data?.paymentMethods[0]) return;
+  async function handleRecordCredits() {
     setRecharging(true);
     try {
       const next = await billingApi.rechargeCredits({
         amountBdt: 1000,
-        paymentMethodId: data.paymentMethods[0].id,
+        paymentMethodId: data?.paymentMethods.find((p) => p.isDefault)?.id,
+        note: 'Manual SMS credit record',
       });
       setData(next);
     } finally {
@@ -72,14 +73,43 @@ export function BillingOverviewPage() {
     }
   }
 
-  const smsPercent = sub ? Math.round((sub.smsCreditsUsed / sub.smsCredits) * 100) : 0;
-  const orderPercent = sub ? Math.round((sub.ordersUsed / sub.orderQuota) * 100) : 0;
-  const seatPercent = sub ? Math.round((sub.usersActive / sub.userSeats) * 100) : 0;
+  async function handleAddPaymentMethod() {
+    setAddingPm(true);
+    try {
+      const { apiRequest } = await import('@/lib/api/client');
+      if (process.env.NEXT_PUBLIC_USE_API === 'true') {
+        await apiRequest('/crm/billing/payment-methods', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'bank',
+            label: 'Recorded bank transfer',
+            isDefault: !data?.paymentMethods.length,
+          }),
+        });
+      }
+      await refresh();
+    } finally {
+      setAddingPm(false);
+    }
+  }
+
+  const smsPercent =
+    sub && sub.smsCredits > 0
+      ? Math.min(100, Math.round((sub.smsCreditsUsed / sub.smsCredits) * 100))
+      : 0;
+  const orderPercent =
+    sub && sub.orderQuota > 0
+      ? Math.min(100, Math.round((sub.ordersUsed / sub.orderQuota) * 100))
+      : 0;
+  const seatPercent =
+    sub && sub.userSeats > 0
+      ? Math.min(100, Math.round((sub.usersActive / sub.userSeats) * 100))
+      : 0;
 
   return (
     <PageShell
       title="Billing"
-      description="Your Laam subscription, SMS credits, and invoices."
+      description="Laam subscription records, SMS credits, and invoices (manual — no payment gateway)."
     >
       <div className={ORDER_PAGE_GAP}>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -94,7 +124,11 @@ export function BillingOverviewPage() {
             { id: 'plan', label: 'Current plan', value: sub?.plan ?? '—' },
             { id: 'amount', label: 'Monthly', value: sub ? formatCurrency(sub.amountBdt) : '—' },
             { id: 'next', label: 'Next billing', value: sub?.nextBillingDate ?? '—' },
-            { id: 'outstanding', label: 'Outstanding', value: data ? formatCurrency(data.outstandingBdt) : '—' },
+            {
+              id: 'outstanding',
+              label: 'Outstanding',
+              value: data ? formatCurrency(data.outstandingBdt) : '—',
+            },
           ]}
           className="sm:grid-cols-2 lg:grid-cols-4"
         />
@@ -111,12 +145,32 @@ export function BillingOverviewPage() {
             </CardHeader>
             <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-5')}>
               <div className="grid gap-4 sm:grid-cols-3">
-                <UsageMeter icon={MessageSquare} label="SMS credits" used={sub?.smsCreditsUsed ?? 0} total={sub?.smsCredits ?? 0} percent={smsPercent} />
-                <UsageMeter icon={Package} label="Orders" used={sub?.ordersUsed ?? 0} total={sub?.orderQuota ?? 0} percent={orderPercent} />
-                <UsageMeter icon={Users} label="Team seats" used={sub?.usersActive ?? 0} total={sub?.userSeats ?? 0} percent={seatPercent} />
+                <UsageMeter
+                  icon={MessageSquare}
+                  label="SMS credits"
+                  used={sub?.smsCreditsUsed ?? 0}
+                  total={sub?.smsCredits ?? 0}
+                  percent={smsPercent}
+                />
+                <UsageMeter
+                  icon={Package}
+                  label="Orders"
+                  used={sub?.ordersUsed ?? 0}
+                  total={sub?.orderQuota ?? 0}
+                  percent={orderPercent}
+                />
+                <UsageMeter
+                  icon={Users}
+                  label="Team seats"
+                  used={sub?.usersActive ?? 0}
+                  total={sub?.userSeats ?? 0}
+                  percent={seatPercent}
+                />
               </div>
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span>Period: {sub?.currentPeriodStart} → {sub?.currentPeriodEnd}</span>
+                <span>
+                  Period: {sub?.currentPeriodStart} → {sub?.currentPeriodEnd}
+                </span>
                 <span>·</span>
                 <span>{sub?.billingCycle === 'yearly' ? 'Yearly' : 'Monthly'} billing</span>
                 <span>·</span>
@@ -124,11 +178,15 @@ export function BillingOverviewPage() {
               </div>
               <Can permission="billing.manage">
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" onClick={() => void handleRecharge()} disabled={recharging}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleRecordCredits()}
+                    disabled={recharging}
+                  >
                     <Zap className="size-4" />
-                    {recharging ? 'Recharging…' : 'Recharge SMS (৳1,000)'}
+                    {recharging ? 'Recording…' : 'Record SMS credit (৳1,000)'}
                   </Button>
-                  <Button type="button" size="sm" variant="outline">Change plan</Button>
                 </div>
               </Can>
             </CardContent>
@@ -136,32 +194,57 @@ export function BillingOverviewPage() {
 
           <Card className={ORDER_CARD_CLASS}>
             <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-              <CardTitle className="text-sm">Payment methods</CardTitle>
+              <CardTitle className="text-sm">Payment records</CardTitle>
             </CardHeader>
             <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
-              {data?.paymentMethods.map((pm) => (
-                <div key={pm.id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="size-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{pm.label}</p>
-                      {pm.lastFour ? (
-                        <p className="text-xs text-muted-foreground">•••• {pm.lastFour}</p>
-                      ) : null}
+              <p className="text-xs text-muted-foreground">
+                Manual labels only — no live checkout.
+              </p>
+              {(data?.paymentMethods.length ?? 0) === 0 ? (
+                <p className="text-sm text-muted-foreground">No payment records yet.</p>
+              ) : (
+                data?.paymentMethods.map((pm) => (
+                  <div
+                    key={pm.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="size-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium">{pm.label}</p>
+                        {pm.lastFour ? (
+                          <p className="text-xs text-muted-foreground">•••• {pm.lastFour}</p>
+                        ) : null}
+                      </div>
                     </div>
+                    {pm.isDefault ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Default
+                      </Badge>
+                    ) : null}
                   </div>
-                  {pm.isDefault ? <Badge variant="secondary" className="text-[10px]">Default</Badge> : null}
-                </div>
-              ))}
+                ))
+              )}
               <Can permission="billing.manage">
-                <Button type="button" size="sm" variant="outline" className="w-full">Add payment method</Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled={addingPm}
+                  onClick={() => void handleAddPaymentMethod()}
+                >
+                  {addingPm ? 'Saving…' : 'Add payment record'}
+                </Button>
               </Can>
             </CardContent>
           </Card>
         </div>
 
         <Card className={ORDER_CARD_CLASS}>
-          <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}>
+          <CardHeader
+            className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}
+          >
             <CardTitle className="text-sm">Invoices</CardTitle>
             <p className="text-xs text-muted-foreground">
               Total paid: {data ? formatCurrency(data.totalPaidBdt) : '—'}
@@ -180,25 +263,33 @@ export function BillingOverviewPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data?.recentInvoices.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell className="font-medium">{inv.number}</TableCell>
-                    <TableCell>{inv.periodLabel}</TableCell>
-                    <TableCell>{inv.date}</TableCell>
-                    <TableCell>{formatCurrency(inv.amountBdt)}</TableCell>
-                    <TableCell>
-                      <Badge variant={STATUS_VARIANT[inv.status] ?? 'secondary'}>
-                        {STATUS_LABELS[inv.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button type="button" size="sm" variant="ghost">
-                        <Download className="size-4" />
-                        PDF
-                      </Button>
+                {(data?.recentInvoices.length ?? 0) === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-sm text-muted-foreground">
+                      No invoices recorded yet.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  data?.recentInvoices.map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-medium">{inv.number}</TableCell>
+                      <TableCell>{inv.periodLabel}</TableCell>
+                      <TableCell>{inv.date}</TableCell>
+                      <TableCell>{formatCurrency(inv.amountBdt)}</TableCell>
+                      <TableCell>
+                        <Badge variant={STATUS_VARIANT[inv.status] ?? 'secondary'}>
+                          {STATUS_LABELS[inv.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button type="button" size="sm" variant="ghost" disabled>
+                          <Download className="size-4" />
+                          PDF
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>

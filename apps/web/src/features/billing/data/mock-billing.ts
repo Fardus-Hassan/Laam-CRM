@@ -95,6 +95,7 @@ export function getBillingOverview(): BillingOverview {
 export function rechargeCredits(payload: RechargeCreditsPayload): BillingSubscription {
   const creditsToAdd = Math.floor(payload.amountBdt / 2);
   MOCK_SUBSCRIPTION.smsCredits += creditsToAdd;
+  void payload.note;
   return { ...MOCK_SUBSCRIPTION };
 }
 

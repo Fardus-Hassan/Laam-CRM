@@ -60,7 +60,7 @@ export function createHttpBillingApi(): BillingApi {
     rechargeCredits: (payload) =>
       apiRequest<BillingOverview>('/crm/billing/recharge', { method: 'POST', body: JSON.stringify(payload) }),
     listPlanOptions: () => apiRequest<BillingPlanOption[]>('/crm/billing/plans'),
-    listPlatformBilling: () => apiRequest<PlatformBillingTenant[]>('/crm/platform/billing'),
+    listPlatformBilling: () => apiRequest<PlatformBillingTenant[]>('/platform/billing'),
   };
 }
 

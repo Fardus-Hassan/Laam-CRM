@@ -34,6 +34,7 @@ import { OrderPaymentsService } from './order-payments.service';
 import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { PathaoCourierService } from './pathao-courier.service';
 import { SmsService } from './sms.service';
+import { AutomationsService } from './automations.service';
 import { PathaoSyncService } from './pathao-sync.service';
 import { buildCourierStatsFromStatusCounts } from './order-courier-stats.util';
 
@@ -211,6 +212,7 @@ export class OrdersService {
     private readonly orderPayments: OrderPaymentsService,
     private readonly orgOrderStatuses: OrgOrderStatusesService,
     private readonly sms: SmsService,
+    private readonly automations: AutomationsService,
     @Inject(forwardRef(() => PathaoSyncService))
     private readonly pathaoSync: PathaoSyncService,
     @Inject(forwardRef(() => CarrybeeSyncService))
@@ -1791,8 +1793,11 @@ export class OrdersService {
       });
     });
 
-    // Best-effort auto SMS — never fail the status change
+    // Best-effort auto SMS / follow-up — never fail the status change
     void this.sms.tryAutoSmsOnStatusChange(organizationId, updated.id, status).catch(() => undefined);
+    void this.automations
+      .tryAutoFollowupOnStatusChange(organizationId, updated.id, status)
+      .catch(() => undefined);
 
     return this.toDetailEnriched(organizationId, updated);
   }

@@ -59,6 +59,12 @@ model Organization {
   marketingSpends          MarketingSpend[]
   performanceTargets       PerformanceTarget[]
   loginAudits              LoginAudit[]
+  campaigns                Campaign[]
+  automationSettings       OrgAutomationSettings?
+  supportTickets           SupportTicket[]
+  billingSubscription      OrgBillingSubscription?
+  billingInvoices          BillingInvoice[]
+  billingPaymentMethods    BillingPaymentMethod[]
 }
 
 /// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
@@ -1237,6 +1243,136 @@ model CatalogActivity {
 }
 
 /// Manual Meta/ad campaign spend (Meta API later). monthKey = YYYY-MM.
+/// Org automation toggles for follow-up reminders (SMS map lives on SmsIntegration).
+model OrgAutomationSettings {
+  id                         String       @id @default(cuid())
+  organizationId             String       @unique
+  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  autoFollowupOnStatusChange Boolean      @default(false)
+  /// status slug → { queue, delayDays, note? }
+  statusFollowupMap          Json?
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+
+  @@map("AutomationSettings")
+}
+
+/// Manual ad campaign registry (name + budget). Meta sync later.
+model Campaign {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  /// active | paused | ended
+  status          String       @default("active")
+  /// facebook | instagram | google
+  platform        String       @default("facebook")
+  budgetBdt       Float        @default(0)
+  startDate       DateTime     @db.Date
+  endDate         DateTime?    @db.Date
+  notes           String?
+  landingPageName String?
+  landingPageUrl  String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@index([organizationId, platform])
+  @@index([organizationId, startDate])
+}
+
+/// Internal staff support tickets about customers / orders (no public portal).
+model SupportTicket {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subject        String
+  /// open | pending | resolved | closed
+  status         String       @default("open")
+  /// low | medium | high | urgent
+  priority       String       @default("medium")
+  customerName   String
+  customerMobile String
+  orderId        String?
+  orderNumber    String?
+  assigneeName   String?
+  createdByUserId String?
+  createdByName  String?
+  /// TicketMessage[] JSON
+  messages       Json         @default("[]")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, priority])
+  @@index([organizationId, customerMobile])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, orderNumber])
+}
+
+/// Tenant SaaS subscription (what the org pays Laam) — record only, no gateway.
+model OrgBillingSubscription {
+  id                 String       @id @default(cuid())
+  organizationId     String       @unique
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Starter | Pro | Enterprise
+  plan               String       @default("Starter")
+  /// active | trial | past_due | cancelled
+  status             String       @default("active")
+  /// monthly | yearly
+  billingCycle       String       @default("monthly")
+  currentPeriodStart DateTime     @db.Date
+  currentPeriodEnd   DateTime     @db.Date
+  nextBillingDate    DateTime     @db.Date
+  amountBdt          Float        @default(0)
+  smsCredits         Int          @default(2000)
+  smsCreditsUsed     Int          @default(0)
+  orderQuota         Int          @default(3000)
+  userSeats          Int          @default(5)
+  autoRenew          Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model BillingInvoice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  number         String
+  date           DateTime     @db.Date
+  dueDate        DateTime     @db.Date
+  amountBdt      Float
+  /// paid | pending | overdue | cancelled
+  status         String       @default("pending")
+  /// Starter | Pro | Enterprise
+  plan           String
+  periodLabel    String
+  pdfUrl         String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, date])
+}
+
+/// Manual payment method labels (no tokens / gateway).
+model BillingPaymentMethod {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// bkash | nagad | bank | card
+  type           String
+  label          String
+  lastFour       String?
+  isDefault      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
 model MarketingSpend {
   id             String       @id @default(uuid())
   organizationId String

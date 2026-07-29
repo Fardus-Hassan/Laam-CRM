@@ -34,6 +34,7 @@ export * from './lib/coupons.js';
 export * from './lib/recycle-bin.js';
 export * from './lib/notifications.js';
 export * from './lib/campaigns.js';
+export * from './lib/automations.js';
 export * from './lib/data-import.js';
 export * from './lib/knowledge.js';
 export * from './lib/deals.js';

@@ -92,7 +92,7 @@ export function SupportTicketsPage() {
   return (
     <PageShell
       title="Support Tickets"
-      description="Customer complaints linked to orders — assign, reply, resolve."
+      description="Internal staff tickets about customers and orders — assign, reply, resolve."
     >
       <div className={ORDER_PAGE_GAP}>
         <CrmSummaryStrip
