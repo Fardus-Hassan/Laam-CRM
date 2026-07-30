@@ -289,6 +289,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
             'support.view',
             'coupons.view',
             'notifications.view',
+            'incentive.view',
           ],
           children: [
             {
@@ -310,6 +311,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               url: '/dashboard/tasks',
               permissions: pv('tasks.view'),
               badge: badges.tasks,
+            },
+            {
+              id: 'incentive',
+              title: 'Incentive & KPI',
+              url: '/dashboard/incentive',
+              permissions: pv('incentive.view'),
             },
             {
               id: 'calendar',

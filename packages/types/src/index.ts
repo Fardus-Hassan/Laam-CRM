@@ -41,3 +41,4 @@ export * from './lib/deals.js';
 export * from './lib/org-categories.js';
 export * from './lib/product-brands.js';
 export * from './lib/website-integration.js';
+export * from './lib/incentive.js';

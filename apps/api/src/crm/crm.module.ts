@@ -70,6 +70,8 @@ import {
 } from './website-orders.controller';
 import { WebsiteIntegrationsService } from './website-integrations.service';
 import { WebsiteOrdersIngestService } from './website-orders-ingest.service';
+import { IncentiveController } from './incentive.controller';
+import { IncentiveService } from './incentive.service';
 
 @Module({
   imports: [AuthModule],
@@ -110,6 +112,7 @@ import { WebsiteOrdersIngestService } from './website-orders-ingest.service';
     AutomationsController,
     SupportController,
     BillingController,
+    IncentiveController,
   ],
   providers: [
     RbacService,
@@ -125,6 +128,7 @@ import { WebsiteOrdersIngestService } from './website-orders-ingest.service';
     AutomationsService,
     SupportService,
     BillingService,
+    IncentiveService,
     OrdersService,
     PathaoCourierService,
     PathaoSyncService,

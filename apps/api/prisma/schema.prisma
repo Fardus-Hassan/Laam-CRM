@@ -66,6 +66,12 @@ model Organization {
   billingInvoices          BillingInvoice[]
   billingPaymentMethods    BillingPaymentMethod[]
   websiteStores            WebsiteStore[]
+  incentiveTeams           IncentiveTeam[]
+  incentivePlans           IncentivePlan[]
+  incentiveAssignments     IncentiveAssignment[]
+  incentiveOrgSettings     IncentiveOrgSettings?
+  incentiveManualActuals   IncentiveManualActual[]
+  incentivePeriodRuns      IncentivePeriodRun[]
 }
 
 /// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
@@ -1441,6 +1447,174 @@ model PerformanceTarget {
   @@unique([organizationId, monthKey, scope, subjectKey])
   @@index([organizationId, monthKey])
   @@index([organizationId, scope])
+}
+
+/// Tenant-configurable incentive / KPI teams (SaaS — not hardcoded PDF).
+model IncentiveTeam {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  description    String?
+  sortOrder      Int             @default(0)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  plans          IncentivePlan[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@map("IncentiveTeams")
+}
+
+/// Incentive plan with metric rules + slabs. Fully custom per tenant.
+model IncentivePlan {
+  id                String                @id @default(cuid())
+  organizationId    String
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teamId            String?
+  team              IncentiveTeam?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  name              String
+  slug              String
+  description       String?
+  /// order_count | cross_sell_count | return_ratio | recovery_count | manual
+  metricType        String
+  /// Status filters, minItems, direction, delivered/returned statuses
+  metricConfig      Json?
+  /// Optional team-wide monthly target (e.g. Confirmation 2350)
+  teamMonthlyTarget Float?
+  periodType        String                @default("monthly")
+  isActive          Boolean               @default(true)
+  /// When actual exceeds top slab target, pay prorata (e.g. Telesales 21+)
+  prorataAboveTop   Boolean               @default(false)
+  sortOrder         Int                   @default(0)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  slabs             IncentiveSlab[]
+  assignments       IncentiveAssignment[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, teamId])
+  @@map("IncentivePlans")
+}
+
+model IncentiveSlab {
+  id             String        @id @default(cuid())
+  planId         String
+  plan           IncentivePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  label          String?
+  dailyTarget    Float?
+  monthlyTarget  Float
+  incentiveBdt   Float
+  sortOrder      Int           @default(0)
+
+  @@index([planId, sortOrder])
+  @@map("IncentiveSlabs")
+}
+
+/// Agent ↔ plan assignment (agentName matches Order.assignedAgentName).
+model IncentiveAssignment {
+  id             String                 @id @default(cuid())
+  organizationId String
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           IncentivePlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  agentName      String
+  userId         String?
+  /// morning | evening | night
+  shift          String?
+  startsOn       DateTime               @db.Date
+  endsOn         DateTime?              @db.Date
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  manualActuals  IncentiveManualActual[]
+
+  @@index([organizationId, agentName])
+  @@index([organizationId, planId])
+  @@index([organizationId, isActive])
+  @@map("IncentiveAssignments")
+}
+
+/// Manual KPI entry for survey / relationship / night soft metrics.
+model IncentiveManualActual {
+  id               String              @id @default(cuid())
+  organizationId   String
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignmentId     String
+  assignment       IncentiveAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  yearMonth        String
+  actualValue      Float
+  note             String?
+  updatedByUserId  String?
+  updatedByName    String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([assignmentId, yearMonth])
+  @@index([organizationId, yearMonth])
+  @@map("IncentiveManualActuals")
+}
+
+/// Locked monthly incentive period (draft → approved → paid).
+model IncentivePeriodRun {
+  id               String               @id @default(cuid())
+  organizationId   String
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  yearMonth        String
+  /// draft | approved | paid
+  status           String               @default("draft")
+  totalIncentiveBdt Float               @default(0)
+  calculatedAt     DateTime             @default(now())
+  approvedAt       DateTime?
+  approvedByUserId String?
+  approvedByName   String?
+  paidAt           DateTime?
+  paidByUserId     String?
+  paidByName       String?
+  notes            String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  lines            IncentivePayoutLine[]
+
+  @@unique([organizationId, yearMonth])
+  @@index([organizationId, status])
+  @@map("IncentivePeriodRuns")
+}
+
+model IncentivePayoutLine {
+  id               String             @id @default(cuid())
+  runId            String
+  run              IncentivePeriodRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  assignmentId     String?
+  agentName        String
+  planId           String
+  planName         String
+  teamName         String?
+  metricType       String
+  actualValue      Float
+  incentiveBdt     Float
+  matchedSlabLabel String?
+  warning          String?
+  notes            String?
+
+  @@index([runId])
+  @@map("IncentivePayoutLines")
+}
+
+/// Optional org-wide salary + shift templates (reference; payroll later).
+model IncentiveOrgSettings {
+  id               String       @id @default(cuid())
+  organizationId   String       @unique
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salaryTemplate   Json?
+  shiftTemplates   Json?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@map("IncentiveOrgSettings")
 }
 
 /// Login success/failure audit for security reports.

@@ -150,6 +150,13 @@ export const CRM_MODULES = {
     permissions: ['recycle.view', 'recycle.manage'],
     apiPath: '/crm/recycle-bin',
   },
+  incentive: {
+    id: 'incentive',
+    title: 'Incentive & KPI',
+    description: 'Configurable team incentive plans, slabs, and monthly calc.',
+    permissions: ['incentive.view', 'incentive.manage'],
+    apiPath: '/crm/incentive',
+  },
   knowledge: {
     id: 'knowledge',
     title: 'Knowledge base',
