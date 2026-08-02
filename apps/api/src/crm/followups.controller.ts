@@ -48,7 +48,7 @@ export class FollowupsController {
   }
 
   @Get()
-  @RequirePermissions('orders.view')
+  @RequirePermissions('activities.view')
   @ApiOperation({ summary: 'List follow-ups' })
   list(
     @CurrentUser() user: AuthUserPayload,
@@ -70,7 +70,7 @@ export class FollowupsController {
   }
 
   @Post('bulk')
-  @RequirePermissions('orders.create', 'orders.confirm', 'companies.edit')
+  @RequirePermissions('activities.edit', 'activities.create')
   @ApiOperation({ summary: 'Bulk update follow-ups' })
   bulk(@CurrentUser() user: AuthUserPayload, @Body() body: BulkFollowupsDto) {
     this.followups.requireOrg(user.organizationId);
@@ -78,7 +78,7 @@ export class FollowupsController {
   }
 
   @Post()
-  @RequirePermissions('orders.create', 'orders.confirm', 'companies.edit')
+  @RequirePermissions('activities.create')
   @ApiOperation({ summary: 'Create follow-up for a customer' })
   create(
     @CurrentUser() user: AuthUserPayload,
@@ -103,7 +103,7 @@ export class FollowupsController {
   }
 
   @Get(':id')
-  @RequirePermissions('orders.view')
+  @RequirePermissions('activities.view')
   @ApiOperation({ summary: 'Get follow-up by ID' })
   get(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
     this.followups.requireOrg(user.organizationId);
@@ -111,7 +111,7 @@ export class FollowupsController {
   }
 
   @Patch(':id')
-  @RequirePermissions('orders.create', 'orders.confirm', 'companies.edit')
+  @RequirePermissions('activities.edit', 'activities.create')
   @ApiOperation({ summary: 'Update follow-up' })
   update(
     @CurrentUser() user: AuthUserPayload,

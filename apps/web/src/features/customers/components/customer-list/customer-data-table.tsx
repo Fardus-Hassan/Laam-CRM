@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { CustomerListItem } from '@laam/types';
+import type { CustomerListItem, CustomerSegmentCount, CustomerStatus } from '@laam/types';
 
 import { CrmDataTable } from '@/components/data-table';
 import {
@@ -24,7 +24,8 @@ type CustomerDataTableProps = {
   showPagination?: boolean;
   onNoteClick?: (row: CustomerListItem) => void;
   onFollowUpClick?: (row: CustomerListItem) => void;
-  onStatusClick?: (row: CustomerListItem) => void;
+  statusOptions?: CustomerSegmentCount[];
+  onStatusChange?: (row: CustomerListItem, status: CustomerStatus) => void | Promise<void>;
 };
 
 export function CustomerDataTable({
@@ -41,11 +42,18 @@ export function CustomerDataTable({
   showPagination,
   onNoteClick,
   onFollowUpClick,
-  onStatusClick,
+  statusOptions = [],
+  onStatusChange,
 }: CustomerDataTableProps) {
   const columns = React.useMemo(
-    () => buildCustomerTableColumns({ onNoteClick, onFollowUpClick, onStatusClick }),
-    [onNoteClick, onFollowUpClick, onStatusClick],
+    () =>
+      buildCustomerTableColumns({
+        onNoteClick,
+        onFollowUpClick,
+        statusOptions,
+        onStatusChange,
+      }),
+    [onNoteClick, onFollowUpClick, statusOptions, onStatusChange],
   );
 
   const mobileCard = React.useCallback(
@@ -55,9 +63,11 @@ export function CustomerDataTable({
         ctx={ctx}
         onNoteClick={onNoteClick}
         onFollowUpClick={onFollowUpClick}
+        statusOptions={statusOptions}
+        onStatusChange={onStatusChange}
       />
     ),
-    [onNoteClick, onFollowUpClick],
+    [onNoteClick, onFollowUpClick, statusOptions, onStatusChange],
   );
 
   const selectionState = React.useMemo(
@@ -72,7 +82,7 @@ export function CustomerDataTable({
       getRowId={(row) => row.id}
       emptyMessage="No customers found for this view."
       isLoading={isLoading}
-      minTableWidth={1040}
+      minTableWidth={1080}
       pinnedColumns={CUSTOMER_TABLE_PINNED}
       mobileCard={mobileCard}
       selection={selectionState}

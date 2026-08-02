@@ -6,16 +6,20 @@ import {
 } from '@nestjs/common';
 import type {
   CreateCustomerPayload,
+  CustomerCompareOp,
   CustomerDetail,
   CustomerListItem,
   CustomerListQuery,
   CustomerListResponse,
   CustomerStatus,
+  OrgCustomerStatus,
   UpdateCustomerPayload,
+  UpsertOrgCustomerStatusPayload,
 } from '@laam/types';
 import type { Customer, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { CourierPhoneHistoryService } from './courier-phone-history.service';
 import { normalizeBdPhone } from './phone.util';
 
 const DELIVERED_STATUSES = new Set([
@@ -30,9 +34,51 @@ const FAILED_STATUSES = new Set([
   'cancelled',
 ]);
 
+const DEFAULT_CUSTOMER_STATUSES: Array<{
+  slug: string;
+  label: string;
+  isSystem?: boolean;
+  sortOrder: number;
+}> = [
+  { slug: 'none', label: 'No status', isSystem: true, sortOrder: 0 },
+  { slug: 'premium', label: 'Premium', isSystem: true, sortOrder: 1 },
+];
+
+function compareInt(
+  op: CustomerCompareOp | undefined,
+  value: number | undefined,
+): Prisma.IntFilter | number | undefined {
+  if (value === undefined || Number.isNaN(value)) return undefined;
+  const operator = op ?? 'gte';
+  if (operator === 'eq') return value;
+  if (operator === 'gt') return { gt: value };
+  if (operator === 'lt') return { lt: value };
+  if (operator === 'lte') return { lte: value };
+  return { gte: value };
+}
+
+function parseDayStart(value?: string): Date | undefined {
+  if (!value?.trim()) return undefined;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return undefined;
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function parseDayEnd(value?: string): Date | undefined {
+  if (!value?.trim()) return undefined;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return undefined;
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly courierPhoneHistory: CourierPhoneHistoryService,
+  ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
     if (!organizationId) {
@@ -189,11 +235,6 @@ export class CustomersService {
       .filter((o) => DELIVERED_STATUSES.has(o.status) || o.status === 'partial_delivered')
       .reduce((sum, o) => sum + (o.amount || 0), 0);
     const dates = linked.map((o) => o.orderDate ?? o.createdAt).sort((a, b) => a.getTime() - b.getTime());
-    const existing = await db.customer.findFirstOrThrow({
-      where: { id: customerId, organizationId },
-      select: { status: true },
-    });
-    const autoStatus = this.suggestStatus(orderCount, existing.status as CustomerStatus);
 
     return db.customer.update({
       where: { id: customerId },
@@ -204,7 +245,7 @@ export class CustomersService {
         totalSpent,
         firstOrderAt: dates[0] ?? null,
         lastOrderAt: dates[dates.length - 1] ?? null,
-        status: autoStatus,
+        // status is admin-managed — do not auto-overwrite
       },
     });
   }
@@ -270,9 +311,7 @@ export class CustomersService {
   ): Promise<CustomerListResponse> {
     const page = Math.max(1, query.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
-    const search = query.search?.trim();
 
-    // Lazy backfill once if empty but orders exist
     const existingCount = await this.prisma.customer.count({ where: { organizationId } });
     if (existingCount === 0) {
       const orderCount = await this.prisma.order.count({
@@ -283,31 +322,13 @@ export class CustomersService {
       }
     }
 
-    const where: Prisma.CustomerWhereInput = {
-      organizationId,
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.district
-        ? { district: { contains: query.district, mode: 'insensitive' } }
-        : {}),
-      ...(search
-        ? {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { phone: { contains: search } },
-              { customerNumber: { contains: search, mode: 'insensitive' } },
-              { email: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
-      ...(query.segment === 'follow_up' ? { hasFollowUp: true } : {}),
-      ...(query.segment === 'premium' ? { status: 'premium' } : {}),
-      ...(query.segment === 'repeat'
-        ? { orderCount: { gte: 2 } }
-        : {}),
-      ...(query.segment === 'high_risk'
-        ? { failedCount: { gte: 2 }, orderCount: { gte: 2 } }
-        : {}),
-    };
+    await this.ensureDefaultStatuses(organizationId);
+    const where = await this.buildListWhere(organizationId, query);
+    const statusRows = await this.prisma.orgCustomerStatus.findMany({
+      where: { organizationId, deletedAt: null, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    });
+    const statusLabelBySlug = new Map(statusRows.map((s) => [s.slug, s.label]));
 
     const [total, rows, allForSummary] = await Promise.all([
       this.prisma.customer.count({ where }),
@@ -330,7 +351,18 @@ export class CustomersService {
       }),
     ]);
 
-    const items = await Promise.all(rows.map((row) => this.toListItem(row)));
+    const phones = rows.map((r) => r.phone);
+    const networkByPhone = await this.courierPhoneHistory.loadCachedStatsByPhones(
+      organizationId,
+      phones,
+    );
+    this.courierPhoneHistory.warmMissing(organizationId, phones);
+
+    const items = await Promise.all(
+      rows.map((row) =>
+        this.toListItem(row, statusLabelBySlug, networkByPhone.get(row.phone)),
+      ),
+    );
     const avgCourierRate =
       allForSummary.length === 0
         ? 0
@@ -339,13 +371,18 @@ export class CustomersService {
             return sum + (attempts > 0 ? (c.deliveredCount / attempts) * 100 : 0);
           }, 0) / allForSummary.length;
 
+    const statusCounts = new Map<string, number>();
+    for (const c of allForSummary) {
+      statusCounts.set(c.status, (statusCounts.get(c.status) ?? 0) + 1);
+    }
+
     return {
       items,
       total,
       page,
       pageSize,
       summary: {
-        count: allForSummary.length,
+        count: total,
         totalSpent: allForSummary.reduce((s, c) => s + c.totalSpent, 0),
         avgCourierRate: Math.round(avgCourierRate * 10) / 10,
         withFollowUpCount: allForSummary.filter((c) => c.hasFollowUp).length,
@@ -353,14 +390,14 @@ export class CustomersService {
       segments: [
         { id: 'all', label: 'All', count: allForSummary.length },
         {
+          id: 'new',
+          label: 'New',
+          count: allForSummary.filter((c) => c.orderCount < 2).length,
+        },
+        {
           id: 'repeat',
           label: 'Repeat',
           count: allForSummary.filter((c) => c.orderCount >= 2).length,
-        },
-        {
-          id: 'premium',
-          label: 'Premium',
-          count: allForSummary.filter((c) => c.status === 'premium').length,
         },
         {
           id: 'follow_up',
@@ -369,12 +406,337 @@ export class CustomersService {
         },
         {
           id: 'high_risk',
-          label: 'High risk',
+          label: 'At risk',
           count: allForSummary.filter(
             (c) => c.failedCount >= 2 && c.orderCount >= 2,
           ).length,
         },
       ],
+      statuses: statusRows.map((s) => ({
+        id: s.slug,
+        label: s.label,
+        count: statusCounts.get(s.slug) ?? 0,
+      })),
+    };
+  }
+
+  async exportCsv(
+    organizationId: string,
+    query: CustomerListQuery,
+  ): Promise<string> {
+    await this.ensureDefaultStatuses(organizationId);
+    const where = await this.buildListWhere(organizationId, {
+      ...query,
+      page: 1,
+      pageSize: 5000,
+    });
+    const statusRows = await this.prisma.orgCustomerStatus.findMany({
+      where: { organizationId, deletedAt: null },
+    });
+    const statusLabelBySlug = new Map(statusRows.map((s) => [s.slug, s.label]));
+    const rows = await this.prisma.customer.findMany({
+      where,
+      orderBy: [{ lastOrderAt: 'desc' }, { createdAt: 'desc' }],
+      take: 5000,
+    });
+    const header = [
+      'Customer ID',
+      'Name',
+      'Phone',
+      'Orders',
+      'Delivered',
+      'Courier %',
+      'Status',
+      'District',
+      'Employee',
+      'Follow-up',
+      'Last order',
+    ].join(',');
+    const lines = rows.map((row) => {
+      const score = this.courierScore(row);
+      return [
+        row.customerNumber,
+        `"${row.name.replace(/"/g, '""')}"`,
+        row.phone,
+        row.orderCount,
+        row.deliveredCount,
+        score.rate,
+        `"${(statusLabelBySlug.get(row.status) ?? row.status).replace(/"/g, '""')}"`,
+        `"${(row.district ?? '').replace(/"/g, '""')}"`,
+        `"${(row.assignedAgentName ?? '').replace(/"/g, '""')}"`,
+        row.hasFollowUp ? 'yes' : 'no',
+        row.lastOrderAt?.toISOString() ?? '',
+      ].join(',');
+    });
+    return [header, ...lines].join('\n');
+  }
+
+  async listStatuses(organizationId: string): Promise<OrgCustomerStatus[]> {
+    await this.ensureDefaultStatuses(organizationId);
+    const rows = await this.prisma.orgCustomerStatus.findMany({
+      where: { organizationId, deletedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    });
+    return rows.map((row) => this.toStatus(row));
+  }
+
+  async upsertStatus(
+    organizationId: string,
+    input: UpsertOrgCustomerStatusPayload,
+  ): Promise<OrgCustomerStatus> {
+    await this.ensureDefaultStatuses(organizationId);
+    const label = input.label.trim();
+    if (!label) throw new BadRequestException('Label is required');
+    const slug = (input.slug?.trim() || label)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
+    if (!slug) throw new BadRequestException('Slug is required');
+
+    if (input.id) {
+      const existing = await this.prisma.orgCustomerStatus.findFirst({
+        where: { id: input.id, organizationId, deletedAt: null },
+      });
+      if (!existing) throw new NotFoundException('Status not found');
+      if (existing.isSystem && slug !== existing.slug) {
+        throw new BadRequestException('System status slugs cannot be changed');
+      }
+      const updated = await this.prisma.orgCustomerStatus.update({
+        where: { id: existing.id },
+        data: {
+          label,
+          slug,
+          color: input.color?.trim() || null,
+          sortOrder: input.sortOrder ?? existing.sortOrder,
+          isActive: input.isActive ?? existing.isActive,
+        },
+      });
+      return this.toStatus(updated);
+    }
+
+    const created = await this.prisma.orgCustomerStatus.create({
+      data: {
+        organizationId,
+        slug,
+        label,
+        color: input.color?.trim() || null,
+        sortOrder: input.sortOrder ?? 0,
+        isActive: input.isActive ?? true,
+        isSystem: false,
+      },
+    });
+    return this.toStatus(created);
+  }
+
+  async setStatusActive(
+    organizationId: string,
+    id: string,
+    isActive: boolean,
+  ): Promise<OrgCustomerStatus> {
+    const existing = await this.prisma.orgCustomerStatus.findFirst({
+      where: { id, organizationId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Status not found');
+    const updated = await this.prisma.orgCustomerStatus.update({
+      where: { id },
+      data: { isActive },
+    });
+    return this.toStatus(updated);
+  }
+
+  async deleteStatus(organizationId: string, id: string): Promise<void> {
+    const existing = await this.prisma.orgCustomerStatus.findFirst({
+      where: { id, organizationId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Status not found');
+    if (existing.isSystem) {
+      throw new BadRequestException('System statuses cannot be deleted');
+    }
+    await this.prisma.orgCustomerStatus.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false },
+    });
+  }
+
+  private async ensureDefaultStatuses(organizationId: string): Promise<void> {
+    const count = await this.prisma.orgCustomerStatus.count({
+      where: { organizationId, deletedAt: null },
+    });
+    if (count > 0) return;
+    await this.prisma.orgCustomerStatus.createMany({
+      data: DEFAULT_CUSTOMER_STATUSES.map((s) => ({
+        organizationId,
+        slug: s.slug,
+        label: s.label,
+        sortOrder: s.sortOrder,
+        isSystem: s.isSystem ?? false,
+        isActive: true,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  private async buildListWhere(
+    organizationId: string,
+    query: CustomerListQuery,
+  ): Promise<Prisma.CustomerWhereInput> {
+    const search = query.search?.trim();
+    const createdFrom = parseDayStart(query.createdFrom);
+    const createdTo = parseDayEnd(query.createdTo);
+    const lastOrderFrom = parseDayStart(query.lastOrderFrom);
+    const lastOrderTo = parseDayEnd(query.lastOrderTo);
+    const orderCountFilter = compareInt(query.orderCountOp, query.orderCount);
+    const deliveredFilter = compareInt(
+      query.deliveredCountOp,
+      query.deliveredCount,
+    );
+    const product = query.product?.trim();
+    const employee = query.employee?.trim();
+    const courierScoreMin = query.courierScoreMin;
+
+    const and: Prisma.CustomerWhereInput[] = [];
+
+    if (query.segment === 'new') and.push({ orderCount: { lt: 2 } });
+    if (query.segment === 'follow_up') and.push({ hasFollowUp: true });
+    if (query.segment === 'repeat') and.push({ orderCount: { gte: 2 } });
+    if (query.segment === 'high_risk') {
+      and.push({ failedCount: { gte: 2 }, orderCount: { gte: 2 } });
+    }
+    // Legacy alias
+    if (query.segment === 'premium') and.push({ status: 'premium' });
+
+    if (query.status) and.push({ status: query.status });
+    if (query.district?.trim()) {
+      and.push({
+        district: { contains: query.district.trim(), mode: 'insensitive' },
+      });
+    }
+    if (employee) {
+      and.push({
+        assignedAgentName: { contains: employee, mode: 'insensitive' },
+      });
+    }
+    if (search) {
+      and.push({
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search } },
+          { customerNumber: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (createdFrom || createdTo) {
+      and.push({
+        createdAt: {
+          ...(createdFrom ? { gte: createdFrom } : {}),
+          ...(createdTo ? { lte: createdTo } : {}),
+        },
+      });
+    }
+    if (lastOrderFrom || lastOrderTo) {
+      and.push({
+        lastOrderAt: {
+          ...(lastOrderFrom ? { gte: lastOrderFrom } : {}),
+          ...(lastOrderTo ? { lte: lastOrderTo } : {}),
+        },
+      });
+    }
+    if (orderCountFilter !== undefined) and.push({ orderCount: orderCountFilter });
+    if (deliveredFilter !== undefined) and.push({ deliveredCount: deliveredFilter });
+    if (product) {
+      and.push({
+        orders: {
+          some: {
+            deletedAt: null,
+            lineItems: {
+              some: { productName: { contains: product, mode: 'insensitive' } },
+            },
+          },
+        },
+      });
+    }
+    if (courierScoreMin !== undefined && courierScoreMin > 0) {
+      // rate = d/(d+f)*100 >= min  =>  d*(100-min) >= min*f
+      // Also exclude zero-attempt customers when min > 0
+      and.push({
+        OR: [
+          {
+            AND: [
+              { deliveredCount: { gt: 0 } },
+              { failedCount: 0 },
+            ],
+          },
+          ...(courierScoreMin < 100
+            ? [
+                {
+                  AND: [
+                    {
+                      deliveredCount: {
+                        gte: 1,
+                      },
+                    },
+                    {
+                      // Approximate via raw-ish: use failedCount bound
+                      // d >= ceil(min/(100-min) * f) handled in app filter below for accuracy
+                    },
+                  ],
+                } as Prisma.CustomerWhereInput,
+              ]
+            : []),
+        ],
+      });
+    }
+
+    const where: Prisma.CustomerWhereInput = {
+      organizationId,
+      ...(and.length ? { AND: and } : {}),
+    };
+
+    // Accurate courier score filter (post-candidate). For pagination safety when
+    // courierScoreMin set, narrow with failed/delivered then filter IDs.
+    if (courierScoreMin !== undefined && courierScoreMin > 0) {
+      const candidates = await this.prisma.customer.findMany({
+        where,
+        select: { id: true, deliveredCount: true, failedCount: true },
+      });
+      const ids = candidates
+        .filter((c) => {
+          const attempts = c.deliveredCount + c.failedCount;
+          if (attempts === 0) return false;
+          const rate = (c.deliveredCount / attempts) * 100;
+          return rate >= courierScoreMin;
+        })
+        .map((c) => c.id);
+      return { organizationId, id: { in: ids.length ? ids : ['__none__'] } };
+    }
+
+    return where;
+  }
+
+  private toStatus(row: {
+    id: string;
+    organizationId: string;
+    slug: string;
+    label: string;
+    color: string | null;
+    sortOrder: number;
+    isActive: boolean;
+    isSystem: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  }): OrgCustomerStatus {
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      slug: row.slug,
+      label: row.label,
+      color: row.color ?? undefined,
+      sortOrder: row.sortOrder,
+      isActive: row.isActive,
+      isSystem: row.isSystem,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
     };
   }
 
@@ -729,15 +1091,6 @@ export class CustomersService {
     return [...variants];
   }
 
-  private suggestStatus(orderCount: number, current: CustomerStatus): CustomerStatus {
-    if (current === 'premium' || current === 'ramadan') return current;
-    if (orderCount >= 10) return '10_time';
-    if (orderCount >= 5) return '5_time';
-    if (orderCount >= 3) return '3_time';
-    if (orderCount >= 2) return '2_time';
-    return 'none';
-  }
-
   private async nextCustomerNumber(
     organizationId: string,
     db: Prisma.TransactionClient | PrismaService = this.prisma,
@@ -757,7 +1110,11 @@ export class CustomersService {
     };
   }
 
-  private async toListItem(row: Customer): Promise<CustomerListItem> {
+  private async toListItem(
+    row: Customer,
+    statusLabelBySlug?: Map<string, string>,
+    networkStats?: { to: number; su: number; fa: number; percent: number },
+  ): Promise<CustomerListItem> {
     const recentOrders = await this.prisma.order.findMany({
       where: { organizationId: row.organizationId, customerId: row.id, deletedAt: null },
       include: {
@@ -774,6 +1131,15 @@ export class CustomersService {
       })),
     );
 
+    const courierScore = networkStats
+      ? {
+          total: networkStats.to,
+          success: networkStats.su,
+          failed: networkStats.fa,
+          rate: networkStats.percent,
+        }
+      : this.courierScore(row);
+
     return {
       id: row.id,
       customerNumber: row.customerNumber,
@@ -787,10 +1153,11 @@ export class CustomersService {
       orderCount: row.orderCount,
       deliveredCount: row.deliveredCount,
       totalSpent: row.totalSpent,
-      courierScore: this.courierScore(row),
+      courierScore,
       recentProducts: recentProducts.slice(0, 8),
       tags: row.tags,
-      status: row.status as CustomerStatus,
+      status: row.status,
+      statusLabel: statusLabelBySlug?.get(row.status) ?? row.status,
       hasNotes: Boolean(row.notes?.trim()),
       hasFollowUp: row.hasFollowUp,
       followUpDue: row.followUpDue?.toISOString(),
@@ -800,7 +1167,14 @@ export class CustomersService {
   }
 
   private async toDetail(row: Customer): Promise<CustomerDetail> {
-    const base = await this.toListItem(row);
+    let networkStats: { to: number; su: number; fa: number; percent: number } | undefined;
+    try {
+      const history = await this.courierPhoneHistory.check(row.organizationId, row.phone);
+      networkStats = history.aggregate;
+    } catch {
+      networkStats = undefined;
+    }
+    const base = await this.toListItem(row, undefined, networkStats);
     const [orders, followups] = await Promise.all([
       this.prisma.order.findMany({
         where: {

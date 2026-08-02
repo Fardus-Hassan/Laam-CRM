@@ -6,6 +6,11 @@ export const incentiveMetricTypeSchema = z.enum([
   'cross_sell_count',
   'return_ratio',
   'recovery_count',
+  /** Relationship surveys — auto from survey logs. */
+  'survey_count',
+  /** Night-shift channel activity (call / FB / messenger / WA). */
+  'channel_activity',
+  /** Manual override entry. */
   'manual',
 ]);
 export type IncentiveMetricType = z.infer<typeof incentiveMetricTypeSchema>;
@@ -13,18 +18,38 @@ export type IncentiveMetricType = z.infer<typeof incentiveMetricTypeSchema>;
 export const incentiveMetricDirectionSchema = z.enum(['higher', 'lower']);
 export type IncentiveMetricDirection = z.infer<typeof incentiveMetricDirectionSchema>;
 
+export const incentiveChannelSchema = z.enum([
+  'call',
+  'facebook_comment',
+  'messenger',
+  'whatsapp',
+]);
+export type IncentiveChannel = z.infer<typeof incentiveChannelSchema>;
+
 export const incentiveMetricConfigSchema = z.object({
   includeStatuses: z.array(z.string()).optional(),
   excludeStatuses: z.array(z.string()).optional(),
-  /** For cross_sell_count — default 2. */
   minItems: z.number().int().positive().optional(),
-  /** Optional: also count orders whose orderTag matches (OR with minItems). */
   orderTags: z.array(z.string()).optional(),
   direction: incentiveMetricDirectionSchema.optional(),
   deliveredStatuses: z.array(z.string()).optional(),
   returnedStatuses: z.array(z.string()).optional(),
+  /** Exclude agents/orders when personal return ratio exceeds this % (PDF high-return rule). */
+  maxAgentReturnRatioPct: z.number().optional(),
+  /** Daily entry target used for first warning (e.g. Telesales 8/day). */
+  entryDailyTarget: z.number().optional(),
+  /** Channels included for channel_activity metric. */
+  channels: z.array(incentiveChannelSchema).optional(),
 });
 export type IncentiveMetricConfig = z.infer<typeof incentiveMetricConfigSchema>;
+
+export const incentiveHrStatusSchema = z.enum([
+  'active',
+  'warning',
+  'final_warning',
+  'terminated',
+]);
+export type IncentiveHrStatus = z.infer<typeof incentiveHrStatusSchema>;
 
 export const incentiveSlabSchema = z.object({
   id: z.string(),
@@ -56,7 +81,6 @@ export const incentivePlanSchema = z.object({
   description: z.string().optional(),
   metricType: incentiveMetricTypeSchema,
   metricConfig: incentiveMetricConfigSchema.optional(),
-  /** Optional team-wide monthly target (informational / rollup). */
   teamMonthlyTarget: z.number().nullable().optional(),
   periodType: z.literal('monthly'),
   isActive: z.boolean(),
@@ -74,11 +98,12 @@ export const incentiveAssignmentSchema = z.object({
   teamName: z.string().optional(),
   agentName: z.string(),
   userId: z.string().nullable().optional(),
-  /** morning | evening | night — optional duty shift */
   shift: z.string().nullable().optional(),
   startsOn: z.string(),
   endsOn: z.string().nullable().optional(),
   isActive: z.boolean(),
+  hrStatus: incentiveHrStatusSchema.optional(),
+  consecutiveMissMonths: z.number().optional(),
 });
 export type IncentiveAssignment = z.infer<typeof incentiveAssignmentSchema>;
 
@@ -91,6 +116,8 @@ export const incentiveSalaryTemplateSchema = z.object({
   attendanceBonusBdt: z.number(),
   lunchBdt: z.number(),
   totalBdt: z.number(),
+  /** Default working days/month for full-attendance check (PDF). */
+  expectedWorkingDays: z.number().optional(),
   notes: z.string().optional(),
 });
 export type IncentiveSalaryTemplate = z.infer<typeof incentiveSalaryTemplateSchema>;
@@ -104,6 +131,56 @@ export const incentiveShiftTemplateSchema = z.object({
   notes: z.string().optional(),
 });
 export type IncentiveShiftTemplate = z.infer<typeof incentiveShiftTemplateSchema>;
+
+export const incentiveAttendanceSchema = z.object({
+  id: z.string(),
+  agentName: z.string(),
+  userId: z.string().nullable().optional(),
+  yearMonth: z.string(),
+  presentDays: z.number(),
+  workingDays: z.number(),
+  lateCount: z.number(),
+  earlyLeaveCount: z.number(),
+  unapprovedAbsence: z.number(),
+  fullAttendance: z.boolean(),
+  attendanceBonusEligible: z.boolean(),
+  note: z.string().nullable().optional(),
+});
+export type IncentiveAttendance = z.infer<typeof incentiveAttendanceSchema>;
+
+export const incentiveSurveyLogSchema = z.object({
+  id: z.string(),
+  agentName: z.string(),
+  assignmentId: z.string().nullable().optional(),
+  yearMonth: z.string(),
+  surveyCount: z.number(),
+  note: z.string().nullable().optional(),
+  recordedAt: z.string(),
+});
+export type IncentiveSurveyLog = z.infer<typeof incentiveSurveyLogSchema>;
+
+export const incentiveChannelLogSchema = z.object({
+  id: z.string(),
+  agentName: z.string(),
+  assignmentId: z.string().nullable().optional(),
+  yearMonth: z.string(),
+  channel: incentiveChannelSchema,
+  activityCount: z.number(),
+  note: z.string().nullable().optional(),
+});
+export type IncentiveChannelLog = z.infer<typeof incentiveChannelLogSchema>;
+
+export const incentiveSpecialBonusSchema = z.object({
+  id: z.string(),
+  yearMonth: z.string(),
+  agentName: z.string(),
+  assignmentId: z.string().nullable().optional(),
+  amountBdt: z.number(),
+  reason: z.string(),
+  createdByName: z.string().optional(),
+  createdAt: z.string(),
+});
+export type IncentiveSpecialBonus = z.infer<typeof incentiveSpecialBonusSchema>;
 
 export const incentiveOverviewSchema = z.object({
   teams: z.array(incentiveTeamSchema),
@@ -120,9 +197,11 @@ export type IncentiveOverview = z.infer<typeof incentiveOverviewSchema>;
 export const incentiveWarningSchema = z.enum([
   'none',
   'below_target',
+  'below_daily_entry',
   'above_return_cap',
   'manual_missing',
   'final_warning',
+  'terminated',
 ]);
 export type IncentiveWarning = z.infer<typeof incentiveWarningSchema>;
 
@@ -137,12 +216,17 @@ export const incentivePerformanceLineSchema = z.object({
   matchedSlabId: z.string().nullable().optional(),
   matchedSlabLabel: z.string().nullable().optional(),
   monthlyTarget: z.number().nullable().optional(),
-  /** Lowest slab target for higher-is-better (entry threshold). */
   entryTarget: z.number().nullable().optional(),
+  dailyAverage: z.number().nullable().optional(),
   incentiveBdt: z.number(),
+  specialBonusBdt: z.number().optional(),
+  attendanceBonusBdt: z.number().optional(),
+  totalPayBdt: z.number().optional(),
   prorataApplied: z.boolean().optional(),
   manualOverride: z.boolean().optional(),
   consecutiveMissMonths: z.number().optional(),
+  hrStatus: incentiveHrStatusSchema.optional(),
+  attendanceBonusEligible: z.boolean().optional(),
   warning: incentiveWarningSchema.optional(),
   notes: z.string().optional(),
 });
@@ -152,10 +236,13 @@ export const incentivePerformanceReportSchema = z.object({
   yearMonth: z.string(),
   periodStart: z.string(),
   periodEnd: z.string(),
+  workingDaysInMonth: z.number().optional(),
   lines: z.array(incentivePerformanceLineSchema),
   totalIncentiveBdt: z.number(),
+  totalSpecialBonusBdt: z.number().optional(),
+  totalAttendanceBonusBdt: z.number().optional(),
+  totalPayBdt: z.number().optional(),
   warningCount: z.number().optional(),
-  /** Sum of agent actuals rolled by plan (for team targets). */
   teamRollups: z
     .array(
       z.object({
@@ -185,8 +272,12 @@ export const incentivePayoutLineSchema = z.object({
   metricType: incentiveMetricTypeSchema,
   actualValue: z.number(),
   incentiveBdt: z.number(),
+  specialBonusBdt: z.number().optional(),
+  attendanceBonusBdt: z.number().optional(),
+  totalPayBdt: z.number().optional(),
   matchedSlabLabel: z.string().nullable().optional(),
   warning: incentiveWarningSchema.optional(),
+  hrStatus: incentiveHrStatusSchema.optional(),
   notes: z.string().optional(),
 });
 export type IncentivePayoutLine = z.infer<typeof incentivePayoutLineSchema>;
@@ -196,6 +287,9 @@ export const incentivePeriodRunSchema = z.object({
   yearMonth: z.string(),
   status: incentivePeriodStatusSchema,
   totalIncentiveBdt: z.number(),
+  totalSpecialBonusBdt: z.number().optional(),
+  totalAttendanceBonusBdt: z.number().optional(),
+  totalPayBdt: z.number().optional(),
   calculatedAt: z.string(),
   approvedAt: z.string().nullable().optional(),
   approvedByName: z.string().nullable().optional(),
@@ -223,7 +317,6 @@ export const createIncentiveTeamPayloadSchema = z.object({
   isActive: z.boolean().optional(),
 });
 export type CreateIncentiveTeamPayload = z.infer<typeof createIncentiveTeamPayloadSchema>;
-
 export const updateIncentiveTeamPayloadSchema = createIncentiveTeamPayloadSchema.partial();
 export type UpdateIncentiveTeamPayload = z.infer<typeof updateIncentiveTeamPayloadSchema>;
 
@@ -241,7 +334,6 @@ export const createIncentivePlanPayloadSchema = z.object({
   slabs: z.array(incentiveSlabInputSchema).optional(),
 });
 export type CreateIncentivePlanPayload = z.infer<typeof createIncentivePlanPayloadSchema>;
-
 export const updateIncentivePlanPayloadSchema = createIncentivePlanPayloadSchema.partial();
 export type UpdateIncentivePlanPayload = z.infer<typeof updateIncentivePlanPayloadSchema>;
 
@@ -253,13 +345,15 @@ export const createIncentiveAssignmentPayloadSchema = z.object({
   startsOn: z.string().optional(),
   endsOn: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
+  hrStatus: incentiveHrStatusSchema.optional(),
 });
 export type CreateIncentiveAssignmentPayload = z.infer<
   typeof createIncentiveAssignmentPayloadSchema
 >;
-
 export const updateIncentiveAssignmentPayloadSchema =
-  createIncentiveAssignmentPayloadSchema.partial();
+  createIncentiveAssignmentPayloadSchema.partial().extend({
+    consecutiveMissMonths: z.number().int().optional(),
+  });
 export type UpdateIncentiveAssignmentPayload = z.infer<
   typeof updateIncentiveAssignmentPayloadSchema
 >;
@@ -281,3 +375,57 @@ export const upsertIncentiveManualActualPayloadSchema = z.object({
 export type UpsertIncentiveManualActualPayload = z.infer<
   typeof upsertIncentiveManualActualPayloadSchema
 >;
+
+export const upsertIncentiveAttendancePayloadSchema = z.object({
+  agentName: z.string().min(1),
+  userId: z.string().optional().nullable(),
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  presentDays: z.number().min(0),
+  workingDays: z.number().min(1),
+  lateCount: z.number().min(0).optional(),
+  earlyLeaveCount: z.number().min(0).optional(),
+  unapprovedAbsence: z.number().min(0).optional(),
+  note: z.string().optional().nullable(),
+});
+export type UpsertIncentiveAttendancePayload = z.infer<
+  typeof upsertIncentiveAttendancePayloadSchema
+>;
+
+export const upsertIncentiveSurveyPayloadSchema = z.object({
+  agentName: z.string().min(1),
+  assignmentId: z.string().optional().nullable(),
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  surveyCount: z.number().min(0),
+  note: z.string().optional().nullable(),
+});
+export type UpsertIncentiveSurveyPayload = z.infer<typeof upsertIncentiveSurveyPayloadSchema>;
+
+export const upsertIncentiveChannelPayloadSchema = z.object({
+  agentName: z.string().min(1),
+  assignmentId: z.string().optional().nullable(),
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  channel: incentiveChannelSchema,
+  activityCount: z.number().min(0),
+  note: z.string().optional().nullable(),
+});
+export type UpsertIncentiveChannelPayload = z.infer<typeof upsertIncentiveChannelPayloadSchema>;
+
+export const createIncentiveSpecialBonusPayloadSchema = z.object({
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  agentName: z.string().min(1),
+  assignmentId: z.string().optional().nullable(),
+  amountBdt: z.number(),
+  reason: z.string().min(1),
+});
+export type CreateIncentiveSpecialBonusPayload = z.infer<
+  typeof createIncentiveSpecialBonusPayloadSchema
+>;
+
+export const incentiveOpsMonthSchema = z.object({
+  yearMonth: z.string(),
+  attendance: z.array(incentiveAttendanceSchema),
+  surveys: z.array(incentiveSurveyLogSchema),
+  channels: z.array(incentiveChannelLogSchema),
+  specialBonuses: z.array(incentiveSpecialBonusSchema),
+});
+export type IncentiveOpsMonth = z.infer<typeof incentiveOpsMonthSchema>;

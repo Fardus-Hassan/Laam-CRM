@@ -25,6 +25,7 @@ import { LeadsService } from './leads.service';
 import { NotificationsController } from './notifications.controller';
 import { ObjectStorageService } from './object-storage.service';
 import { OrgCategoriesController } from './org-categories.controller';
+import { OrgCustomerStatusesController } from './org-customer-statuses.controller';
 import { OrgOrderStatusesController } from './org-order-statuses.controller';
 import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { OrgOrderQueuesController } from './org-order-queues.controller';
@@ -43,6 +44,8 @@ import { CarrybeeCourierService } from './carrybee-courier.service';
 import { CarrybeeSyncService } from './carrybee-sync.service';
 import { CourierIntegrationsController } from './courier-integrations.controller';
 import { CourierIntegrationsService } from './courier-integrations.service';
+import { CourierPhoneHistoryController } from './courier-phone-history.controller';
+import { CourierPhoneHistoryService } from './courier-phone-history.service';
 import { SmsSettingsController, OrderSmsController } from './sms.controller';
 import { SmsService } from './sms.service';
 import { OrderPaymentsService } from './order-payments.service';
@@ -88,6 +91,7 @@ import { IncentiveService } from './incentive.service';
     PathaoCourierController,
     CarrybeeCourierController,
     CourierIntegrationsController,
+    CourierPhoneHistoryController,
     SmsSettingsController,
     WebsiteIntegrationsController,
     WebsiteOrdersIngestController,
@@ -98,6 +102,7 @@ import { IncentiveService } from './incentive.service';
     NotificationsController,
     ProductBrandsController,
     OrgCategoriesController,
+    OrgCustomerStatusesController,
     OrgOrderStatusesController,
     OrgOrderQueuesController,
     ProductsController,
@@ -135,6 +140,7 @@ import { IncentiveService } from './incentive.service';
     CarrybeeCourierService,
     CarrybeeSyncService,
     CourierIntegrationsService,
+    CourierPhoneHistoryService,
     SmsService,
     WebsiteIntegrationsService,
     WebsiteOrdersIngestService,

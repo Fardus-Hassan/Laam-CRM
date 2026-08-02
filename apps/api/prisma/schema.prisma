@@ -25,6 +25,7 @@ model Organization {
   notifications      Notification[]
   productBrands      ProductBrand[]
   orgCategories      OrgCategory[]
+  orgCustomerStatuses OrgCustomerStatus[]
   products           Product[]
   productVariants    ProductVariant[]
   stockMovements     InventoryStockMovement[]
@@ -49,6 +50,7 @@ model Organization {
   tasks                    Task[]
   courierIntegrations      CourierIntegration[]
   courierStatusMaps        CourierStatusMap[]
+  courierPhoneHistories    CourierPhoneHistory[]
   smsIntegration           SmsIntegration?
   smsTemplates             SmsTemplate[]
   smsLogs                  SmsLog[]
@@ -72,6 +74,10 @@ model Organization {
   incentiveOrgSettings     IncentiveOrgSettings?
   incentiveManualActuals   IncentiveManualActual[]
   incentivePeriodRuns      IncentivePeriodRun[]
+  incentiveAttendances     IncentiveAttendance[]
+  incentiveSurveyLogs      IncentiveSurveyLog[]
+  incentiveChannelLogs     IncentiveChannelLog[]
+  incentiveSpecialBonuses  IncentiveSpecialBonus[]
 }
 
 /// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
@@ -148,6 +154,25 @@ model SmsLog {
 
   @@index([organizationId, createdAt])
   @@index([organizationId, orderId])
+}
+
+/// Cached phone → courier network delivery history (Pathao / Carrybee APIs).
+model CourierPhoneHistory {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNormalized  String
+  /// Aggregate To/Su/Fa/percent JSON (OrderCourierStats shape).
+  aggregateJson    Json
+  /// Per-provider payloads [{ provider, stats, rating, error, fetchedAt }].
+  providersJson    Json
+  fetchedAt        DateTime     @default(now())
+  expiresAt        DateTime
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, phoneNormalized])
+  @@index([organizationId, expiresAt])
 }
 
 /// Configurable courier → CRM status catalog (filter labels + auto-map).
@@ -350,7 +375,7 @@ model Customer {
   address           String?
   notes             String?
   tags              String[]     @default([])
-  /// Loyalty label: none | 2_time | 3_time | 5_time | 10_time | premium | repeat | ramadan
+  /// Admin OrgCustomerStatus.slug (or legacy loyalty label).
   status            String       @default("none")
   source            String?
   assignedAgentName String?
@@ -867,6 +892,26 @@ model OrgCategory {
   @@index([organizationId, kind])
   @@index([organizationId, kind, isActive])
   @@index([organizationId, kind, deletedAt])
+}
+
+/// Tenant-defined customer status / tag pills (Premium, SMS Hub, etc.).
+model OrgCustomerStatus {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug           String
+  label          String
+  color          String?
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  isSystem       Boolean      @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, deletedAt])
 }
 
 model Product {
@@ -1516,25 +1561,32 @@ model IncentiveSlab {
 
 /// Agent ↔ plan assignment (agentName matches Order.assignedAgentName).
 model IncentiveAssignment {
-  id             String                 @id @default(cuid())
-  organizationId String
-  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  planId         String
-  plan           IncentivePlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
-  agentName      String
-  userId         String?
+  id                     String                 @id @default(cuid())
+  organizationId         String
+  organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId                 String
+  plan                   IncentivePlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  agentName              String
+  userId                 String?
   /// morning | evening | night
-  shift          String?
-  startsOn       DateTime               @db.Date
-  endsOn         DateTime?              @db.Date
-  isActive       Boolean                @default(true)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  manualActuals  IncentiveManualActual[]
+  shift                  String?
+  startsOn               DateTime               @db.Date
+  endsOn                 DateTime?              @db.Date
+  isActive               Boolean                @default(true)
+  /// active | warning | final_warning | terminated (PDF ops)
+  hrStatus               String                 @default("active")
+  consecutiveMissMonths  Int                    @default(0)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  manualActuals          IncentiveManualActual[]
+  surveyLogs             IncentiveSurveyLog[]
+  channelLogs            IncentiveChannelLog[]
+  specialBonuses         IncentiveSpecialBonus[]
 
   @@index([organizationId, agentName])
   @@index([organizationId, planId])
   @@index([organizationId, isActive])
+  @@index([organizationId, hrStatus])
   @@map("IncentiveAssignments")
 }
 
@@ -1560,24 +1612,27 @@ model IncentiveManualActual {
 
 /// Locked monthly incentive period (draft → approved → paid).
 model IncentivePeriodRun {
-  id               String               @id @default(cuid())
-  organizationId   String
-  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  yearMonth        String
+  id                      String               @id @default(cuid())
+  organizationId          String
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  yearMonth               String
   /// draft | approved | paid
-  status           String               @default("draft")
-  totalIncentiveBdt Float               @default(0)
-  calculatedAt     DateTime             @default(now())
-  approvedAt       DateTime?
-  approvedByUserId String?
-  approvedByName   String?
-  paidAt           DateTime?
-  paidByUserId     String?
-  paidByName       String?
-  notes            String?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  lines            IncentivePayoutLine[]
+  status                  String               @default("draft")
+  totalIncentiveBdt       Float                @default(0)
+  totalSpecialBonusBdt    Float                @default(0)
+  totalAttendanceBonusBdt Float                @default(0)
+  totalPayBdt             Float                @default(0)
+  calculatedAt            DateTime             @default(now())
+  approvedAt              DateTime?
+  approvedByUserId        String?
+  approvedByName          String?
+  paidAt                  DateTime?
+  paidByUserId            String?
+  paidByName              String?
+  notes                   String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  lines                   IncentivePayoutLine[]
 
   @@unique([organizationId, yearMonth])
   @@index([organizationId, status])
@@ -1585,23 +1640,109 @@ model IncentivePeriodRun {
 }
 
 model IncentivePayoutLine {
-  id               String             @id @default(cuid())
-  runId            String
-  run              IncentivePeriodRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  assignmentId     String?
-  agentName        String
-  planId           String
-  planName         String
-  teamName         String?
-  metricType       String
-  actualValue      Float
-  incentiveBdt     Float
-  matchedSlabLabel String?
-  warning          String?
-  notes            String?
+  id                 String             @id @default(cuid())
+  runId              String
+  run                IncentivePeriodRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  assignmentId       String?
+  agentName          String
+  planId             String
+  planName           String
+  teamName           String?
+  metricType         String
+  actualValue        Float
+  incentiveBdt       Float
+  specialBonusBdt    Float              @default(0)
+  attendanceBonusBdt Float              @default(0)
+  totalPayBdt        Float              @default(0)
+  matchedSlabLabel   String?
+  warning            String?
+  hrStatus           String?
+  notes              String?
 
   @@index([runId])
   @@map("IncentivePayoutLines")
+}
+
+/// Monthly attendance for attendance-bonus eligibility (PDF salary rules).
+model IncentiveAttendance {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentName         String
+  userId            String?
+  yearMonth         String
+  presentDays       Float
+  workingDays       Float
+  lateCount         Int          @default(0)
+  earlyLeaveCount   Int          @default(0)
+  unapprovedAbsence Int          @default(0)
+  note              String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([organizationId, agentName, yearMonth])
+  @@index([organizationId, yearMonth])
+  @@map("IncentiveAttendances")
+}
+
+/// Relationship team verified survey completions.
+model IncentiveSurveyLog {
+  id             String               @id @default(cuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignmentId   String?
+  assignment     IncentiveAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  agentName      String
+  yearMonth      String
+  surveyCount    Float
+  note           String?
+  recordedAt     DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([organizationId, agentName, yearMonth])
+  @@index([organizationId, yearMonth])
+  @@map("IncentiveSurveyLogs")
+}
+
+/// Night-shift / multi-channel activity (call, FB comment, messenger, WhatsApp).
+model IncentiveChannelLog {
+  id             String               @id @default(cuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignmentId   String?
+  assignment     IncentiveAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  agentName      String
+  yearMonth      String
+  /// call | facebook_comment | messenger | whatsapp
+  channel        String
+  activityCount  Float
+  note           String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([organizationId, agentName, yearMonth, channel])
+  @@index([organizationId, yearMonth])
+  @@map("IncentiveChannelLogs")
+}
+
+/// Management appreciation / special performance bonus (PDF).
+model IncentiveSpecialBonus {
+  id              String               @id @default(cuid())
+  organizationId  String
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignmentId    String?
+  assignment      IncentiveAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  yearMonth       String
+  agentName       String
+  amountBdt       Float
+  reason          String
+  createdByUserId String?
+  createdByName   String?
+  createdAt       DateTime             @default(now())
+
+  @@index([organizationId, yearMonth])
+  @@index([organizationId, agentName])
+  @@map("IncentiveSpecialBonuses")
 }
 
 /// Optional org-wide salary + shift templates (reference; payroll later).

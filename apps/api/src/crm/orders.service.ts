@@ -25,6 +25,7 @@ import { CarrybeeCourierService } from './carrybee-courier.service';
 import { CarrybeeSyncService } from './carrybee-sync.service';
 import { CouponsService } from './coupons.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
+import { CourierPhoneHistoryService } from './courier-phone-history.service';
 import { CustomersService } from './customers.service';
 import { FollowupsService } from './followups.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
@@ -36,7 +37,6 @@ import { PathaoCourierService } from './pathao-courier.service';
 import { SmsService } from './sms.service';
 import { AutomationsService } from './automations.service';
 import { PathaoSyncService } from './pathao-sync.service';
-import { buildCourierStatsFromStatusCounts } from './order-courier-stats.util';
 
 export type OrderFormOptionDto = {
   value: string;
@@ -211,6 +211,7 @@ export class OrdersService {
     private readonly pathao: PathaoCourierService,
     private readonly carrybee: CarrybeeCourierService,
     private readonly courierIntegrations: CourierIntegrationsService,
+    private readonly courierPhoneHistory: CourierPhoneHistoryService,
     private readonly orderPayments: OrderPaymentsService,
     private readonly orgOrderStatuses: OrgOrderStatusesService,
     private readonly sms: SmsService,
@@ -1062,7 +1063,11 @@ export class OrdersService {
     const phones = [
       ...new Set(rows.map((r) => r.customerPhone).filter((p) => Boolean(p?.trim()))),
     ];
-    const courierByPhone = await this.loadCourierStatsByPhone(organizationId, phones);
+    const courierByPhone = await this.courierPhoneHistory.loadCachedStatsByPhones(
+      organizationId,
+      phones,
+    );
+    this.courierPhoneHistory.warmMissing(organizationId, phones);
 
     const orderIds = rows.map((r) => r.id);
     const [followups, followUpActivities] = await Promise.all([
@@ -2718,30 +2723,9 @@ export class OrdersService {
     organizationId: string,
     phones: string[],
   ): Promise<Map<string, OrderCourierStats>> {
-    const result = new Map<string, OrderCourierStats>();
-    if (phones.length === 0) return result;
-
-    const grouped = await this.prisma.order.groupBy({
-      by: ['customerPhone', 'status'],
-      where: { organizationId, customerPhone: { in: phones } },
-      _count: { _all: true },
-    });
-
-    const countsByPhone = new Map<string, Record<string, number>>();
-    for (const row of grouped) {
-      const phone = row.customerPhone;
-      const bucket = countsByPhone.get(phone) ?? {};
-      bucket[row.status] = (bucket[row.status] ?? 0) + row._count._all;
-      countsByPhone.set(phone, bucket);
-    }
-
-    for (const phone of phones) {
-      result.set(
-        phone,
-        buildCourierStatsFromStatusCounts(countsByPhone.get(phone) ?? {}),
-      );
-    }
-    return result;
+    // Prefer courier-network cache (Pathao phone history). Local CRM order
+    // status counts are no longer the primary Courier column source.
+    return this.courierPhoneHistory.loadCachedStatsByPhones(organizationId, phones);
   }
 
   private toListItem(

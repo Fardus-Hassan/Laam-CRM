@@ -3,7 +3,10 @@
 import * as React from 'react';
 import type {
   CreateIncentiveTeamPayload,
+  IncentiveChannel,
+  IncentiveHrStatus,
   IncentiveMetricType,
+  IncentiveOpsMonth,
   IncentiveOverview,
   IncentivePerformanceReport,
   IncentivePeriodRun,
@@ -11,7 +14,17 @@ import type {
   IncentiveShiftTemplate,
   IncentiveWarning,
 } from '@laam/types';
-import { Check, Edit2, Plus, Save, Sparkles, Trash2, WalletCards } from 'lucide-react';
+import {
+  Check,
+  Download,
+  Edit2,
+  Plus,
+  RefreshCw,
+  Save,
+  Sparkles,
+  Trash2,
+  WalletCards,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
@@ -37,6 +50,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { incentiveApi } from '@/features/incentive/api/incentive-api';
 import { AssignmentFormDialog } from '@/features/incentive/components/assignment-form-dialog';
 import { PlanFormDialog } from '@/features/incentive/components/plan-form-dialog';
@@ -48,6 +62,7 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { formatCurrency } from '@/lib/format';
+import { downloadCsv } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 const METRIC_LABELS: Record<IncentiveMetricType, string> = {
@@ -55,14 +70,18 @@ const METRIC_LABELS: Record<IncentiveMetricType, string> = {
   cross_sell_count: 'Cross-sell count',
   return_ratio: 'Return ratio %',
   recovery_count: 'Recovery count',
+  survey_count: 'Survey count',
+  channel_activity: 'Channel activity',
   manual: 'Manual',
 };
 
 const WARNING_LABELS: Record<Exclude<IncentiveWarning, 'none'>, string> = {
   below_target: 'Below target',
+  below_daily_entry: 'Below daily entry',
   above_return_cap: 'Above return cap',
   manual_missing: 'Manual actual missing',
   final_warning: 'Final warning',
+  terminated: 'Terminated',
 };
 
 const DEFAULT_SHIFTS: IncentiveShiftTemplate[] = [
@@ -76,14 +95,72 @@ function currentYearMonth() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-type HubTab = 'performance' | 'plans' | 'assignments' | 'salary' | 'payout';
+type HubTab = 'performance' | 'ops' | 'plans' | 'assignments' | 'salary' | 'payout';
+
+const HR_LABELS: Record<IncentiveHrStatus, string> = {
+  active: 'Active',
+  warning: 'Warning',
+  final_warning: 'Final warning',
+  terminated: 'Terminated',
+};
+
+const CHANNEL_LABELS: Record<IncentiveChannel, string> = {
+  call: 'Call',
+  facebook_comment: 'Facebook comments',
+  messenger: 'Messenger',
+  whatsapp: 'WhatsApp',
+};
+
+function OpsTableCard({
+  title,
+  headers,
+  rows,
+}: {
+  title: string;
+  headers: string[];
+  rows: React.ReactNode[][];
+}) {
+  return (
+    <Card className={ORDER_CARD_CLASS}>
+      <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className={ORDER_SECTION_BODY_CLASS}>
+        {!rows.length ? (
+          <p className="text-sm text-muted-foreground">No entries for this month.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {headers.map((header) => (
+                  <TableHead key={header}>{header}</TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row, rowIndex) => (
+                <TableRow key={rowIndex}>
+                  {row.map((cell, cellIndex) => (
+                    <TableCell key={cellIndex}>{cell}</TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function IncentiveHubPage() {
   const { can } = usePermissions();
+  const { user } = useAuth();
   const canManage = can('incentive.manage');
   const [data, setData] = React.useState<IncentiveOverview | null>(null);
   const [performance, setPerformance] = React.useState<IncentivePerformanceReport | null>(null);
   const [periods, setPeriods] = React.useState<IncentivePeriodRun[]>([]);
+  const [ops, setOps] = React.useState<IncentiveOpsMonth | null>(null);
   const [yearMonth, setYearMonth] = React.useState(currentYearMonth);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -93,23 +170,34 @@ export function IncentiveHubPage() {
   const [planOpen, setPlanOpen] = React.useState(false);
   const [editingPlan, setEditingPlan] = React.useState<IncentivePlan | null>(null);
   const [assignOpen, setAssignOpen] = React.useState(false);
+  const [editingAssignment, setEditingAssignment] = React.useState<
+    IncentiveOverview['assignments'][number] | null
+  >(null);
   const [salaryOpen, setSalaryOpen] = React.useState(false);
   const [manualDrafts, setManualDrafts] = React.useState<Record<string, string>>({});
   const [shiftDrafts, setShiftDrafts] = React.useState<IncentiveShiftTemplate[]>([]);
+  const [opsAgent, setOpsAgent] = React.useState('');
+  const [opsAssignmentId, setOpsAssignmentId] = React.useState('');
+  const [opsValue, setOpsValue] = React.useState('');
+  const [opsSecondaryValue, setOpsSecondaryValue] = React.useState('');
+  const [opsChannel, setOpsChannel] = React.useState<IncentiveChannel>('call');
+  const [opsReason, setOpsReason] = React.useState('');
 
   const selectedPeriod = periods.find((period) => period.yearMonth === yearMonth) ?? null;
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [overview, report, periodRows] = await Promise.all([
+      const [overview, report, periodRows, opsMonth] = await Promise.all([
         incentiveApi.getOverview(),
         incentiveApi.getPerformance(yearMonth),
         incentiveApi.listPeriods(),
+        incentiveApi.getOps(yearMonth),
       ]);
       setData(overview);
       setPerformance(report);
       setPeriods(periodRows);
+      setOps(opsMonth);
       setShiftDrafts(overview.shiftTemplates ?? []);
       setManualDrafts(
         Object.fromEntries(
@@ -186,6 +274,81 @@ export function IncentiveHubPage() {
   }
 
   const empty = !loading && data?.teamCount === 0;
+  const selfOnly = !canManage;
+  const currentUserName = user?.name.trim().toLocaleLowerCase() ?? '';
+  const visiblePerformanceLines = (performance?.lines ?? []).filter(
+    (line) =>
+      !selfOnly || line.agentName.trim().toLocaleLowerCase() === currentUserName,
+  );
+  const visiblePayoutLines = (selectedPeriod?.lines ?? []).filter(
+    (line) =>
+      !selfOnly || line.agentName.trim().toLocaleLowerCase() === currentUserName,
+  );
+  const visibleAssignments = (data?.assignments ?? []).filter(
+    (row) => !selfOnly || row.agentName.trim().toLocaleLowerCase() === currentUserName,
+  );
+
+  function selectOpsAgent(assignmentId: string) {
+    const assignment = data?.assignments.find((row) => row.id === assignmentId);
+    setOpsAssignmentId(assignmentId);
+    setOpsAgent(assignment?.agentName ?? '');
+  }
+
+  async function saveOps(kind: 'attendance' | 'survey' | 'channel' | 'bonus') {
+    if (!opsAgent.trim()) {
+      toast.error('Select or enter an agent');
+      return;
+    }
+    const value = Number(opsValue);
+    if (!Number.isFinite(value)) {
+      toast.error('Enter a valid value');
+      return;
+    }
+    const assignment = data?.assignments.find((row) => row.id === opsAssignmentId);
+    const action =
+      kind === 'attendance'
+        ? () =>
+            incentiveApi.upsertAttendance({
+              yearMonth,
+              agentName: opsAgent.trim(),
+              userId: assignment?.userId,
+              presentDays: value,
+              workingDays: Number(opsSecondaryValue) || 26,
+            })
+        : kind === 'survey'
+          ? () =>
+              incentiveApi.upsertSurvey({
+                yearMonth,
+                agentName: opsAgent.trim(),
+                assignmentId: opsAssignmentId || null,
+                surveyCount: value,
+              })
+          : kind === 'channel'
+            ? () =>
+                incentiveApi.upsertChannel({
+                  yearMonth,
+                  agentName: opsAgent.trim(),
+                  assignmentId: opsAssignmentId || null,
+                  channel: opsChannel,
+                  activityCount: value,
+                })
+            : () =>
+                incentiveApi.createSpecialBonus({
+                  yearMonth,
+                  agentName: opsAgent.trim(),
+                  assignmentId: opsAssignmentId || null,
+                  amountBdt: value,
+                  reason: opsReason.trim(),
+                });
+    if (kind === 'bonus' && !opsReason.trim()) {
+      toast.error('Bonus reason is required');
+      return;
+    }
+    await runAction(action, `${kind === 'bonus' ? 'Special bonus' : kind} saved`);
+    setOpsValue('');
+    setOpsSecondaryValue('');
+    setOpsReason('');
+  }
 
   return (
     <PageShell
@@ -198,6 +361,7 @@ export function IncentiveHubPage() {
             {(
               [
                 ['performance', 'Performance'],
+                ['ops', 'Ops'],
                 ['plans', 'Plans & slabs'],
                 ['assignments', 'Assignments'],
                 ['salary', 'Salary & shifts'],
@@ -236,6 +400,21 @@ export function IncentiveHubPage() {
                   Seed template
                 </Button>
               ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void runAction(
+                    () => incentiveApi.seedSyncMissing(),
+                    'Missing agent assignments synced',
+                  )
+                }
+              >
+                <RefreshCw className="size-4" />
+                Sync missing
+              </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setTeamOpen(true)}>
                 <Plus className="size-4" />
                 Team
@@ -252,7 +431,14 @@ export function IncentiveHubPage() {
                 <Plus className="size-4" />
                 Plan
               </Button>
-              <Button type="button" size="sm" onClick={() => setAssignOpen(true)}>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setEditingAssignment(null);
+                  setAssignOpen(true);
+                }}
+              >
                 <Plus className="size-4" />
                 Assign agent
               </Button>
@@ -301,6 +487,44 @@ export function IncentiveHubPage() {
             <Card className={ORDER_CARD_CLASS}>
               <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-center gap-3')}>
                 <CardTitle className="flex-1 text-base">Monthly performance</CardTitle>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!visiblePerformanceLines.length}
+                  onClick={() =>
+                    downloadCsv(
+                      `incentive-performance-${yearMonth}.csv`,
+                      [
+                        'Agent',
+                        'Plan',
+                        'Metric',
+                        'Actual',
+                        'Slab',
+                        'HR status',
+                        'Incentive',
+                        'Attendance bonus',
+                        'Special bonus',
+                        'Total pay',
+                      ],
+                      visiblePerformanceLines.map((line) => [
+                        line.agentName,
+                        line.planName,
+                        METRIC_LABELS[line.metricType],
+                        line.actualValue,
+                        line.matchedSlabLabel,
+                        line.hrStatus ? HR_LABELS[line.hrStatus] : '',
+                        line.incentiveBdt,
+                        line.attendanceBonusBdt,
+                        line.specialBonusBdt,
+                        line.totalPayBdt,
+                      ]),
+                    )
+                  }
+                >
+                  <Download className="size-4" />
+                  CSV
+                </Button>
                 <Input
                   type="month"
                   className="w-40"
@@ -311,7 +535,7 @@ export function IncentiveHubPage() {
               <CardContent className={ORDER_SECTION_BODY_CLASS}>
                 {loading ? (
                   <p className="text-sm text-muted-foreground">Loading…</p>
-                ) : !performance?.lines.length ? (
+                ) : !visiblePerformanceLines.length ? (
                   <p className="text-sm text-muted-foreground">No active assignments for this month.</p>
                 ) : (
                   <Table>
@@ -321,11 +545,15 @@ export function IncentiveHubPage() {
                         <TableHead>Plan</TableHead>
                         <TableHead>Actual</TableHead>
                         <TableHead>Slab</TableHead>
+                        <TableHead>HR</TableHead>
                         <TableHead className="text-right">Incentive</TableHead>
+                        <TableHead className="text-right">Attendance</TableHead>
+                        <TableHead className="text-right">Special</TableHead>
+                        <TableHead className="text-right">Total pay</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {performance.lines.map((line) => (
+                      {visiblePerformanceLines.map((line) => (
                         <TableRow key={line.assignmentId}>
                           <TableCell>
                             <p className="font-medium">{line.agentName}</p>
@@ -380,8 +608,39 @@ export function IncentiveHubPage() {
                             {line.matchedSlabLabel ?? '—'}
                             {line.prorataApplied ? <Badge className="ml-2" variant="secondary">prorata</Badge> : null}
                           </TableCell>
+                          <TableCell>
+                            {line.hrStatus ? (
+                              <Badge
+                                variant={
+                                  line.hrStatus === 'terminated'
+                                    ? 'destructive'
+                                    : line.hrStatus === 'active'
+                                      ? 'success'
+                                      : 'secondary'
+                                }
+                              >
+                                {HR_LABELS[line.hrStatus]}
+                              </Badge>
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
                           <TableCell className="text-right tabular-nums">
                             {formatCurrency(line.incentiveBdt)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatCurrency(line.attendanceBonusBdt ?? 0)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatCurrency(line.specialBonusBdt ?? 0)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">
+                            {formatCurrency(
+                              line.totalPayBdt ??
+                                line.incentiveBdt +
+                                  (line.attendanceBonusBdt ?? 0) +
+                                  (line.specialBonusBdt ?? 0),
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -390,6 +649,212 @@ export function IncentiveHubPage() {
                 )}
               </CardContent>
             </Card>
+          </div>
+        ) : null}
+
+        {tab === 'ops' ? (
+          <div className="space-y-3">
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader
+                className={cn(
+                  ORDER_SECTION_HEADER_CLASS,
+                  'flex flex-row flex-wrap items-center gap-2',
+                )}
+              >
+                <div className="flex-1">
+                  <CardTitle className="text-base">Monthly operations</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Attendance, survey, channel, and exceptional bonus inputs.
+                  </p>
+                </div>
+                <Input
+                  type="month"
+                  className="w-40"
+                  value={yearMonth}
+                  onChange={(event) => setYearMonth(event.target.value)}
+                />
+              </CardHeader>
+              {canManage ? (
+                <CardContent
+                  className={cn(
+                    ORDER_SECTION_BODY_CLASS,
+                    'grid gap-2 border-t pt-3 md:grid-cols-6',
+                  )}
+                >
+                  <select
+                    className="h-9 rounded-md border bg-background px-3 text-sm md:col-span-2"
+                    value={opsAssignmentId}
+                    onChange={(event) => selectOpsAgent(event.target.value)}
+                  >
+                    <option value="">Select assigned agent</option>
+                    {(data?.assignments ?? []).map((assignment) => (
+                      <option key={assignment.id} value={assignment.id}>
+                        {assignment.agentName} · {assignment.planName}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    placeholder="Agent name"
+                    value={opsAgent}
+                    onChange={(event) => setOpsAgent(event.target.value)}
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="Value / amount"
+                    value={opsValue}
+                    onChange={(event) => setOpsValue(event.target.value)}
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="Working days"
+                    value={opsSecondaryValue}
+                    onChange={(event) => setOpsSecondaryValue(event.target.value)}
+                  />
+                  <Button type="button" disabled={busy} onClick={() => void saveOps('attendance')}>
+                    Save attendance
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void saveOps('survey')}
+                  >
+                    Save survey
+                  </Button>
+                  <select
+                    className="h-9 rounded-md border bg-background px-3 text-sm"
+                    value={opsChannel}
+                    onChange={(event) => setOpsChannel(event.target.value as IncentiveChannel)}
+                  >
+                    {Object.entries(CHANNEL_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void saveOps('channel')}
+                  >
+                    Save channel
+                  </Button>
+                  <Input
+                    className="md:col-span-2"
+                    placeholder="Special bonus reason"
+                    value={opsReason}
+                    onChange={(event) => setOpsReason(event.target.value)}
+                  />
+                  <Button type="button" disabled={busy} onClick={() => void saveOps('bonus')}>
+                    Add special bonus
+                  </Button>
+                </CardContent>
+              ) : null}
+            </Card>
+
+            <div className="grid gap-3 xl:grid-cols-2">
+              <OpsTableCard
+                title="Attendance"
+                headers={['Agent', 'Present / working', 'Late', 'Eligible']}
+                rows={(ops?.attendance ?? [])
+                  .filter(
+                    (row) =>
+                      !selfOnly ||
+                      row.agentName.trim().toLocaleLowerCase() === currentUserName,
+                  )
+                  .map((row) => [
+                    row.agentName,
+                    `${row.presentDays} / ${row.workingDays}`,
+                    row.lateCount,
+                    row.attendanceBonusEligible ? 'Yes' : 'No',
+                  ])}
+              />
+              <OpsTableCard
+                title="Surveys"
+                headers={['Agent', 'Count', 'Note']}
+                rows={(ops?.surveys ?? [])
+                  .filter(
+                    (row) =>
+                      !selfOnly ||
+                      row.agentName.trim().toLocaleLowerCase() === currentUserName,
+                  )
+                  .map((row) => [row.agentName, row.surveyCount, row.note ?? '—'])}
+              />
+              <OpsTableCard
+                title="Channel activity"
+                headers={['Agent', 'Channel', 'Count']}
+                rows={(ops?.channels ?? [])
+                  .filter(
+                    (row) =>
+                      !selfOnly ||
+                      row.agentName.trim().toLocaleLowerCase() === currentUserName,
+                  )
+                  .map((row) => [
+                    row.agentName,
+                    CHANNEL_LABELS[row.channel],
+                    row.activityCount,
+                  ])}
+              />
+              <Card className={ORDER_CARD_CLASS}>
+                <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                  <CardTitle className="text-base">Special bonuses</CardTitle>
+                </CardHeader>
+                <CardContent className={ORDER_SECTION_BODY_CLASS}>
+                  {!ops?.specialBonuses.length ? (
+                    <p className="text-sm text-muted-foreground">No entries for this month.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Agent</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                          {canManage ? <TableHead /> : null}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ops.specialBonuses
+                          .filter(
+                            (row) =>
+                              !selfOnly ||
+                              row.agentName.trim().toLocaleLowerCase() === currentUserName,
+                          )
+                          .map((row) => (
+                            <TableRow key={row.id}>
+                              <TableCell className="font-medium">{row.agentName}</TableCell>
+                              <TableCell>{row.reason}</TableCell>
+                              <TableCell className="text-right">
+                                {formatCurrency(row.amountBdt)}
+                              </TableCell>
+                              {canManage ? (
+                                <TableCell className="text-right">
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void runAction(
+                                        () => incentiveApi.deleteSpecialBonus(row.id),
+                                        'Special bonus deleted',
+                                      )
+                                    }
+                                  >
+                                    <Trash2 className="size-4" />
+                                  </Button>
+                                </TableCell>
+                              ) : null}
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         ) : null}
 
@@ -458,7 +923,7 @@ export function IncentiveHubPage() {
         {tab === 'assignments' ? (
           <Card className={ORDER_CARD_CLASS}>
             <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'pt-4')}>
-              {!data?.assignments.length ? (
+              {!visibleAssignments.length ? (
                 <p className="text-sm text-muted-foreground">No agents assigned.</p>
               ) : (
                 <Table>
@@ -469,11 +934,12 @@ export function IncentiveHubPage() {
                       <TableHead>Shift</TableHead>
                       <TableHead>Starts</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>HR</TableHead>
                       <TableHead />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.assignments.map((assignment) => (
+                    {visibleAssignments.map((assignment) => (
                       <TableRow key={assignment.id}>
                         <TableCell className="font-medium">{assignment.agentName}</TableCell>
                         <TableCell>{assignment.planName}</TableCell>
@@ -484,16 +950,42 @@ export function IncentiveHubPage() {
                             {assignment.isActive ? 'Active' : 'Inactive'}
                           </Badge>
                         </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              assignment.hrStatus === 'terminated'
+                                ? 'destructive'
+                                : assignment.hrStatus === 'active' || !assignment.hrStatus
+                                  ? 'success'
+                                  : 'secondary'
+                            }
+                          >
+                            {HR_LABELS[assignment.hrStatus ?? 'active']}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-right">
                           {canManage ? (
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => void handleDeleteAssignment(assignment.id)}
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingAssignment(assignment);
+                                  setAssignOpen(true);
+                                }}
+                              >
+                                <Edit2 className="size-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => void handleDeleteAssignment(assignment.id)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
                           ) : null}
                         </TableCell>
                       </TableRow>
@@ -624,6 +1116,42 @@ export function IncentiveHubPage() {
               </div>
               <Input type="month" className="w-40" value={yearMonth} onChange={(event) => setYearMonth(event.target.value)} />
               {selectedPeriod ? <Badge variant="secondary" className="capitalize">{selectedPeriod.status}</Badge> : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!visiblePayoutLines.length}
+                onClick={() =>
+                  downloadCsv(
+                    `incentive-payout-${yearMonth}.csv`,
+                    [
+                      'Agent',
+                      'Plan',
+                      'Actual',
+                      'Slab',
+                      'HR status',
+                      'Incentive',
+                      'Attendance bonus',
+                      'Special bonus',
+                      'Total pay',
+                    ],
+                    visiblePayoutLines.map((line) => [
+                      line.agentName,
+                      line.planName,
+                      line.actualValue,
+                      line.matchedSlabLabel,
+                      line.hrStatus ? HR_LABELS[line.hrStatus] : '',
+                      line.incentiveBdt,
+                      line.attendanceBonusBdt,
+                      line.specialBonusBdt,
+                      line.totalPayBdt,
+                    ]),
+                  )
+                }
+              >
+                <Download className="size-4" />
+                CSV
+              </Button>
               {canManage && (!selectedPeriod || selectedPeriod.status === 'draft') ? (
                 <Button
                   type="button"
@@ -698,22 +1226,61 @@ export function IncentiveHubPage() {
                         <TableHead>Plan</TableHead>
                         <TableHead className="text-right">Actual</TableHead>
                         <TableHead>Slab</TableHead>
-                        <TableHead className="text-right">Locked payout</TableHead>
+                        <TableHead>HR</TableHead>
+                        <TableHead className="text-right">Incentive</TableHead>
+                        <TableHead className="text-right">Attendance</TableHead>
+                        <TableHead className="text-right">Special</TableHead>
+                        <TableHead className="text-right">Total pay</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {selectedPeriod.lines.map((line) => (
+                      {visiblePayoutLines.map((line) => (
                         <TableRow key={line.id}>
                           <TableCell className="font-medium">{line.agentName}</TableCell>
                           <TableCell>{line.planName}</TableCell>
                           <TableCell className="text-right">{line.actualValue}</TableCell>
                           <TableCell>{line.matchedSlabLabel ?? '—'}</TableCell>
+                          <TableCell>
+                            {line.hrStatus ? (
+                              <Badge
+                                variant={
+                                  line.hrStatus === 'terminated'
+                                    ? 'destructive'
+                                    : line.hrStatus === 'active'
+                                      ? 'success'
+                                      : 'secondary'
+                                }
+                              >
+                                {HR_LABELS[line.hrStatus]}
+                              </Badge>
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
                           <TableCell className="text-right font-medium">{formatCurrency(line.incentiveBdt)}</TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(line.attendanceBonusBdt ?? 0)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(line.specialBonusBdt ?? 0)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(
+                              line.totalPayBdt ??
+                                line.incentiveBdt +
+                                  (line.attendanceBonusBdt ?? 0) +
+                                  (line.specialBonusBdt ?? 0),
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                       <TableRow>
-                        <TableCell colSpan={4} className="font-medium">Total</TableCell>
-                        <TableCell className="text-right font-semibold">{formatCurrency(selectedPeriod.totalIncentiveBdt)}</TableCell>
+                        <TableCell colSpan={8} className="font-medium">Total</TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatCurrency(
+                            selectedPeriod.totalPayBdt ?? selectedPeriod.totalIncentiveBdt,
+                          )}
+                        </TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -754,8 +1321,12 @@ export function IncentiveHubPage() {
       />
       <AssignmentFormDialog
         open={assignOpen}
+        initial={editingAssignment}
         plans={data?.plans ?? []}
-        onClose={() => setAssignOpen(false)}
+        onClose={() => {
+          setAssignOpen(false);
+          setEditingAssignment(null);
+        }}
         onSaved={() => void load()}
       />
       <SalaryFormDialog

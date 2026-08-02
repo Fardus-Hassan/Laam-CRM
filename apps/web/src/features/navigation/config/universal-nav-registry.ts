@@ -322,7 +322,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               id: 'calendar',
               title: 'Calendar',
               url: '/dashboard/calendar',
-              permissions: pv('dashboard.view'),
+              permissions: ['activities.view', 'tasks.view'],
             },
             {
               id: 'automations',
@@ -468,6 +468,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               title: 'Order statuses',
               url: '/dashboard/settings/order-statuses',
               permissions: pv('settings.manage'),
+            },
+            {
+              id: 'settings-customer-statuses',
+              title: 'Customer statuses',
+              url: '/dashboard/settings/customer-statuses',
+              permissions: ['settings.manage', 'companies.edit'],
             },
             {
               id: 'settings-order-form-options',

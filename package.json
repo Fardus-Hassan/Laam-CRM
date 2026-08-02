@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "nx run-many -t serve,dev -p api,web --parallel=2 --output-style=stream",
         "dev:web": "nx dev web -- -p 3000",
-        "dev:api": "cross-env PORT=3333 nx serve api --configuration=development",
+        "dev:api": "pnpm --filter @laam/types build && cross-env PORT=3333 nx serve api --configuration=development",
         "dev:worker": "nx serve worker",
         "build": "nx run-many -t build -p types,api,web,worker",
         "build:all": "nx run-many -t build",

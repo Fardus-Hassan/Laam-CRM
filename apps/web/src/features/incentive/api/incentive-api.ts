@@ -1,14 +1,20 @@
 import type {
   CreateIncentiveAssignmentPayload,
   CreateIncentivePlanPayload,
+  CreateIncentiveSpecialBonusPayload,
   CreateIncentiveTeamPayload,
   IncentiveAssignment,
+  IncentiveAttendance,
+  IncentiveChannelLog,
   IncentiveOverview,
+  IncentiveOpsMonth,
   IncentivePerformanceReport,
   IncentivePeriodRun,
   IncentivePlan,
   IncentiveSalaryTemplate,
   IncentiveShiftTemplate,
+  IncentiveSpecialBonus,
+  IncentiveSurveyLog,
   IncentiveTeam,
   UpdateIncentiveAssignmentPayload,
   UpdateIncentivePlanPayload,
@@ -16,16 +22,22 @@ import type {
   UpsertIncentiveSalaryPayload,
   UpsertIncentiveShiftsPayload,
   UpsertIncentiveManualActualPayload,
+  UpsertIncentiveAttendancePayload,
+  UpsertIncentiveChannelPayload,
+  UpsertIncentiveSurveyPayload,
 } from '@laam/types';
 
 import { apiRequest } from '@/lib/api/client';
 import {
+  deleteMockSpecialBonus,
   getEmptyIncentiveOverview,
   getMockManualActual,
   mutateMockIncentive,
+  mutateMockIncentiveOps,
   mutateMockIncentivePeriods,
   replaceMockIncentivePeriods,
   setMockManualActual,
+  upsertMockOpsRow,
 } from '../data/mock-incentive';
 
 export type IncentiveApi = {
@@ -51,6 +63,17 @@ export type IncentiveApi = {
   upsertManualActual: (
     payload: UpsertIncentiveManualActualPayload,
   ) => Promise<unknown>;
+  getOps: (yearMonth: string) => Promise<IncentiveOpsMonth>;
+  upsertAttendance: (
+    payload: UpsertIncentiveAttendancePayload,
+  ) => Promise<IncentiveAttendance>;
+  upsertSurvey: (payload: UpsertIncentiveSurveyPayload) => Promise<IncentiveSurveyLog>;
+  upsertChannel: (payload: UpsertIncentiveChannelPayload) => Promise<IncentiveChannelLog>;
+  createSpecialBonus: (
+    payload: CreateIncentiveSpecialBonusPayload,
+  ) => Promise<IncentiveSpecialBonus>;
+  deleteSpecialBonus: (id: string) => Promise<void>;
+  seedSyncMissing: () => Promise<IncentiveOverview>;
   listPeriods: () => Promise<IncentivePeriodRun[]>;
   getPeriod: (yearMonth: string) => Promise<IncentivePeriodRun | null>;
   generatePeriod: (yearMonth: string) => Promise<IncentivePeriodRun>;
@@ -92,10 +115,17 @@ export function createMockIncentiveApi(): IncentiveApi {
             actualValue: line.actualValue,
             matchedSlabLabel: line.matchedSlabLabel,
             incentiveBdt: line.incentiveBdt,
+            specialBonusBdt: line.specialBonusBdt,
+            attendanceBonusBdt: line.attendanceBonusBdt,
+            totalPayBdt: line.totalPayBdt,
+            hrStatus: line.hrStatus,
             warning: line.warning,
             notes: line.notes,
           })),
           totalIncentiveBdt: period.totalIncentiveBdt,
+          totalSpecialBonusBdt: period.totalSpecialBonusBdt,
+          totalAttendanceBonusBdt: period.totalAttendanceBonusBdt,
+          totalPayBdt: period.totalPayBdt,
           warningCount: period.lines.filter((line) => line.warning && line.warning !== 'none')
             .length,
           periodStatus: period.status,
@@ -107,12 +137,49 @@ export function createMockIncentiveApi(): IncentiveApi {
           .map((assignment) => {
             const plan = state.plans.find((item) => item.id === assignment.planId)!;
             const manual = getMockManualActual(assignment.id, ym);
-            const actualValue = manual?.actualValue ?? 0;
+            const ops = mutateMockIncentiveOps(ym, (rows) => rows);
+            const matchesAssignment = (row: {
+              assignmentId?: string | null;
+              agentName: string;
+            }) =>
+              row.assignmentId === assignment.id ||
+              (!row.assignmentId && row.agentName === assignment.agentName);
+            const actualValue =
+              plan.metricType === 'survey_count'
+                ? ops.surveys
+                    .filter(matchesAssignment)
+                    .reduce((sum, row) => sum + row.surveyCount, 0)
+                : plan.metricType === 'channel_activity'
+                  ? ops.channels
+                      .filter(
+                        (row) =>
+                          matchesAssignment(row) &&
+                          (!plan.metricConfig?.channels?.length ||
+                            plan.metricConfig.channels.includes(row.channel)),
+                      )
+                      .reduce((sum, row) => sum + row.activityCount, 0)
+                  : (manual?.actualValue ?? 0);
             const slabs = [...plan.slabs].sort((a, b) => a.monthlyTarget - b.monthlyTarget);
             const matched =
               plan.metricConfig?.direction === 'lower'
                 ? [...slabs].reverse().find((slab) => actualValue <= slab.monthlyTarget)
                 : [...slabs].reverse().find((slab) => actualValue >= slab.monthlyTarget);
+            const attendance = ops.attendance.find(
+              (row) =>
+                (assignment.userId && row.userId === assignment.userId) ||
+                row.agentName === assignment.agentName,
+            );
+            const attendanceBonusBdt = attendance?.attendanceBonusEligible
+              ? (state.salaryTemplate?.attendanceBonusBdt ?? 0)
+              : 0;
+            const specialBonusBdt = ops.specialBonuses
+              .filter(
+                (row) =>
+                  row.assignmentId === assignment.id ||
+                  (!row.assignmentId && row.agentName === assignment.agentName),
+              )
+              .reduce((sum, row) => sum + row.amountBdt, 0);
+            const incentiveBdt = matched?.incentiveBdt ?? 0;
             return {
               assignmentId: assignment.id,
               agentName: assignment.agentName,
@@ -125,7 +192,12 @@ export function createMockIncentiveApi(): IncentiveApi {
               matchedSlabLabel: matched?.label ?? null,
               monthlyTarget: matched?.monthlyTarget ?? null,
               entryTarget: slabs[0]?.monthlyTarget ?? null,
-              incentiveBdt: matched?.incentiveBdt ?? 0,
+              incentiveBdt,
+              attendanceBonusBdt,
+              specialBonusBdt,
+              totalPayBdt: incentiveBdt + attendanceBonusBdt + specialBonusBdt,
+              attendanceBonusEligible: attendance?.attendanceBonusEligible ?? false,
+              hrStatus: assignment.hrStatus ?? 'active',
               manualOverride: Boolean(manual),
               consecutiveMissMonths: 0,
               warning:
@@ -143,6 +215,15 @@ export function createMockIncentiveApi(): IncentiveApi {
         periodEnd: `${ym}-28`,
           lines,
           totalIncentiveBdt: lines.reduce((sum, line) => sum + line.incentiveBdt, 0),
+          totalSpecialBonusBdt: lines.reduce(
+            (sum, line) => sum + line.specialBonusBdt,
+            0,
+          ),
+          totalAttendanceBonusBdt: lines.reduce(
+            (sum, line) => sum + line.attendanceBonusBdt,
+            0,
+          ),
+          totalPayBdt: lines.reduce((sum, line) => sum + line.totalPayBdt, 0),
           warningCount: lines.filter((line) => line.warning !== 'none').length,
           teamRollups: state.plans
             .filter((plan) => plan.teamMonthlyTarget != null)
@@ -320,6 +401,7 @@ export function createMockIncentiveApi(): IncentiveApi {
           startsOn: payload.startsOn ?? new Date().toISOString().slice(0, 10),
           endsOn: payload.endsOn ?? null,
           isActive: payload.isActive ?? true,
+          hrStatus: payload.hrStatus ?? 'active',
         };
         s.assignments = [...s.assignments, row];
         s.assignmentCount = s.assignments.length;
@@ -376,6 +458,104 @@ export function createMockIncentiveApi(): IncentiveApi {
       });
       return this.getPerformance(payload.yearMonth);
     },
+    async getOps(yearMonth) {
+      await delay(60);
+      return mutateMockIncentiveOps(yearMonth, (ops) => ({
+        ...ops,
+        attendance: [...ops.attendance],
+        surveys: [...ops.surveys],
+        channels: [...ops.channels],
+        specialBonuses: [...ops.specialBonuses],
+      }));
+    },
+    async upsertAttendance(payload) {
+      await delay(60);
+      return mutateMockIncentiveOps(payload.yearMonth, (ops) => {
+        const existing = ops.attendance.find(
+          (row) =>
+            (payload.userId && row.userId === payload.userId) ||
+            (!payload.userId && row.agentName === payload.agentName),
+        );
+        const lateCount = payload.lateCount ?? 0;
+        const earlyLeaveCount = payload.earlyLeaveCount ?? 0;
+        const unapprovedAbsence = payload.unapprovedAbsence ?? 0;
+        const fullAttendance =
+          payload.presentDays >= payload.workingDays &&
+          lateCount === 0 &&
+          earlyLeaveCount === 0 &&
+          unapprovedAbsence === 0;
+        const row: IncentiveAttendance = {
+          id: existing?.id ?? `attendance-${Date.now()}`,
+          ...payload,
+          lateCount,
+          earlyLeaveCount,
+          unapprovedAbsence,
+          fullAttendance,
+          attendanceBonusEligible: fullAttendance,
+        };
+        ops.attendance = upsertMockOpsRow(
+          ops.attendance,
+          row,
+          (item) => item.id === row.id,
+        );
+        return row;
+      });
+    },
+    async upsertSurvey(payload) {
+      await delay(60);
+      return mutateMockIncentiveOps(payload.yearMonth, (ops) => {
+        const existing = ops.surveys.find(
+          (row) =>
+            (payload.assignmentId && row.assignmentId === payload.assignmentId) ||
+            (!payload.assignmentId && row.agentName === payload.agentName),
+        );
+        const row: IncentiveSurveyLog = {
+          id: existing?.id ?? `survey-${Date.now()}`,
+          ...payload,
+          recordedAt: new Date().toISOString(),
+        };
+        ops.surveys = upsertMockOpsRow(ops.surveys, row, (item) => item.id === row.id);
+        return row;
+      });
+    },
+    async upsertChannel(payload) {
+      await delay(60);
+      return mutateMockIncentiveOps(payload.yearMonth, (ops) => {
+        const existing = ops.channels.find(
+          (row) =>
+            row.channel === payload.channel &&
+            ((payload.assignmentId && row.assignmentId === payload.assignmentId) ||
+              (!payload.assignmentId && row.agentName === payload.agentName)),
+        );
+        const row: IncentiveChannelLog = {
+          id: existing?.id ?? `channel-${Date.now()}`,
+          ...payload,
+        };
+        ops.channels = upsertMockOpsRow(ops.channels, row, (item) => item.id === row.id);
+        return row;
+      });
+    },
+    async createSpecialBonus(payload) {
+      await delay(60);
+      return mutateMockIncentiveOps(payload.yearMonth, (ops) => {
+        const row: IncentiveSpecialBonus = {
+          id: `bonus-${Date.now()}`,
+          ...payload,
+          createdByName: 'Current user',
+          createdAt: new Date().toISOString(),
+        };
+        ops.specialBonuses = [...ops.specialBonuses, row];
+        return row;
+      });
+    },
+    async deleteSpecialBonus(id) {
+      await delay(60);
+      deleteMockSpecialBonus(id);
+    },
+    async seedSyncMissing() {
+      await delay(100);
+      return mutateMockIncentive((state) => state);
+    },
     async listPeriods() {
       await delay(80);
       return mutateMockIncentivePeriods((rows) => [...rows]);
@@ -395,6 +575,9 @@ export function createMockIncentiveApi(): IncentiveApi {
         yearMonth,
         status: 'draft',
         totalIncentiveBdt: report.totalIncentiveBdt,
+        totalSpecialBonusBdt: report.totalSpecialBonusBdt,
+        totalAttendanceBonusBdt: report.totalAttendanceBonusBdt,
+        totalPayBdt: report.totalPayBdt,
         calculatedAt: new Date().toISOString(),
         lines: report.lines.map((line, index) => ({
           id: `period-line-${yearMonth}-${index}`,
@@ -406,8 +589,12 @@ export function createMockIncentiveApi(): IncentiveApi {
           metricType: line.metricType,
           actualValue: line.actualValue,
           incentiveBdt: line.incentiveBdt,
+          specialBonusBdt: line.specialBonusBdt,
+          attendanceBonusBdt: line.attendanceBonusBdt,
+          totalPayBdt: line.totalPayBdt,
           matchedSlabLabel: line.matchedSlabLabel,
           warning: line.warning,
+          hrStatus: line.hrStatus,
           notes: line.notes,
         })),
       };
@@ -518,6 +705,39 @@ export function createHttpIncentiveApi(): IncentiveApi {
       apiRequest<unknown>('/crm/incentive/manual-actuals', {
         method: 'PATCH',
         body: JSON.stringify(payload),
+      }),
+    getOps: (yearMonth) =>
+      apiRequest<IncentiveOpsMonth>(
+        `/crm/incentive/ops?yearMonth=${encodeURIComponent(yearMonth)}`,
+      ),
+    upsertAttendance: (payload) =>
+      apiRequest<IncentiveAttendance>('/crm/incentive/attendance', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    upsertSurvey: (payload) =>
+      apiRequest<IncentiveSurveyLog>('/crm/incentive/surveys', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    upsertChannel: (payload) =>
+      apiRequest<IncentiveChannelLog>('/crm/incentive/channels', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    createSpecialBonus: (payload) =>
+      apiRequest<IncentiveSpecialBonus>('/crm/incentive/special-bonuses', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    deleteSpecialBonus: async (id) => {
+      await apiRequest(`/crm/incentive/special-bonuses/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    },
+    seedSyncMissing: () =>
+      apiRequest<IncentiveOverview>('/crm/incentive/seed-sync-missing', {
+        method: 'POST',
       }),
     listPeriods: () => apiRequest<IncentivePeriodRun[]>('/crm/incentive/periods'),
     getPeriod: (yearMonth) =>

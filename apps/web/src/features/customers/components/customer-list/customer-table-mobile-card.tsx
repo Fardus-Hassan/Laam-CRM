@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { CustomerListItem } from '@laam/types';
+import type { CustomerListItem, CustomerSegmentCount, CustomerStatus } from '@laam/types';
 import {
   CalendarClock,
   MessageCircle,
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { CourierScoreCell } from '@/features/customers/components/shared/courier-score-cell';
-import { CustomerStatusBadge } from '@/features/customers/components/shared/customer-status-badge';
+import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
 import { formatCustomerDate } from '@/features/customers/components/customer-list/customer-table-columns';
 import { formatCurrency } from '@/lib/format';
 
@@ -26,6 +26,8 @@ type CustomerTableMobileCardProps = {
   ctx: CrmRowContext<CustomerListItem>;
   onNoteClick?: (row: CustomerListItem) => void;
   onFollowUpClick?: (row: CustomerListItem) => void;
+  statusOptions?: CustomerSegmentCount[];
+  onStatusChange?: (row: CustomerListItem, status: CustomerStatus) => void | Promise<void>;
 };
 
 export function CustomerTableMobileCard({
@@ -33,6 +35,8 @@ export function CustomerTableMobileCard({
   ctx,
   onNoteClick,
   onFollowUpClick,
+  statusOptions = [],
+  onStatusChange,
 }: CustomerTableMobileCardProps) {
   const phoneDigits = row.phone.replace(/\D/g, '');
 
@@ -47,7 +51,14 @@ export function CustomerTableMobileCard({
         />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <CustomerStatusBadge status={row.status} />
+            {onStatusChange ? (
+              <CustomerStatusSelect
+                row={row}
+                options={statusOptions}
+                onChange={onStatusChange}
+                compact
+              />
+            ) : null}
             <Link
               href={`/dashboard/customers/${row.id}`}
               className="text-base font-semibold text-primary hover:underline"

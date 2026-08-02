@@ -3,10 +3,12 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
@@ -14,7 +16,6 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
-  IsIn,
   IsOptional,
   IsString,
   MaxLength,
@@ -23,9 +24,11 @@ import {
 } from 'class-validator';
 import type {
   CreateCustomerPayload,
+  CustomerCompareOp,
   CustomerStatus,
   UpdateCustomerPayload,
 } from '@laam/types';
+import type { Response } from 'express';
 
 import {
   CurrentUser,
@@ -33,17 +36,6 @@ import {
   type AuthUserPayload,
 } from '../common/decorators';
 import { CustomersService } from './customers.service';
-
-const CUSTOMER_STATUSES = [
-  'none',
-  '2_time',
-  '3_time',
-  '5_time',
-  '10_time',
-  'premium',
-  'repeat',
-  'ramadan',
-] as const;
 
 class CreateCustomerDto {
   @IsString()
@@ -93,7 +85,8 @@ class CreateCustomerDto {
   tags?: string[];
 
   @IsOptional()
-  @IsIn(CUSTOMER_STATUSES)
+  @IsString()
+  @MaxLength(64)
   status?: CustomerStatus;
 
   @IsOptional()
@@ -157,7 +150,8 @@ class UpdateCustomerDto {
   tags?: string[];
 
   @IsOptional()
-  @IsIn(CUSTOMER_STATUSES)
+  @IsString()
+  @MaxLength(64)
   status?: CustomerStatus;
 
   @IsOptional()
@@ -190,7 +184,8 @@ class BulkCustomersDto {
   note?: string;
 
   @IsOptional()
-  @IsIn(CUSTOMER_STATUSES)
+  @IsString()
+  @MaxLength(64)
   status?: CustomerStatus;
 
   @IsOptional()
@@ -200,6 +195,12 @@ class BulkCustomersDto {
   @IsOptional()
   @IsString()
   followUpDue?: string;
+}
+
+function num(value: string | undefined): number | undefined {
+  if (value === undefined || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 @ApiTags('CRM — Customers')
@@ -216,18 +217,90 @@ export class CustomersController {
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('district') district?: string,
+    @Query('employee') employee?: string,
+    @Query('product') product?: string,
+    @Query('createdFrom') createdFrom?: string,
+    @Query('createdTo') createdTo?: string,
+    @Query('lastOrderFrom') lastOrderFrom?: string,
+    @Query('lastOrderTo') lastOrderTo?: string,
+    @Query('orderCount') orderCount?: string,
+    @Query('orderCountOp') orderCountOp?: string,
+    @Query('deliveredCount') deliveredCount?: string,
+    @Query('deliveredCountOp') deliveredCountOp?: string,
+    @Query('courierScoreMin') courierScoreMin?: string,
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '20',
   ) {
     this.customers.requireOrg(user.organizationId);
     return this.customers.list(user.organizationId!, {
       segment,
-      status: status as CustomerStatus | undefined,
+      status,
       search,
       district,
+      employee,
+      product,
+      createdFrom,
+      createdTo,
+      lastOrderFrom,
+      lastOrderTo,
+      orderCount: num(orderCount),
+      orderCountOp: orderCountOp as CustomerCompareOp | undefined,
+      deliveredCount: num(deliveredCount),
+      deliveredCountOp: deliveredCountOp as CustomerCompareOp | undefined,
+      courierScoreMin: num(courierScoreMin),
       page: Number(page) || 1,
       pageSize: Number(pageSize) || 20,
     });
+  }
+
+  @Get('export')
+  @RequirePermissions('companies.view')
+  @ApiOperation({ summary: 'Export filtered customers as CSV' })
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async export(
+    @CurrentUser() user: AuthUserPayload,
+    @Res() res: Response,
+    @Query('segment') segment?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('district') district?: string,
+    @Query('employee') employee?: string,
+    @Query('product') product?: string,
+    @Query('createdFrom') createdFrom?: string,
+    @Query('createdTo') createdTo?: string,
+    @Query('lastOrderFrom') lastOrderFrom?: string,
+    @Query('lastOrderTo') lastOrderTo?: string,
+    @Query('orderCount') orderCount?: string,
+    @Query('orderCountOp') orderCountOp?: string,
+    @Query('deliveredCount') deliveredCount?: string,
+    @Query('deliveredCountOp') deliveredCountOp?: string,
+    @Query('courierScoreMin') courierScoreMin?: string,
+  ) {
+    this.customers.requireOrg(user.organizationId);
+    const csv = await this.customers.exportCsv(user.organizationId!, {
+      segment,
+      status,
+      search,
+      district,
+      employee,
+      product,
+      createdFrom,
+      createdTo,
+      lastOrderFrom,
+      lastOrderTo,
+      orderCount: num(orderCount),
+      orderCountOp: orderCountOp as CustomerCompareOp | undefined,
+      deliveredCount: num(deliveredCount),
+      deliveredCountOp: deliveredCountOp as CustomerCompareOp | undefined,
+      courierScoreMin: num(courierScoreMin),
+      page: 1,
+      pageSize: 5000,
+    });
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="customers-export-${Date.now()}.csv"`,
+    );
+    res.send(csv);
   }
 
   @Post('backfill')

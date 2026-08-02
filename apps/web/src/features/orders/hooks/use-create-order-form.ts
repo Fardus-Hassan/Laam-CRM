@@ -129,16 +129,20 @@ function reducer(state: CreateOrderFormState, action: FormAction): CreateOrderFo
     case 'lookup_customer_result': {
       const profile = action.profile;
       if (!profile) {
-        return { ...state, customerStats: null };
+        return {
+          ...state,
+          customerStats: { totalOrders: 0, completedDelivered: 0 },
+        };
       }
       return {
         ...state,
-        name: profile.name,
-        email: profile.email,
-        address: profile.address,
-        district: profile.district,
-        orderSource: profile.orderSource as CreateOrderFormState['orderSource'],
-        customerTag: profile.customerTag,
+        name: profile.name || state.name,
+        email: profile.email || state.email,
+        address: profile.address || state.address,
+        district: profile.district || state.district,
+        orderSource: (profile.orderSource ||
+          state.orderSource) as CreateOrderFormState['orderSource'],
+        customerTag: profile.customerTag || state.customerTag,
         customerStats: profile.stats,
       };
     }

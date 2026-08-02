@@ -441,6 +441,17 @@ export class InventoryCatalogService {
     return rows.map((row) => this.toCategory(row));
   }
 
+  async getCategory(
+    organizationId: string,
+    id: string,
+  ): Promise<OrgCategory> {
+    const row = await this.prisma.orgCategory.findFirst({
+      where: { id, organizationId, deletedAt: null },
+    });
+    if (!row) throw new NotFoundException('Category not found');
+    return this.toCategory(row);
+  }
+
   async upsertCategory(
     organizationId: string,
     input: UpsertOrgCategoryPayload,

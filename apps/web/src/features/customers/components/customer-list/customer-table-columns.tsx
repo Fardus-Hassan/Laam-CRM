@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { CustomerListItem } from '@laam/types';
+import type { CustomerListItem, CustomerSegmentCount, CustomerStatus } from '@laam/types';
 import {
   CalendarClock,
   MessageCircle,
@@ -22,8 +22,8 @@ import {
 } from '@/components/data-table/cells';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CourierScoreCell } from '@/features/customers/components/shared/courier-score-cell';
-import { CustomerStatusBadge } from '@/features/customers/components/shared/customer-status-badge';
+import { DataTableCourierStats } from '@/components/data-table/cells';
+import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
 
 export const CUSTOMER_TABLE_PINNED = {
   left: ['select', 'customerNumber'],
@@ -41,11 +41,13 @@ export function formatCustomerDate(value: string) {
 export function buildCustomerTableColumns(options?: {
   onNoteClick?: (row: CustomerListItem) => void;
   onFollowUpClick?: (row: CustomerListItem) => void;
-  onStatusClick?: (row: CustomerListItem) => void;
+  statusOptions?: CustomerSegmentCount[];
+  onStatusChange?: (row: CustomerListItem, status: CustomerStatus) => void | Promise<void>;
 }): CrmColumnDef<CustomerListItem>[] {
   const onNoteClick = options?.onNoteClick;
   const onFollowUpClick = options?.onFollowUpClick;
-  const onStatusClick = options?.onStatusClick;
+  const statusOptions = options?.statusOptions ?? [];
+  const onStatusChange = options?.onStatusChange;
 
   return [
     {
@@ -143,9 +145,31 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'courier',
       header: 'Courier',
-      size: 112,
+      size: 140,
       meta: { label: 'Courier score', priority: 'primary', align: 'middle' },
-      cell: ({ row }) => <CourierScoreCell score={row.original.courierScore} compact />,
+      cell: ({ row }) => {
+        const score = row.original.courierScore;
+        return (
+          <DataTableCourierStats
+            courier={{
+              to: score.total,
+              co: 0,
+              su: score.success,
+              fa: score.failed,
+              percent: score.rate,
+              label:
+                score.total >= 10
+                  ? 'Frequent'
+                  : score.total >= 2
+                    ? 'Regular'
+                    : score.total > 0
+                      ? 'New'
+                      : '—',
+            }}
+            compact
+          />
+        );
+      },
     },
     {
       id: 'products',
@@ -204,13 +228,21 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'status',
       header: 'Status',
-      size: 120,
+      size: 160,
       meta: { label: 'Status', priority: 'secondary', align: 'middle' },
-      cell: ({ row }) => (
-        <button type="button" onClick={() => onStatusClick?.(row.original)} className="text-left">
-          <CustomerStatusBadge status={row.original.status} />
-        </button>
-      ),
+      cell: ({ row }) =>
+        onStatusChange ? (
+          <CustomerStatusSelect
+            row={row.original}
+            options={statusOptions}
+            onChange={onStatusChange}
+            compact
+          />
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {row.original.statusLabel || row.original.status}
+          </span>
+        ),
     },
     {
       id: 'followup',

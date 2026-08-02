@@ -1,7 +1,12 @@
 'use client';
 
 import * as React from 'react';
-import type { IncentivePlan, TenantUser } from '@laam/types';
+import type {
+  IncentiveAssignment,
+  IncentiveHrStatus,
+  IncentivePlan,
+  TenantUser,
+} from '@laam/types';
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
@@ -22,24 +27,28 @@ export function AssignmentFormDialog({
   onClose,
   onSaved,
   plans,
+  initial,
 }: {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
   plans: IncentivePlan[];
+  initial?: IncentiveAssignment | null;
 }) {
   const [users, setUsers] = React.useState<TenantUser[]>([]);
   const [userId, setUserId] = React.useState('');
   const [planId, setPlanId] = React.useState('');
   const [shift, setShift] = React.useState('');
+  const [hrStatus, setHrStatus] = React.useState<IncentiveHrStatus>('active');
   const [loadingUsers, setLoadingUsers] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
-    setUserId('');
-    setPlanId('');
-    setShift('');
+    setUserId(initial?.userId ?? '');
+    setPlanId(initial?.planId ?? '');
+    setShift(initial?.shift ?? '');
+    setHrStatus(initial?.hrStatus ?? 'active');
     let cancelled = false;
     setLoadingUsers(true);
     void rbacApi
@@ -59,23 +68,34 @@ export function AssignmentFormDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [initial, open]);
 
   async function handleSubmit() {
     const user = users.find((item) => item.id === userId);
-    if (!user || !planId) {
+    if ((!user && !initial) || !planId) {
       toast.error('Select an agent and a plan');
       return;
     }
     setSaving(true);
     try {
-      await incentiveApi.createAssignment({
-        planId,
-        userId: user.id,
-        agentName: user.name,
-        shift: shift || null,
-      });
-      toast.success('Agent assigned');
+      if (initial) {
+        await incentiveApi.updateAssignment(initial.id, {
+          planId,
+          userId: user?.id ?? initial.userId,
+          agentName: user?.name ?? initial.agentName,
+          shift: shift || null,
+          hrStatus,
+        });
+        toast.success('Assignment updated');
+      } else {
+        await incentiveApi.createAssignment({
+          planId,
+          userId: user!.id,
+          agentName: user!.name,
+          shift: shift || null,
+        });
+        toast.success('Agent assigned');
+      }
       onSaved();
       onClose();
     } catch (error) {
@@ -89,7 +109,7 @@ export function AssignmentFormDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Assign agent to plan</DialogTitle>
+          <DialogTitle>{initial ? 'Edit assignment' : 'Assign agent to plan'}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3">
           <FormField label="Agent" required>
@@ -128,6 +148,21 @@ export function AssignmentFormDialog({
               searchable={false}
             />
           </FormField>
+          {initial ? (
+            <FormField label="HR status">
+              <FormSearchSelect
+                value={hrStatus}
+                onChange={(value) => setHrStatus(value as IncentiveHrStatus)}
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'warning', label: 'Warning' },
+                  { value: 'final_warning', label: 'Final warning' },
+                  { value: 'terminated', label: 'Terminated' },
+                ]}
+                searchable={false}
+              />
+            </FormField>
+          ) : null}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
@@ -138,7 +173,7 @@ export function AssignmentFormDialog({
             disabled={saving || loadingUsers}
             onClick={() => void handleSubmit()}
           >
-            {saving ? 'Assigning…' : 'Assign agent'}
+            {saving ? 'Saving…' : initial ? 'Save changes' : 'Assign agent'}
           </Button>
         </DialogFooter>
       </DialogContent>

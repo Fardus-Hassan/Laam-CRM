@@ -18,16 +18,24 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { customersApi } from '@/features/customers/api/customers-api';
 import { CustomerDataTable } from '@/features/customers/components/customer-list/customer-data-table';
+import {
+  CustomerFilterPanel,
+  emptyCustomerFilters,
+  filtersToQuery,
+  removeCustomerFilter,
+  type CustomerFilterValues,
+} from '@/features/customers/components/customer-list/customer-filter-panel';
 import { CustomerListToolbar } from '@/features/customers/components/customer-list/customer-list-toolbar';
 import { CustomerNoteModal } from '@/features/customers/components/customer-list/modals/customer-note-modal';
 import { CustomerSegmentChips } from '@/features/customers/components/customer-list/customer-segment-chips';
 import { CustomerSelectionBar } from '@/features/customers/components/customer-list/customer-selection-bar';
 import { CustomerWorkspaceHeader } from '@/features/customers/components/customer-list/customer-workspace-header';
-import { CustomerStatusDialog } from '@/features/customers/components/shared/customer-status-dialog';
 import { useCustomerMutations } from '@/features/customers/hooks/use-customer-mutations';
 import { useCustomersList } from '@/features/customers/hooks/use-customers-list';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { Settings2 } from 'lucide-react';
+import Link from 'next/link';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
@@ -45,11 +53,14 @@ export function CustomerListShell() {
   const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const [noteTarget, setNoteTarget] = React.useState<CustomerListItem | null>(null);
   const [noteInitial, setNoteInitial] = React.useState('');
-  const [statusTarget, setStatusTarget] = React.useState<CustomerListItem | null>(null);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [filters, setFilters] = React.useState<CustomerFilterValues>(() => emptyCustomerFilters());
 
   const segment = searchParams.get('segment') ?? 'all';
+  const statusFilter = searchParams.get('status') ?? '';
   const debouncedSearch = useDebouncedValue(search, 300);
   const searchParamsKey = searchParams.toString();
+  const filterQuery = filtersToQuery(filters);
 
   React.useEffect(() => {
     const params = new URLSearchParams(searchParamsKey);
@@ -68,9 +79,11 @@ export function CustomerListShell() {
   const { data, isLoading, error, refresh } = useCustomersList(
     {
       segment: segment === 'all' ? undefined : segment,
+      status: statusFilter || undefined,
       search: debouncedSearch || undefined,
       page,
       pageSize,
+      ...filterQuery,
     },
     listVersion,
   );
@@ -110,8 +123,29 @@ export function CustomerListShell() {
 
   function handleClearFilters() {
     setSearch('');
+    setFilters(emptyCustomerFilters());
     setPage(1);
-    router.replace('/dashboard/customers');
+  }
+
+  function handleRemoveFilter(key: keyof CustomerFilterValues) {
+    setFilters((current) => removeCustomerFilter(current, key));
+    setPage(1);
+  }
+
+  async function handleExportView() {
+    try {
+      await customersApi.exportCustomers({
+        segment: segment === 'all' ? undefined : segment,
+        status: statusFilter || undefined,
+        search: debouncedSearch || undefined,
+        page: 1,
+        pageSize: 5000,
+        ...filterQuery,
+      });
+      toast.success('Export started');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Export failed');
+    }
   }
 
   async function handleNoteClick(row: CustomerListItem) {
@@ -126,9 +160,8 @@ export function CustomerListShell() {
     handleRefresh();
   }
 
-  async function handleStatusSave(status: CustomerStatus) {
-    if (!statusTarget) return;
-    await updateCustomer(statusTarget.id, { status });
+  async function handleStatusChange(row: CustomerListItem, status: CustomerStatus) {
+    await updateCustomer(row.id, { status });
     handleRefresh();
   }
 
@@ -166,7 +199,29 @@ export function CustomerListShell() {
         <CrmSummaryStrip items={summaryItems} className="sm:grid-cols-2 xl:grid-cols-4" />
 
         {data?.segments ? (
-          <CustomerSegmentChips segments={data.segments} activeSegmentId={segment} />
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">System segments</p>
+            <CustomerSegmentChips segments={data.segments} activeId={segment} mode="segment" />
+          </div>
+        ) : null}
+
+        {data?.statuses?.length ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Statuses</p>
+              <Button type="button" size="sm" variant="ghost" className="h-7 px-2" asChild>
+                <Link href="/dashboard/settings/customer-statuses">
+                  <Settings2 className="size-3.5" />
+                  Manage
+                </Link>
+              </Button>
+            </div>
+            <CustomerSegmentChips
+              segments={data.statuses}
+              activeId={statusFilter || '__none__'}
+              mode="status"
+            />
+          </div>
         ) : null}
 
         <CustomerListToolbar
@@ -175,7 +230,27 @@ export function CustomerListShell() {
             setSearch(value);
             setPage(1);
           }}
+          filters={filters}
+          filtersOpen={filtersOpen}
+          onToggleFilters={() => setFiltersOpen((open) => !open)}
+          onClearFilters={handleClearFilters}
+          onRemoveFilter={handleRemoveFilter}
+          onExport={() => void handleExportView()}
         />
+
+        {filtersOpen ? (
+          <CustomerFilterPanel
+            values={filters}
+            onChange={(next) => {
+              setFilters(next);
+              setPage(1);
+            }}
+            onClear={() => {
+              setFilters(emptyCustomerFilters());
+              setPage(1);
+            }}
+          />
+        ) : null}
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <CustomerSelectionBar
@@ -218,7 +293,8 @@ export function CustomerListShell() {
                 }}
                 showPagination={Boolean(data)}
                 onNoteClick={(row) => void handleNoteClick(row)}
-                onStatusClick={setStatusTarget}
+                statusOptions={data?.statuses ?? []}
+                onStatusChange={handleStatusChange}
                 onFollowUpClick={handleFollowUpClick}
               />
             )}
@@ -232,14 +308,6 @@ export function CustomerListShell() {
         customerName={noteTarget?.name ?? ''}
         initialNote={noteInitial}
         onSave={handleNoteSave}
-      />
-
-      <CustomerStatusDialog
-        open={statusTarget !== null}
-        onOpenChange={(open) => !open && setStatusTarget(null)}
-        customerName={statusTarget?.name ?? ''}
-        currentStatus={statusTarget?.status ?? 'none'}
-        onSelect={handleStatusSave}
       />
     </PageShell>
   );

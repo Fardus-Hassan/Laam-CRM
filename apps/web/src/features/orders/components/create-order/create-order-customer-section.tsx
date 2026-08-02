@@ -13,6 +13,7 @@ import { FormTextarea } from '@/components/form/form-textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
+import { CourierPhoneHistoryPanel } from '@/features/courier/components/courier-phone-history-panel';
 import type { CreateOrderFormApi } from '@/features/orders/hooks/use-create-order-form';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,10 @@ import { PathaoLocationDialog } from './pathao-location-dialog';
 type CreateOrderCustomerSectionProps = {
   form: CreateOrderFormApi;
 };
+
+function phoneDigits(phone?: string | null): string {
+  return (phone ?? '').replace(/\D/g, '');
+}
 
 export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionProps) {
   const {
@@ -85,7 +90,7 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
                 id="mobile"
                 value={state.mobile}
                 onChange={(event) => {
-                  patch({ mobile: event.target.value });
+                  patch({ mobile: event.target.value, customerStats: null });
                   clearFieldError('mobile');
                 }}
                 onBlur={() => void lookupCustomer()}
@@ -201,16 +206,26 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
             </FormField>
           </div>
 
-          {state.customerStats ? (
-            <div className="col-span-full flex flex-wrap items-center gap-2">
-              <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-                <span className="text-muted-foreground">Total Orders: </span>
-                <span className="font-semibold">{state.customerStats.totalOrders}</span>
+          {phoneDigits(state.mobile).length >= 10 ? (
+            <div className="col-span-full space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="w-full text-xs font-medium text-muted-foreground">
+                  This shop (CRM)
+                </p>
+                <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">Total Orders: </span>
+                  <span className="font-semibold">
+                    {state.customerStats?.totalOrders ?? 0}
+                  </span>
+                </div>
+                <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">Completed/Delivered: </span>
+                  <span className="font-semibold">
+                    {state.customerStats?.completedDelivered ?? 0}
+                  </span>
+                </div>
               </div>
-              <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-                <span className="text-muted-foreground">Completed/Delivered: </span>
-                <span className="font-semibold">{state.customerStats.completedDelivered}</span>
-              </div>
+              <CourierPhoneHistoryPanel phone={state.mobile} compact />
             </div>
           ) : null}
 

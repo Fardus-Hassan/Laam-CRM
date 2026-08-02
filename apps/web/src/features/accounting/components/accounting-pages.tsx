@@ -16,6 +16,7 @@ import {
 
 import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
+import { Can } from '@/components/auth/can';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -277,7 +278,9 @@ export function ReceivablesPage() {
   return (
     <ReportPageShell title="Accounts receivable" description="Money customers owe you — COD pending, partial payments.">
       <div className="flex justify-end">
-        <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+        <Can permission="accounting.export">
+          <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+        </Can>
       </div>
       <SimpleTable
         headers={['Customer', 'Order', 'Amount', 'Due', 'Status', 'Collected', '']}
@@ -324,7 +327,9 @@ export function PayablesPage() {
   return (
     <ReportPageShell title="Accounts payable" description="Money you owe suppliers — purchase orders, courier bills.">
       <div className="flex justify-end">
-        <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+        <Can permission="accounting.export">
+          <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+        </Can>
       </div>
       <SimpleTable
         headers={['Supplier', 'Reference', 'Amount', 'Due', 'Status', 'Paid', '']}

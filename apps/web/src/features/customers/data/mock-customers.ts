@@ -8,7 +8,18 @@ import type {
 } from '@laam/types';
 
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
-import { CUSTOMER_SEGMENTS } from '@/features/customers/config/customer-segments';
+
+const MOCK_SEGMENTS: Array<{ id: string; label: string; match: (c: CustomerDetail) => boolean }> = [
+  { id: 'all', label: 'All', match: () => true },
+  { id: 'new', label: 'New', match: (c) => c.orderCount < 2 },
+  { id: 'repeat', label: 'Repeat', match: (c) => c.orderCount >= 2 },
+  { id: 'follow_up', label: 'Follow-up', match: (c) => Boolean(c.hasFollowUp) },
+  {
+    id: 'high_risk',
+    label: 'At risk',
+    match: (c) => c.courierScore.failed >= 2 && c.orderCount >= 2,
+  },
+];
 
 import { getAgentNames } from '@/features/rbac/data/agent-names';
 
@@ -187,22 +198,36 @@ export function getMockCustomerById(id: string): CustomerDetail | undefined {
 
 function matchesSegment(customer: CustomerDetail, segmentId?: string): boolean {
   if (!segmentId || segmentId === 'all') return true;
-  const segment = CUSTOMER_SEGMENTS.find((s) => s.id === segmentId);
+  const segment = MOCK_SEGMENTS.find((s) => s.id === segmentId);
   if (!segment) return true;
-
-  if (segment.status && customer.status !== segment.status) return false;
-  if (segment.tag && !customer.tags.includes(segment.tag)) return false;
-  if (segment.minOrders !== undefined && customer.orderCount < segment.minOrders) return false;
-  if (segment.maxOrders !== undefined && customer.orderCount > segment.maxOrders) return false;
-  if (segment.id === 'no_status' && customer.status !== 'none') return false;
-  if (segment.id === 'has_followup' && !customer.hasFollowUp) return false;
-  return true;
+  return segment.match(customer);
 }
 
 function matchesQuery(customer: CustomerDetail, query: CustomerListQuery): boolean {
   if (!matchesSegment(customer, query.segment)) return false;
   if (query.status && customer.status !== query.status) return false;
-  if (query.district && customer.district !== query.district) return false;
+  if (query.district && !(customer.district ?? '').toLowerCase().includes(query.district.toLowerCase())) {
+    return false;
+  }
+  if (
+    query.employee &&
+    !(customer.assignedAgentName ?? '').toLowerCase().includes(query.employee.toLowerCase())
+  ) {
+    return false;
+  }
+  if (query.orderCount !== undefined) {
+    const op = query.orderCountOp ?? 'gte';
+    const n = customer.orderCount;
+    const v = query.orderCount;
+    if (op === 'eq' && n !== v) return false;
+    if (op === 'gte' && n < v) return false;
+    if (op === 'lte' && n > v) return false;
+    if (op === 'gt' && n <= v) return false;
+    if (op === 'lt' && n >= v) return false;
+  }
+  if (query.courierScoreMin !== undefined && customer.courierScore.rate < query.courierScoreMin) {
+    return false;
+  }
 
   const search = query.search?.trim().toLowerCase() ?? '';
   if (!search) return true;
@@ -220,7 +245,7 @@ function matchesQuery(customer: CustomerDetail, query: CustomerListQuery): boole
 
 export function getCustomerSegmentCounts(): CustomerSegmentCount[] {
   const store = getStore();
-  return CUSTOMER_SEGMENTS.map((segment) => ({
+  return MOCK_SEGMENTS.map((segment) => ({
     id: segment.id,
     label: segment.label,
     count: store.filter((c) => matchesSegment(c, segment.id)).length,
@@ -239,6 +264,7 @@ export function filterMockCustomers(query: CustomerListQuery): CustomerListRespo
 
   const start = (query.page - 1) * query.pageSize;
   const pageItems = allMatching.slice(start, start + query.pageSize);
+  const store = getStore();
 
   return {
     items: pageItems.map(({ notes: _n, activities: _a, ...listItem }) => listItem),
@@ -252,6 +278,18 @@ export function filterMockCustomers(query: CustomerListQuery): CustomerListRespo
       withFollowUpCount,
     },
     segments: getCustomerSegmentCounts(),
+    statuses: [
+      {
+        id: 'none',
+        label: 'No status',
+        count: store.filter((c) => c.status === 'none').length,
+      },
+      {
+        id: 'premium',
+        label: 'Premium',
+        count: store.filter((c) => c.status === 'premium').length,
+      },
+    ],
   };
 }
 

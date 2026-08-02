@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -11,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsOptional, IsString } from 'class-validator';
-import type { CreateLeadPayload, LeadPipelineQuery, LeadStatus } from '@laam/types';
+import type { CreateLeadPayload, LeadPipelineQuery, LeadStatus, Permission } from '@laam/types';
 
 import {
   CurrentUser,
@@ -19,6 +20,7 @@ import {
   type AuthUserPayload,
 } from '../common/decorators';
 import { actorFromUser } from '../common/actor.util';
+import { PermissionResolverService } from '../common/permission-resolver.service';
 import { LeadsService } from './leads.service';
 
 class BulkLeadsDto {
@@ -46,10 +48,52 @@ class BulkLeadsDto {
 @ApiTags('CRM — Leads')
 @Controller('crm/leads')
 export class LeadsController {
-  constructor(private readonly leads: LeadsService) {}
+  constructor(
+    private readonly leads: LeadsService,
+    private readonly permissions: PermissionResolverService,
+  ) {}
 
   private actor(user: AuthUserPayload) {
     return actorFromUser(user);
+  }
+
+  private async assertAny(userId: string, required: Permission[]) {
+    const ok = await this.permissions.userHasPermission(userId, required, 'any');
+    if (!ok) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+  }
+
+  /** Assign needs leads.assign; other field changes need leads.edit. */
+  private async assertLeadMutationAccess(
+    userId: string,
+    body: {
+      assignedAgentName?: string;
+      status?: LeadStatus;
+      notes?: string;
+      note?: string;
+      tags?: string[];
+      followUpDue?: string;
+      address?: string;
+      lineItems?: unknown;
+    },
+  ) {
+    const assigning = body.assignedAgentName !== undefined;
+    const editingOther =
+      body.status !== undefined ||
+      body.notes !== undefined ||
+      body.note !== undefined ||
+      body.tags !== undefined ||
+      body.followUpDue !== undefined ||
+      body.address !== undefined ||
+      body.lineItems !== undefined;
+
+    if (assigning) {
+      await this.assertAny(userId, ['leads.assign']);
+    }
+    if (editingOther || !assigning) {
+      await this.assertAny(userId, ['leads.edit']);
+    }
   }
 
   @Get()
@@ -91,10 +135,11 @@ export class LeadsController {
   }
 
   @Post('bulk')
-  @RequirePermissions('leads.edit')
+  @RequirePermissions('leads.edit', 'leads.assign')
   @ApiOperation({ summary: 'Bulk update leads' })
-  bulk(@CurrentUser() user: AuthUserPayload, @Body() body: BulkLeadsDto) {
+  async bulk(@CurrentUser() user: AuthUserPayload, @Body() body: BulkLeadsDto) {
     this.leads.requireOrg(user.organizationId);
+    await this.assertLeadMutationAccess(user.userId, body);
     return this.leads.bulkAction(user.organizationId!, body, this.actor(user));
   }
 
@@ -123,9 +168,9 @@ export class LeadsController {
   }
 
   @Patch(':id')
-  @RequirePermissions('leads.edit')
+  @RequirePermissions('leads.edit', 'leads.assign')
   @ApiOperation({ summary: 'Update lead' })
-  update(
+  async update(
     @CurrentUser() user: AuthUserPayload,
     @Param('id') id: string,
     @Body()
@@ -140,6 +185,7 @@ export class LeadsController {
     },
   ) {
     this.leads.requireOrg(user.organizationId);
+    await this.assertLeadMutationAccess(user.userId, body);
     return this.leads.update(
       user.organizationId!,
       id,

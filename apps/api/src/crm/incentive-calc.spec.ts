@@ -1,4 +1,4 @@
-import { matchIncentiveSlab, evaluateMiss, resolveIncentiveWarning } from './incentive-calc';
+import { matchIncentiveSlab, evaluateMiss, resolveIncentiveWarning, nextHrStatus } from './incentive-calc';
 
 describe('matchIncentiveSlab', () => {
   const orderSlabs = [
@@ -76,5 +76,37 @@ describe('evaluateMiss / resolveIncentiveWarning', () => {
         manualMissing: true,
       }),
     ).toBe('manual_missing');
+  });
+
+  it('flags below_daily_entry', () => {
+    expect(
+      resolveIncentiveWarning({
+        direction: 'higher',
+        actual: 208,
+        slabs: orderSlabs,
+        consecutiveMissMonths: 0,
+        entryDailyTarget: 8,
+        dailyAverage: 6,
+      }),
+    ).toBe('below_daily_entry');
+  });
+
+  it('advances HR status on consecutive misses', () => {
+    expect(nextHrStatus('active', true)).toEqual({
+      hrStatus: 'warning',
+      consecutiveMissMonths: 1,
+    });
+    expect(nextHrStatus('warning', true)).toEqual({
+      hrStatus: 'final_warning',
+      consecutiveMissMonths: 2,
+    });
+    expect(nextHrStatus('final_warning', true)).toEqual({
+      hrStatus: 'terminated',
+      consecutiveMissMonths: 3,
+    });
+    expect(nextHrStatus('warning', false)).toEqual({
+      hrStatus: 'active',
+      consecutiveMissMonths: 0,
+    });
   });
 });

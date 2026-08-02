@@ -9,6 +9,7 @@ import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { FormTextarea } from '@/components/form/form-textarea';
+import { Can } from '@/components/auth/can';
 import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { EmptyState } from '@/components/layout/empty-state';
@@ -131,31 +132,33 @@ export function TransactionListShell({
               <RefreshCw className={cn('size-3.5', isLoading && 'animate-spin')} />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8 shrink-0"
-              onClick={() => {
-                const rows = data?.items ?? [];
-                downloadCsv(
-                  `${mode}-export.csv`,
-                  ['Date', 'Description', 'Category', 'Amount', 'Method', 'Account'],
-                  rows.map((r) => [
-                    r.date,
-                    r.description,
-                    r.category,
-                    r.amount,
-                    r.paymentMethod,
-                    r.accountName,
-                  ]),
-                );
-              }}
-              disabled={!data?.items.length}
-            >
-              <Download className="size-3.5" />
-              <span className="hidden sm:inline">Export</span>
-            </Button>
+            <Can permission="accounting.export">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 shrink-0"
+                onClick={() => {
+                  const rows = data?.items ?? [];
+                  downloadCsv(
+                    `${mode}-export.csv`,
+                    ['Date', 'Description', 'Category', 'Amount', 'Method', 'Account'],
+                    rows.map((r) => [
+                      r.date,
+                      r.description,
+                      r.category,
+                      r.amount,
+                      r.paymentMethod,
+                      r.accountName,
+                    ]),
+                  );
+                }}
+                disabled={!data?.items.length}
+              >
+                <Download className="size-3.5" />
+                <span className="hidden sm:inline">Export</span>
+              </Button>
+            </Can>
             {mode !== 'ledger' && createLabel ? (
               <Button type="button" size="sm" className="h-8 shrink-0" onClick={() => setCreateOpen(true)}>
                 <Plus className="size-3.5" />

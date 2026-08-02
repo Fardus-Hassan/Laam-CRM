@@ -20,6 +20,7 @@ import {
 
 export type CustomersApi = {
   listCustomers: (query: CustomerListQuery) => Promise<CustomerListResponse>;
+  exportCustomers: (query: CustomerListQuery) => Promise<void>;
   getCustomer: (id: string) => Promise<CustomerDetail | null>;
   createCustomer: (payload: CreateCustomerPayload) => Promise<CustomerDetail>;
   updateCustomer: (
@@ -51,6 +52,32 @@ export type CustomersApi = {
   mergeCustomers: (payload: MergeCustomersPayload) => Promise<CustomerDetail>;
 };
 
+function buildCustomerQueryParams(query: CustomerListQuery): URLSearchParams {
+  const params = new URLSearchParams();
+  const set = (key: string, value: string | number | undefined) => {
+    if (value === undefined || value === '') return;
+    params.set(key, String(value));
+  };
+  set('segment', query.segment);
+  set('status', query.status);
+  set('search', query.search);
+  set('district', query.district);
+  set('employee', query.employee);
+  set('product', query.product);
+  set('createdFrom', query.createdFrom);
+  set('createdTo', query.createdTo);
+  set('lastOrderFrom', query.lastOrderFrom);
+  set('lastOrderTo', query.lastOrderTo);
+  set('orderCount', query.orderCount);
+  set('orderCountOp', query.orderCountOp);
+  set('deliveredCount', query.deliveredCount);
+  set('deliveredCountOp', query.deliveredCountOp);
+  set('courierScoreMin', query.courierScoreMin);
+  set('page', query.page);
+  set('pageSize', query.pageSize);
+  return params;
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -60,6 +87,23 @@ export function createMockCustomersApi(): CustomersApi {
     async listCustomers(query) {
       await delay(120);
       return filterMockCustomers(query);
+    },
+    async exportCustomers(query) {
+      await delay(80);
+      const data = filterMockCustomers({ ...query, page: 1, pageSize: 5000 });
+      const header = 'Customer ID,Name,Phone,Orders,Status\n';
+      const body = data.items
+        .map((row) =>
+          [row.customerNumber, `"${row.name}"`, row.phone, row.orderCount, row.status].join(','),
+        )
+        .join('\n');
+      const blob = new Blob([header + body], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `customers-export-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
     },
     async getCustomer(id) {
       await delay(80);
@@ -118,15 +162,36 @@ export function createHttpCustomersApi(): CustomersApi {
     async listCustomers(query) {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
-      const params = new URLSearchParams();
-      if (query.segment) params.set('segment', query.segment);
-      if (query.status) params.set('status', query.status);
-      if (query.search) params.set('search', query.search);
-      if (query.district) params.set('district', query.district);
-      params.set('page', String(query.page));
-      params.set('pageSize', String(query.pageSize));
+      const params = buildCustomerQueryParams(query);
       const suffix = params.toString() ? `?${params.toString()}` : '';
       return apiRequest<CustomerListResponse>(`${crmEndpoints.customers}${suffix}`);
+    },
+    async exportCustomers(query) {
+      const { env } = await import('@/config/env');
+      const { getStoredAccessToken } = await import('@/lib/auth-token');
+      const { getTenantSlugFromHost } = await import('@/lib/tenant');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      const params = buildCustomerQueryParams({ ...query, page: 1, pageSize: 5000 });
+      params.delete('page');
+      params.delete('pageSize');
+      const url = `${env.apiUrl}${crmEndpoints.customers}/export?${params.toString()}`;
+      const token = getStoredAccessToken();
+      const tenantSlug = getTenantSlugFromHost();
+      const res = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {}),
+        },
+      });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = `customers-export-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(objectUrl);
     },
     async getCustomer(id) {
       const { apiRequest } = await import('@/lib/api/client');

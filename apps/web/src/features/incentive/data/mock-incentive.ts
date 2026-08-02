@@ -1,4 +1,5 @@
 import type {
+  IncentiveOpsMonth,
   IncentiveOverview,
   IncentivePeriodRun,
   IncentiveShiftTemplate,
@@ -157,7 +158,42 @@ export function getEmptyIncentiveOverview(seeded = false): IncentiveOverview {
 
 let store: IncentiveOverview = getEmptyIncentiveOverview(false);
 let periods: IncentivePeriodRun[] = [];
+const opsByMonth = new Map<string, IncentiveOpsMonth>();
 const manualActuals = new Map<string, { actualValue: number; note?: string | null }>();
+
+export function mutateMockIncentiveOps<T>(
+  yearMonth: string,
+  fn: (ops: IncentiveOpsMonth) => T,
+): T {
+  let ops = opsByMonth.get(yearMonth);
+  if (!ops) {
+    ops = {
+      yearMonth,
+      attendance: [],
+      surveys: [],
+      channels: [],
+      specialBonuses: [],
+    };
+    opsByMonth.set(yearMonth, ops);
+  }
+  return fn(ops);
+}
+
+export function deleteMockSpecialBonus(id: string) {
+  for (const ops of opsByMonth.values()) {
+    ops.specialBonuses = ops.specialBonuses.filter((row) => row.id !== id);
+  }
+}
+
+export function upsertMockOpsRow<T extends { id: string }>(
+  rows: T[],
+  next: T,
+  matches: (row: T) => boolean,
+): T[] {
+  const index = rows.findIndex(matches);
+  if (index < 0) return [...rows, next];
+  return rows.map((row, rowIndex) => (rowIndex === index ? next : row));
+}
 
 export function mutateMockIncentive<T>(fn: (s: IncentiveOverview) => T): T {
   return fn(store);
@@ -186,5 +222,6 @@ export function getMockManualActual(assignmentId: string, yearMonth: string) {
 export function resetMockIncentive() {
   store = getEmptyIncentiveOverview(false);
   periods = [];
+  opsByMonth.clear();
   manualActuals.clear();
 }

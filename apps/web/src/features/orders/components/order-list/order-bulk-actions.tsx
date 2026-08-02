@@ -22,6 +22,7 @@ import {
   OrderBulkModals,
 } from '@/features/orders/components/order-list/modals/order-bulk-modals';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
+import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -53,8 +54,12 @@ export function OrderBulkActions({
   variant = 'card',
 }: OrderBulkActionsProps) {
   const router = useRouter();
+  const { can } = usePermissions();
   const { submitBulkActionIds } = useConnectedCouriers();
   const actions = resolveBulkActions(actionIds).filter((action) => {
+    if (action.id === 'export' && !can('orders.export')) {
+      return false;
+    }
     if (action.id === 'submit_pathao' || action.id === 'submit_carrybee') {
       return submitBulkActionIds.has(action.id);
     }

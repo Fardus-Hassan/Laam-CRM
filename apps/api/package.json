@@ -64,12 +64,11 @@
                 "continuous": true,
                 "executor": "@nx/js:node",
                 "defaultConfiguration": "development",
-                "dependsOn": [
-                    "build"
-                ],
+                "dependsOn": [],
                 "options": {
                     "buildTarget": "api:build",
-                    "runBuildTargetDependencies": false
+                    "runBuildTargetDependencies": false,
+                    "watch": true
                 },
                 "configurations": {
                     "development": {

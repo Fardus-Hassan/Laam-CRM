@@ -17,18 +17,27 @@ export const customerProductHistorySchema = z.object({
 
 export type CustomerProductHistory = z.infer<typeof customerProductHistorySchema>;
 
-export const customerStatusSchema = z.enum([
-  'none',
-  '2_time',
-  '3_time',
-  '5_time',
-  '10_time',
-  'premium',
-  'repeat',
-  'ramadan',
-]);
-
+/** Admin-defined status slug (or legacy loyalty labels). */
+export const customerStatusSchema = z.string().min(1).max(64);
 export type CustomerStatus = z.infer<typeof customerStatusSchema>;
+
+export const customerCompareOpSchema = z.enum([
+  'gte',
+  'lte',
+  'eq',
+  'gt',
+  'lt',
+]);
+export type CustomerCompareOp = z.infer<typeof customerCompareOpSchema>;
+
+export const SYSTEM_CUSTOMER_SEGMENTS = [
+  'all',
+  'new',
+  'repeat',
+  'follow_up',
+  'high_risk',
+] as const;
+export type SystemCustomerSegment = (typeof SYSTEM_CUSTOMER_SEGMENTS)[number];
 
 export const customerListItemSchema = z.object({
   id: z.string(),
@@ -47,6 +56,7 @@ export const customerListItemSchema = z.object({
   recentProducts: z.array(customerProductHistorySchema).default([]),
   tags: z.array(z.string()).default([]),
   status: customerStatusSchema,
+  statusLabel: z.string().optional(),
   hasNotes: z.boolean().optional(),
   hasFollowUp: z.boolean().optional(),
   followUpDue: z.string().optional(),
@@ -77,6 +87,17 @@ export const customerListQuerySchema = z.object({
   status: customerStatusSchema.optional(),
   search: z.string().optional(),
   district: z.string().optional(),
+  employee: z.string().optional(),
+  product: z.string().optional(),
+  createdFrom: z.string().optional(),
+  createdTo: z.string().optional(),
+  lastOrderFrom: z.string().optional(),
+  lastOrderTo: z.string().optional(),
+  orderCount: z.number().int().nonnegative().optional(),
+  orderCountOp: customerCompareOpSchema.optional(),
+  deliveredCount: z.number().int().nonnegative().optional(),
+  deliveredCountOp: customerCompareOpSchema.optional(),
+  courierScoreMin: z.number().min(0).max(100).optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().default(20),
 });
@@ -107,6 +128,8 @@ export const customerListResponseSchema = z.object({
   pageSize: z.number(),
   summary: customerListSummarySchema,
   segments: z.array(customerSegmentCountSchema),
+  /** Admin statuses with live counts (for pills). */
+  statuses: z.array(customerSegmentCountSchema).default([]),
 });
 
 export type CustomerListResponse = z.infer<typeof customerListResponseSchema>;

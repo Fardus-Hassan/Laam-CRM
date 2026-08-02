@@ -30,7 +30,16 @@ const METRICS: Array<{ value: IncentiveMetricType; label: string }> = [
   { value: 'cross_sell_count', label: 'Cross-sell count' },
   { value: 'return_ratio', label: 'Return ratio %' },
   { value: 'recovery_count', label: 'Recovery count' },
+  { value: 'survey_count', label: 'Survey count' },
+  { value: 'channel_activity', label: 'Channel activity' },
   { value: 'manual', label: 'Manual' },
+];
+
+const CHANNELS = [
+  { slug: 'call', label: 'Call' },
+  { slug: 'facebook_comment', label: 'Facebook comments' },
+  { slug: 'messenger', label: 'Messenger' },
+  { slug: 'whatsapp', label: 'WhatsApp' },
 ];
 
 type Draft = {
@@ -45,6 +54,9 @@ type Draft = {
   deliveredStatuses: string[];
   returnedStatuses: string[];
   minItems: string;
+  entryDailyTarget: string;
+  maxAgentReturnRatioPct: string;
+  channels: string[];
 };
 
 function toDraft(plan?: IncentivePlan | null): Draft {
@@ -71,6 +83,15 @@ function toDraft(plan?: IncentivePlan | null): Draft {
     deliveredStatuses: plan?.metricConfig?.deliveredStatuses ?? [],
     returnedStatuses: plan?.metricConfig?.returnedStatuses ?? [],
     minItems: String(plan?.metricConfig?.minItems ?? 2),
+    entryDailyTarget:
+      plan?.metricConfig?.entryDailyTarget == null
+        ? ''
+        : String(plan.metricConfig.entryDailyTarget),
+    maxAgentReturnRatioPct:
+      plan?.metricConfig?.maxAgentReturnRatioPct == null
+        ? ''
+        : String(plan.metricConfig.maxAgentReturnRatioPct),
+    channels: plan?.metricConfig?.channels ?? [],
   };
 }
 
@@ -170,6 +191,15 @@ export function PlanFormDialog({
             returnedStatuses: draft.returnedStatuses,
           }
         : {}),
+      ...(draft.entryDailyTarget
+        ? { entryDailyTarget: Number(draft.entryDailyTarget) }
+        : {}),
+      ...(draft.maxAgentReturnRatioPct
+        ? { maxAgentReturnRatioPct: Number(draft.maxAgentReturnRatioPct) }
+        : {}),
+      ...(draft.metricType === 'channel_activity'
+        ? { channels: draft.channels as IncentiveMetricConfig['channels'] }
+        : {}),
     };
     const payload: CreateIncentivePlanPayload = {
       name: draft.name.trim(),
@@ -249,6 +279,34 @@ export function PlanFormDialog({
                 min={1}
                 value={draft.minItems}
                 onChange={(e) => patch({ minItems: e.target.value })}
+              />
+            </FormField>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Entry daily target" hint="Optional first-warning threshold">
+              <FormInput
+                type="number"
+                min={0}
+                value={draft.entryDailyTarget}
+                onChange={(e) => patch({ entryDailyTarget: e.target.value })}
+              />
+            </FormField>
+            <FormField label="Maximum agent return ratio %" hint="Optional eligibility cap">
+              <FormInput
+                type="number"
+                min={0}
+                step="0.01"
+                value={draft.maxAgentReturnRatioPct}
+                onChange={(e) => patch({ maxAgentReturnRatioPct: e.target.value })}
+              />
+            </FormField>
+          </div>
+          {draft.metricType === 'channel_activity' ? (
+            <FormField label="Included channels">
+              <StatusChecks
+                statuses={CHANNELS}
+                values={draft.channels}
+                onChange={(channels) => patch({ channels })}
               />
             </FormField>
           ) : null}

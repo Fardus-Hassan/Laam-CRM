@@ -5,12 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  CreateIncentiveSpecialBonusPayload,
   CreateIncentiveAssignmentPayload,
   CreateIncentivePlanPayload,
   CreateIncentiveTeamPayload,
   IncentiveAssignment,
   IncentiveMetricConfig,
   IncentiveMetricType,
+  IncentiveOpsMonth,
   IncentiveOverview,
   IncentivePerformanceLine,
   IncentivePerformanceReport,
@@ -24,8 +26,11 @@ import type {
   UpdateIncentiveAssignmentPayload,
   UpdateIncentivePlanPayload,
   UpdateIncentiveTeamPayload,
+  UpsertIncentiveAttendancePayload,
+  UpsertIncentiveChannelPayload,
   UpsertIncentiveManualActualPayload,
   UpsertIncentiveSalaryPayload,
+  UpsertIncentiveSurveyPayload,
 } from '@laam/types';
 import type {
   IncentiveAssignment as AssignmentRow,
@@ -52,7 +57,9 @@ type PlanWithSlabs = PlanRow & {
 export class IncentiveService {
   constructor(private readonly prisma: PrismaService) {}
 
-  requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
+  requireOrg(
+    organizationId: string | null | undefined,
+  ): asserts organizationId is string {
     if (!organizationId) {
       throw new BadRequestException('Organization context required');
     }
@@ -79,7 +86,9 @@ export class IncentiveService {
         orderBy: [{ agentName: 'asc' }],
         include: { plan: { include: { team: true } } },
       }),
-      this.prisma.incentiveOrgSettings.findUnique({ where: { organizationId } }),
+      this.prisma.incentiveOrgSettings.findUnique({
+        where: { organizationId },
+      }),
     ]);
 
     return {
@@ -146,8 +155,12 @@ export class IncentiveService {
           ...(payload.description !== undefined
             ? { description: payload.description?.trim() || null }
             : {}),
-          ...(payload.sortOrder !== undefined ? { sortOrder: payload.sortOrder } : {}),
-          ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+          ...(payload.sortOrder !== undefined
+            ? { sortOrder: payload.sortOrder }
+            : {}),
+          ...(payload.isActive !== undefined
+            ? { isActive: payload.isActive }
+            : {}),
         },
         include: { _count: { select: { plans: true } } },
       });
@@ -191,7 +204,9 @@ export class IncentiveService {
           slug,
           description: payload.description?.trim() || null,
           metricType: payload.metricType,
-          metricConfig: (payload.metricConfig ?? undefined) as Prisma.InputJsonValue | undefined,
+          metricConfig: (payload.metricConfig ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
           teamMonthlyTarget: payload.teamMonthlyTarget ?? null,
           isActive: payload.isActive ?? true,
           prorataAboveTop: payload.prorataAboveTop ?? false,
@@ -225,22 +240,31 @@ export class IncentiveService {
           await tx.incentiveSlab.deleteMany({ where: { planId: id } });
           if (payload.slabs.length) {
             await tx.incentiveSlab.createMany({
-              data: this.slabCreates(payload.slabs).map((s) => ({ ...s, planId: id })),
+              data: this.slabCreates(payload.slabs).map((s) => ({
+                ...s,
+                planId: id,
+              })),
             });
           }
         }
         await tx.incentivePlan.update({
           where: { id },
           data: {
-            ...(payload.name !== undefined ? { name: payload.name.trim() } : {}),
+            ...(payload.name !== undefined
+              ? { name: payload.name.trim() }
+              : {}),
             ...(payload.slug !== undefined
               ? { slug: this.slugify(payload.slug.trim()) }
               : {}),
-            ...(payload.teamId !== undefined ? { teamId: payload.teamId || null } : {}),
+            ...(payload.teamId !== undefined
+              ? { teamId: payload.teamId || null }
+              : {}),
             ...(payload.description !== undefined
               ? { description: payload.description?.trim() || null }
               : {}),
-            ...(payload.metricType !== undefined ? { metricType: payload.metricType } : {}),
+            ...(payload.metricType !== undefined
+              ? { metricType: payload.metricType }
+              : {}),
             ...(payload.metricConfig !== undefined
               ? {
                   metricConfig:
@@ -252,11 +276,15 @@ export class IncentiveService {
             ...(payload.teamMonthlyTarget !== undefined
               ? { teamMonthlyTarget: payload.teamMonthlyTarget }
               : {}),
-            ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+            ...(payload.isActive !== undefined
+              ? { isActive: payload.isActive }
+              : {}),
             ...(payload.prorataAboveTop !== undefined
               ? { prorataAboveTop: payload.prorataAboveTop }
               : {}),
-            ...(payload.sortOrder !== undefined ? { sortOrder: payload.sortOrder } : {}),
+            ...(payload.sortOrder !== undefined
+              ? { sortOrder: payload.sortOrder }
+              : {}),
           },
         });
       });
@@ -279,13 +307,17 @@ export class IncentiveService {
     await this.prisma.incentivePlan.delete({ where: { id } });
   }
 
-  async listAssignments(organizationId: string): Promise<IncentiveAssignment[]> {
+  async listAssignments(
+    organizationId: string,
+  ): Promise<IncentiveAssignment[]> {
     const rows = await this.prisma.incentiveAssignment.findMany({
       where: { organizationId },
       orderBy: [{ agentName: 'asc' }],
       include: { plan: { include: { team: true } } },
     });
-    return rows.map((a) => this.toAssignment(a, a.plan.name, a.plan.team?.name));
+    return rows.map((a) =>
+      this.toAssignment(a, a.plan.name, a.plan.team?.name),
+    );
   }
 
   async createAssignment(
@@ -295,7 +327,16 @@ export class IncentiveService {
     const plan = await this.requirePlan(organizationId, payload.planId);
     const agentName = payload.agentName.trim();
     if (!agentName) throw new BadRequestException('Agent name is required');
-    const startsOn = this.parseDate(payload.startsOn) ?? this.startOfMonth(new Date());
+    const startsOn =
+      this.parseDate(payload.startsOn) ?? this.startOfMonth(new Date());
+    const endsOn = payload.endsOn ? this.parseDate(payload.endsOn) : null;
+    await this.assertNoOverlappingAssignment(organizationId, {
+      planId: payload.planId,
+      agentName,
+      startsOn,
+      endsOn,
+      isActive: payload.isActive ?? true,
+    });
     const row = await this.prisma.incentiveAssignment.create({
       data: {
         organizationId,
@@ -304,8 +345,9 @@ export class IncentiveService {
         userId: payload.userId || null,
         shift: payload.shift?.trim() || null,
         startsOn,
-        endsOn: payload.endsOn ? this.parseDate(payload.endsOn) : null,
+        endsOn,
         isActive: payload.isActive ?? true,
+        hrStatus: payload.hrStatus ?? 'active',
       },
       include: { plan: { include: { team: true } } },
     });
@@ -319,22 +361,50 @@ export class IncentiveService {
   ): Promise<IncentiveAssignment> {
     const existing = await this.requireAssignment(organizationId, id);
     if (payload.planId) await this.requirePlan(organizationId, payload.planId);
+    const agentName = payload.agentName?.trim() ?? existing.agentName;
+    const startsOn =
+      payload.startsOn !== undefined
+        ? (this.parseDate(payload.startsOn) ?? existing.startsOn)
+        : existing.startsOn;
+    const endsOn =
+      payload.endsOn !== undefined
+        ? payload.endsOn
+          ? this.parseDate(payload.endsOn)
+          : null
+        : existing.endsOn;
+    await this.assertNoOverlappingAssignment(
+      organizationId,
+      {
+        planId: payload.planId ?? existing.planId,
+        agentName,
+        startsOn,
+        endsOn,
+        isActive: payload.isActive ?? existing.isActive,
+      },
+      existing.id,
+    );
     const row = await this.prisma.incentiveAssignment.update({
       where: { id: existing.id },
       data: {
         ...(payload.planId !== undefined ? { planId: payload.planId } : {}),
-        ...(payload.agentName !== undefined
-          ? { agentName: payload.agentName.trim() }
+        ...(payload.agentName !== undefined ? { agentName } : {}),
+        ...(payload.userId !== undefined
+          ? { userId: payload.userId || null }
           : {}),
-        ...(payload.userId !== undefined ? { userId: payload.userId || null } : {}),
-        ...(payload.shift !== undefined ? { shift: payload.shift?.trim() || null } : {}),
-        ...(payload.startsOn !== undefined
-          ? { startsOn: this.parseDate(payload.startsOn) ?? existing.startsOn }
+        ...(payload.shift !== undefined
+          ? { shift: payload.shift?.trim() || null }
           : {}),
-        ...(payload.endsOn !== undefined
-          ? { endsOn: payload.endsOn ? this.parseDate(payload.endsOn) : null }
+        ...(payload.startsOn !== undefined ? { startsOn } : {}),
+        ...(payload.endsOn !== undefined ? { endsOn } : {}),
+        ...(payload.isActive !== undefined
+          ? { isActive: payload.isActive }
           : {}),
-        ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+        ...(payload.hrStatus !== undefined
+          ? { hrStatus: payload.hrStatus }
+          : {}),
+        ...(payload.consecutiveMissMonths !== undefined
+          ? { consecutiveMissMonths: payload.consecutiveMissMonths }
+          : {}),
       },
       include: { plan: { include: { team: true } } },
     });
@@ -377,7 +447,10 @@ export class IncentiveService {
     payload: UpsertIncentiveManualActualPayload,
     user: { userId: string; name?: string; email: string },
   ) {
-    const assignment = await this.requireAssignment(organizationId, payload.assignmentId);
+    const assignment = await this.requireAssignment(
+      organizationId,
+      payload.assignmentId,
+    );
     const updatedByName = user.name?.trim() || user.email;
     return this.prisma.incentiveManualActual.upsert({
       where: {
@@ -404,9 +477,228 @@ export class IncentiveService {
     });
   }
 
+  async getOps(
+    organizationId: string,
+    yearMonth: string,
+  ): Promise<IncentiveOpsMonth> {
+    const ym = this.validateYearMonth(yearMonth);
+    const [attendance, surveys, channels, specialBonuses] = await Promise.all([
+      this.prisma.incentiveAttendance.findMany({
+        where: { organizationId, yearMonth: ym },
+        orderBy: { agentName: 'asc' },
+      }),
+      this.prisma.incentiveSurveyLog.findMany({
+        where: { organizationId, yearMonth: ym },
+        orderBy: { agentName: 'asc' },
+      }),
+      this.prisma.incentiveChannelLog.findMany({
+        where: { organizationId, yearMonth: ym },
+        orderBy: [{ agentName: 'asc' }, { channel: 'asc' }],
+      }),
+      this.prisma.incentiveSpecialBonus.findMany({
+        where: { organizationId, yearMonth: ym },
+        orderBy: [{ agentName: 'asc' }, { createdAt: 'asc' }],
+      }),
+    ]);
+    return {
+      yearMonth: ym,
+      attendance: attendance.map((row) => {
+        const eligible = this.attendanceEligible(row);
+        return {
+          ...row,
+          fullAttendance: eligible,
+          attendanceBonusEligible: eligible,
+        };
+      }),
+      surveys: surveys.map((row) => ({
+        ...row,
+        recordedAt: row.recordedAt.toISOString(),
+      })),
+      channels: channels.map((row) => ({
+        ...row,
+        channel:
+          row.channel as IncentiveOpsMonth['channels'][number]['channel'],
+      })),
+      specialBonuses: specialBonuses.map((row) => ({
+        ...row,
+        createdByName: row.createdByName ?? undefined,
+        createdAt: row.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  async upsertAttendance(
+    organizationId: string,
+    payload: UpsertIncentiveAttendancePayload,
+  ) {
+    const agentName = payload.agentName.trim();
+    const yearMonth = this.validateYearMonth(payload.yearMonth);
+    const row = await this.prisma.incentiveAttendance.upsert({
+      where: {
+        organizationId_agentName_yearMonth: {
+          organizationId,
+          agentName,
+          yearMonth,
+        },
+      },
+      create: {
+        organizationId,
+        agentName,
+        yearMonth,
+        userId: payload.userId || null,
+        presentDays: payload.presentDays,
+        workingDays: payload.workingDays,
+        lateCount: payload.lateCount ?? 0,
+        earlyLeaveCount: payload.earlyLeaveCount ?? 0,
+        unapprovedAbsence: payload.unapprovedAbsence ?? 0,
+        note: payload.note?.trim() || null,
+      },
+      update: {
+        userId: payload.userId || null,
+        presentDays: payload.presentDays,
+        workingDays: payload.workingDays,
+        lateCount: payload.lateCount ?? 0,
+        earlyLeaveCount: payload.earlyLeaveCount ?? 0,
+        unapprovedAbsence: payload.unapprovedAbsence ?? 0,
+        note: payload.note?.trim() || null,
+      },
+    });
+    const eligible = this.attendanceEligible(row);
+    return {
+      ...row,
+      fullAttendance: eligible,
+      attendanceBonusEligible: eligible,
+    };
+  }
+
+  async upsertSurvey(
+    organizationId: string,
+    payload: UpsertIncentiveSurveyPayload,
+  ) {
+    const agentName = payload.agentName.trim();
+    const yearMonth = this.validateYearMonth(payload.yearMonth);
+    if (payload.assignmentId) {
+      const assignment = await this.requireAssignment(
+        organizationId,
+        payload.assignmentId,
+      );
+      if (assignment.agentName !== agentName) {
+        throw new BadRequestException(
+          'Assignment does not belong to the supplied agent',
+        );
+      }
+    }
+    return this.prisma.incentiveSurveyLog.upsert({
+      where: {
+        organizationId_agentName_yearMonth: {
+          organizationId,
+          agentName,
+          yearMonth,
+        },
+      },
+      create: {
+        organizationId,
+        agentName,
+        yearMonth,
+        assignmentId: payload.assignmentId || null,
+        surveyCount: payload.surveyCount,
+        note: payload.note?.trim() || null,
+      },
+      update: {
+        assignmentId: payload.assignmentId || null,
+        surveyCount: payload.surveyCount,
+        note: payload.note?.trim() || null,
+      },
+    });
+  }
+
+  async upsertChannel(
+    organizationId: string,
+    payload: UpsertIncentiveChannelPayload,
+  ) {
+    const agentName = payload.agentName.trim();
+    const yearMonth = this.validateYearMonth(payload.yearMonth);
+    if (payload.assignmentId) {
+      const assignment = await this.requireAssignment(
+        organizationId,
+        payload.assignmentId,
+      );
+      if (assignment.agentName !== agentName) {
+        throw new BadRequestException(
+          'Assignment does not belong to the supplied agent',
+        );
+      }
+    }
+    return this.prisma.incentiveChannelLog.upsert({
+      where: {
+        organizationId_agentName_yearMonth_channel: {
+          organizationId,
+          agentName,
+          yearMonth,
+          channel: payload.channel,
+        },
+      },
+      create: {
+        organizationId,
+        agentName,
+        yearMonth,
+        assignmentId: payload.assignmentId || null,
+        channel: payload.channel,
+        activityCount: payload.activityCount,
+        note: payload.note?.trim() || null,
+      },
+      update: {
+        assignmentId: payload.assignmentId || null,
+        activityCount: payload.activityCount,
+        note: payload.note?.trim() || null,
+      },
+    });
+  }
+
+  async createSpecialBonus(
+    organizationId: string,
+    payload: CreateIncentiveSpecialBonusPayload,
+    user: { userId: string; name?: string; email: string },
+  ) {
+    const agentName = payload.agentName.trim();
+    if (payload.assignmentId) {
+      const assignment = await this.requireAssignment(
+        organizationId,
+        payload.assignmentId,
+      );
+      if (assignment.agentName !== agentName) {
+        throw new BadRequestException(
+          'Assignment does not belong to the supplied agent',
+        );
+      }
+    }
+    return this.prisma.incentiveSpecialBonus.create({
+      data: {
+        organizationId,
+        yearMonth: this.validateYearMonth(payload.yearMonth),
+        agentName,
+        assignmentId: payload.assignmentId || null,
+        amountBdt: payload.amountBdt,
+        reason: payload.reason.trim(),
+        createdByUserId: user.userId,
+        createdByName: user.name?.trim() || user.email,
+      },
+    });
+  }
+
+  async deleteSpecialBonus(organizationId: string, id: string): Promise<void> {
+    const row = await this.prisma.incentiveSpecialBonus.findFirst({
+      where: { id, organizationId },
+    });
+    if (!row) throw new NotFoundException('Special bonus not found');
+    await this.prisma.incentiveSpecialBonus.delete({ where: { id: row.id } });
+  }
+
   /** Seed Laam-style PDF template when org has no teams yet. */
   async seedDefaults(organizationId: string): Promise<IncentiveOverview> {
-    const existing = await this.prisma.incentiveTeam.count({ where: { organizationId } });
+    const existing = await this.prisma.incentiveTeam.count({
+      where: { organizationId },
+    });
     if (existing > 0) {
       throw new ConflictException(
         'Incentive teams already exist. Clear them first or edit plans manually.',
@@ -418,12 +710,16 @@ export class IncentiveService {
         where: { organizationId },
         create: {
           organizationId,
-          salaryTemplate: LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
-          shiftTemplates: LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
+          salaryTemplate:
+            LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
+          shiftTemplates:
+            LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
         },
         update: {
-          salaryTemplate: LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
-          shiftTemplates: LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
+          salaryTemplate:
+            LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
+          shiftTemplates:
+            LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
         },
       });
 
@@ -447,7 +743,9 @@ export class IncentiveService {
             slug: team.plan.slug,
             description: team.plan.description,
             metricType: team.plan.metricType,
-            metricConfig: team.plan.metricConfig as Prisma.InputJsonValue | undefined,
+            metricConfig: team.plan.metricConfig as
+              | Prisma.InputJsonValue
+              | undefined,
             teamMonthlyTarget: team.plan.teamMonthlyTarget ?? null,
             prorataAboveTop: team.plan.prorataAboveTop ?? false,
             sortOrder: i,
@@ -455,7 +753,8 @@ export class IncentiveService {
             slabs: {
               create: team.plan.slabs.map((s, si) => ({
                 label: s.label ?? null,
-                dailyTarget: 'dailyTarget' in s ? (s.dailyTarget ?? null) : null,
+                dailyTarget:
+                  'dailyTarget' in s ? (s.dailyTarget ?? null) : null,
                 monthlyTarget: s.monthlyTarget,
                 incentiveBdt: s.incentiveBdt,
                 sortOrder: si,
@@ -469,12 +768,89 @@ export class IncentiveService {
     return this.overview(organizationId);
   }
 
+  /** Add only missing Laam seed teams/plans; preserve all tenant customizations. */
+  async syncMissingSeed(organizationId: string): Promise<IncentiveOverview> {
+    await this.prisma.$transaction(async (tx) => {
+      const settings = await tx.incentiveOrgSettings.findUnique({
+        where: { organizationId },
+      });
+      if (!settings) {
+        await tx.incentiveOrgSettings.create({
+          data: {
+            organizationId,
+            salaryTemplate:
+              LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
+            shiftTemplates:
+              LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      for (const [i, team] of LAAM_INCENTIVE_SEED.teams.entries()) {
+        let teamRow = await tx.incentiveTeam.findUnique({
+          where: { organizationId_slug: { organizationId, slug: team.slug } },
+        });
+        if (!teamRow) {
+          teamRow = await tx.incentiveTeam.create({
+            data: {
+              organizationId,
+              name: team.name,
+              slug: team.slug,
+              description: team.description,
+              sortOrder: i,
+              isActive: true,
+            },
+          });
+        }
+        if (!team.plan) continue;
+        const existingPlan = await tx.incentivePlan.findUnique({
+          where: {
+            organizationId_slug: { organizationId, slug: team.plan.slug },
+          },
+        });
+        if (existingPlan) continue;
+        await tx.incentivePlan.create({
+          data: {
+            organizationId,
+            teamId: teamRow.id,
+            name: team.plan.name,
+            slug: team.plan.slug,
+            description: team.plan.description,
+            metricType: team.plan.metricType,
+            metricConfig: team.plan.metricConfig as
+              | Prisma.InputJsonValue
+              | undefined,
+            teamMonthlyTarget: team.plan.teamMonthlyTarget ?? null,
+            prorataAboveTop: team.plan.prorataAboveTop ?? false,
+            sortOrder: i,
+            isActive: true,
+            slabs: {
+              create: team.plan.slabs.map((slab, slabIndex) => ({
+                label: slab.label ?? null,
+                dailyTarget:
+                  'dailyTarget' in slab ? (slab.dailyTarget ?? null) : null,
+                monthlyTarget: slab.monthlyTarget,
+                incentiveBdt: slab.incentiveBdt,
+                sortOrder: slabIndex,
+              })),
+            },
+          },
+        });
+      }
+    });
+    return this.overview(organizationId);
+  }
+
   async performance(
     organizationId: string,
     yearMonth: string,
   ): Promise<IncentivePerformanceReport> {
     const ym = this.validateYearMonth(yearMonth);
-    const months = [ym, this.offsetYearMonth(ym, -1), this.offsetYearMonth(ym, -2)];
+    const months = [
+      ym,
+      this.offsetYearMonth(ym, -1),
+      this.offsetYearMonth(ym, -2),
+    ];
     const { start: periodStart, end: periodEnd } = this.periodBounds(ym);
     const historyStart = this.periodBounds(months[2]!).start;
 
@@ -482,6 +858,7 @@ export class IncentiveService {
       where: {
         organizationId,
         isActive: true,
+        hrStatus: { not: 'terminated' },
         startsOn: { lte: periodEnd },
         OR: [{ endsOn: null }, { endsOn: { gte: periodStart } }],
       },
@@ -497,7 +874,16 @@ export class IncentiveService {
 
     const agentNames = [...new Set(assignments.map((a) => a.agentName))];
     const assignmentIds = assignments.map((a) => a.id);
-    const [orders, manualActuals, periodRun] = await Promise.all([
+    const [
+      orders,
+      manualActuals,
+      attendanceRows,
+      surveyRows,
+      channelRows,
+      specialBonuses,
+      settings,
+      periodRun,
+    ] = await Promise.all([
       agentNames.length === 0
         ? Promise.resolve([])
         : this.prisma.order.findMany({
@@ -524,6 +910,29 @@ export class IncentiveService {
               yearMonth: { in: months },
             },
           }),
+      this.prisma.incentiveAttendance.findMany({
+        where: { organizationId, yearMonth: ym, agentName: { in: agentNames } },
+      }),
+      this.prisma.incentiveSurveyLog.findMany({
+        where: {
+          organizationId,
+          yearMonth: { in: months },
+          agentName: { in: agentNames },
+        },
+      }),
+      this.prisma.incentiveChannelLog.findMany({
+        where: {
+          organizationId,
+          yearMonth: { in: months },
+          agentName: { in: agentNames },
+        },
+      }),
+      this.prisma.incentiveSpecialBonus.findMany({
+        where: { organizationId, yearMonth: ym, agentName: { in: agentNames } },
+      }),
+      this.prisma.incentiveOrgSettings.findUnique({
+        where: { organizationId },
+      }),
       this.prisma.incentivePeriodRun.findUnique({
         where: { organizationId_yearMonth: { organizationId, yearMonth: ym } },
         select: { status: true },
@@ -543,17 +952,54 @@ export class IncentiveService {
     const manualByAssignmentMonth = new Map(
       manualActuals.map((a) => [`${a.assignmentId}\u0000${a.yearMonth}`, a]),
     );
+    const attendanceByAgent = new Map(
+      attendanceRows.map((row) => [row.agentName, row]),
+    );
+    const surveyByAgentMonth = new Map<string, number>();
+    for (const row of surveyRows) {
+      surveyByAgentMonth.set(
+        `${row.agentName}\u0000${row.yearMonth}`,
+        (surveyByAgentMonth.get(`${row.agentName}\u0000${row.yearMonth}`) ??
+          0) + row.surveyCount,
+      );
+    }
+    const channelsByAgentMonth = new Map<string, typeof channelRows>();
+    for (const row of channelRows) {
+      const key = `${row.agentName}\u0000${row.yearMonth}`;
+      const list = channelsByAgentMonth.get(key) ?? [];
+      list.push(row);
+      channelsByAgentMonth.set(key, list);
+    }
+    const specialBonusByAgent = new Map<string, number>();
+    for (const row of specialBonuses) {
+      specialBonusByAgent.set(
+        row.agentName,
+        (specialBonusByAgent.get(row.agentName) ?? 0) + row.amountBdt,
+      );
+    }
+    const salary = this.parseSalary(settings?.salaryTemplate);
+    const defaultWorkingDays =
+      salary?.expectedWorkingDays ?? this.weekdaysInMonth(periodStart);
 
     const lines: IncentivePerformanceLine[] = [];
     for (const a of assignments) {
       if (!a.plan.isActive) continue;
-      const monthLines = months.map((month) =>
-        this.calcLine(
+      const monthLines = months.map((month) => {
+        const monthAttendance =
+          month === ym ? attendanceByAgent.get(a.agentName) : undefined;
+        const workingDays =
+          monthAttendance?.workingDays ??
+          salary?.expectedWorkingDays ??
+          this.weekdaysInMonth(this.periodBounds(month).start);
+        return this.calcLine(
           a,
           ordersByAgentMonth.get(`${a.agentName}\u0000${month}`) ?? [],
           manualByAssignmentMonth.get(`${a.id}\u0000${month}`)?.actualValue,
-        ),
-      );
+          surveyByAgentMonth.get(`${a.agentName}\u0000${month}`) ?? 0,
+          channelsByAgentMonth.get(`${a.agentName}\u0000${month}`) ?? [],
+          workingDays,
+        );
+      });
       const line = monthLines[0]!;
       let consecutiveMissMonths = 0;
       for (let i = 0; i < months.length; i += 1) {
@@ -576,8 +1022,32 @@ export class IncentiveService {
         }
       }
       line.consecutiveMissMonths = consecutiveMissMonths;
-      if (consecutiveMissMonths >= 2) line.warning = 'final_warning';
+      line.hrStatus = this.hrStatusForMisses(consecutiveMissMonths);
+      if (consecutiveMissMonths >= 3) line.warning = 'terminated';
+      else if (consecutiveMissMonths >= 2) line.warning = 'final_warning';
       lines.push(line);
+    }
+
+    const paidBonusAgents = new Set<string>();
+    for (const line of lines) {
+      const attendance = attendanceByAgent.get(line.agentName);
+      const attendanceEligible =
+        !!attendance && this.attendanceEligible(attendance);
+      line.attendanceBonusEligible = attendanceEligible;
+      if (!paidBonusAgents.has(line.agentName)) {
+        line.specialBonusBdt = specialBonusByAgent.get(line.agentName) ?? 0;
+        line.attendanceBonusBdt = attendanceEligible
+          ? (salary?.attendanceBonusBdt ?? 0)
+          : 0;
+        paidBonusAgents.add(line.agentName);
+      } else {
+        line.specialBonusBdt = 0;
+        line.attendanceBonusBdt = 0;
+      }
+      line.totalPayBdt =
+        line.incentiveBdt +
+        (line.specialBonusBdt ?? 0) +
+        (line.attendanceBonusBdt ?? 0);
     }
 
     const rollups = new Map<
@@ -604,12 +1074,28 @@ export class IncentiveService {
       yearMonth: ym,
       periodStart: periodStart.toISOString().slice(0, 10),
       periodEnd: periodEnd.toISOString().slice(0, 10),
+      workingDaysInMonth: defaultWorkingDays,
       lines,
       totalIncentiveBdt: lines.reduce((s, l) => s + l.incentiveBdt, 0),
-      warningCount: lines.filter((line) => line.warning && line.warning !== 'none').length,
+      totalSpecialBonusBdt: lines.reduce(
+        (sum, line) => sum + (line.specialBonusBdt ?? 0),
+        0,
+      ),
+      totalAttendanceBonusBdt: lines.reduce(
+        (sum, line) => sum + (line.attendanceBonusBdt ?? 0),
+        0,
+      ),
+      totalPayBdt: lines.reduce(
+        (sum, line) => sum + (line.totalPayBdt ?? 0),
+        0,
+      ),
+      warningCount: lines.filter(
+        (line) => line.warning && line.warning !== 'none',
+      ).length,
       teamRollups: [...rollups.values()],
       periodStatus:
-        (periodRun?.status as IncentivePerformanceReport['periodStatus']) ?? 'live',
+        (periodRun?.status as IncentivePerformanceReport['periodStatus']) ??
+        'live',
     };
   }
 
@@ -617,16 +1103,23 @@ export class IncentiveService {
     const rows = await this.prisma.incentivePeriodRun.findMany({
       where: { organizationId },
       orderBy: { yearMonth: 'desc' },
-      include: { lines: { orderBy: [{ teamName: 'asc' }, { agentName: 'asc' }] } },
+      include: {
+        lines: { orderBy: [{ teamName: 'asc' }, { agentName: 'asc' }] },
+      },
     });
     return rows.map((row) => this.toPeriod(row));
   }
 
-  async getPeriod(organizationId: string, yearMonth: string): Promise<IncentivePeriodRun> {
+  async getPeriod(
+    organizationId: string,
+    yearMonth: string,
+  ): Promise<IncentivePeriodRun> {
     const ym = this.validateYearMonth(yearMonth);
     const row = await this.prisma.incentivePeriodRun.findUnique({
       where: { organizationId_yearMonth: { organizationId, yearMonth: ym } },
-      include: { lines: { orderBy: [{ teamName: 'asc' }, { agentName: 'asc' }] } },
+      include: {
+        lines: { orderBy: [{ teamName: 'asc' }, { agentName: 'asc' }] },
+      },
     });
     if (!row) throw new NotFoundException('Incentive period not found');
     return this.toPeriod(row);
@@ -644,10 +1137,14 @@ export class IncentiveService {
         where: { organizationId_yearMonth: { organizationId, yearMonth: ym } },
       });
       if (existing?.status === 'paid') {
-        throw new ConflictException('Paid incentive periods cannot be regenerated');
+        throw new ConflictException(
+          'Paid incentive periods cannot be regenerated',
+        );
       }
       if (existing?.status === 'approved') {
-        throw new ConflictException('Approved incentive periods cannot be regenerated');
+        throw new ConflictException(
+          'Approved incentive periods cannot be regenerated',
+        );
       }
       const lineData = report.lines.map((line) => ({
         assignmentId: line.assignmentId,
@@ -658,17 +1155,39 @@ export class IncentiveService {
         metricType: line.metricType,
         actualValue: line.actualValue,
         incentiveBdt: line.incentiveBdt,
+        specialBonusBdt: line.specialBonusBdt ?? 0,
+        attendanceBonusBdt: line.attendanceBonusBdt ?? 0,
+        totalPayBdt: line.totalPayBdt ?? line.incentiveBdt,
         matchedSlabLabel: line.matchedSlabLabel ?? null,
         warning: line.warning ?? null,
+        hrStatus: line.hrStatus ?? null,
         notes: line.notes ?? null,
       }));
+      for (const line of report.lines) {
+        const terminated = line.hrStatus === 'terminated';
+        await tx.incentiveAssignment.updateMany({
+          where: { id: line.assignmentId, organizationId },
+          data: {
+            consecutiveMissMonths: line.consecutiveMissMonths ?? 0,
+            hrStatus: line.hrStatus ?? 'active',
+            ...(terminated
+              ? { isActive: false, endsOn: this.periodBounds(ym).end }
+              : {}),
+          },
+        });
+      }
       if (existing) {
-        await tx.incentivePayoutLine.deleteMany({ where: { runId: existing.id } });
+        await tx.incentivePayoutLine.deleteMany({
+          where: { runId: existing.id },
+        });
         await tx.incentivePeriodRun.update({
           where: { id: existing.id },
           data: {
             status: 'draft',
             totalIncentiveBdt: report.totalIncentiveBdt,
+            totalSpecialBonusBdt: report.totalSpecialBonusBdt ?? 0,
+            totalAttendanceBonusBdt: report.totalAttendanceBonusBdt ?? 0,
+            totalPayBdt: report.totalPayBdt ?? report.totalIncentiveBdt,
             calculatedAt: new Date(),
             lines: { create: lineData },
           },
@@ -680,6 +1199,9 @@ export class IncentiveService {
             yearMonth: ym,
             status: 'draft',
             totalIncentiveBdt: report.totalIncentiveBdt,
+            totalSpecialBonusBdt: report.totalSpecialBonusBdt ?? 0,
+            totalAttendanceBonusBdt: report.totalAttendanceBonusBdt ?? 0,
+            totalPayBdt: report.totalPayBdt ?? report.totalIncentiveBdt,
             calculatedAt: new Date(),
             notes: `Generated by ${user.name?.trim() || user.email}`,
             lines: { create: lineData },
@@ -695,7 +1217,13 @@ export class IncentiveService {
     yearMonth: string,
     user: { userId: string; name?: string; email: string },
   ): Promise<IncentivePeriodRun> {
-    return this.transitionPeriod(organizationId, yearMonth, 'draft', 'approved', user);
+    return this.transitionPeriod(
+      organizationId,
+      yearMonth,
+      'draft',
+      'approved',
+      user,
+    );
   }
 
   async markPeriodPaid(
@@ -703,7 +1231,13 @@ export class IncentiveService {
     yearMonth: string,
     user: { userId: string; name?: string; email: string },
   ): Promise<IncentivePeriodRun> {
-    return this.transitionPeriod(organizationId, yearMonth, 'approved', 'paid', user);
+    return this.transitionPeriod(
+      organizationId,
+      yearMonth,
+      'approved',
+      'paid',
+      user,
+    );
   }
 
   // --- calc helpers ---
@@ -714,6 +1248,9 @@ export class IncentiveService {
     },
     orders: { status: string; itemsCount: number; orderTag?: string | null }[],
     manualActual?: number,
+    surveyCount = 0,
+    channelLogs: { channel: string; activityCount: number }[] = [],
+    workingDaysInMonth = 0,
   ): IncentivePerformanceLine {
     const plan = assignment.plan;
     const metricType = plan.metricType as IncentiveMetricType;
@@ -731,16 +1268,35 @@ export class IncentiveService {
       }
     }
 
-    if (metricType === 'return_ratio') {
-      const deliveredStatuses = (config.deliveredStatuses ?? [
-        'delivered',
-        'completed',
-        'hand_delivery_completed',
-      ]).map((s) => s.toLowerCase());
-      const returnedStatuses = (config.returnedStatuses ?? [
-        'returned',
-        'pending_return',
-      ]).map((s) => s.toLowerCase());
+    if (metricType === 'survey_count') {
+      actualValue = surveyCount;
+    } else if (metricType === 'channel_activity') {
+      const configuredChannels = config.channels?.length
+        ? new Set(config.channels)
+        : null;
+      actualValue = channelLogs.reduce(
+        (sum, row) =>
+          configuredChannels &&
+          !configuredChannels.has(
+            row.channel as NonNullable<
+              IncentiveMetricConfig['channels']
+            >[number],
+          )
+            ? sum
+            : sum + row.activityCount,
+        0,
+      );
+    } else if (metricType === 'return_ratio') {
+      const deliveredStatuses = (
+        config.deliveredStatuses ?? [
+          'delivered',
+          'completed',
+          'hand_delivery_completed',
+        ]
+      ).map((s) => s.toLowerCase());
+      const returnedStatuses = (
+        config.returnedStatuses ?? ['returned', 'pending_return']
+      ).map((s) => s.toLowerCase());
       let delivered = 0;
       let returned = 0;
       for (const o of orders) {
@@ -749,16 +1305,24 @@ export class IncentiveService {
         if (returnedStatuses.includes(st)) returned += 1;
       }
       const denom = delivered + returned;
-      actualValue = denom === 0 ? 0 : Math.round((returned / denom) * 10000) / 100;
+      actualValue =
+        denom === 0 ? 0 : Math.round((returned / denom) * 10000) / 100;
     } else if (metricType === 'cross_sell_count') {
       const minItems = config.minItems ?? 2;
       const exclude = new Set(
-        (config.excludeStatuses ?? ['cancelled', 'canceled', 'failed', 'duplicate']).map((s) =>
-          s.toLowerCase(),
-        ),
+        (
+          config.excludeStatuses ?? [
+            'cancelled',
+            'canceled',
+            'failed',
+            'duplicate',
+          ]
+        ).map((s) => s.toLowerCase()),
       );
       const include = config.includeStatuses?.map((s) => s.toLowerCase());
-      const orderTags = new Set((config.orderTags ?? []).map((tag) => tag.toLowerCase()));
+      const orderTags = new Set(
+        (config.orderTags ?? []).map((tag) => tag.toLowerCase()),
+      );
       actualValue = orders.filter((o) => {
         const st = o.status.toLowerCase();
         if (exclude.has(st)) return false;
@@ -771,12 +1335,22 @@ export class IncentiveService {
     } else if (metricType !== 'manual') {
       // order_count | recovery_count
       const exclude = new Set(
-        (config.excludeStatuses ?? ['cancelled', 'canceled', 'failed', 'duplicate']).map((s) =>
-          s.toLowerCase(),
-        ),
+        (
+          config.excludeStatuses ?? [
+            'cancelled',
+            'canceled',
+            'failed',
+            'duplicate',
+          ]
+        ).map((s) => s.toLowerCase()),
       );
       const include = (
-        config.includeStatuses ?? ['confirmed', 'delivered', 'completed', 'in_courier']
+        config.includeStatuses ?? [
+          'confirmed',
+          'delivered',
+          'completed',
+          'in_courier',
+        ]
       ).map((s) => s.toLowerCase());
       actualValue = orders.filter((o) => {
         const st = o.status.toLowerCase();
@@ -797,13 +1371,23 @@ export class IncentiveService {
         : null;
     const manualMissing = metricType === 'manual' && manualActual === undefined;
     const missed = evaluateMiss(direction, actualValue, plan.slabs);
+    const dailyAverage =
+      workingDaysInMonth > 0
+        ? Math.round((actualValue / workingDaysInMonth) * 100) / 100
+        : null;
+    const belowDailyEntry =
+      config.entryDailyTarget != null &&
+      dailyAverage != null &&
+      dailyAverage < config.entryDailyTarget;
     const warning = manualMissing
       ? 'manual_missing'
-      : missed
-        ? direction === 'higher'
-          ? 'below_target'
-          : 'above_return_cap'
-        : 'none';
+      : belowDailyEntry
+        ? 'below_daily_entry'
+        : missed
+          ? direction === 'higher'
+            ? 'below_target'
+            : 'above_return_cap'
+          : 'none';
 
     return {
       assignmentId: assignment.id,
@@ -817,6 +1401,7 @@ export class IncentiveService {
       matchedSlabLabel: match.slab?.label ?? null,
       monthlyTarget: match.slab?.monthlyTarget ?? null,
       entryTarget,
+      dailyAverage,
       incentiveBdt: match.incentiveBdt,
       prorataApplied: match.prorataApplied,
       manualOverride: metricType === 'manual' && manualActual !== undefined,
@@ -897,6 +1482,8 @@ export class IncentiveService {
       startsOn: row.startsOn.toISOString().slice(0, 10),
       endsOn: row.endsOn ? row.endsOn.toISOString().slice(0, 10) : null,
       isActive: row.isActive,
+      hrStatus: row.hrStatus as IncentiveAssignment['hrStatus'],
+      consecutiveMissMonths: row.consecutiveMissMonths,
     };
   }
 
@@ -925,12 +1512,17 @@ export class IncentiveService {
     return raw as IncentiveShiftTemplate[];
   }
 
-  private toPeriod(row: PeriodRow & { lines: PayoutRow[] }): IncentivePeriodRun {
+  private toPeriod(
+    row: PeriodRow & { lines: PayoutRow[] },
+  ): IncentivePeriodRun {
     return {
       id: row.id,
       yearMonth: row.yearMonth,
       status: row.status as IncentivePeriodRun['status'],
       totalIncentiveBdt: row.totalIncentiveBdt,
+      totalSpecialBonusBdt: row.totalSpecialBonusBdt,
+      totalAttendanceBonusBdt: row.totalAttendanceBonusBdt,
+      totalPayBdt: row.totalPayBdt,
       calculatedAt: row.calculatedAt.toISOString(),
       approvedAt: row.approvedAt?.toISOString() ?? null,
       approvedByName: row.approvedByName,
@@ -947,9 +1539,16 @@ export class IncentiveService {
         metricType: line.metricType as IncentiveMetricType,
         actualValue: line.actualValue,
         incentiveBdt: line.incentiveBdt,
+        specialBonusBdt: line.specialBonusBdt,
+        attendanceBonusBdt: line.attendanceBonusBdt,
+        totalPayBdt: line.totalPayBdt,
         matchedSlabLabel: line.matchedSlabLabel,
         warning:
-          (line.warning as IncentivePeriodRun['lines'][number]['warning']) ?? undefined,
+          (line.warning as IncentivePeriodRun['lines'][number]['warning']) ??
+          undefined,
+        hrStatus:
+          (line.hrStatus as IncentivePeriodRun['lines'][number]['hrStatus']) ??
+          undefined,
         notes: line.notes ?? undefined,
       })),
     };
@@ -1005,7 +1604,8 @@ export class IncentiveService {
   private parseDate(value?: string | null): Date | null {
     if (!value) return null;
     const d = new Date(`${value}T00:00:00.000Z`);
-    if (Number.isNaN(d.getTime())) throw new BadRequestException(`Invalid date: ${value}`);
+    if (Number.isNaN(d.getTime()))
+      throw new BadRequestException(`Invalid date: ${value}`);
     return d;
   }
 
@@ -1039,9 +1639,87 @@ export class IncentiveService {
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
   }
 
-  private assignmentActiveInMonth(assignment: AssignmentRow, yearMonth: string): boolean {
+  private assignmentActiveInMonth(
+    assignment: AssignmentRow,
+    yearMonth: string,
+  ): boolean {
     const { start, end } = this.periodBounds(yearMonth);
-    return assignment.startsOn <= end && (!assignment.endsOn || assignment.endsOn >= start);
+    return (
+      assignment.startsOn <= end &&
+      (!assignment.endsOn || assignment.endsOn >= start)
+    );
+  }
+
+  private attendanceEligible(row: {
+    presentDays: number;
+    workingDays: number;
+    lateCount: number;
+    earlyLeaveCount: number;
+    unapprovedAbsence: number;
+  }): boolean {
+    return (
+      row.presentDays >= row.workingDays &&
+      row.lateCount === 0 &&
+      row.earlyLeaveCount === 0 &&
+      row.unapprovedAbsence === 0
+    );
+  }
+
+  private weekdaysInMonth(monthStart: Date): number {
+    const year = monthStart.getUTCFullYear();
+    const month = monthStart.getUTCMonth();
+    const days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    let weekdays = 0;
+    for (let day = 1; day <= days; day += 1) {
+      const weekday = new Date(Date.UTC(year, month, day)).getUTCDay();
+      if (weekday !== 0 && weekday !== 6) weekdays += 1;
+    }
+    return weekdays;
+  }
+
+  private hrStatusForMisses(
+    consecutiveMissMonths: number,
+  ): IncentivePerformanceLine['hrStatus'] {
+    if (consecutiveMissMonths >= 3) return 'terminated';
+    if (consecutiveMissMonths === 2) return 'final_warning';
+    if (consecutiveMissMonths === 1) return 'warning';
+    return 'active';
+  }
+
+  private async assertNoOverlappingAssignment(
+    organizationId: string,
+    candidate: {
+      planId: string;
+      agentName: string;
+      startsOn: Date;
+      endsOn: Date | null;
+      isActive: boolean;
+    },
+    excludeId?: string,
+  ): Promise<void> {
+    if (!candidate.isActive) return;
+    if (candidate.endsOn && candidate.endsOn < candidate.startsOn) {
+      throw new BadRequestException(
+        'Assignment end date cannot be before start date',
+      );
+    }
+    const overlap = await this.prisma.incentiveAssignment.findFirst({
+      where: {
+        organizationId,
+        planId: candidate.planId,
+        agentName: { equals: candidate.agentName, mode: 'insensitive' },
+        isActive: true,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        startsOn: candidate.endsOn ? { lte: candidate.endsOn } : undefined,
+        OR: [{ endsOn: null }, { endsOn: { gte: candidate.startsOn } }],
+      },
+      select: { id: true },
+    });
+    if (overlap) {
+      throw new ConflictException(
+        'An overlapping active assignment already exists for this agent and plan',
+      );
+    }
   }
 
   private async requireTeam(organizationId: string, id: string) {

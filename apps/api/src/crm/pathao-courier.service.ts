@@ -336,7 +336,88 @@ export class PathaoCourierService {
       }))
       .filter((a) => a.id && a.name);
   }
+
+  /**
+   * Phone → network delivery success (merchant Pathao history, not shop CRM orders).
+   * Uses Aladdin bearer token against merchant.pathao.com/api/v1/user/success.
+   */
+  async getUserSuccessRate(
+    organizationId: string,
+    phone: string,
+  ): Promise<PathaoUserSuccessRate> {
+    const digits = phone.replace(/\D/g, '');
+    const local =
+      digits.length === 13 && digits.startsWith('880')
+        ? `0${digits.slice(3)}`
+        : digits.length === 11
+          ? digits
+          : phone;
+
+    const { token } = await this.getAccessToken(organizationId);
+    const res = await fetch('https://merchant.pathao.com/api/v1/user/success', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ phone: local }),
+    });
+
+    const json = (await res.json().catch(() => ({}))) as {
+      data?: {
+        customer?: {
+          successful_delivery?: number | string;
+          total_delivery?: number | string;
+          customer_rating?: string;
+          show_count?: boolean;
+        };
+      };
+      message?: string;
+      code?: number | string;
+    };
+
+    if (!res.ok) {
+      throw new BadGatewayException(
+        formatPathaoError(json, `Pathao user success failed (${res.status})`),
+      );
+    }
+
+    const customer = json.data?.customer ?? {};
+    const showCount = customer.show_count !== false;
+    const total = Number(customer.total_delivery ?? 0);
+    const success = Number(customer.successful_delivery ?? 0);
+    const rating =
+      typeof customer.customer_rating === 'string' ? customer.customer_rating : undefined;
+
+    const countsAvailable =
+      showCount &&
+      (Number.isFinite(total) || Number.isFinite(success)) &&
+      (total > 0 || success > 0 || customer.total_delivery !== undefined);
+
+    return {
+      total: Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0,
+      success: Number.isFinite(success) ? Math.max(0, Math.floor(success)) : 0,
+      failed: Math.max(
+        0,
+        (Number.isFinite(total) ? Math.floor(total) : 0) -
+          (Number.isFinite(success) ? Math.floor(success) : 0),
+      ),
+      countsAvailable: Boolean(countsAvailable),
+      rating,
+      raw: json.data,
+    };
+  }
 }
+
+export type PathaoUserSuccessRate = {
+  total: number;
+  success: number;
+  failed: number;
+  countsAvailable: boolean;
+  rating?: string;
+  raw?: unknown;
+};
 
 function formatPathaoError(
   json: { message?: string; errors?: unknown },

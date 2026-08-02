@@ -15,6 +15,7 @@ import {
   type LeadBulkActionId,
 } from '@/features/leads/config/lead-bulk-actions';
 import { useLeadMutations } from '@/features/leads/hooks/use-lead-mutations';
+import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
 type LeadBulkActionsProps = {
@@ -32,8 +33,12 @@ export function LeadBulkActions({
   onSuccess,
   className,
 }: LeadBulkActionsProps) {
+  const { can } = usePermissions();
   const { bulkAction, isLoading } = useLeadMutations();
   const [bulkModal, setBulkModal] = React.useState<ReturnType<typeof bulkActionToModal>>(null);
+  const visibleActions = LEAD_BULK_ACTIONS.filter(
+    (action) => !action.permission || can(action.permission),
+  );
 
   function handleAction(actionId: LeadBulkActionId) {
     runLeadBulkAction(actionId, selectedLeadIds, {
@@ -75,10 +80,14 @@ export function LeadBulkActions({
     });
   }
 
+  if (visibleActions.length === 0) {
+    return null;
+  }
+
   return (
     <>
       <div className={cn('flex flex-wrap gap-2', className)}>
-        {LEAD_BULK_ACTIONS.map((action) => (
+        {visibleActions.map((action) => (
           <Button
             key={action.id}
             type="button"

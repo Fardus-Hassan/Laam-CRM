@@ -60,10 +60,40 @@ export function resolveIncentiveWarning(input: {
   slabs: IncentiveSlabLike[];
   consecutiveMissMonths: number;
   manualMissing?: boolean;
-}): 'none' | 'below_target' | 'above_return_cap' | 'manual_missing' | 'final_warning' {
+  hrStatus?: 'active' | 'warning' | 'final_warning' | 'terminated';
+  entryDailyTarget?: number | null;
+  dailyAverage?: number | null;
+}): 'none' | 'below_target' | 'below_daily_entry' | 'above_return_cap' | 'manual_missing' | 'final_warning' | 'terminated' {
+  if (input.hrStatus === 'terminated') return 'terminated';
   if (input.manualMissing) return 'manual_missing';
-  if (input.consecutiveMissMonths >= 2) return 'final_warning';
+  if (input.consecutiveMissMonths >= 2 || input.hrStatus === 'final_warning') return 'final_warning';
+  if (
+    input.entryDailyTarget != null &&
+    input.dailyAverage != null &&
+    input.dailyAverage < input.entryDailyTarget
+  ) {
+    return 'below_daily_entry';
+  }
   const missed = evaluateMiss(input.direction, input.actual, input.slabs);
   if (!missed) return 'none';
   return input.direction === 'lower' ? 'above_return_cap' : 'below_target';
+}
+
+export function nextHrStatus(
+  current: 'active' | 'warning' | 'final_warning' | 'terminated',
+  missedThisMonth: boolean,
+): { hrStatus: 'active' | 'warning' | 'final_warning' | 'terminated'; consecutiveMissMonths: number } {
+  if (current === 'terminated') {
+    return { hrStatus: 'terminated', consecutiveMissMonths: 99 };
+  }
+  if (!missedThisMonth) {
+    return { hrStatus: 'active', consecutiveMissMonths: 0 };
+  }
+  if (current === 'active' || current === 'warning') {
+    const nextMiss = current === 'active' ? 1 : 2;
+    if (nextMiss >= 2) return { hrStatus: 'final_warning', consecutiveMissMonths: 2 };
+    return { hrStatus: 'warning', consecutiveMissMonths: 1 };
+  }
+  // final_warning + another miss → terminated
+  return { hrStatus: 'terminated', consecutiveMissMonths: 3 };
 }

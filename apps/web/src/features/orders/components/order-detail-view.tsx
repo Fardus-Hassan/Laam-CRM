@@ -17,6 +17,7 @@ import {
   orderToCustomerValue,
 } from '@/features/orders/components/shared/customer-block';
 import { CustomerOrderHistoryCard } from '@/features/orders/components/shared/customer-order-history-card';
+import { CourierPhoneHistoryPanel } from '@/features/courier/components/courier-phone-history-panel';
 import { CourierTrackingCard } from '@/features/orders/components/shared/courier-tracking-card';
 import { EditableSectionCard } from '@/features/orders/components/shared/editable-section-card';
 import { LinkedLeadCard } from '@/features/orders/components/shared/linked-lead-card';
@@ -289,6 +290,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
               }}
             />
             <CustomerOrderHistoryCard phone={order.customerPhone} currentOrderId={order.id} />
+            <CourierPhoneHistoryPanel phone={order.customerPhone} />
             <OrderTimeline events={order.timeline} />
             {courierTracking ? <CourierTrackingCard tracking={courierTracking} /> : null}
             {order.leadId ? <LinkedLeadCard leadId={order.leadId} /> : null}
