@@ -75,6 +75,7 @@ export function ContactDataTable({
       mobileCard={mobileCard}
       selection={selectionState}
       density="compact"
+      entityLabel="contacts"
       page={page}
       pageSize={pageSize}
       total={total}

@@ -30,7 +30,7 @@ import type {
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { InventoryAdvancedService } from './inventory-advanced.service';
+import type { InventoryAdvancedService } from './inventory-advanced.service';
 import { InventoryUomService } from './inventory-uom.service';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -68,23 +68,12 @@ export function stockStatusFor(stock: number, reorderLevel: number): StockStatus
   return 'in_stock';
 }
 
-export function isUniqueConstraintError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: string }).code === 'P2002'
-  );
-}
-
-/** Converts a Prisma Decimal (or number/string) to a plain number. */
-export function toNumber(value: unknown): number {
-  if (value == null) return 0;
-  if (typeof value === 'number') return value;
-  const maybe = value as { toNumber?: () => number };
-  if (typeof maybe.toNumber === 'function') return maybe.toNumber();
-  return Number(value);
-}
+export {
+  type Actor,
+  isUniqueConstraintError,
+  toNumber,
+} from './inventory-shared';
+import { isUniqueConstraintError, toNumber } from './inventory-shared';
 
 function toNullableNumber(value: unknown): number | null {
   if (value == null) return null;
@@ -96,8 +85,6 @@ function isPersistedVariantId(id: string | undefined | null): id is string {
 }
 
 // ─── Local types ────────────────────────────────────────────────────────────
-
-export type Actor = { userId?: string; name?: string };
 
 export type StockAdjustmentInput = {
   variantId?: string;
@@ -216,7 +203,7 @@ export class InventoryCatalogService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uom: InventoryUomService,
-    @Inject(forwardRef(() => InventoryAdvancedService))
+    @Inject(forwardRef(() => require('./inventory-advanced.service').InventoryAdvancedService))
     private readonly advanced: InventoryAdvancedService,
   ) {}
 

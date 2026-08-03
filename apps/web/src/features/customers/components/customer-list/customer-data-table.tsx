@@ -87,6 +87,7 @@ export function CustomerDataTable({
       mobileCard={mobileCard}
       selection={selectionState}
       density="compact"
+      entityLabel="customers"
       page={page}
       pageSize={pageSize}
       total={total}

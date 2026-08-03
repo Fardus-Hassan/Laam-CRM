@@ -33,6 +33,7 @@ export const bulkActionIdSchema = z.enum([
   'send_sms',
   'set_followup',
   'transfer',
+  'courier_cancel',
   'courier_unlink',
   'status_change',
 ]);

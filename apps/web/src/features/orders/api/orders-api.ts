@@ -48,6 +48,7 @@ export type OrdersApi = {
   getFormOptions: () => Promise<OrderFormOptionsResponse>;
   lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
   deleteOrder: (id: string) => Promise<void>;
+  cancelCourier: (id: string, reason?: string) => Promise<OrderDetail>;
   returnLines: (id: string, payload: ReturnOrderLinesPayload) => Promise<OrderDetail>;
 };
 
@@ -154,6 +155,25 @@ export function createMockOrdersApi(): OrdersApi {
         (order) => order.id === id || order.orderNumber === id,
       );
       if (index >= 0) store.mockOrderStore.splice(index, 1);
+    },
+    async cancelCourier(id) {
+      await delay(120);
+      const store = await import('@/features/orders/data/mock-orders');
+      const order = store.getMockOrderById(id);
+      if (!order) throw new Error('Order not found');
+      if (!order.courierConsignmentId) throw new Error('No courier booking to cancel');
+      const index = store.mockOrderStore.findIndex((o) => o.id === order.id);
+      if (index < 0) throw new Error('Order not found');
+      store.mockOrderStore[index] = {
+        ...order,
+        status: order.status === 'in_courier' ? 'confirmed' : order.status,
+        courierProvider: undefined,
+        courierConsignmentId: undefined,
+        courierTrackingCode: undefined,
+        courierStatus: undefined,
+        courierStatusSlug: undefined,
+      };
+      return store.mockOrderStore[index];
     },
     async returnLines(id, payload) {
       await delay(120);
@@ -310,6 +330,17 @@ export function createHttpOrdersApi(): OrdersApi {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
       await apiRequest(`${crmEndpoints.orders}/${id}`, { method: 'DELETE' });
+    },
+    async cancelCourier(id, reason) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<OrderDetail>(
+        `${crmEndpoints.orders}/${encodeURIComponent(id)}/courier/cancel`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason: reason || 'Cancelled from CRM' }),
+        },
+      );
     },
     async returnLines(id, payload) {
       const { apiRequest } = await import('@/lib/api/client');

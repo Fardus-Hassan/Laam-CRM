@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Inbox } from 'lucide-react';
 
 import { CrmDataTableDesktop } from '@/components/data-table/crm-data-table-desktop';
+import { CrmDataTableMeta } from '@/components/data-table/crm-data-table-meta';
 import { CrmDataTablePagination } from '@/components/data-table/crm-data-table-pagination';
 import { CrmDataTableSkeleton } from '@/components/data-table/crm-data-table-skeleton';
 import { CrmDataTableToolbar } from '@/components/data-table/crm-data-table-toolbar';
@@ -31,6 +32,8 @@ export function CrmDataTable<T>({
   isLoading = false,
   showToolbar = true,
   showPagination = false,
+  showMeta = true,
+  entityLabel = 'entries',
   pinnedColumns,
   density: densityProp = 'comfortable',
   minTableWidth,
@@ -59,6 +62,25 @@ export function CrmDataTable<T>({
     total,
   });
 
+  const resolvedTotal = total ?? data.length;
+  const selectedCount = selection?.selectedIds.size ?? 0;
+
+  const metaBar =
+    showMeta && !isLoading ? (
+      <CrmDataTableMeta
+        page={page}
+        pageSize={pageSize}
+        total={resolvedTotal}
+        entityLabel={entityLabel}
+        selectedCount={selectedCount}
+        onClearSelection={
+          selectedCount > 0 && selection
+            ? () => selection.onChange(new Set())
+            : undefined
+        }
+      />
+    ) : null;
+
   if (isLoading) {
     return (
       <div className={cn('flex min-w-0 max-w-full flex-col overflow-hidden rounded-lg', className)}>
@@ -85,6 +107,7 @@ export function CrmDataTable<T>({
     return (
       <div className={cn('flex min-w-0 max-w-full flex-col overflow-hidden rounded-lg', className)}>
         {toolbar}
+        {metaBar}
         <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 px-6 py-14 text-center">
           <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
             <Inbox className="size-5" />
@@ -95,13 +118,11 @@ export function CrmDataTable<T>({
     );
   }
 
-  const resolvedTotal = total ?? data.length;
-
   return (
     <div className={cn('flex min-w-0 max-w-full flex-col overflow-hidden rounded-lg', className)}>
       {toolbar}
+      {metaBar}
 
-      {/* Fixed-height body: header stays sticky, pagination stays below */}
       <CrmDataTableDesktop
         table={table}
         density={density}
@@ -121,6 +142,7 @@ export function CrmDataTable<T>({
           pageSizeOptions={pageSizeOptions}
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
+          showRangeSummary={false}
         />
       ) : null}
     </div>

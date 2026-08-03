@@ -56,7 +56,16 @@ export function OrderBulkActions({
   const router = useRouter();
   const { can } = usePermissions();
   const { submitBulkActionIds } = useConnectedCouriers();
-  const actions = resolveBulkActions(actionIds).filter((action) => {
+  const actionIdsWithCourier = React.useMemo(() => {
+    const ids = [...actionIds];
+    for (const id of submitBulkActionIds) {
+      if (!ids.includes(id as BulkActionId)) {
+        ids.push(id as BulkActionId);
+      }
+    }
+    return ids;
+  }, [actionIds, submitBulkActionIds]);
+  const actions = resolveBulkActions(actionIdsWithCourier).filter((action) => {
     if (action.id === 'export' && !can('orders.export')) {
       return false;
     }
@@ -110,9 +119,21 @@ export function OrderBulkActions({
       return;
     }
 
+    if (actionId === 'courier_cancel') {
+      const ok = window.confirm(
+        `Cancel courier shipment on ${selectedCount} order(s)?\n\nThis cancels the parcel at Pathao/Carrybee and clears the booking link. CRM orders stay open (In Courier → Confirmed).`,
+      );
+      if (!ok) return;
+      void bulkAction({
+        action: 'courier_cancel',
+        orderIds: selectedOrderIds,
+      }).then(() => onSuccess?.());
+      return;
+    }
+
     if (actionId === 'courier_unlink') {
       const ok = window.confirm(
-        `Unlink courier on ${selectedCount} order(s)?\n\nThis clears the local booking link so you can rebook. It does not cancel the shipment at Pathao/Carrybee.`,
+        `Unlink courier on ${selectedCount} order(s)?\n\nWARNING: This only clears the CRM link. It does NOT cancel the parcel at Pathao/Carrybee.\n\nUse “Cancel Courier” when you want to cancel the real shipment. Use Unlink only if the parcel is already cancelled there.`,
       );
       if (!ok) return;
       void bulkAction({

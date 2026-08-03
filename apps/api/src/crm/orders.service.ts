@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import type {
   CreateOrderPayload,
+  CourierShopStats,
   DuplicateCheckResult,
   OrderCourierStats,
   OrderCourierTracking,
@@ -22,7 +23,7 @@ import type {
 import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CarrybeeCourierService } from './carrybee-courier.service';
-import { CarrybeeSyncService } from './carrybee-sync.service';
+import type { CarrybeeSyncService } from './carrybee-sync.service';
 import { CouponsService } from './coupons.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { CourierPhoneHistoryService } from './courier-phone-history.service';
@@ -36,7 +37,7 @@ import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { PathaoCourierService } from './pathao-courier.service';
 import { SmsService } from './sms.service';
 import { AutomationsService } from './automations.service';
-import { PathaoSyncService } from './pathao-sync.service';
+import type { PathaoSyncService } from './pathao-sync.service';
 
 export type OrderFormOptionDto = {
   value: string;
@@ -216,9 +217,9 @@ export class OrdersService {
     private readonly orgOrderStatuses: OrgOrderStatusesService,
     private readonly sms: SmsService,
     private readonly automations: AutomationsService,
-    @Inject(forwardRef(() => PathaoSyncService))
+    @Inject(forwardRef(() => require('./pathao-sync.service').PathaoSyncService))
     private readonly pathaoSync: PathaoSyncService,
-    @Inject(forwardRef(() => CarrybeeSyncService))
+    @Inject(forwardRef(() => require('./carrybee-sync.service').CarrybeeSyncService))
     private readonly carrybeeSync: CarrybeeSyncService,
   ) {}
 
@@ -794,6 +795,28 @@ export class OrdersService {
       };
     }
 
+    if (payload.action === 'courier_cancel') {
+      let successCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+      for (const orderId of ids) {
+        try {
+          await this.cancelCourierShipment(organizationId, orderId, actor);
+          successCount += 1;
+        } catch (e) {
+          failedCount += 1;
+          const msg = e instanceof Error ? e.message : 'Courier cancel failed';
+          if (errors.length < 5) errors.push(msg);
+        }
+      }
+      const detail = errors.length ? ` Examples: ${errors.join(' · ')}` : '';
+      return {
+        successCount,
+        failedCount,
+        message: `Cancelled courier on ${successCount}/${ids.length} order(s).${detail}`,
+      };
+    }
+
     if (payload.action === 'courier_unlink') {
       let successCount = 0;
       let skippedCount = 0;
@@ -1063,10 +1086,10 @@ export class OrdersService {
     const phones = [
       ...new Set(rows.map((r) => r.customerPhone).filter((p) => Boolean(p?.trim()))),
     ];
-    const courierByPhone = await this.courierPhoneHistory.loadCachedStatsByPhones(
-      organizationId,
-      phones,
-    );
+    const [courierByPhone, shopByPhone] = await Promise.all([
+      this.courierPhoneHistory.loadCachedStatsByPhones(organizationId, phones),
+      this.loadShopCourierByPhones(organizationId, phones),
+    ]);
     this.courierPhoneHistory.warmMissing(organizationId, phones);
 
     const orderIds = rows.map((r) => r.id);
@@ -1103,10 +1126,16 @@ export class OrdersService {
     }
 
     const items: OrderListItem[] = rows.map((row) =>
-      this.toListItem(row, imageByProductId, courierByPhone.get(row.customerPhone), {
-        followUpDueAt: followUpDueByOrderId.get(row.id),
-        followUpSetAt: followUpSetByOrderId.get(row.id),
-      }),
+      this.toListItem(
+        row,
+        imageByProductId,
+        courierByPhone.get(row.customerPhone),
+        {
+          followUpDueAt: followUpDueByOrderId.get(row.id),
+          followUpSetAt: followUpSetByOrderId.get(row.id),
+        },
+        shopByPhone.get(row.customerPhone),
+      ),
     );
     const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
 
@@ -1730,6 +1759,13 @@ export class OrdersService {
       return this.getById(organizationId, existing.id);
     }
 
+    // Cancelling a booked order must cancel the remote consignment first.
+    if (status === 'cancelled' && existing.courierConsignmentId) {
+      await this.cancelRemoteCourierOrThrow(organizationId, existing, {
+        reason: 'Order cancelled in CRM',
+      });
+    }
+
     const shouldCut =
       STOCK_CUT_STATUSES.has(status) &&
       !STOCK_CUT_STATUSES.has(prev) &&
@@ -1804,6 +1840,9 @@ export class OrdersService {
         where: { id: existing.id },
         data: {
           status,
+          ...(status === 'cancelled' && existing.courierConsignmentId
+            ? this.courierClearFields()
+            : {}),
           stockDeductedAt: shouldCut
             ? new Date()
             : shouldRestock
@@ -1819,7 +1858,10 @@ export class OrdersService {
                     ? 'confirmed'
                     : 'note',
               label: `Status changed to ${status}`,
-              description: `${prev} → ${status}`,
+              description:
+                status === 'cancelled' && existing.courierConsignmentId
+                  ? `${prev} → ${status} · courier consignment cancelled`
+                  : `${prev} → ${status}`,
               actorUserId: actor.userId ?? null,
               actorName: actor.name ?? null,
             },
@@ -1966,6 +2008,12 @@ export class OrdersService {
       include: { lineItems: true },
     });
     if (!existing) throw new NotFoundException('Order not found');
+
+    if (existing.courierConsignmentId) {
+      throw new BadRequestException(
+        'This order has an active courier booking. Cancel the courier (or Cancel order) first. Use Courier Unlink only if the parcel is already cancelled at Pathao/Carrybee.',
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
       if (existing.stockDeductedAt) {
@@ -2443,14 +2491,11 @@ export class OrdersService {
         `Already booked with ${existing.courierProvider ?? 'courier'} (${existing.courierConsignmentId})`,
       );
     }
-    if (!existing.pathaoCityId || !existing.pathaoZoneId || !existing.pathaoAreaId) {
+    const address = existing.shippingAddress?.trim() ?? '';
+    // Pathao accepts address-only booking (city/zone/area optional — API can auto-detect).
+    if (address.length < 10) {
       throw new BadRequestException(
-        'Select Pathao city, zone, and area (with IDs) before booking',
-      );
-    }
-    if (!existing.shippingAddress?.trim() || existing.shippingAddress.trim().length < 10) {
-      throw new BadRequestException(
-        'Shipping address must be at least 10 characters for Pathao',
+        'Add a delivery address (min 10 characters) before booking with Pathao',
       );
     }
 
@@ -2492,10 +2537,10 @@ export class OrdersService {
           alt.length === 11 ? alt : alt.length === 10 ? `0${alt}` : alt.slice(-11);
         return normalized.length === 11 ? normalized : undefined;
       })(),
-      recipientAddress: existing.shippingAddress.trim().slice(0, 220),
-      recipientCity: existing.pathaoCityId,
-      recipientZone: existing.pathaoZoneId,
-      recipientArea: existing.pathaoAreaId,
+      recipientAddress: address.slice(0, 220),
+      recipientCity: existing.pathaoCityId ?? undefined,
+      recipientZone: existing.pathaoZoneId ?? undefined,
+      recipientArea: existing.pathaoAreaId ?? undefined,
       specialInstruction: existing.courierNote?.trim() || undefined,
       itemQuantity,
       itemWeight: 0.5,
@@ -2675,6 +2720,114 @@ export class OrdersService {
     return this.updateStatus(organizationId, existing.id, 'in_courier', actor);
   }
 
+  /**
+   * Cancel remote Pathao/Carrybee consignment and clear local courier link.
+   * Does not cancel the CRM order — use Cancel order for that.
+   * If status is in_courier, moves back to confirmed so the order can be rebooked.
+   */
+  async cancelCourierShipment(
+    organizationId: string,
+    idOrNumber: string,
+    actor: ActorLabel,
+    reason = 'Cancelled from CRM',
+  ): Promise<OrderDetail> {
+    const existing = await this.prisma.order.findFirst({
+      where: {
+        organizationId,
+        deletedAt: null,
+        OR: [{ id: idOrNumber }, { orderNumber: idOrNumber }],
+      },
+    });
+    if (!existing) throw new NotFoundException('Order not found');
+    if (!existing.courierConsignmentId || !existing.courierProvider) {
+      throw new BadRequestException('No courier booking to cancel on this order');
+    }
+
+    const remote = await this.cancelRemoteCourierOrThrow(organizationId, existing, {
+      reason,
+    });
+
+    await this.prisma.order.update({
+      where: { id: existing.id },
+      data: {
+        ...this.courierClearFields(),
+        activities: {
+          create: {
+            organizationId,
+            type: 'note',
+            label: 'Courier cancelled',
+            description: remote.consignmentId
+              ? `Cancelled ${remote.provider} consignment ${remote.consignmentId}`
+              : 'Courier consignment cancelled',
+            actorUserId: actor.userId ?? null,
+            actorName: actor.name ?? null,
+          },
+        },
+      },
+    });
+
+    if (existing.status === 'in_courier') {
+      return this.updateStatus(organizationId, existing.id, 'confirmed', actor);
+    }
+    return this.getById(organizationId, existing.id);
+  }
+
+  private courierClearFields() {
+    return {
+      courierProvider: null as null,
+      courierConsignmentId: null as null,
+      courierTrackingCode: null as null,
+      courierCollectAmount: null as null,
+      courierBookedAt: null as null,
+      courierStatus: null as null,
+      courierStatusSlug: null as null,
+      courierStatusSyncedAt: null as null,
+    };
+  }
+
+  private isRemoteCourierAlreadyGone(message: string): boolean {
+    return /already\s*cancel|not\s*found|cannot\s*be\s*cancel|does\s*not\s*exist|cancelled|canceled|no longer/i.test(
+      message,
+    );
+  }
+
+  private async cancelRemoteCourierOrThrow(
+    organizationId: string,
+    order: {
+      courierProvider?: string | null;
+      courierConsignmentId?: string | null;
+    },
+    opts: { reason: string },
+  ): Promise<{ provider: string; consignmentId: string }> {
+    const consignmentId = order.courierConsignmentId?.trim() ?? '';
+    const provider = (order.courierProvider ?? '').trim().toLowerCase();
+    if (!consignmentId || !provider) {
+      throw new BadRequestException('No courier booking to cancel');
+    }
+
+    try {
+      if (provider === 'pathao') {
+        await this.pathao.cancelOrder(organizationId, consignmentId);
+      } else if (provider === 'carrybee') {
+        await this.carrybee.cancelOrder(organizationId, consignmentId, opts.reason);
+      } else {
+        throw new BadRequestException(
+          `Cannot cancel unsupported courier provider: ${provider}`,
+        );
+      }
+    } catch (e) {
+      if (e instanceof BadRequestException) throw e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!this.isRemoteCourierAlreadyGone(msg)) {
+        throw new BadRequestException(
+          `Courier cancel failed (${provider} ${consignmentId}): ${msg}. Cancel it in the courier panel, or use Courier Unlink only if it is already cancelled there.`,
+        );
+      }
+    }
+
+    return { provider, consignmentId };
+  }
+
   async syncCarrybeeStatus(
     organizationId: string,
     idOrNumber: string,
@@ -2717,6 +2870,66 @@ export class OrdersService {
       if (Number.isFinite(n)) seq = n + 1;
     }
     return `${prefix}${String(seq).padStart(5, '0')}`;
+  }
+
+  private async loadShopCourierByPhones(
+    organizationId: string,
+    phones: string[],
+  ): Promise<Map<string, CourierShopStats>> {
+    const result = new Map<string, CourierShopStats>();
+    if (phones.length === 0) return result;
+
+    const normalizedToRaw = new Map<string, string[]>();
+    for (const phone of phones) {
+      const key = normalizeBdPhone(phone);
+      if (!key) continue;
+      const list = normalizedToRaw.get(key) ?? [];
+      list.push(phone);
+      normalizedToRaw.set(key, list);
+    }
+    const keys = [...normalizedToRaw.keys()];
+    if (keys.length === 0) return result;
+
+    const customers = await this.prisma.customer.findMany({
+      where: { organizationId, phoneNormalized: { in: keys } },
+      select: { phoneNormalized: true, orderCount: true, deliveredCount: true },
+    });
+
+    for (const c of customers) {
+      const shop = { to: c.orderCount, co: c.deliveredCount };
+      for (const raw of normalizedToRaw.get(c.phoneNormalized) ?? []) {
+        result.set(raw, shop);
+      }
+    }
+
+    const missing = phones.filter((p) => !result.has(p));
+    if (missing.length === 0) return result;
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        organizationId,
+        customerPhone: { in: missing },
+        deletedAt: null,
+      },
+      select: { customerPhone: true, status: true },
+    });
+
+    const agg = new Map<string, CourierShopStats>();
+    for (const o of orders) {
+      const cur = agg.get(o.customerPhone) ?? { to: 0, co: 0 };
+      cur.to += 1;
+      if (o.status === 'delivered' || o.status === 'completed') cur.co += 1;
+      agg.set(o.customerPhone, cur);
+    }
+    for (const [phone, stats] of agg) {
+      result.set(phone, stats);
+    }
+
+    for (const phone of missing) {
+      if (!result.has(phone)) result.set(phone, { to: 0, co: 0 });
+    }
+
+    return result;
   }
 
   private async loadCourierStatsByPhone(
@@ -2765,6 +2978,7 @@ export class OrdersService {
       followUpDueAt?: string;
       followUpSetAt?: string;
     },
+    courierShop?: CourierShopStats,
   ): OrderListItem {
     return {
       id: row.id,
@@ -2807,7 +3021,15 @@ export class OrdersService {
         (row as { courierStatusSlug?: string | null }).courierStatusSlug ?? undefined,
       courierConsignmentId:
         (row as { courierConsignmentId?: string | null }).courierConsignmentId ?? undefined,
-      courier,
+      courierShop: courierShop ?? { to: 0, co: 0 },
+      courier: courier ?? {
+        to: 0,
+        co: 0,
+        su: 0,
+        fa: 0,
+        label: '—',
+        percent: 0,
+      },
     };
   }
 

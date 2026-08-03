@@ -9,7 +9,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
-import { OrdersService } from './orders.service';
+import type { OrdersService } from './orders.service';
 import { PathaoCourierService } from './pathao-courier.service';
 
 const TICK_MS = 60_000;
@@ -28,7 +28,7 @@ export class PathaoSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly integrations: CourierIntegrationsService,
     private readonly pathao: PathaoCourierService,
-    @Inject(forwardRef(() => OrdersService))
+    @Inject(forwardRef(() => require('./orders.service').OrdersService))
     private readonly orders: OrdersService,
   ) {}
 
@@ -142,10 +142,24 @@ export class PathaoSyncService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ updated: boolean }> {
     if (!order.courierConsignmentId) return { updated: false };
 
-    const info = await this.pathao.getOrderInfo(
-      organizationId,
-      order.courierConsignmentId,
-    );
+    let info: Awaited<ReturnType<PathaoCourierService['getOrderInfo']>>;
+    try {
+      info = await this.pathao.getOrderInfo(
+        organizationId,
+        order.courierConsignmentId,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Pathao sync skipped for ${order.orderNumber}: ${message}`,
+      );
+      // Avoid hammering the same missing/invalid consignment every tick.
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { courierStatusSyncedAt: new Date() },
+      });
+      return { updated: false };
+    }
     const raw = info.orderStatusSlug || info.orderStatus;
     const mapped = await this.integrations.resolveStatusMapping(
       organizationId,

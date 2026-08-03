@@ -39,6 +39,7 @@ export function FailedOrderDataTable({
       getRowId={(row) => row.id}
       isLoading={isLoading}
       emptyMessage="No failed orders in this view."
+      entityLabel="failed orders"
       page={page}
       pageSize={pageSize}
       total={total}

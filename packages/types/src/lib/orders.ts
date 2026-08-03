@@ -42,6 +42,14 @@ export const orderCourierStatsSchema = z.object({
 
 export type OrderCourierStats = z.infer<typeof orderCourierStatsSchema>;
 
+/** This-shop CRM counts for Bizmation-style top row (To / Co). */
+export const courierShopStatsSchema = z.object({
+  to: z.number().int().nonnegative(),
+  co: z.number().int().nonnegative(),
+});
+
+export type CourierShopStats = z.infer<typeof courierShopStatsSchema>;
+
 export const orderListItemSchema = z.object({
   id: z.string(),
   orderNumber: z.string(),
@@ -76,7 +84,9 @@ export const orderListItemSchema = z.object({
   courierStatusSlug: z.string().optional(),
   courierConsignmentId: z.string().optional(),
   courierProvider: z.string().optional(),
-  /** Customer delivery trust score (phone-wise history), Bizmation-style. */
+  /** This shop (CRM): Total orders / Completed — top row. */
+  courierShop: courierShopStatsSchema.optional(),
+  /** Network lifetime To/Su/Fa + % — bottom row + bar. */
   courier: orderCourierStatsSchema.optional(),
 });
 
@@ -533,6 +543,7 @@ export const orderBulkActionTypeSchema = z.enum([
   'sms',
   'status_change',
   'courier_submit',
+  'courier_cancel',
   'courier_unlink',
   'update_courier_status',
   'transfer_employee',

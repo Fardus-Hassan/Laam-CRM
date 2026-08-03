@@ -155,6 +155,7 @@ export class PathaoCourierService {
 
   async testConnection(organizationId: string): Promise<{ ok: true; storeCount: number }> {
     const stores = await this.listStores(organizationId);
+    await this.integrations.markSyncResult(organizationId, { ok: true });
     return { ok: true, storeCount: stores.length };
   }
 
@@ -181,9 +182,9 @@ export class PathaoCourierService {
       recipientPhone: string;
       recipientSecondaryPhone?: string;
       recipientAddress: string;
-      recipientCity: number;
-      recipientZone: number;
-      recipientArea: number;
+      recipientCity?: number;
+      recipientZone?: number;
+      recipientArea?: number;
       deliveryType?: number;
       itemType?: number;
       specialInstruction?: string;
@@ -198,16 +199,13 @@ export class PathaoCourierService {
     orderStatus?: string;
     deliveryFee?: number;
   }> {
-    const payload = {
+    const payload: Record<string, unknown> = {
       store_id: input.storeId,
       merchant_order_id: input.merchantOrderId,
       recipient_name: input.recipientName,
       recipient_phone: input.recipientPhone,
       recipient_secondary_phone: input.recipientSecondaryPhone || undefined,
       recipient_address: input.recipientAddress,
-      recipient_city: input.recipientCity,
-      recipient_zone: input.recipientZone,
-      recipient_area: input.recipientArea,
       delivery_type: input.deliveryType ?? 48,
       item_type: input.itemType ?? 2,
       special_instruction: input.specialInstruction || undefined,
@@ -216,6 +214,17 @@ export class PathaoCourierService {
       item_description: input.itemDescription || undefined,
       amount_to_collect: Math.max(0, Math.round(input.amountToCollect)),
     };
+
+    // City/zone/area optional — Pathao can auto-detect from address.
+    if (input.recipientCity && input.recipientCity > 0) {
+      payload.recipient_city = input.recipientCity;
+    }
+    if (input.recipientZone && input.recipientZone > 0) {
+      payload.recipient_zone = input.recipientZone;
+    }
+    if (input.recipientArea && input.recipientArea > 0) {
+      payload.recipient_area = input.recipientArea;
+    }
 
     const data = (await this.pathaoPost(
       organizationId,
@@ -247,6 +256,22 @@ export class PathaoCourierService {
           ? Number(data['delivery_fee'])
           : undefined,
     };
+  }
+
+  async cancelOrder(
+    organizationId: string,
+    consignmentId: string,
+  ): Promise<{ ok: true }> {
+    const id = consignmentId.trim();
+    if (!id) {
+      throw new BadGatewayException('Pathao consignment id is required to cancel');
+    }
+    await this.pathaoPost(
+      organizationId,
+      `/aladdin/api/v1/orders/${encodeURIComponent(id)}/cancel`,
+      {},
+    );
+    return { ok: true };
   }
 
   async getOrderInfo(

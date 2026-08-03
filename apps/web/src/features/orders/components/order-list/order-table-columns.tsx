@@ -259,7 +259,11 @@ export function buildOrderTableColumns(options?: {
       if (stats) {
         return (
           <div className="space-y-1">
-            <DataTableCourierStats courier={stats} compact />
+            <DataTableCourierStats
+              shop={row.original.courierShop}
+              network={stats}
+              compact
+            />
             {provider || status || consignment ? (
               <div className="truncate text-[10px] leading-snug text-muted-foreground">
                 {provider === 'pathao' ? 'Pathao' : provider}

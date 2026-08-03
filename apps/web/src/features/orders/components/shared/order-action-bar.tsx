@@ -34,6 +34,7 @@ import { OrderSmsDialog } from '@/features/orders/components/shared/order-sms-di
 import { ORDER_STICKY_ACTION_CLASS } from '@/features/orders/components/create-order/section-layout';
 import { pathaoCourierApi } from '@/features/orders/api/pathao-courier-api';
 import { carrybeeCourierApi } from '@/features/orders/api/carrybee-courier-api';
+import { ordersApi } from '@/features/orders/api/orders-api';
 import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { cn } from '@/lib/utils';
@@ -85,10 +86,13 @@ export function OrderActionBar({
   const hasPathaoIds = Boolean(
     order.pathaoCityId && order.pathaoZoneId && order.pathaoAreaId,
   );
+  const hasAddressForPathao = (order.shippingAddress?.trim().length ?? 0) >= 10;
+  const canBookPathao = hasPathaoIds || hasAddressForPathao;
   const hasCarrybeeIds = Boolean(order.carrybeeCityId && order.carrybeeZoneId);
   const alreadyBooked = Boolean(order.courierConsignmentId);
   const due = collectAmount(order);
   const [bookProvider, setBookProvider] = React.useState<'pathao' | 'carrybee'>('pathao');
+  const canManageCourier = can('courier.manage');
 
   async function handleBookPathao() {
     setCourierLoading(true);
@@ -133,8 +137,10 @@ export function OrderActionBar({
       );
       return;
     }
-    if (!hasPathaoIds) {
-      toast.error('Select Pathao city, zone & area in Order details first');
+    if (!canBookPathao) {
+      toast.error(
+        'Add a delivery address (min 10 chars), or pick Pathao city/zone/area in Order details',
+      );
       return;
     }
     setBookProvider('pathao');
@@ -154,6 +160,60 @@ export function OrderActionBar({
     }
     setBookProvider('carrybee');
     setBookOpen(true);
+  }
+
+  async function handleCancelCourier() {
+    if (!alreadyBooked) {
+      toast.message('No courier booking on this order');
+      return;
+    }
+    const provider = order.courierProvider === 'carrybee' ? 'Carrybee' : 'Pathao';
+    const ok = window.confirm(
+      `Cancel ${provider} shipment ${order.courierConsignmentId}?\n\nThis cancels the parcel at ${provider} and clears the booking link. The CRM order stays open (In Courier → Confirmed) so you can rebook.`,
+    );
+    if (!ok) return;
+    setCourierLoading(true);
+    try {
+      const updated = await ordersApi.cancelCourier(order.id);
+      toast.success(
+        `${provider} cancelled${updated.courierConsignmentId ? '' : ` · ${order.courierConsignmentId}`}`,
+      );
+      onCourierBooked?.(updated);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Courier cancel failed');
+    } finally {
+      setCourierLoading(false);
+    }
+  }
+
+  function handleCancelOrderClick() {
+    if (!onCancel) return;
+    if (alreadyBooked) {
+      const provider = order.courierProvider === 'carrybee' ? 'Carrybee' : 'Pathao';
+      const ok = window.confirm(
+        `Cancel this order?\n\nThis will also cancel the ${provider} shipment (${order.courierConsignmentId}). Stock will be restocked if it was deducted.`,
+      );
+      if (!ok) return;
+    } else {
+      const ok = window.confirm('Cancel this order? Stock will be restocked if it was deducted.');
+      if (!ok) return;
+    }
+    onCancel();
+  }
+
+  function handleDeleteClick() {
+    if (!onDelete) return;
+    if (alreadyBooked) {
+      toast.error(
+        'Cancel the courier shipment (or Cancel order) first. Delete is blocked while a consignment is linked.',
+      );
+      return;
+    }
+    const ok = window.confirm(
+      'Move this order to the recycle bin?\n\nThis does not cancel any courier parcel. Soft-delete only.',
+    );
+    if (!ok) return;
+    onDelete();
   }
 
   return (
@@ -228,6 +288,18 @@ export function OrderActionBar({
                     : 'Carrybee'}
               </Button>
             ) : null}
+            {canManageCourier && alreadyBooked ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-8"
+                disabled={courierLoading || order.status === 'cancelled'}
+                onClick={() => void handleCancelCourier()}
+              >
+                {courierLoading ? 'Cancelling…' : 'Cancel courier'}
+              </Button>
+            ) : null}
           </Can>
 
           <DropdownMenu>
@@ -259,14 +331,14 @@ export function OrderActionBar({
                   <DropdownMenuItem
                     disabled={!canCancel}
                     className="text-destructive focus:text-destructive"
-                    onClick={onCancel}
+                    onClick={handleCancelOrderClick}
                   >
                     Cancel order
                   </DropdownMenuItem>
                   {onDelete ? (
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
-                      onClick={onDelete}
+                      onClick={handleDeleteClick}
                     >
                       Move to recycle bin
                     </DropdownMenuItem>

@@ -37,12 +37,12 @@ import type {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryAdvancedService } from './inventory-advanced.service';
+import { InventoryCatalogService } from './inventory-catalog.service';
 import {
   type Actor,
-  InventoryCatalogService,
   isUniqueConstraintError,
   toNumber,
-} from './inventory-catalog.service';
+} from './inventory-shared';
 import { InventoryUomService } from './inventory-uom.service';
 
 const ADJUSTMENT_REASONS = [

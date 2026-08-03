@@ -118,6 +118,7 @@ export function FollowupDataTable({
       mobileCard={mobileCard}
       selection={selectionState}
       density="compact"
+      entityLabel="follow-ups"
       page={page}
       pageSize={pageSize}
       total={total}

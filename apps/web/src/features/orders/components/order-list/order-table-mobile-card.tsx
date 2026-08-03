@@ -138,10 +138,10 @@ export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobile
           />
         </LabeledSection>
 
-        {row.courier ? (
+        {row.courier || row.courierShop ? (
           <LabeledSection title="Courier">
             <div className="space-y-1">
-              <DataTableCourierStats courier={row.courier} />
+              <DataTableCourierStats shop={row.courierShop} network={row.courier} />
               {row.courierProvider || row.courierStatus || row.courierConsignmentId ? (
                 <p className="text-xs text-muted-foreground">
                   {row.courierProvider === 'pathao' ? 'Pathao' : row.courierProvider}

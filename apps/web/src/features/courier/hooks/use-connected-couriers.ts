@@ -18,9 +18,10 @@ export type ConnectedCourier = CourierProviderMeta & {
 function isConnected(cfg: {
   enabled?: boolean;
   hasCredentials?: boolean;
-  lastError?: string | null;
 } | null): boolean {
-  return Boolean(cfg?.enabled && cfg.hasCredentials && !cfg?.lastError);
+  // lastError is for status-sync noise (e.g. stale consignment "order not found"),
+  // not whether booking credentials work.
+  return Boolean(cfg?.enabled && cfg.hasCredentials);
 }
 
 /**

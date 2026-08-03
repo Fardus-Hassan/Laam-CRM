@@ -40,6 +40,9 @@ const DEFAULT_BULK: BulkActionId[] = [
   'send_sms',
   'set_followup',
   'transfer',
+  'submit_pathao',
+  'submit_carrybee',
+  'courier_cancel',
   'courier_unlink',
 ];
 
@@ -51,8 +54,6 @@ const PENDING_BULK: BulkActionId[] = [
 
 const CONFIRMED_BULK: BulkActionId[] = [
   ...PENDING_BULK,
-  'submit_pathao',
-  'submit_carrybee',
 ];
 
 /** Matches web seed defaults — first-time org bootstrap only. */

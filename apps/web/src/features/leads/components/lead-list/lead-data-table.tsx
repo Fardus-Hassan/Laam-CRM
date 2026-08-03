@@ -81,6 +81,7 @@ export function LeadDataTable({
       mobileCard={mobileCard}
       selection={selectionState}
       density="compact"
+      entityLabel="leads"
       page={page}
       pageSize={pageSize}
       total={total}

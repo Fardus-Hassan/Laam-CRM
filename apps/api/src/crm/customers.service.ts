@@ -1140,6 +1140,11 @@ export class CustomersService {
         }
       : this.courierScore(row);
 
+    const courierShop = {
+      to: row.orderCount,
+      co: row.deliveredCount,
+    };
+
     return {
       id: row.id,
       customerNumber: row.customerNumber,
@@ -1153,6 +1158,7 @@ export class CustomersService {
       orderCount: row.orderCount,
       deliveredCount: row.deliveredCount,
       totalSpent: row.totalSpent,
+      courierShop,
       courierScore,
       recentProducts: recentProducts.slice(0, 8),
       tags: row.tags,

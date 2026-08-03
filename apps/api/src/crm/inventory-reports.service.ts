@@ -6,7 +6,7 @@ import type {
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { toNumber } from './inventory-catalog.service';
+import { toNumber } from './inventory-shared';
 
 @Injectable()
 export class InventoryReportsService {

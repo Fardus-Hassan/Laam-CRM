@@ -42,6 +42,9 @@ const DEFAULT_LIST_CONTEXT: Pick<
     'send_sms',
     'set_followup',
     'transfer',
+    'submit_pathao',
+    'submit_carrybee',
+    'courier_cancel',
     'courier_unlink',
   ],
 };

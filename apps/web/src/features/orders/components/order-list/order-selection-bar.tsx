@@ -1,8 +1,7 @@
 'use client';
 
-import * as React from 'react';
 import type { BulkActionId, OrderListRow } from '@laam/types';
-import { X } from 'lucide-react';
+import { CheckSquare, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { OrderBulkActions } from '@/features/orders/components/order-list/order-bulk-actions';
@@ -35,23 +34,25 @@ export function OrderSelectionBar({
   return (
     <div
       className={cn(
-        'border-b border-border/70 bg-muted/25 px-4 py-3',
+        'border-b border-primary/25 border-l-4 border-l-primary bg-primary/5 px-4 py-3',
         className,
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-medium">
-          {selectedCount} order{selectedCount === 1 ? '' : 's'} selected
-        </p>
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-background/80 px-2 py-1 text-xs font-semibold text-primary">
+          <CheckSquare className="size-3.5" />
+          <span className="tabular-nums">{selectedCount}</span>
+          order{selectedCount === 1 ? '' : 's'} selected
+        </span>
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-xs"
+          className="h-7 px-2 text-xs text-muted-foreground"
           onClick={onClearSelection}
         >
           <X className="size-3.5" />
-          Clear
+          Clear selection
         </Button>
       </div>
       <div className="mt-2.5">

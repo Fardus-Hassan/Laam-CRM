@@ -8,7 +8,7 @@ import type {
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { isUniqueConstraintError, toNumber } from './inventory-catalog.service';
+import { isUniqueConstraintError, toNumber } from './inventory-shared';
 
 const DEFAULT_UNITS: Array<{
   code: string;

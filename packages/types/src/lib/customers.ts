@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { courierShopStatsSchema } from './orders.js';
+
 export const customerCourierScoreSchema = z.object({
   total: z.number().int().nonnegative(),
   success: z.number().int().nonnegative(),
@@ -52,6 +54,9 @@ export const customerListItemSchema = z.object({
   orderCount: z.number().int().nonnegative(),
   deliveredCount: z.number().int().nonnegative(),
   totalSpent: z.number().nonnegative(),
+  /** This shop (CRM) To/Co for courier column top row. */
+  courierShop: courierShopStatsSchema.optional(),
+  /** Network score (bottom row / filters). */
   courierScore: customerCourierScoreSchema,
   recentProducts: z.array(customerProductHistorySchema).default([]),
   tags: z.array(z.string()).default([]),

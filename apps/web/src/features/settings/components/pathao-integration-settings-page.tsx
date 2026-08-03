@@ -293,7 +293,10 @@ export function PathaoIntegrationSettingsPage() {
                 </FormField>
 
                 {settings.lastError ? (
-                  <p className="text-sm text-destructive">{settings.lastError}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Last sync note: <span className="text-destructive">{settings.lastError}</span>
+                    {' '}(connection can still be OK — usually a missing courier consignment)
+                  </p>
                 ) : null}
                 {settings.lastSyncAt ? (
                   <p className="text-xs text-muted-foreground">
@@ -338,7 +341,7 @@ export function PathaoIntegrationSettingsPage() {
                     <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground">
                       <tr>
                         <th className="px-2 py-1.5 font-medium">Label</th>
-                        <th className="px-2 py-1.5 font-medium">CRM</th>
+                        <th className="px-2 py78-1.5 font-medium">CRM</th>
                         <th className="px-2 py-1.5 font-medium">Active</th>
                       </tr>
                     </thead>

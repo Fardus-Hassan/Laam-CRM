@@ -33,9 +33,9 @@ const COMING_SOON = [
 ] as const;
 
 function statusOf(cfg: { enabled?: boolean; hasCredentials?: boolean; lastError?: string | null } | null) {
-  if (cfg?.lastError) return 'error' as const;
-  if (cfg?.enabled && cfg.hasCredentials) return 'connected' as const;
-  return 'disconnected' as const;
+  if (!cfg?.enabled || !cfg.hasCredentials) return 'disconnected' as const;
+  // Sync warnings (stale consignments, etc.) are shown on the detail page — not as "Error".
+  return 'connected' as const;
 }
 
 function websiteHubStatus(

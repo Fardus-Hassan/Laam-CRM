@@ -292,7 +292,10 @@ export function CarrybeeIntegrationSettingsPage() {
                 </FormField>
 
                 {settings.lastError ? (
-                  <p className="text-sm text-destructive">{settings.lastError}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Last sync note: <span className="text-destructive">{settings.lastError}</span>
+                    {' '}(connection can still be OK — usually a missing courier consignment)
+                  </p>
                 ) : null}
                 {settings.lastSyncAt ? (
                   <p className="text-xs text-muted-foreground">

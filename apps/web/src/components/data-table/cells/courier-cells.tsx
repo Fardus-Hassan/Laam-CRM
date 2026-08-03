@@ -1,6 +1,6 @@
 'use client';
 
-import type { OrderCourierStats } from '@laam/types';
+import type { CourierShopStats, OrderCourierStats } from '@laam/types';
 
 import { cn } from '@/lib/utils';
 
@@ -23,24 +23,46 @@ function CourierMetric({
   );
 }
 
+const EMPTY_NETWORK: OrderCourierStats = {
+  to: 0,
+  co: 0,
+  su: 0,
+  fa: 0,
+  label: '—',
+  percent: 0,
+};
+
+/**
+ * Bizmation-style courier cell:
+ * - Top To/Co = this shop (CRM)
+ * - Bar % + bottom To/Su/Fa = network lifetime
+ */
 export function DataTableCourierStats({
+  shop,
+  network,
+  /** @deprecated Use `network` — kept for older call sites. */
   courier,
   className,
   compact = false,
 }: {
-  courier: OrderCourierStats;
+  shop?: CourierShopStats | null;
+  network?: OrderCourierStats | null;
+  courier?: OrderCourierStats | null;
   className?: string;
   compact?: boolean;
 }) {
-  const percent = Math.min(100, Math.max(0, courier.percent));
-  const total = courier.to;
+  const shopStats: CourierShopStats = shop ?? { to: 0, co: 0 };
+  const net = network ?? courier ?? EMPTY_NETWORK;
+  const percent = Math.min(100, Math.max(0, net.percent));
 
   return (
     <div className={cn('w-full space-y-1 text-[11px]', compact && 'space-y-0.5', className)}>
       <div className="grid grid-cols-3 items-center gap-1 leading-none">
-        <CourierMetric label="To" value={courier.to} />
-        <CourierMetric label="Co" value={courier.co} className="text-center" />
-        <span className="truncate text-right font-semibold text-foreground">{courier.label}</span>
+        <CourierMetric label="To" value={shopStats.to} />
+        <CourierMetric label="Co" value={shopStats.co} className="text-center" />
+        <span className="truncate text-right text-[10px] font-semibold text-muted-foreground">
+          Shop
+        </span>
       </div>
 
       <div className="relative h-5 w-full overflow-hidden rounded-sm border border-border bg-muted">
@@ -60,16 +82,16 @@ export function DataTableCourierStats({
       </div>
 
       <div className="grid grid-cols-3 items-center gap-1 leading-none">
-        <CourierMetric label="To" value={total} />
+        <CourierMetric label="To" value={net.to} />
         <CourierMetric
           label="Su"
-          value={courier.su}
+          value={net.su}
           valueClassName="text-primary"
           className="text-center"
         />
         <CourierMetric
           label="Fa"
-          value={courier.fa}
+          value={net.fa}
           valueClassName="text-destructive"
           className="text-right"
         />

@@ -124,6 +124,7 @@ function buildCustomer(index: number, overrides: Partial<CustomerListItem> = {})
     deliveredCount,
     totalSpent,
     courierScore: overrides.courierScore ?? courierScore(orderCount, failed),
+    courierShop: overrides.courierShop ?? { to: orderCount, co: deliveredCount },
     recentProducts: overrides.recentProducts ?? recentProducts(index),
     tags:
       overrides.tags ??

@@ -959,6 +959,26 @@ export class OrdersController {
     return this.orders.syncCarrybeeStatus(user.organizationId!, id);
   }
 
+  @Post(':id/courier/cancel')
+  @RequirePermissions('courier.manage', 'orders.cancel', 'orders.confirm')
+  @ApiOperation({
+    summary:
+      'Cancel Pathao/Carrybee consignment for this order and clear local courier link',
+  })
+  cancelCourier(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body?: { reason?: string },
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.cancelCourierShipment(
+      user.organizationId!,
+      id,
+      this.actor(user),
+      body?.reason?.trim() || 'Cancelled from CRM',
+    );
+  }
+
   @Post(':id/return-lines')
   @RequirePermissions('orders.confirm', 'orders.cancel', 'orders.create')
   @ApiOperation({ summary: 'Record partial/full line returns and restock returned qty' })

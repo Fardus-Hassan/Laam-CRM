@@ -151,9 +151,15 @@ export function buildCustomerTableColumns(options?: {
         const score = row.original.courierScore;
         return (
           <DataTableCourierStats
-            courier={{
+            shop={
+              row.original.courierShop ?? {
+                to: row.original.orderCount,
+                co: row.original.deliveredCount,
+              }
+            }
+            network={{
               to: score.total,
-              co: 0,
+              co: Math.max(0, score.total - score.success - score.failed),
               su: score.success,
               fa: score.failed,
               percent: score.rate,

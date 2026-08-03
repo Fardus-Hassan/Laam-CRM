@@ -21,7 +21,7 @@ import type {
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { type Actor, isUniqueConstraintError, toNumber } from './inventory-catalog.service';
+import { type Actor, isUniqueConstraintError, toNumber } from './inventory-shared';
 import { InventoryUomService } from './inventory-uom.service';
 
 const INVENTORY_ACCOUNT = { code: '1200', name: 'Inventory Stock' };

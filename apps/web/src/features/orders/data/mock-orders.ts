@@ -557,6 +557,27 @@ export function bulkUpdateMockOrders(payload: OrderBulkActionPayload): BulkActio
       continue;
     }
 
+    if (payload.action === 'courier_cancel') {
+      const hadLink = Boolean(order.courierConsignmentId);
+      if (!hadLink) continue;
+      updateMockOrder(order.id, {
+        status: order.status === 'in_courier' ? 'confirmed' : order.status,
+      });
+      const index = mockOrderStore.findIndex((o) => o.id === order.id);
+      if (index >= 0) {
+        mockOrderStore[index] = {
+          ...mockOrderStore[index],
+          courierProvider: undefined,
+          courierConsignmentId: undefined,
+          courierTrackingCode: undefined,
+          courierStatus: undefined,
+          courierStatusSlug: undefined,
+        };
+      }
+      successCount += 1;
+      continue;
+    }
+
     const patch: UpdateOrderPayload = {};
     if (payload.action === 'status_change' && payload.status) {
       patch.status = payload.status;

@@ -11,9 +11,9 @@ import { FormSelect } from '@/components/form/form-select';
 import { FormTextarea } from '@/components/form/form-textarea';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { PathaoLocationDialog } from '@/features/orders/components/create-order/pathao-location-dialog';
-import { CarrybeeLocationDialog } from '@/features/orders/components/create-order/carrybee-location-dialog';
+import { CourierLocationDialog } from '@/features/orders/components/create-order/courier-location-dialog';
 import { EditableSectionCard } from '@/features/orders/components/shared/editable-section-card';
+import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import type { CarrybeeLocation, PathaoLocation } from '@/features/orders/lib/create-order-types';
 import { env } from '@/config/env';
 import { getStoredAccessToken } from '@/lib/auth-token';
@@ -171,9 +171,19 @@ async function uploadOrderFile(file: File): Promise<{ name: string; url: string 
 export function OrderExtrasCard({ order, options, onSave, className }: OrderExtrasCardProps) {
   const [draft, setDraft] = React.useState(() => toDraft(order));
   const [uploading, setUploading] = React.useState(false);
-  const [pathaoOpen, setPathaoOpen] = React.useState(false);
-  const [carrybeeOpen, setCarrybeeOpen] = React.useState(false);
+  const [locationOpen, setLocationOpen] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const { connected, isProviderConnected } = useConnectedCouriers();
+  const showPathao = isProviderConnected('pathao');
+  const showCarrybee = isProviderConnected('carrybee');
+  const hasCourierPicker = showPathao || showCarrybee;
+  const locationProviders = React.useMemo(
+    () =>
+      connected
+        .map((c) => c.id)
+        .filter((id): id is 'pathao' | 'carrybee' => id === 'pathao' || id === 'carrybee'),
+    [connected],
+  );
 
   React.useEffect(() => {
     setDraft(toDraft(order));
@@ -308,67 +318,51 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
       </label>
 
       <div className="space-y-2">
-        <FormField
-          label="Pathao location"
-          hint={
-            pathaoReady
-              ? 'Ready to book'
-              : draft.pathaoLocation
-                ? 'Re-select location to save Pathao IDs before booking'
-                : 'Required before Pathao booking'
-          }
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => setPathaoOpen(true)}>
-              {draft.pathaoLocation ? 'Change Pathao' : 'Select Pathao'}
-            </Button>
+        {hasCourierPicker ? (
+          <FormField
+            label="Courier location"
+            hint={
+              pathaoReady || carrybeeReady
+                ? 'Ready to book with selected courier IDs'
+                : draft.pathaoLocation || draft.carrybeeLocation
+                  ? 'Re-select location to save courier IDs before booking'
+                  : showPathao
+                    ? 'Optional for Pathao (address alone works). Required for Carrybee city/zone.'
+                    : 'Select city & zone before Carrybee booking'
+            }
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setLocationOpen(true)}>
+                {draft.pathaoLocation || draft.carrybeeLocation
+                  ? 'Change location'
+                  : 'Pick location'}
+              </Button>
+              {draft.pathaoLocation || draft.carrybeeLocation ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  onClick={() =>
+                    patchDraft({ pathaoLocation: null, carrybeeLocation: null })
+                  }
+                >
+                  Clear
+                </Button>
+              ) : null}
+            </div>
             {draft.pathaoLocation ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="text-muted-foreground"
-                onClick={() => patchDraft({ pathaoLocation: null })}
-              >
-                Clear
-              </Button>
+              <p className="mt-1.5 text-sm font-medium">
+                Pathao · {draft.pathaoLocation.label}
+              </p>
             ) : null}
-          </div>
-          {draft.pathaoLocation ? (
-            <p className="mt-1.5 text-sm font-medium">{draft.pathaoLocation.label}</p>
-          ) : null}
-        </FormField>
-
-        <FormField
-          label="Carrybee location"
-          hint={
-            carrybeeReady
-              ? 'Ready to book'
-              : draft.carrybeeLocation
-                ? 'Re-select location to save Carrybee IDs before booking'
-                : 'Required before Carrybee booking'
-          }
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => setCarrybeeOpen(true)}>
-              {draft.carrybeeLocation ? 'Change Carrybee' : 'Select Carrybee'}
-            </Button>
             {draft.carrybeeLocation ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="text-muted-foreground"
-                onClick={() => patchDraft({ carrybeeLocation: null })}
-              >
-                Clear
-              </Button>
+              <p className="mt-1.5 text-sm font-medium">
+                Carrybee · {draft.carrybeeLocation.label}
+              </p>
             ) : null}
-          </div>
-          {draft.carrybeeLocation ? (
-            <p className="mt-1.5 text-sm font-medium">{draft.carrybeeLocation.label}</p>
-          ) : null}
-        </FormField>
+          </FormField>
+        ) : null}
       </div>
 
       <FormField label="Customer note">
@@ -594,24 +588,27 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
         {readContent}
       </EditableSectionCard>
 
-      <PathaoLocationDialog
-        open={pathaoOpen}
-        onOpenChange={setPathaoOpen}
-        value={draft.pathaoLocation}
-        onConfirm={(location) => {
-          patchDraft({ pathaoLocation: location });
-          toast.success('Pathao location selected — save to apply');
-        }}
-      />
-      <CarrybeeLocationDialog
-        open={carrybeeOpen}
-        onOpenChange={setCarrybeeOpen}
-        value={draft.carrybeeLocation}
-        onConfirm={(location) => {
-          patchDraft({ carrybeeLocation: location });
-          toast.success('Carrybee location selected — save to apply');
-        }}
-      />
+      {hasCourierPicker ? (
+        <CourierLocationDialog
+          open={locationOpen}
+          onOpenChange={setLocationOpen}
+          providers={locationProviders}
+          pathaoValue={draft.pathaoLocation}
+          carrybeeValue={draft.carrybeeLocation}
+          preferredProvider={
+            draft.carrybeeLocation ? 'carrybee' : draft.pathaoLocation ? 'pathao' : null
+          }
+          onConfirm={(result) => {
+            if (result.provider === 'pathao') {
+              patchDraft({ pathaoLocation: result.location, carrybeeLocation: null });
+              toast.success('Pathao location selected — save to apply');
+            } else {
+              patchDraft({ carrybeeLocation: result.location, pathaoLocation: null });
+              toast.success('Carrybee location selected — save to apply');
+            }
+          }}
+        />
+      ) : null}
     </>
   );
 }

@@ -101,6 +101,7 @@ export class CarrybeeCourierService {
 
   async testConnection(organizationId: string): Promise<{ ok: true; storeCount: number }> {
     const stores = await this.listStores(organizationId);
+    await this.integrations.markCarrybeeSyncResult(organizationId, { ok: true });
     return { ok: true, storeCount: stores.length };
   }
 

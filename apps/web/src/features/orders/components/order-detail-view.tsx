@@ -142,7 +142,6 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         <OrderActionBar
           order={order}
           onConfirm={confirmOrder}
-          onCancel={cancelOrder}
           onDelete={async () => {
             try {
               await deleteOrder();
@@ -150,6 +149,18 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
               window.location.href = '/dashboard/orders';
             } catch (error) {
               toast.error(error instanceof Error ? error.message : 'Delete failed');
+            }
+          }}
+          onCancel={async () => {
+            try {
+              await cancelOrder();
+              toast.success(
+                order.courierConsignmentId
+                  ? 'Order cancelled · courier shipment cancelled'
+                  : 'Order cancelled',
+              );
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : 'Cancel failed');
             }
           }}
           onAssign={() => setAssignOpen(true)}

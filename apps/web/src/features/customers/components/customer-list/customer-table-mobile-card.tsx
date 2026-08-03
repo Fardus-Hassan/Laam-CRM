@@ -133,7 +133,13 @@ export function CustomerTableMobileCard({
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Courier score</p>
-          <CourierScoreCell score={row.courierScore} compact />
+          <CourierScoreCell
+            score={row.courierScore}
+            shop={row.courierShop}
+            orderCount={row.orderCount}
+            deliveredCount={row.deliveredCount}
+            compact
+          />
         </div>
         {row.recentProducts[0] ? (
           <div className="sm:col-span-2">

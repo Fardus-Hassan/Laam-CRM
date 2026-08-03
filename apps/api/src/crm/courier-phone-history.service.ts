@@ -10,7 +10,8 @@ import { CourierIntegrationsService } from './courier-integrations.service';
 import { PathaoCourierService } from './pathao-courier.service';
 import { normalizeBdPhone } from './phone.util';
 
-const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h success
+const ERROR_CACHE_TTL_MS = 15 * 60 * 1000; // 15m when no usable counts
 const WARM_CONCURRENCY = 3;
 
 function emptyStats(): OrderCourierStats {
@@ -202,6 +203,7 @@ export class CourierPhoneHistoryService {
           label: 'Pathao',
           connected: true,
           available: true,
+          status: 'ready',
           countsAvailable: rate.countsAvailable,
           stats: rate.countsAvailable
             ? statsFromCounts(rate.success, rate.failed, rate.total)
@@ -211,13 +213,19 @@ export class CourierPhoneHistoryService {
           fetchedAt,
         });
       } catch (err) {
+        const raw = err instanceof Error ? err.message : 'Pathao lookup failed';
+        const soft = /unauthor/i.test(raw)
+          ? 'History not available for this Pathao account yet'
+          : 'Pathao history temporarily unavailable';
+        this.logger.warn(`Pathao phone history: ${raw}`);
         providers.push({
           provider: 'pathao',
           label: 'Pathao',
           connected: true,
           available: false,
+          status: 'unavailable',
           countsAvailable: false,
-          error: err instanceof Error ? err.message : 'Pathao lookup failed',
+          error: soft,
           fetchedAt,
         });
       }
@@ -227,24 +235,20 @@ export class CourierPhoneHistoryService {
         label: 'Pathao',
         connected: false,
         available: false,
+        status: 'soon',
         countsAvailable: false,
-        error: 'Pathao not connected',
+        error: 'Connect Pathao in Settings to enable live lookup',
         fetchedAt,
       });
     }
 
-    const carrybeePublic = await this.integrations.getCarrybeePublic(organizationId);
-    providers.push({
-      provider: 'carrybee',
-      label: 'Carrybee',
-      connected: Boolean(carrybeePublic.enabled && carrybeePublic.hasCredentials),
-      available: false,
-      countsAvailable: false,
-      error: carrybeePublic.enabled
-        ? 'Carrybee phone history API not available via Client API yet'
-        : 'Carrybee not connected',
-      fetchedAt,
-    });
+    // MVP catalog — wired later (Steadfast official, etc.)
+    providers.push(
+      soonProvider('steadfast', 'Steadfast', fetchedAt),
+      soonProvider('redx', 'RedX', fetchedAt),
+      soonProvider('carrybee', 'Carrybee', fetchedAt),
+      soonProvider('paperfly', 'Paperfly', fetchedAt),
+    );
 
     return {
       aggregate: aggregateProviders(providers),
@@ -277,7 +281,9 @@ export class CourierPhoneHistoryService {
       fetchedAt: string;
     },
   ) {
-    const expiresAt = new Date(Date.now() + CACHE_TTL_MS);
+    const hasCounts = live.providers.some((p) => p.countsAvailable && p.stats && p.stats.to > 0);
+    const ttl = hasCounts ? CACHE_TTL_MS : ERROR_CACHE_TTL_MS;
+    const expiresAt = new Date(Date.now() + ttl);
     const fetchedAt = new Date(live.fetchedAt);
     try {
       await this.prisma.courierPhoneHistory.upsert({
@@ -330,4 +336,22 @@ export class CourierPhoneHistoryService {
       stale,
     };
   }
+}
+
+function soonProvider(
+  provider: CourierProviderHistory['provider'],
+  label: string,
+  fetchedAt: string,
+): CourierProviderHistory {
+  return {
+    provider,
+    label,
+    connected: false,
+    available: false,
+    status: 'soon',
+    countsAvailable: false,
+    stats: emptyStats(),
+    error: 'Coming soon',
+    fetchedAt,
+  };
 }
