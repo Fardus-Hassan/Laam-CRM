@@ -2,6 +2,7 @@ import type { OrderStatusCount } from '@laam/types';
 
 import { MOCK_ORDER_STATUSES } from '@/features/orders/data/mock-status-config';
 import { getStatusCount as getLiveStatusCount } from '@/features/orders/data/order-status-counts-store';
+import { getOrderStatuses } from '@/features/orders/data/order-status-store';
 
 /** Demo counts for offline mock / group-by tiles before live hydrate. */
 export const MOCK_STATUS_COUNTS: OrderStatusCount[] = [
@@ -64,14 +65,15 @@ export function getReturnRatio(): { percent: number; count: number } {
 }
 
 export function getStatusCountsForGroupBy(): Array<{
-  config: (typeof MOCK_ORDER_STATUSES)[number];
+  config: ReturnType<typeof getOrderStatuses>[number];
   count: number;
   unitCount: number;
   percent: number;
 }> {
   const total = getTotalOrderCount();
 
-  return MOCK_ORDER_STATUSES.filter((item) => item.showInGroupByStatus)
+  return getOrderStatuses()
+    .filter((item) => item.showInGroupByStatus !== false)
     .map((config) => {
       const count = getStatusCount(config.slug);
       const unitCount = getStatusUnitCount(config.slug);

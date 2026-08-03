@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { Download, Filter, Search, X } from 'lucide-react';
+import { Download, Filter, Search } from 'lucide-react';
 
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { FormInput } from '@/components/form/form-input';
 import { Button } from '@/components/ui/button';
 import {
@@ -81,30 +82,11 @@ export function CustomerListToolbar({
         ) : null}
       </div>
 
-      {chips.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {chips.map((chip) => (
-            <button
-              key={chip.key}
-              type="button"
-              className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2.5 py-0.5 text-xs text-foreground"
-              onClick={() => onRemoveFilter(chip.key)}
-            >
-              {chip.label}
-              <X className="size-3" />
-            </button>
-          ))}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={onClearFilters}
-          >
-            Clear all
-          </Button>
-        </div>
-      ) : null}
+      <ActiveFilterChips
+        chips={chips.map((chip) => ({ id: chip.key, label: chip.label }))}
+        onRemove={(id) => onRemoveFilter(id as keyof CustomerFilterValues)}
+        onClearAll={onClearFilters}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { FollowupDetail, FollowupListItem, FollowupQueue, FollowupStatus } from '@laam/types';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { EmptyState } from '@/components/layout/empty-state';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -186,6 +187,35 @@ export function FollowupListShell() {
             setSearch(value);
             setPage(1);
           }}
+        />
+
+        <ActiveFilterChips
+          chips={[
+            ...(filter !== 'all'
+              ? [
+                  {
+                    id: 'filter',
+                    label:
+                      data?.filters?.find((f) => f.id === filter)?.label ?? filter,
+                  },
+                ]
+              : []),
+            ...(debouncedSearch.trim()
+              ? [{ id: 'search', label: `Search: ${debouncedSearch.trim()}` }]
+              : []),
+          ]}
+          onRemove={(id) => {
+            if (id === 'search') {
+              setSearch('');
+              setPage(1);
+              return;
+            }
+            if (id === 'filter') {
+              setPage(1);
+              router.replace(`/dashboard/followups?queue=${queue}`);
+            }
+          }}
+          onClearAll={handleClearFilters}
         />
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>

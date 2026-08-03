@@ -56,6 +56,7 @@ export function OrderStatusesSettingsPage() {
     color: 'hsl(174 58% 42%)',
     showInSidebar: true,
     showInNestedTabs: false,
+    showInGroupByStatus: true,
     parentSlug: '',
   });
   const [saving, setSaving] = React.useState(false);
@@ -142,6 +143,7 @@ export function OrderStatusesSettingsPage() {
     try {
       const showInSidebar = draft.showInSidebar;
       const showInNestedTabs = draft.showInNestedTabs;
+      const showInGroupByStatus = draft.showInGroupByStatus;
       await persistStatus({
         id: `status-${slug}`,
         slug,
@@ -156,7 +158,7 @@ export function OrderStatusesSettingsPage() {
         isDefault: false,
         allowedTransitions: [],
         bulkActions: ['export', 'status_change', 'send_sms'],
-        showInGroupByStatus: true,
+        showInGroupByStatus,
         sidebarOrder: 90 + statuses.length,
       });
 
@@ -166,6 +168,7 @@ export function OrderStatusesSettingsPage() {
         color: draft.color,
         showInSidebar: true,
         showInNestedTabs: false,
+        showInGroupByStatus: true,
         parentSlug: '',
       });
       toast.success(
@@ -286,6 +289,18 @@ export function OrderStatusesSettingsPage() {
                 />
                 Show as nested tab under parent
               </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={draft.showInGroupByStatus}
+                  onCheckedChange={(checked) =>
+                    setDraft((current) => ({
+                      ...current,
+                      showInGroupByStatus: checked === true,
+                    }))
+                  }
+                />
+                Show in Group by Status
+              </label>
               <Button type="button" onClick={() => void handleAdd()} disabled={saving || isLoading}>
                 {saving ? 'Saving…' : 'Add status'}
               </Button>
@@ -299,7 +314,7 @@ export function OrderStatusesSettingsPage() {
           </CardHeader>
           <CardContent className={ORDER_SECTION_BODY_CLASS}>
             <div className="overflow-x-auto rounded-lg border border-border/70">
-              <table className="w-full min-w-[960px] text-sm">
+              <table className="w-full min-w-[1080px] text-sm">
                 <thead className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-medium">Label</th>
@@ -307,6 +322,7 @@ export function OrderStatusesSettingsPage() {
                     <th className="px-3 py-2 font-medium">Parent</th>
                     <th className="px-3 py-2 font-medium">Sidebar</th>
                     <th className="px-3 py-2 font-medium">Nested tab</th>
+                    <th className="px-3 py-2 font-medium">Group by</th>
                     <th className="px-3 py-2 font-medium">Effective</th>
                   </tr>
                 </thead>
@@ -353,6 +369,17 @@ export function OrderStatusesSettingsPage() {
                             aria-label={`Show ${status.label} as nested tab`}
                           />
                         </td>
+                        <td className="px-3 py-2.5">
+                          <Checkbox
+                            checked={status.showInGroupByStatus !== false}
+                            onCheckedChange={(checked) =>
+                              void updateStatus(status, {
+                                showInGroupByStatus: checked === true,
+                              })
+                            }
+                            aria-label={`Show ${status.label} in Group by Status`}
+                          />
+                        </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
                           {statusVisibilityLabel(status)}
                         </td>
@@ -371,6 +398,10 @@ export function OrderStatusesSettingsPage() {
               </p>
               <p>
                 <strong>Nested tab</strong> on → tabs on that parent page.
+              </p>
+              <p>
+                <strong>Group by</strong> on → card on All Orders “Group by Status” (only if
+                count &gt; 0; max 16). Click filters the table — does not open a separate page.
               </p>
               <p>Changes save to the organization database for every user.</p>
             </div>

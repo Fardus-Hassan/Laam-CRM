@@ -6,6 +6,7 @@ import type { CreateTicketPayload, SupportTicket, TicketListResponse } from '@la
 import { MessageSquare, Plus, RefreshCw, Search } from 'lucide-react';
 
 import { Can } from '@/components/auth/can';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormTextarea } from '@/components/form/form-textarea';
@@ -137,6 +138,24 @@ export function SupportTicketsPage() {
                   </Button>
                 ))}
               </div>
+              <ActiveFilterChips
+                chips={[
+                  ...(status !== 'all'
+                    ? [{ id: 'status', label: `Status: ${status}` }]
+                    : []),
+                  ...(search.trim()
+                    ? [{ id: 'search', label: `Search: ${search.trim()}` }]
+                    : []),
+                ]}
+                onRemove={(id) => {
+                  if (id === 'status') setStatus('all');
+                  if (id === 'search') setSearch('');
+                }}
+                onClearAll={() => {
+                  setStatus('all');
+                  setSearch('');
+                }}
+              />
               <div className="space-y-2">
                 {data?.items.map((ticket) => (
                   <button

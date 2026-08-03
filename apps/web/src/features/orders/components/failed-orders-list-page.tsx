@@ -6,8 +6,8 @@ import { toast } from 'sonner';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSelect } from '@/components/form/form-select';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { FailedOrderDataTable } from '@/features/orders/components/failed-orders/failed-order-data-table';
@@ -85,6 +85,40 @@ export function FailedOrdersListPage() {
 
   const websiteOptions = data?.websites?.length ? data.websites : FAILED_ORDER_WEBSITES;
 
+  const chips = [
+    ...(failedType !== 'all'
+      ? [
+          {
+            id: 'failedType',
+            label:
+              failedType === 'duplicate'
+                ? 'Type: Duplicate'
+                : failedType === 'blocked'
+                  ? 'Type: Blocked'
+                  : 'Type: Other',
+          },
+        ]
+      : []),
+    ...(noteStatus !== 'all'
+      ? [
+          {
+            id: 'noteStatus',
+            label: noteStatus === 'has_note' ? 'Has note' : 'No note',
+          },
+        ]
+      : []),
+    ...(website !== 'all' ? [{ id: 'website', label: `Website: ${website}` }] : []),
+    ...(search.trim() ? [{ id: 'search', label: `Search: ${search.trim()}` }] : []),
+  ];
+
+  function clearAll() {
+    setSearch('');
+    setFailedType('all');
+    setWebsite('all');
+    setNoteStatus('all');
+    setPage(1);
+  }
+
   return (
     <PageShell
       title="Failed Orders"
@@ -124,7 +158,10 @@ export function FailedOrdersListPage() {
           <FormField label="Type" className="min-w-[140px] flex-1">
             <FormSelect
               value={failedType}
-              onChange={setFailedType}
+              onChange={(v) => {
+                setFailedType(v);
+                setPage(1);
+              }}
               options={[
                 { value: 'all', label: 'All' },
                 { value: 'duplicate', label: 'Duplicate' },
@@ -137,7 +174,10 @@ export function FailedOrdersListPage() {
           <FormField label="Note status" className="min-w-[140px] flex-1">
             <FormSelect
               value={noteStatus}
-              onChange={setNoteStatus}
+              onChange={(v) => {
+                setNoteStatus(v);
+                setPage(1);
+              }}
               options={[
                 { value: 'all', label: 'All' },
                 { value: 'has_note', label: 'Has note' },
@@ -149,7 +189,10 @@ export function FailedOrdersListPage() {
           <FormField label="Website" className="min-w-[140px] flex-1">
             <FormSelect
               value={website}
-              onChange={setWebsite}
+              onChange={(v) => {
+                setWebsite(v);
+                setPage(1);
+              }}
               options={[
                 { value: 'all', label: 'All' },
                 ...websiteOptions.map((site) => ({ value: site, label: site })),
@@ -160,27 +203,28 @@ export function FailedOrdersListPage() {
           <FormField label="Search" className="min-w-[200px] flex-[2]">
             <FormInput
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
               placeholder="Customer, phone, address…"
             />
           </FormField>
-          {hasActiveFilters ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setSearch('');
-                setFailedType('all');
-                setWebsite('all');
-                setNoteStatus('all');
-                setPage(1);
-              }}
-            >
-              Clear filters
-            </Button>
-          ) : null}
         </div>
+
+        {hasActiveFilters ? (
+          <ActiveFilterChips
+            chips={chips}
+            onRemove={(id) => {
+              if (id === 'failedType') setFailedType('all');
+              if (id === 'noteStatus') setNoteStatus('all');
+              if (id === 'website') setWebsite('all');
+              if (id === 'search') setSearch('');
+              setPage(1);
+            }}
+            onClearAll={clearAll}
+          />
+        ) : null}
 
         <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
           <CardContent className="p-0">

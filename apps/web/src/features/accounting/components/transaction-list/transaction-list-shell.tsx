@@ -9,6 +9,7 @@ import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { FormTextarea } from '@/components/form/form-textarea';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { Can } from '@/components/auth/can';
 import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
@@ -178,6 +179,39 @@ export function TransactionListShell({
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <FormInput value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search description, reference…" className="pl-9" />
         </div>
+
+        <ActiveFilterChips
+          chips={[
+            ...(filter && filter !== 'all'
+              ? [
+                  {
+                    id: 'filter',
+                    label:
+                      data?.filters?.find((f) => f.id === filter)?.label ?? filter,
+                  },
+                ]
+              : []),
+            ...(search.trim()
+              ? [{ id: 'search', label: `Search: ${search.trim()}` }]
+              : []),
+          ]}
+          onRemove={(id) => {
+            if (id === 'search') {
+              setSearch('');
+              setPage(1);
+              return;
+            }
+            if (id === 'filter') {
+              setFilter('all');
+              setPage(1);
+            }
+          }}
+          onClearAll={() => {
+            setSearch('');
+            setFilter('all');
+            setPage(1);
+          }}
+        />
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <CardContent className={cn('p-0', ORDER_SECTION_BODY_CLASS)}>

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -140,6 +141,36 @@ export function LotsPage() {
             </Button>
           </div>
         </div>
+
+        <ActiveFilterChips
+          chips={[
+            ...(status
+              ? [
+                  {
+                    id: 'status',
+                    label:
+                      STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status,
+                  },
+                ]
+              : []),
+            ...(search.trim()
+              ? [{ id: 'search', label: `Search: ${search.trim()}` }]
+              : []),
+            ...(!fefo ? [{ id: 'fefo', label: 'FEFO off' }] : []),
+          ]}
+          onRemove={(id) => {
+            if (id === 'status') setStatus('');
+            if (id === 'search') setSearch('');
+            if (id === 'fefo') setFefo(true);
+            setPage(1);
+          }}
+          onClearAll={() => {
+            setStatus('');
+            setSearch('');
+            setFefo(true);
+            setPage(1);
+          }}
+        />
 
         <InventoryResponsiveList
           loading={loading}

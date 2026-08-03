@@ -9,6 +9,7 @@ import type { DateRange } from 'react-day-picker';
 
 import { DatePicker } from '@/components/date-range/date-picker';
 import { DateRangePicker } from '@/components/date-range/date-range-picker';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -270,7 +271,54 @@ export function NotificationsInboxPage() {
         </div>
       </form>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <ActiveFilterChips
+        className="mt-3"
+        chips={[
+          ...(applied.search.trim()
+            ? [{ id: 'search', label: `Search: ${applied.search.trim()}` }]
+            : []),
+          ...(applied.dateMode === 'single' && applied.singleDate
+            ? [
+                {
+                  id: 'date',
+                  label: `Date: ${format(applied.singleDate, 'dd MMM yyyy')}`,
+                },
+              ]
+            : []),
+          ...(applied.dateMode === 'range' && applied.range?.from
+            ? [
+                {
+                  id: 'date',
+                  label: applied.range.to
+                    ? `Date: ${format(applied.range.from, 'dd MMM yyyy')} → ${format(applied.range.to, 'dd MMM yyyy')}`
+                    : `Date: ${format(applied.range.from, 'dd MMM yyyy')}`,
+                },
+              ]
+            : []),
+        ]}
+        onRemove={(id) => {
+          if (id === 'search') {
+            setDraft((prev) => ({ ...prev, search: '' }));
+            setApplied((prev) => ({ ...prev, search: '' }));
+            return;
+          }
+          if (id === 'date') {
+            setDraft((prev) => ({
+              ...prev,
+              singleDate: undefined,
+              range: undefined,
+            }));
+            setApplied((prev) => ({
+              ...prev,
+              singleDate: undefined,
+              range: undefined,
+            }));
+          }
+        }}
+        onClearAll={handleClearFilters}
+      />
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {items.length > 0 ? (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">

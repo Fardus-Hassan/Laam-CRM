@@ -46,10 +46,25 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
   const [smsTemplate, setSmsTemplate] = React.useState('');
   const [smsMessage, setSmsMessage] = React.useState('');
   const [smsSending, setSmsSending] = React.useState(false);
-  const [status, setStatus] = React.useState('confirmed');
+  const [status, setStatus] = React.useState('');
   const [employee, setEmployee] = React.useState('');
   const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
   const [followUpDate, setFollowUpDate] = React.useState('');
+
+  const statusOptions = React.useMemo(
+    () => getOrderStatuses().map((s) => ({ value: s.slug, label: s.label })),
+    // Recompute when status modal opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state?.type],
+  );
+
+  React.useEffect(() => {
+    if (state?.type !== 'status') return;
+    setStatus((current) => {
+      if (current && statusOptions.some((o) => o.value === current)) return current;
+      return statusOptions[0]?.value ?? '';
+    });
+  }, [state?.type, statusOptions]);
 
   React.useEffect(() => {
     if (state?.type !== 'transfer') return;
@@ -139,10 +154,14 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleStatusSubmit() {
     if (state?.type !== 'status') return;
+    if (!status.trim()) {
+      toast.error('Select a status');
+      return;
+    }
     await bulkAction({
       action: 'status_change',
       orderIds: state.orderIds,
-      status: status as 'confirmed',
+      status: status.trim(),
     });
     onSuccess?.();
     onClose();
@@ -243,21 +262,33 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       <Dialog open={state.type === 'status'} onOpenChange={(open) => !open && onClose()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Change status</DialogTitle>
+            <DialogTitle>
+              Change status
+              {state.type === 'status' ? (
+                <span className="ml-2 font-normal text-muted-foreground">
+                  ({state.orderIds.length} order{state.orderIds.length === 1 ? '' : 's'})
+                </span>
+              ) : null}
+            </DialogTitle>
           </DialogHeader>
-          <FormField label="New status">
+          <FormField label="New status" required>
             <FormSearchSelect
               value={status}
               onChange={setStatus}
-              options={getOrderStatuses().map((s) => ({ value: s.slug, label: s.label }))}
+              options={statusOptions}
+              placeholder="Select status…"
             />
           </FormField>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleStatusSubmit()} disabled={isLoading}>
-              Update status
+            <Button
+              type="button"
+              onClick={() => void handleStatusSubmit()}
+              disabled={isLoading || !status}
+            >
+              {isLoading ? 'Updating…' : 'Update status'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -19,7 +19,6 @@ import {
 import { OrderDataTable } from '@/features/orders/components/order-list/order-data-table';
 import {
   EMPTY_FILTERS,
-  OrderFilterPanel,
   type OrderFilterValues,
 } from '@/features/orders/components/order-list/order-filter-panel';
 import { OrderGroupByStatus } from '@/features/orders/components/order-list/order-group-by-status';
@@ -54,7 +53,6 @@ export function OrderListShell({ queue }: OrderListShellProps) {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [sort, setSort] = React.useState<{ id: string; desc: boolean } | null>(null);
   const [filters, setFilters] = React.useState<OrderFilterValues>(EMPTY_FILTERS);
-  const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [noteRow, setNoteRow] = React.useState<OrderListRow | null>(null);
   const [listVersion, setListVersion] = React.useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
@@ -72,17 +70,33 @@ export function OrderListShell({ queue }: OrderListShellProps) {
     }
     params.set('page', String(page));
     params.set('pageSize', String(pageSize));
-    const statusFilter = queue.statusFilter ?? filters.status;
-    if (statusFilter) {
-      params.set('status', statusFilter);
-    } else {
+    // All Orders: keep status as an in-page filter only — never put it in the URL,
+    // or the queue resolver treats it as a dedicated status page.
+    if (queue.kind === 'all') {
       params.delete('status');
+    } else {
+      const statusFilter = queue.statusFilter ?? filters.status;
+      if (statusFilter) {
+        params.set('status', statusFilter);
+      } else {
+        params.delete('status');
+      }
     }
     const next = params.toString();
     if (next !== searchParamsKey) {
       router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
     }
-  }, [debouncedSearch, page, pageSize, pathname, queue.statusFilter, filters.status, router, searchParamsKey]);
+  }, [
+    debouncedSearch,
+    page,
+    pageSize,
+    pathname,
+    queue.kind,
+    queue.statusFilter,
+    filters.status,
+    router,
+    searchParamsKey,
+  ]);
 
   const { data, isLoading, error, refresh } = useOrderRowsList(
     {
@@ -222,7 +236,19 @@ export function OrderListShell({ queue }: OrderListShellProps) {
 
         <CrmSummaryStrip items={summaryItems} />
 
-        {queue.showGroupByStatus ? <OrderGroupByStatus /> : null}
+        {queue.showGroupByStatus ? (
+          <OrderGroupByStatus
+            activeStatus={filters.status}
+            onStatusSelect={(slug) => {
+              setFilters((current) => ({
+                ...current,
+                status: current.status === slug ? undefined : slug,
+                excludeStatus: undefined,
+              }));
+              setPage(1);
+            }}
+          />
+        ) : null}
 
         {queue.childStatusSlugs?.length ? (
           <OrderQueueTabs childStatusSlugs={queue.childStatusSlugs} parentHref={queue.href} />
@@ -236,8 +262,10 @@ export function OrderListShell({ queue }: OrderListShellProps) {
               setPage(1);
             }}
             filters={filters}
-            filtersOpen={filtersOpen}
-            onToggleFilters={() => setFiltersOpen((open) => !open)}
+            onFiltersChange={(next) => {
+              setFilters(next);
+              setPage(1);
+            }}
             onClearFilters={handleClearFilters}
             onRemoveFilter={handleRemoveFilter}
             hideStatusFilter={Boolean(queue.statusFilter)}
@@ -248,19 +276,6 @@ export function OrderListShell({ queue }: OrderListShellProps) {
               }
               setPage(1);
             }}
-          />
-        ) : null}
-
-        {queue.showFilterPanel && filtersOpen ? (
-          <OrderFilterPanel
-            values={filters}
-            search={search}
-            onChange={(next) => {
-              setFilters(next);
-              setPage(1);
-            }}
-            onClear={handleClearFilters}
-            hideStatus={Boolean(queue.statusFilter)}
           />
         ) : null}
 

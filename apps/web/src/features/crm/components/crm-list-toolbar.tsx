@@ -4,6 +4,10 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Search } from 'lucide-react';
 
+import {
+  ActiveFilterChips,
+  type ActiveFilterChip,
+} from '@/components/filters/active-filter-chips';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 
@@ -20,6 +24,10 @@ type CrmListToolbarProps = {
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
   children?: React.ReactNode;
+  /** Extra active-filter chips (segment, etc.) */
+  chips?: ActiveFilterChip[];
+  onRemoveChip?: (id: string) => void;
+  onClearAllFilters?: () => void;
 };
 
 export function CrmListToolbar({
@@ -28,9 +36,27 @@ export function CrmListToolbar({
   onSearchChange,
   searchPlaceholder = 'Search…',
   children,
+  chips = [],
+  onRemoveChip,
+  onClearAllFilters,
 }: CrmListToolbarProps) {
   const searchParams = useSearchParams();
   const currentStatus = searchParams.get('status') ?? 'all';
+
+  const activeTab = tabs.find((tab) => {
+    if (tab.isActive) return tab.isActive(searchParams);
+    return tab.id === 'all' ? !searchParams.get('status') : currentStatus === tab.id;
+  });
+
+  const allChips: ActiveFilterChip[] = [
+    ...(activeTab && activeTab.id !== 'all'
+      ? [{ id: 'tab', label: activeTab.label }]
+      : []),
+    ...(searchValue.trim()
+      ? [{ id: 'search', label: `Search: ${searchValue.trim()}` }]
+      : []),
+    ...chips,
+  ];
 
   return (
     <div className="space-y-3">
@@ -74,6 +100,20 @@ export function CrmListToolbar({
           {children}
         </div>
       </div>
+
+      {onClearAllFilters && onRemoveChip ? (
+        <ActiveFilterChips
+          chips={allChips}
+          onRemove={(id) => {
+            if (id === 'search') {
+              onSearchChange('');
+              return;
+            }
+            onRemoveChip(id);
+          }}
+          onClearAll={onClearAllFilters}
+        />
+      ) : null}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { FormField } from '@/components/form/form-field';
 import { FormSelect } from '@/components/form/form-select';
 import { FormInput } from '@/components/form/form-input';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
 import { Card, CardContent } from '@/components/ui/card';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
@@ -38,6 +39,30 @@ export function OrderPaymentsPage() {
     await orderPaymentsApi.reconcilePayment(row.id);
     toast.success('Payment reconciled');
     void refresh();
+  }
+
+  const statusLabel =
+    status === 'pending'
+      ? 'Pending'
+      : status === 'collected'
+        ? 'Collected'
+        : status === 'reconciled'
+          ? 'Reconciled'
+          : status;
+  const methodLabel =
+    method === 'cod' ? 'COD' : method === 'bkash' ? 'bKash' : method === 'nagad' ? 'Nagad' : method;
+
+  const chips = [
+    ...(search.trim() ? [{ id: 'search', label: `Search: ${search.trim()}` }] : []),
+    ...(status ? [{ id: 'status', label: `Status: ${statusLabel}` }] : []),
+    ...(method ? [{ id: 'method', label: `Method: ${methodLabel}` }] : []),
+  ];
+
+  function clearAll() {
+    setSearch('');
+    setStatus('');
+    setMethod('');
+    setPage(1);
   }
 
   return (
@@ -114,6 +139,17 @@ export function OrderPaymentsPage() {
             />
           </FormField>
         </div>
+
+        <ActiveFilterChips
+          chips={chips}
+          onRemove={(id) => {
+            if (id === 'search') setSearch('');
+            if (id === 'status') setStatus('');
+            if (id === 'method') setMethod('');
+            setPage(1);
+          }}
+          onClearAll={clearAll}
+        />
 
         <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
           <CardContent className="p-0">

@@ -6,6 +6,7 @@ import { RotateCcw, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -132,6 +133,25 @@ export function RecycleBinPage() {
                 </Button>
               ))}
             </div>
+
+            <ActiveFilterChips
+              chips={[
+                ...(type !== 'all'
+                  ? [{ id: 'type', label: ENTITY_LABELS[type] }]
+                  : []),
+                ...(search.trim()
+                  ? [{ id: 'search', label: `Search: ${search.trim()}` }]
+                  : []),
+              ]}
+              onRemove={(id) => {
+                if (id === 'type') setType('all');
+                if (id === 'search') setSearch('');
+              }}
+              onClearAll={() => {
+                setType('all');
+                setSearch('');
+              }}
+            />
 
             {loading ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>

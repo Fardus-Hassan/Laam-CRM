@@ -33,6 +33,7 @@ function bulkActionsChanged(before: string[], after: BulkActionId[]): boolean {
 }
 
 const DEFAULT_BULK: BulkActionId[] = [
+  'status_change',
   'print_selected',
   'print_barcode',
   'print_info',
@@ -48,7 +49,6 @@ const DEFAULT_BULK: BulkActionId[] = [
 
 const PENDING_BULK: BulkActionId[] = [
   ...DEFAULT_BULK,
-  'status_change',
   'update_courier_status',
 ];
 

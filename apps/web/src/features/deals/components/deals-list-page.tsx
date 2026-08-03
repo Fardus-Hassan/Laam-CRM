@@ -55,7 +55,25 @@ export function DealsListPage({ stage }: DealsListPageProps) {
             { id: 'weighted', label: 'Weighted forecast', value: data ? formatCurrency(Math.round(data.summary.weightedAmount)) : '—' },
           ]}
         />
-        <CrmListToolbar tabs={DEAL_STAGE_FILTERS} searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search deal, customer, contact…" />
+        <CrmListToolbar
+          tabs={DEAL_STAGE_FILTERS}
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search deal, customer, contact…"
+          onRemoveChip={(id) => {
+            if (id === 'tab') {
+              router.replace(
+                search.trim()
+                  ? `/dashboard/deals?search=${encodeURIComponent(search.trim())}`
+                  : '/dashboard/deals',
+              );
+            }
+          }}
+          onClearAllFilters={() => {
+            setSearch('');
+            router.replace('/dashboard/deals');
+          }}
+        />
         <Card className="gap-0 py-0 shadow-none">
           <CardHeader className="border-b px-4 py-3">
             <CardTitle className="text-sm">{pageCopy.title}</CardTitle>

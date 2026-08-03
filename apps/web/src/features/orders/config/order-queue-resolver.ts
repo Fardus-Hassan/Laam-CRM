@@ -35,6 +35,7 @@ const DEFAULT_LIST_CONTEXT: Pick<
   showFilterPanel: true,
   showSalesSummary: true,
   bulkActions: [
+    'status_change',
     'print_selected',
     'print_barcode',
     'print_info',
@@ -48,6 +49,11 @@ const DEFAULT_LIST_CONTEXT: Pick<
     'courier_unlink',
   ],
 };
+
+function withStatusChange(actions: BulkActionId[]): BulkActionId[] {
+  if (actions.includes('status_change')) return actions;
+  return ['status_change', ...actions];
+}
 
 /** Tab strip parent: own nested tabs, or sibling strip under a status/queue parent. */
 function resolveStatusTabParentSlug(
@@ -166,7 +172,9 @@ export function resolveOrderQueueFromPath(
         parentSlug: page.slug,
         childStatusSlugs: childStatusSlugs.length > 0 ? childStatusSlugs : undefined,
         defaultChildSlug: page.defaultChildSlug,
-        bulkActions: statusConfig?.bulkActions ?? DEFAULT_LIST_CONTEXT.bulkActions,
+        bulkActions: withStatusChange(
+          statusConfig?.bulkActions ?? DEFAULT_LIST_CONTEXT.bulkActions,
+        ),
         showGroupByStatus: false,
         showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
         showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
@@ -207,7 +215,7 @@ export function resolveOrderQueueFromPath(
         statusFilter: statusConfig.slug,
         parentSlug: tabParentSlug,
         childStatusSlugs: childStatusSlugs.length > 0 ? childStatusSlugs : undefined,
-        bulkActions: statusConfig.bulkActions,
+        bulkActions: withStatusChange(statusConfig.bulkActions),
         showGroupByStatus: false,
         showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
         showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,

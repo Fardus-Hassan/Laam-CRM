@@ -170,6 +170,37 @@ export function ContactListShell({ source }: ContactListShellProps) {
             setPage(1);
           }}
           searchPlaceholder="Search name, mobile, ID, organization…"
+          chips={
+            segment !== 'all'
+              ? [
+                  {
+                    id: 'segment',
+                    label:
+                      data?.segments?.find((s) => s.id === segment)?.label ??
+                      `Segment: ${segment}`,
+                  },
+                ]
+              : []
+          }
+          onRemoveChip={(id) => {
+            if (id === 'tab') {
+              router.replace(
+                search.trim()
+                  ? `/dashboard/contacts?search=${encodeURIComponent(search.trim())}`
+                  : '/dashboard/contacts',
+              );
+              return;
+            }
+            if (id === 'segment') {
+              const params = new URLSearchParams(searchParamsKey);
+              params.delete('segment');
+              params.set('page', '1');
+              setPage(1);
+              const next = params.toString();
+              router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+            }
+          }}
+          onClearAllFilters={handleClearFilters}
         />
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
