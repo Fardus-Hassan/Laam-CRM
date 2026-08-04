@@ -65,19 +65,6 @@ export function CustomerTableMobileCard({
             >
               #{row.customerNumber}
             </Link>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="size-7"
-              onClick={() => onNoteClick?.(row)}
-            >
-              {row.hasNotes ? (
-                <MessageSquare className="size-3.5 text-primary" />
-              ) : (
-                <MessageSquarePlus className="size-3.5 text-muted-foreground" />
-              )}
-            </Button>
           </div>
           <DataTablePersonCell
             name={row.name}
@@ -97,6 +84,23 @@ export function CustomerTableMobileCard({
               onClick={() => window.open(`https://wa.me/${phoneDigits}`, '_blank', 'noopener,noreferrer')}
             >
               <MessageCircle className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={
+                row.hasNotes ? 'h-7 px-2 text-primary' : 'h-7 px-2 text-muted-foreground'
+              }
+              onClick={() => onNoteClick?.(row)}
+              aria-label={row.hasNotes ? 'View note' : 'Add note'}
+            >
+              {row.hasNotes ? (
+                <MessageSquare className="size-3.5" />
+              ) : (
+                <MessageSquarePlus className="size-3.5" />
+              )}
+              Note
             </Button>
             <Button type="button" size="sm" className="h-7 px-2" asChild>
               <Link href={`/dashboard/orders/new?phone=${encodeURIComponent(row.phone)}`}>
@@ -123,9 +127,11 @@ export function CustomerTableMobileCard({
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Orders</p>
-          <p className="font-medium tabular-nums">
-            {row.orderCount} · {row.deliveredCount} delivered
-          </p>
+          <p className="font-medium tabular-nums">{row.orderCount}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Delivered completed</p>
+          <p className="font-medium tabular-nums">{row.deliveredCount}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Total spent</p>

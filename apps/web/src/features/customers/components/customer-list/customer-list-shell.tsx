@@ -19,9 +19,9 @@ import {
 import { customersApi } from '@/features/customers/api/customers-api';
 import { CustomerDataTable } from '@/features/customers/components/customer-list/customer-data-table';
 import {
-  CustomerFilterPanel,
   emptyCustomerFilters,
   filtersToQuery,
+  PURCHASE_COUNT_PILLS,
   removeCustomerFilter,
   type CustomerFilterValues,
 } from '@/features/customers/components/customer-list/customer-filter-panel';
@@ -52,8 +52,6 @@ export function CustomerListShell() {
   const [listVersion, setListVersion] = React.useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const [noteTarget, setNoteTarget] = React.useState<CustomerListItem | null>(null);
-  const [noteInitial, setNoteInitial] = React.useState('');
-  const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<CustomerFilterValues>(() => emptyCustomerFilters());
 
   const segment = searchParams.get('segment') ?? 'all';
@@ -148,12 +146,6 @@ export function CustomerListShell() {
     }
   }
 
-  async function handleNoteClick(row: CustomerListItem) {
-    const detail = await customersApi.getCustomer(row.id);
-    setNoteInitial(detail?.notes ?? '');
-    setNoteTarget(row);
-  }
-
   async function handleNoteSave(note: string) {
     if (!noteTarget) return;
     await updateCustomer(noteTarget.id, { notes: note });
@@ -224,6 +216,47 @@ export function CustomerListShell() {
           </div>
         ) : null}
 
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Purchase count</p>
+          <div className="flex flex-wrap gap-1.5">
+            {PURCHASE_COUNT_PILLS.map((count) => {
+              const active =
+                filters.orderCount === String(count) && filters.orderCountOp === 'eq';
+              return (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => {
+                    setFilters((current) => {
+                      if (current.orderCount === String(count) && current.orderCountOp === 'eq') {
+                        return {
+                          ...current,
+                          orderCount: undefined,
+                          orderCountOp: 'gte',
+                        };
+                      }
+                      return {
+                        ...current,
+                        orderCount: String(count),
+                        orderCountOp: 'eq',
+                      };
+                    });
+                    setPage(1);
+                  }}
+                  className={cn(
+                    'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                    active
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                  )}
+                >
+                  {count}× Purchase
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <CustomerListToolbar
           search={search}
           onSearchChange={(value) => {
@@ -231,26 +264,14 @@ export function CustomerListShell() {
             setPage(1);
           }}
           filters={filters}
-          filtersOpen={filtersOpen}
-          onToggleFilters={() => setFiltersOpen((open) => !open)}
           onClearFilters={handleClearFilters}
           onRemoveFilter={handleRemoveFilter}
+          onFiltersChange={(next) => {
+            setFilters(next);
+            setPage(1);
+          }}
           onExport={() => void handleExportView()}
         />
-
-        {filtersOpen ? (
-          <CustomerFilterPanel
-            values={filters}
-            onChange={(next) => {
-              setFilters(next);
-              setPage(1);
-            }}
-            onClear={() => {
-              setFilters(emptyCustomerFilters());
-              setPage(1);
-            }}
-          />
-        ) : null}
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <CustomerSelectionBar
@@ -292,7 +313,7 @@ export function CustomerListShell() {
                   setPage(1);
                 }}
                 showPagination={Boolean(data)}
-                onNoteClick={(row) => void handleNoteClick(row)}
+                onNoteClick={setNoteTarget}
                 statusOptions={data?.statuses ?? []}
                 onStatusChange={handleStatusChange}
                 onFollowUpClick={handleFollowUpClick}
@@ -303,10 +324,11 @@ export function CustomerListShell() {
       </div>
 
       <CustomerNoteModal
-        open={noteTarget !== null}
+        open={Boolean(noteTarget)}
         onOpenChange={(open) => !open && setNoteTarget(null)}
+        customerId={noteTarget?.id ?? ''}
         customerName={noteTarget?.name ?? ''}
-        initialNote={noteInitial}
+        customerNumber={noteTarget?.customerNumber}
         onSave={handleNoteSave}
       />
     </PageShell>

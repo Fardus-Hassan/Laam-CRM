@@ -54,7 +54,7 @@ export type CustomersApi = {
 
 function buildCustomerQueryParams(query: CustomerListQuery): URLSearchParams {
   const params = new URLSearchParams();
-  const set = (key: string, value: string | number | undefined) => {
+  const set = (key: string, value: string | number | boolean | undefined) => {
     if (value === undefined || value === '') return;
     params.set(key, String(value));
   };
@@ -64,14 +64,29 @@ function buildCustomerQueryParams(query: CustomerListQuery): URLSearchParams {
   set('district', query.district);
   set('employee', query.employee);
   set('product', query.product);
+  set('productExclude', query.productExclude);
   set('createdFrom', query.createdFrom);
   set('createdTo', query.createdTo);
   set('lastOrderFrom', query.lastOrderFrom);
   set('lastOrderTo', query.lastOrderTo);
+  set('noOrderFrom', query.noOrderFrom);
+  set('noOrderTo', query.noOrderTo);
+  set('followupFrom', query.followupFrom);
+  set('followupTo', query.followupTo);
+  set('followupStatus', query.followupStatus);
+  set('deliveredFrom', query.deliveredFrom);
+  set('deliveredTo', query.deliveredTo);
   set('orderCount', query.orderCount);
   set('orderCountOp', query.orderCountOp);
   set('deliveredCount', query.deliveredCount);
   set('deliveredCountOp', query.deliveredCountOp);
+  set('orderStatuses', query.orderStatuses);
+  set('orderStatusesExclude', query.orderStatusesExclude);
+  set('orderSources', query.orderSources);
+  set('orderSourcesExclude', query.orderSourcesExclude);
+  set('customerTag', query.customerTag);
+  set('amountMin', query.amountMin);
+  set('amountMax', query.amountMax);
   set('courierScoreMin', query.courierScoreMin);
   set('page', query.page);
   set('pageSize', query.pageSize);

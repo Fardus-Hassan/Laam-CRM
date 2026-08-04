@@ -73,7 +73,7 @@ export {
   isUniqueConstraintError,
   toNumber,
 } from './inventory-shared';
-import { isUniqueConstraintError, toNumber } from './inventory-shared';
+import { type Actor, isUniqueConstraintError, toNumber } from './inventory-shared';
 
 function toNullableNumber(value: unknown): number | null {
   if (value == null) return null;

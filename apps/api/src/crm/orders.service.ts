@@ -2991,15 +2991,6 @@ export class OrdersService {
     return result;
   }
 
-  private async loadCourierStatsByPhone(
-    organizationId: string,
-    phones: string[],
-  ): Promise<Map<string, OrderCourierStats>> {
-    // Prefer courier-network cache (Pathao phone history). Local CRM order
-    // status counts are no longer the primary Courier column source.
-    return this.courierPhoneHistory.loadCachedStatsByPhones(organizationId, phones);
-  }
-
   private toListItem(
     row: {
       id: string;

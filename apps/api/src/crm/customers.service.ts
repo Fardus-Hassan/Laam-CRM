@@ -19,8 +19,51 @@ import type {
 import type { Customer, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import type { ActorLabel } from '../common/actor.util';
+import { splitCsv } from './customer-list-query.util';
 import { CourierPhoneHistoryService } from './courier-phone-history.service';
 import { normalizeBdPhone } from './phone.util';
+
+type CustomerActivityJson = {
+  id: string;
+  label: string;
+  description?: string;
+  timestamp: string;
+  actorName?: string;
+};
+
+const NOTE_UPDATED_LABEL = 'Note updated';
+
+function parseCustomerActivities(value: unknown): CustomerActivityJson[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item, index) => ({
+      id: typeof item.id === 'string' ? item.id : `act-${index}`,
+      label: typeof item.label === 'string' ? item.label : 'Activity',
+      description: typeof item.description === 'string' ? item.description : undefined,
+      timestamp:
+        typeof item.timestamp === 'string'
+          ? item.timestamp
+          : new Date().toISOString(),
+      actorName: typeof item.actorName === 'string' ? item.actorName : undefined,
+    }));
+}
+
+function appendNoteActivity(
+  existing: CustomerActivityJson[],
+  note: string | null | undefined,
+  actor?: ActorLabel,
+): CustomerActivityJson[] {
+  const next: CustomerActivityJson = {
+    id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    label: NOTE_UPDATED_LABEL,
+    description: note?.trim() || undefined,
+    timestamp: new Date().toISOString(),
+    actorName: actor?.name,
+  };
+  return [...existing, next].slice(-100);
+}
 
 const DELIVERED_STATUSES = new Set([
   'delivered',
@@ -585,6 +628,12 @@ export class CustomersService {
     const createdTo = parseDayEnd(query.createdTo);
     const lastOrderFrom = parseDayStart(query.lastOrderFrom);
     const lastOrderTo = parseDayEnd(query.lastOrderTo);
+    const noOrderFrom = parseDayStart(query.noOrderFrom);
+    const noOrderTo = parseDayEnd(query.noOrderTo);
+    const followupFrom = parseDayStart(query.followupFrom);
+    const followupTo = parseDayEnd(query.followupTo);
+    const deliveredFrom = parseDayStart(query.deliveredFrom);
+    const deliveredTo = parseDayEnd(query.deliveredTo);
     const orderCountFilter = compareInt(query.orderCountOp, query.orderCount);
     const deliveredFilter = compareInt(
       query.deliveredCountOp,
@@ -592,7 +641,10 @@ export class CustomersService {
     );
     const product = query.product?.trim();
     const employee = query.employee?.trim();
+    const customerTag = query.customerTag?.trim();
     const courierScoreMin = query.courierScoreMin;
+    const orderStatuses = splitCsv(query.orderStatuses);
+    const orderSources = splitCsv(query.orderSources);
 
     const and: Prisma.CustomerWhereInput[] = [];
 
@@ -615,6 +667,9 @@ export class CustomersService {
       and.push({
         assignedAgentName: { contains: employee, mode: 'insensitive' },
       });
+    }
+    if (customerTag) {
+      and.push({ tags: { has: customerTag } });
     }
     if (search) {
       and.push({
@@ -642,10 +697,60 @@ export class CustomersService {
         },
       });
     }
+    if (noOrderFrom || noOrderTo) {
+      and.push({
+        NOT: {
+          orders: {
+            some: {
+              deletedAt: null,
+              createdAt: {
+                ...(noOrderFrom ? { gte: noOrderFrom } : {}),
+                ...(noOrderTo ? { lte: noOrderTo } : {}),
+              },
+            },
+          },
+        },
+      });
+    }
+    if (query.followupStatus === 'pending') and.push({ hasFollowUp: true });
+    if (query.followupStatus === 'none') and.push({ hasFollowUp: false });
+    if (query.followupStatus === 'overdue') {
+      and.push({ hasFollowUp: true, followUpDue: { lt: new Date() } });
+    }
+    if (followupFrom || followupTo) {
+      and.push({
+        followUpDue: {
+          ...(followupFrom ? { gte: followupFrom } : {}),
+          ...(followupTo ? { lte: followupTo } : {}),
+        },
+      });
+    }
+    if (deliveredFrom || deliveredTo) {
+      and.push({
+        orders: {
+          some: {
+            deletedAt: null,
+            status: { in: ['delivered', 'completed'] },
+            updatedAt: {
+              ...(deliveredFrom ? { gte: deliveredFrom } : {}),
+              ...(deliveredTo ? { lte: deliveredTo } : {}),
+            },
+          },
+        },
+      });
+    }
     if (orderCountFilter !== undefined) and.push({ orderCount: orderCountFilter });
     if (deliveredFilter !== undefined) and.push({ deliveredCount: deliveredFilter });
-    if (product) {
+    if (query.amountMin !== undefined || query.amountMax !== undefined) {
       and.push({
+        totalSpent: {
+          ...(query.amountMin !== undefined ? { gte: query.amountMin } : {}),
+          ...(query.amountMax !== undefined ? { lte: query.amountMax } : {}),
+        },
+      });
+    }
+    if (product) {
+      const productClause: Prisma.CustomerWhereInput = {
         orders: {
           some: {
             deletedAt: null,
@@ -654,33 +759,35 @@ export class CustomersService {
             },
           },
         },
-      });
+      };
+      and.push(query.productExclude ? { NOT: productClause } : productClause);
+    }
+    if (orderStatuses.length) {
+      const statusClause: Prisma.CustomerWhereInput = {
+        orders: {
+          some: { deletedAt: null, status: { in: orderStatuses } },
+        },
+      };
+      and.push(query.orderStatusesExclude ? { NOT: statusClause } : statusClause);
+    }
+    if (orderSources.length) {
+      const sourceClause: Prisma.CustomerWhereInput = {
+        orders: {
+          some: { deletedAt: null, source: { in: orderSources } },
+        },
+      };
+      and.push(query.orderSourcesExclude ? { NOT: sourceClause } : sourceClause);
     }
     if (courierScoreMin !== undefined && courierScoreMin > 0) {
-      // rate = d/(d+f)*100 >= min  =>  d*(100-min) >= min*f
-      // Also exclude zero-attempt customers when min > 0
       and.push({
         OR: [
           {
-            AND: [
-              { deliveredCount: { gt: 0 } },
-              { failedCount: 0 },
-            ],
+            AND: [{ deliveredCount: { gt: 0 } }, { failedCount: 0 }],
           },
           ...(courierScoreMin < 100
             ? [
                 {
-                  AND: [
-                    {
-                      deliveredCount: {
-                        gte: 1,
-                      },
-                    },
-                    {
-                      // Approximate via raw-ish: use failedCount bound
-                      // d >= ceil(min/(100-min) * f) handled in app filter below for accuracy
-                    },
-                  ],
+                  AND: [{ deliveredCount: { gte: 1 } }],
                 } as Prisma.CustomerWhereInput,
               ]
             : []),
@@ -758,6 +865,7 @@ export class CustomersService {
   async create(
     organizationId: string,
     input: CreateCustomerPayload,
+    actor?: ActorLabel,
   ): Promise<CustomerDetail> {
     const phoneNormalized = normalizeBdPhone(input.phone);
     if (!phoneNormalized || phoneNormalized.length < 10) {
@@ -773,6 +881,8 @@ export class CustomersService {
     }
 
     const customerNumber = await this.nextCustomerNumber(organizationId);
+    const note = input.notes?.trim() || null;
+    const activities = note ? appendNoteActivity([], note, actor) : [];
     const created = await this.prisma.customer.create({
       data: {
         organizationId,
@@ -785,12 +895,13 @@ export class CustomersService {
         district: input.district?.trim() || null,
         area: input.area?.trim() || null,
         address: input.address?.trim() || null,
-        notes: input.notes?.trim() || null,
+        notes: note,
+        activities: activities as unknown as Prisma.InputJsonValue,
         tags: input.tags?.map((t) => t.trim()).filter(Boolean) ?? [],
         status: input.status ?? 'none',
         source: input.source?.trim() || 'manual',
         assignedAgentName: input.assignedAgentName?.trim() || null,
-      },
+      } as Prisma.CustomerUncheckedCreateInput,
     });
     return this.toDetail(created);
   }
@@ -799,6 +910,7 @@ export class CustomersService {
     organizationId: string,
     id: string,
     patch: UpdateCustomerPayload,
+    actor?: ActorLabel,
   ): Promise<CustomerDetail> {
     const existing = await this.prisma.customer.findFirst({
       where: { id, organizationId },
@@ -825,6 +937,18 @@ export class CustomersService {
       }
     }
 
+    const existingActivities = parseCustomerActivities(
+      (existing as Customer & { activities?: unknown }).activities,
+    );
+    let nextActivities: CustomerActivityJson[] | undefined;
+    if (patch.notes !== undefined && patch.notes !== (existing.notes ?? '')) {
+      nextActivities = appendNoteActivity(
+        existingActivities,
+        patch.notes?.trim() || null,
+        actor,
+      );
+    }
+
     const updated = await this.prisma.customer.update({
       where: { id },
       data: {
@@ -843,6 +967,9 @@ export class CustomersService {
           ? { address: patch.address?.trim() || null }
           : {}),
         ...(patch.notes !== undefined ? { notes: patch.notes?.trim() || null } : {}),
+        ...(nextActivities
+          ? { activities: nextActivities as unknown as Prisma.InputJsonValue }
+          : {}),
         ...(patch.tags !== undefined
           ? { tags: patch.tags.map((t) => t.trim()).filter(Boolean) }
           : {}),
@@ -859,7 +986,7 @@ export class CustomersService {
                 : null,
             }
           : {}),
-      },
+      } as Prisma.CustomerUncheckedUpdateInput,
     });
     return this.toDetail(updated);
   }
@@ -873,6 +1000,7 @@ export class CustomersService {
       assignedAgentName?: string;
       followUpDue?: string;
     },
+    actor?: ActorLabel,
   ): Promise<{ successCount: number; failedCount: number; message?: string }> {
     const ids = [...new Set(payload.customerIds)].slice(0, 200);
     if (!ids.length) {
@@ -883,20 +1011,36 @@ export class CustomersService {
     let failedCount = 0;
     for (const id of ids) {
       try {
-        await this.update(organizationId, id, {
-          ...(payload.status ? { status: payload.status } : {}),
-          ...(payload.assignedAgentName !== undefined
-            ? { assignedAgentName: payload.assignedAgentName }
-            : {}),
-          ...(payload.followUpDue !== undefined
-            ? { hasFollowUp: true, followUpDue: payload.followUpDue }
-            : {}),
-          ...(payload.note
-            ? {
-                notes: payload.note,
-              }
-            : {}),
+        const existing = await this.prisma.customer.findFirst({
+          where: { id, organizationId },
         });
+        if (!existing) {
+          failedCount += 1;
+          continue;
+        }
+
+        const notePatch =
+          payload.note?.trim()
+            ? existing.notes?.trim()
+              ? `${existing.notes.trim()}\n${payload.note.trim()}`
+              : payload.note.trim()
+            : undefined;
+
+        await this.update(
+          organizationId,
+          id,
+          {
+            ...(payload.status ? { status: payload.status } : {}),
+            ...(payload.assignedAgentName !== undefined
+              ? { assignedAgentName: payload.assignedAgentName }
+              : {}),
+            ...(payload.followUpDue !== undefined
+              ? { hasFollowUp: true, followUpDue: payload.followUpDue }
+              : {}),
+            ...(notePatch !== undefined ? { notes: notePatch } : {}),
+          },
+          actor,
+        );
         successCount += 1;
       } catch {
         failedCount += 1;
@@ -1165,6 +1309,7 @@ export class CustomersService {
       status: row.status,
       statusLabel: statusLabelBySlug?.get(row.status) ?? row.status,
       hasNotes: Boolean(row.notes?.trim()),
+      lastNotePreview: row.notes?.trim() || undefined,
       hasFollowUp: row.hasFollowUp,
       followUpDue: row.followUpDue?.toISOString(),
       assignedAgentName: row.assignedAgentName ?? undefined,
@@ -1214,10 +1359,29 @@ export class CustomersService {
         },
       }),
     ]);
+    const storedActivities = parseCustomerActivities(
+      (row as Customer & { activities?: unknown }).activities,
+    );
+    let noteActivities = storedActivities.filter(
+      (a) => a.label === NOTE_UPDATED_LABEL,
+    );
+    // Legacy rows: note exists but never logged — show current note once.
+    if (noteActivities.length === 0 && row.notes?.trim()) {
+      noteActivities = [
+        {
+          id: `${row.id}-note-current`,
+          label: NOTE_UPDATED_LABEL,
+          description: row.notes.trim(),
+          timestamp: row.updatedAt.toISOString(),
+        },
+      ];
+    }
+
     return {
       ...base,
       notes: row.notes ?? undefined,
       activities: [
+        ...noteActivities,
         ...orders.map((o) => ({
           id: o.id,
           label: `Order ${o.orderNumber}`,

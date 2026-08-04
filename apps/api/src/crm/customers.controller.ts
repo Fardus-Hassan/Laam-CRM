@@ -24,7 +24,6 @@ import {
 } from 'class-validator';
 import type {
   CreateCustomerPayload,
-  CustomerCompareOp,
   CustomerStatus,
   UpdateCustomerPayload,
 } from '@laam/types';
@@ -35,6 +34,11 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import { actorFromUser } from '../common/actor.util';
+import {
+  parseCustomerListQuery,
+  type CustomerListQueryRaw,
+} from './customer-list-query.util';
 import { CustomersService } from './customers.service';
 
 class CreateCustomerDto {
@@ -197,12 +201,6 @@ class BulkCustomersDto {
   followUpDue?: string;
 }
 
-function num(value: string | undefined): number | undefined {
-  if (value === undefined || value === '') return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
-}
-
 @ApiTags('CRM — Customers')
 @Controller('crm/customers')
 export class CustomersController {
@@ -211,46 +209,12 @@ export class CustomersController {
   @Get()
   @RequirePermissions('companies.view')
   @ApiOperation({ summary: 'List customers' })
-  list(
-    @CurrentUser() user: AuthUserPayload,
-    @Query('segment') segment?: string,
-    @Query('status') status?: string,
-    @Query('search') search?: string,
-    @Query('district') district?: string,
-    @Query('employee') employee?: string,
-    @Query('product') product?: string,
-    @Query('createdFrom') createdFrom?: string,
-    @Query('createdTo') createdTo?: string,
-    @Query('lastOrderFrom') lastOrderFrom?: string,
-    @Query('lastOrderTo') lastOrderTo?: string,
-    @Query('orderCount') orderCount?: string,
-    @Query('orderCountOp') orderCountOp?: string,
-    @Query('deliveredCount') deliveredCount?: string,
-    @Query('deliveredCountOp') deliveredCountOp?: string,
-    @Query('courierScoreMin') courierScoreMin?: string,
-    @Query('page') page = '1',
-    @Query('pageSize') pageSize = '20',
-  ) {
+  list(@CurrentUser() user: AuthUserPayload, @Query() query: CustomerListQueryRaw) {
     this.customers.requireOrg(user.organizationId);
-    return this.customers.list(user.organizationId!, {
-      segment,
-      status,
-      search,
-      district,
-      employee,
-      product,
-      createdFrom,
-      createdTo,
-      lastOrderFrom,
-      lastOrderTo,
-      orderCount: num(orderCount),
-      orderCountOp: orderCountOp as CustomerCompareOp | undefined,
-      deliveredCount: num(deliveredCount),
-      deliveredCountOp: deliveredCountOp as CustomerCompareOp | undefined,
-      courierScoreMin: num(courierScoreMin),
-      page: Number(page) || 1,
-      pageSize: Number(pageSize) || 20,
-    });
+    return this.customers.list(
+      user.organizationId!,
+      parseCustomerListQuery(query),
+    );
   }
 
   @Get('export')
@@ -260,39 +224,11 @@ export class CustomersController {
   async export(
     @CurrentUser() user: AuthUserPayload,
     @Res() res: Response,
-    @Query('segment') segment?: string,
-    @Query('status') status?: string,
-    @Query('search') search?: string,
-    @Query('district') district?: string,
-    @Query('employee') employee?: string,
-    @Query('product') product?: string,
-    @Query('createdFrom') createdFrom?: string,
-    @Query('createdTo') createdTo?: string,
-    @Query('lastOrderFrom') lastOrderFrom?: string,
-    @Query('lastOrderTo') lastOrderTo?: string,
-    @Query('orderCount') orderCount?: string,
-    @Query('orderCountOp') orderCountOp?: string,
-    @Query('deliveredCount') deliveredCount?: string,
-    @Query('deliveredCountOp') deliveredCountOp?: string,
-    @Query('courierScoreMin') courierScoreMin?: string,
+    @Query() query: CustomerListQueryRaw,
   ) {
     this.customers.requireOrg(user.organizationId);
     const csv = await this.customers.exportCsv(user.organizationId!, {
-      segment,
-      status,
-      search,
-      district,
-      employee,
-      product,
-      createdFrom,
-      createdTo,
-      lastOrderFrom,
-      lastOrderTo,
-      orderCount: num(orderCount),
-      orderCountOp: orderCountOp as CustomerCompareOp | undefined,
-      deliveredCount: num(deliveredCount),
-      deliveredCountOp: deliveredCountOp as CustomerCompareOp | undefined,
-      courierScoreMin: num(courierScoreMin),
+      ...parseCustomerListQuery(query),
       page: 1,
       pageSize: 5000,
     });
@@ -342,7 +278,7 @@ export class CustomersController {
   @ApiOperation({ summary: 'Bulk update customers' })
   bulk(@CurrentUser() user: AuthUserPayload, @Body() body: BulkCustomersDto) {
     this.customers.requireOrg(user.organizationId);
-    return this.customers.bulkAction(user.organizationId!, body);
+    return this.customers.bulkAction(user.organizationId!, body, actorFromUser(user));
   }
 
   @Get(':id')
@@ -359,7 +295,7 @@ export class CustomersController {
   create(@CurrentUser() user: AuthUserPayload, @Body() body: CreateCustomerDto) {
     this.customers.requireOrg(user.organizationId);
     const payload: CreateCustomerPayload = { ...body };
-    return this.customers.create(user.organizationId!, payload);
+    return this.customers.create(user.organizationId!, payload, actorFromUser(user));
   }
 
   @Patch(':id')
@@ -372,6 +308,6 @@ export class CustomersController {
   ) {
     this.customers.requireOrg(user.organizationId);
     const payload: UpdateCustomerPayload = { ...body };
-    return this.customers.update(user.organizationId!, id, payload);
+    return this.customers.update(user.organizationId!, id, payload, actorFromUser(user));
   }
 }

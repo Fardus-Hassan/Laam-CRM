@@ -23,6 +23,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DataTableCourierStats } from '@/components/data-table/cells';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
 
 export const CUSTOMER_TABLE_PINNED = {
@@ -35,6 +41,16 @@ export function formatCustomerDate(value: string) {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
+  }).format(new Date(value));
+}
+
+export function formatCustomerDateTime(value: string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(value));
 }
 
@@ -67,29 +83,48 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'notes',
       header: 'Notes',
-      size: 48,
+      size: 68,
+      minSize: 60,
+      maxSize: 80,
       meta: {
         label: 'Notes',
         priority: 'secondary',
-        headerClassName: 'text-center',
-        cellClassName: 'text-center',
+        headerClassName: 'px-2 text-center',
+        cellClassName: 'px-2 text-center',
         align: 'middle',
       },
       cell: ({ row }) => (
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-7"
-          onClick={() => onNoteClick?.(row.original)}
-          aria-label="Customer notes"
-        >
-          {row.original.hasNotes ? (
-            <MessageSquare className="size-3.5 text-primary" />
-          ) : (
-            <MessageSquarePlus className="size-3.5 text-muted-foreground" />
-          )}
-        </Button>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={
+                  row.original.hasNotes
+                    ? 'size-8 text-primary'
+                    : 'size-8 text-muted-foreground'
+                }
+                aria-label={row.original.hasNotes ? 'View note' : 'Add note'}
+                onClick={() => onNoteClick?.(row.original)}
+              >
+                {row.original.hasNotes ? (
+                  <MessageSquare className="size-4" />
+                ) : (
+                  <MessageSquarePlus className="size-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-[220px]">
+              {row.original.lastNotePreview?.trim()
+                ? row.original.lastNotePreview
+                : row.original.hasNotes
+                  ? 'Open to view note'
+                  : 'Add note'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ),
     },
     {
@@ -131,14 +166,25 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'orders',
       header: 'Orders',
-      size: 96,
+      size: 72,
       meta: { label: 'Orders', priority: 'primary', align: 'middle' },
       cell: ({ row }) => (
+        <p className="font-semibold tabular-nums">{row.original.orderCount}</p>
+      ),
+    },
+    {
+      id: 'delivered',
+      header: 'Delivered',
+      size: 88,
+      meta: {
+        label: 'Delivered completed',
+        priority: 'primary',
+        align: 'middle',
+      },
+      cell: ({ row }) => (
         <div className="tabular-nums">
-          <p className="font-semibold">{row.original.orderCount}</p>
-          <p className="text-xs text-muted-foreground">
-            {row.original.deliveredCount} delivered
-          </p>
+          <p className="font-semibold">{row.original.deliveredCount}</p>
+          <p className="text-[10px] text-muted-foreground">completed</p>
         </div>
       ),
     },

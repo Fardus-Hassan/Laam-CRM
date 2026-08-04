@@ -375,6 +375,8 @@ model Customer {
   address           String?
   notes             String?
   tags              String[]     @default([])
+  /// Timeline events (note updates, etc.) — same shape as Followup.activities.
+  activities        Json         @default("[]")
   /// Admin OrgCustomerStatus.slug (or legacy loyalty label).
   status            String       @default("none")
   source            String?
