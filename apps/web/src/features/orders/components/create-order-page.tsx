@@ -86,7 +86,7 @@ export function CreateOrderPage() {
       const phone = searchParams.get('phone');
       if (phone) {
         form.patch({ mobile: phone });
-        form.lookupCustomer();
+        void form.lookupCustomer(phone);
         toast.info('Customer phone pre-filled');
       }
     }

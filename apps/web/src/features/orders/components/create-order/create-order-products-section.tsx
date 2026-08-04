@@ -212,7 +212,8 @@ export function CreateOrderProductsSection({
                 value={state.orderStatus}
                 onChange={(orderStatus) => patch({ orderStatus })}
                 options={options.statuses}
-                searchable={false}
+                placeholder="Select status"
+                searchPlaceholder="Search status…"
               />
             </FormField>
             <FormField label="Payment Method" htmlFor="paymentMethod" required>

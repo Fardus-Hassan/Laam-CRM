@@ -9,14 +9,16 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { cn } from '@/lib/utils';
 
 type LinkedLeadCardProps = {
   leadId: string;
+  className?: string;
 };
 
-export function LinkedLeadCard({ leadId }: LinkedLeadCardProps) {
+export function LinkedLeadCard({ leadId, className }: LinkedLeadCardProps) {
   return (
-    <Card className="gap-0 py-0 shadow-none">
+    <Card className={cn('gap-0 py-0 shadow-none', className)}>
       <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
         <CardTitle className="text-sm">Converted from lead</CardTitle>
       </CardHeader>

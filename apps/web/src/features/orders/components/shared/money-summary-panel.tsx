@@ -38,6 +38,15 @@ type MoneySummaryPanelProps =
       showActions?: boolean;
     }
   | {
+      mode: 'edit';
+      form: CreateOrderFormApi;
+      order: OrderDetail;
+      onSubmit: () => void;
+      className?: string;
+      isSaving?: boolean;
+      onCollected?: () => void;
+    }
+  | {
       mode: 'readonly';
       order: OrderDetail;
       className?: string;
@@ -73,19 +82,13 @@ function Row({
   );
 }
 
-export function MoneySummaryPanel(props: MoneySummaryPanelProps) {
-  if (props.mode === 'create') {
-    return (
-      <CreateOrderSummaryPanel
-        form={props.form}
-        onSubmit={props.onSubmit}
-        className={props.className}
-        showActions={props.showActions}
-      />
-    );
-  }
-
-  const { order, className, onCollected } = props;
+function CollectPaymentControls({
+  order,
+  onCollected,
+}: {
+  order: OrderDetail;
+  onCollected?: () => void;
+}) {
   const { paid, due } = calcOrderPaymentTotals(order);
   const [open, setOpen] = React.useState(false);
   const [amount, setAmount] = React.useState(due > 0 ? String(due) : '');
@@ -120,6 +123,88 @@ export function MoneySummaryPanel(props: MoneySummaryPanelProps) {
       setSaving(false);
     }
   }
+
+  if (due <= 0) return null;
+
+  return (
+    <>
+      <Button type="button" size="sm" variant="secondary" className="w-full" onClick={() => setOpen(true)}>
+        Collect payment ({formatCurrency(due)} due · paid {formatCurrency(paid)})
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Collect payment — {order.orderNumber}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <FormField label="Amount" required>
+              <FormInput
+                type="number"
+                min={0}
+                step="1"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </FormField>
+            <FormField label="Method">
+              <FormSelect
+                value={method}
+                onChange={setMethod}
+                options={[
+                  { value: 'cod', label: 'COD' },
+                  { value: 'bkash', label: 'bKash' },
+                  { value: 'nagad', label: 'Nagad' },
+                  { value: 'bank', label: 'Bank' },
+                  { value: 'cash', label: 'Cash' },
+                ]}
+              />
+            </FormField>
+            <p className="text-xs text-muted-foreground">Due now: {formatCurrency(due)}</p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleCollect()} disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+export function MoneySummaryPanel(props: MoneySummaryPanelProps) {
+  if (props.mode === 'create') {
+    return (
+      <CreateOrderSummaryPanel
+        form={props.form}
+        onSubmit={props.onSubmit}
+        className={props.className}
+        showActions={props.showActions}
+      />
+    );
+  }
+
+  if (props.mode === 'edit') {
+    return (
+      <CreateOrderSummaryPanel
+        form={props.form}
+        onSubmit={props.onSubmit}
+        className={cn('w-full', props.className)}
+        submitLabel={props.isSaving ? 'Updating…' : 'Update order'}
+        cancelHref={null}
+        actionsPlacement="top"
+        footerExtra={
+          <CollectPaymentControls order={props.order} onCollected={props.onCollected} />
+        }
+      />
+    );
+  }
+
+  const { order, className, onCollected } = props;
+  const { paid, due } = calcOrderPaymentTotals(order);
 
   return (
     <Card className={cn('gap-0 overflow-hidden py-0 shadow-none', className)}>
@@ -170,53 +255,8 @@ export function MoneySummaryPanel(props: MoneySummaryPanelProps) {
             ) : null}
           </div>
         )}
-        {due > 0 ? (
-          <Button type="button" size="sm" className="w-full" onClick={() => setOpen(true)}>
-            Collect payment
-          </Button>
-        ) : null}
+        <CollectPaymentControls order={order} onCollected={onCollected} />
       </CardContent>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Collect payment — {order.orderNumber}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <FormField label="Amount" required>
-              <FormInput
-                type="number"
-                min={0}
-                step="1"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </FormField>
-            <FormField label="Method">
-              <FormSelect
-                value={method}
-                onChange={setMethod}
-                options={[
-                  { value: 'cod', label: 'COD' },
-                  { value: 'bkash', label: 'bKash' },
-                  { value: 'nagad', label: 'Nagad' },
-                  { value: 'bank', label: 'Bank' },
-                  { value: 'cash', label: 'Cash' },
-                ]}
-              />
-            </FormField>
-            <p className="text-xs text-muted-foreground">Due now: {formatCurrency(due)}</p>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={() => void handleCollect()} disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }

@@ -190,7 +190,7 @@ export function CustomerBlock(props: CustomerBlockProps) {
   if (props.mode === 'readonly') {
     return (
       <EditableSectionCard
-        title="Customer"
+        title="Customer Information"
         icon={<UserRound className="size-4 text-primary" />}
         canEdit={false}
       >
@@ -201,7 +201,7 @@ export function CustomerBlock(props: CustomerBlockProps) {
 
   return (
     <EditableSectionCard
-      title="Customer"
+      title="Customer Information"
       icon={<UserRound className="size-4 text-primary" />}
       editContent={editContent}
       onSave={onSave}

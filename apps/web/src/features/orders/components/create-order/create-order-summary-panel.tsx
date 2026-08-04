@@ -27,6 +27,13 @@ type CreateOrderSummaryPanelProps = {
   onSubmit: () => void;
   className?: string;
   showActions?: boolean;
+  /** Primary action label (default: Submit). */
+  submitLabel?: string;
+  /** Hide cancel link when null. */
+  cancelHref?: string | null;
+  footerExtra?: React.ReactNode;
+  /** Put primary actions above money fields (detail sticky sidebar). */
+  actionsPlacement?: 'top' | 'bottom';
 };
 
 function ReadOnlyAmount({ label, value }: { label: string; value: number }) {
@@ -43,17 +50,58 @@ export function CreateOrderSummaryPanel({
   onSubmit,
   className,
   showActions = true,
+  submitLabel = 'Submit',
+  cancelHref = '/dashboard/orders',
+  footerExtra,
+  actionsPlacement = 'bottom',
 }: CreateOrderSummaryPanelProps) {
   const { state, totals, errors, patch, applyCoupon } = form;
   const [couponOpen, setCouponOpen] = React.useState(false);
   const [couponBusy, setCouponBusy] = React.useState(false);
 
+  const skipFollowupRow = (
+    <div className="flex items-center gap-2">
+      <input
+        id="skipFollowup"
+        type="checkbox"
+        checked={state.skipFollowup}
+        onChange={(event) => patch({ skipFollowup: event.target.checked })}
+        className="size-4 rounded border border-input"
+      />
+      <Label htmlFor="skipFollowup">Skip Followup</Label>
+    </div>
+  );
+
+  const actionsBlock =
+    showActions || actionsPlacement === 'top' ? (
+      <div className="flex flex-col gap-2">
+        {skipFollowupRow}
+        {showActions ? (
+          <>
+            <Button type="button" className="w-full" onClick={onSubmit}>
+              {submitLabel}
+            </Button>
+            {footerExtra}
+            {cancelHref ? (
+              <Button type="button" variant="outline" className="w-full" asChild>
+                <Link href={cancelHref}>Cancel</Link>
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    ) : (
+      skipFollowupRow
+    );
+
   return (
-    <Card className={cn('gap-0 py-0 shadow-none', className)}>
+    <Card className={cn('w-full gap-0 py-0 shadow-none', className)}>
       <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
         <CardTitle className="text-sm">Summary</CardTitle>
       </CardHeader>
-      <CardContent className={cn('space-y-3', ORDER_SECTION_BODY_CLASS)}>
+      <CardContent className={cn('space-y-2.5', ORDER_SECTION_BODY_CLASS)}>
+        {actionsPlacement === 'top' ? actionsBlock : null}
+
         <OrderDatePicker
           value={state.orderDate}
           onChange={(orderDate) => patch({ orderDate })}
@@ -69,7 +117,7 @@ export function CreateOrderSummaryPanel({
           />
         </FormField>
 
-        <div className="space-y-3 rounded-lg bg-muted/30 p-3">
+        <div className="space-y-2.5 rounded-lg bg-muted/30 p-2.5">
           <ReadOnlyAmount label="Subtotal (Tk)" value={totals.subtotal} />
 
           <FormField label="Discount/Less" required>
@@ -140,7 +188,7 @@ export function CreateOrderSummaryPanel({
               Apply Coupon
             </button>
           ) : (
-            <div className="space-y-2 rounded-md border border-border/70 p-3">
+            <div className="space-y-2 rounded-md border border-border/70 p-2.5">
               <FormField label="Coupon code" htmlFor="couponCode">
                 <div className="flex gap-2">
                   <FormInput
@@ -192,27 +240,7 @@ export function CreateOrderSummaryPanel({
           )}
         </div>
 
-        <div className="flex items-center gap-2 pt-1">
-          <input
-            id="skipFollowup"
-            type="checkbox"
-            checked={state.skipFollowup}
-            onChange={(event) => patch({ skipFollowup: event.target.checked })}
-            className="size-4 rounded border border-input"
-          />
-          <Label htmlFor="skipFollowup">Skip Followup</Label>
-        </div>
-
-        {showActions ? (
-          <div className="flex flex-col gap-2">
-            <Button type="button" onClick={onSubmit}>
-              Submit
-            </Button>
-            <Button type="button" variant="outline" asChild>
-              <Link href="/dashboard/orders">Cancel</Link>
-            </Button>
-          </div>
-        ) : null}
+        {actionsPlacement === 'bottom' ? actionsBlock : null}
 
         <p className="text-xs text-muted-foreground">NB: * marked are required field.</p>
       </CardContent>

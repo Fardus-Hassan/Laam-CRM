@@ -186,7 +186,7 @@ export function OrderLineItemsCard({
   return (
     <>
       <EditableSectionCard
-        title="Order items"
+        title="Order Products"
         icon={<Package className="size-4 text-primary" />}
         canEdit={false}
         className="overflow-hidden"
@@ -212,21 +212,12 @@ export function OrderLineItemsCard({
               size="sm"
               variant="outline"
               className="h-7 gap-1.5 px-2.5 text-xs"
-              disabled={Boolean(order.stockDeducted)}
               title={
                 order.stockDeducted
-                  ? 'Stock already deducted — revert status before editing products'
+                  ? 'Stock held — saving product changes will adjust inventory'
                   : 'Edit products'
               }
-              onClick={() => {
-                if (order.stockDeducted) {
-                  toast.error(
-                    'Cannot edit products after stock was deducted. Change status back (e.g. cancel) first.',
-                  );
-                  return;
-                }
-                setSheetOpen(true);
-              }}
+              onClick={() => setSheetOpen(true)}
             >
               <Pencil className="size-3.5" />
               Edit
@@ -302,6 +293,119 @@ export function OrderLineItemsCard({
         onSave={onSaveLineItems}
       />
 
+      <Sheet open={returnOpen} onOpenChange={setReturnOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Return items</SheetTitle>
+          </SheetHeader>
+          <SheetBody className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Enter how many units to return per line. Stock restocks for returned qty when stock
+              was previously deducted.
+            </p>
+            {order.lineItems.map((line) => {
+              const returned = line.returnedQuantity ?? 0;
+              const remaining = Math.max(0, line.quantity - returned);
+              return (
+                <div key={line.id} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{line.productName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Remaining {remaining} / {line.quantity}
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={remaining}
+                    className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm tabular-nums"
+                    value={returnQty[line.id] ?? 0}
+                    disabled={remaining === 0}
+                    onChange={(e) => {
+                      const raw = Number(e.target.value);
+                      const qty = Number.isFinite(raw)
+                        ? Math.max(0, Math.min(remaining, Math.floor(raw)))
+                        : 0;
+                      setReturnQty((prev) => ({ ...prev, [line.id]: qty }));
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </SheetBody>
+          <SheetFooter>
+            <Button type="button" variant="outline" onClick={() => setReturnOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void submitReturn()} disabled={returning}>
+              {returning ? 'Saving…' : 'Confirm return'}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+/** Standalone Return items control for the always-editable detail page. */
+export function OrderReturnItemsButton({
+  order,
+  onReturned,
+}: {
+  order: OrderDetail;
+  onReturned?: (order: OrderDetail) => void;
+}) {
+  const [returnOpen, setReturnOpen] = React.useState(false);
+  const [returnQty, setReturnQty] = React.useState<Record<string, number>>({});
+  const [returning, setReturning] = React.useState(false);
+  const canReturn = order.lineItems.some(
+    (line) => (line.returnedQuantity ?? 0) < line.quantity,
+  );
+
+  React.useEffect(() => {
+    if (!returnOpen) return;
+    const next: Record<string, number> = {};
+    for (const line of order.lineItems) {
+      next[line.id] = 0;
+    }
+    setReturnQty(next);
+  }, [returnOpen, order.lineItems]);
+
+  if (!canReturn) return null;
+
+  async function submitReturn() {
+    const lines = Object.entries(returnQty)
+      .filter(([, qty]) => qty > 0)
+      .map(([lineItemId, quantity]) => ({ lineItemId, quantity }));
+    if (lines.length === 0) {
+      toast.error('Select at least one return quantity');
+      return;
+    }
+    setReturning(true);
+    try {
+      const { ordersApi } = await import('@/features/orders/api/orders-api');
+      const updated = await ordersApi.returnLines(order.id, { lines });
+      toast.success('Return recorded');
+      setReturnOpen(false);
+      onReturned?.(updated);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Return failed');
+    } finally {
+      setReturning(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-8"
+        onClick={() => setReturnOpen(true)}
+      >
+        Return items
+      </Button>
       <Sheet open={returnOpen} onOpenChange={setReturnOpen}>
         <SheetContent className="sm:max-w-md">
           <SheetHeader>

@@ -1770,11 +1770,20 @@ export class OrdersService {
       STOCK_CUT_STATUSES.has(status) &&
       !STOCK_CUT_STATUSES.has(prev) &&
       !existing.stockDeductedAt;
+    // Restock when cancelling, completing a return, or moving out of a
+    // stock-cut status back to draft-like statuses (e.g. confirmed → pending).
+    const leavingStockCut =
+      STOCK_CUT_STATUSES.has(prev) &&
+      !STOCK_CUT_STATUSES.has(status) &&
+      status !== 'pending_return' &&
+      status !== 'returned' &&
+      status !== 'cancelled';
     const shouldRestock =
+      Boolean(existing.stockDeductedAt) &&
       (status === 'cancelled' ||
         (STOCK_RETURN_RESTOCK_STATUSES.has(status) &&
-          !STOCK_RETURN_RESTOCK_STATUSES.has(prev))) &&
-      Boolean(existing.stockDeductedAt);
+          !STOCK_RETURN_RESTOCK_STATUSES.has(prev)) ||
+        leavingStockCut);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (shouldCut) {
@@ -2146,12 +2155,6 @@ export class OrdersService {
       return this.updateStatus(organizationId, existing.id, input.status, actor);
     }
 
-    if (input.lineItems && existing.stockDeductedAt) {
-      throw new BadRequestException(
-        'Cannot edit line items after stock was deducted. Revert status first.',
-      );
-    }
-
     if (input.lineItems !== undefined && input.lineItems.length === 0) {
       throw new BadRequestException('At least one line item is required');
     }
@@ -2269,7 +2272,40 @@ export class OrdersService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      let nextStockDeductedAt: Date | null | undefined = undefined;
+
       if (lineRows) {
+        const stillNeedsStockHeld = STOCK_CUT_STATUSES.has(existing.status);
+
+        if (existing.stockDeductedAt) {
+          const restockLines = existing.lineItems
+            .map((l) => {
+              const already = (l as { returnedQuantity?: number }).returnedQuantity ?? 0;
+              const qty = Math.max(0, l.quantity - already);
+              return {
+                productId: l.productId,
+                variantId: l.variantId,
+                quantity: qty,
+                productName: l.productName,
+              };
+            })
+            .filter((l) => l.quantity > 0);
+          if (restockLines.length > 0) {
+            await this.inventory.applyOrderStockDeltas(
+              tx,
+              organizationId,
+              restockLines,
+              {
+                sign: 1,
+                orderNumber: existing.orderNumber,
+                orderId: existing.id,
+                actor: { userId: actor.userId, name: actor.name },
+              },
+            );
+          }
+          nextStockDeductedAt = null;
+        }
+
         await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
         await tx.orderItem.createMany({
           data: lineRows.map((l) => ({
@@ -2278,11 +2314,34 @@ export class OrdersService {
             ...l,
           })),
         });
+
+        if (stillNeedsStockHeld) {
+          await this.inventory.applyOrderStockDeltas(
+            tx,
+            organizationId,
+            lineRows.map((l) => ({
+              productId: l.productId,
+              variantId: l.variantId,
+              quantity: l.quantity,
+              productName: l.productName,
+            })),
+            {
+              sign: -1,
+              orderNumber: existing.orderNumber,
+              orderId: existing.id,
+              actor: { userId: actor.userId, name: actor.name },
+            },
+          );
+          nextStockDeductedAt = new Date();
+        }
       }
 
       return tx.order.update({
         where: { id: existing.id },
         data: {
+          ...(nextStockDeductedAt !== undefined
+            ? { stockDeductedAt: nextStockDeductedAt }
+            : {}),
           customerName: input.customerName?.trim() ?? undefined,
           customerPhone: input.customerPhone?.trim() ?? undefined,
           customerEmail:

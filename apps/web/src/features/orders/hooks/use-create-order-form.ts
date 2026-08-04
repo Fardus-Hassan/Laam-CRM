@@ -393,8 +393,8 @@ export function useCreateOrderForm() {
     dispatch({ type: 'patch', patch });
   }, []);
 
-  const lookupCustomer = React.useCallback(async () => {
-    const phone = state.mobile.trim();
+  const lookupCustomer = React.useCallback(async (phoneOverride?: string) => {
+    const phone = (phoneOverride ?? state.mobile).trim();
     if (!phone) {
       dispatch({ type: 'lookup_customer_result', profile: null });
       return;

@@ -543,7 +543,7 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
   return (
     <>
       <EditableSectionCard
-        title="Order details"
+        title="Other Information"
         icon={<FileText className="size-4 text-primary" />}
         className={cn(className)}
         canEdit={Boolean(onSave)}

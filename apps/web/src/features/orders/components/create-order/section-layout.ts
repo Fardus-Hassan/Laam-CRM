@@ -9,6 +9,12 @@ export const ORDER_CARD_CLASS = 'gap-0 py-0 shadow-none';
 export const ORDER_SIDEBAR_GRID_CLASS =
   'xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.9fr)]';
 
+/** Order detail: wider sticky summary column that fills available width. */
+export const ORDER_DETAIL_SIDEBAR_GRID_CLASS =
+  'xl:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]';
+
+export const ORDER_DETAIL_PAGE_GAP = 'space-y-3';
+
 /** Below fixed dashboard header (h-14 / sm:h-16) with 1rem breathing room. */
 export const ORDER_STICKY_TOP_CLASS = 'top-[calc(3.5rem+1rem)] sm:top-[calc(4rem+1rem)]';
 export const ORDER_STICKY_MAX_H_CLASS =

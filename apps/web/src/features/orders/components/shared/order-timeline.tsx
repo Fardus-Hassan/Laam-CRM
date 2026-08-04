@@ -12,12 +12,20 @@ import { cn } from '@/lib/utils';
 type OrderTimelineProps = {
   events: OrderTimelineEvent[];
   title?: string;
+  className?: string;
+  /** Scrollable body (e.g. detail sidebar). */
+  bodyClassName?: string;
 };
 
-export function OrderTimeline({ events, title = 'Activity' }: OrderTimelineProps) {
+export function OrderTimeline({
+  events,
+  title = 'Activity',
+  className,
+  bodyClassName,
+}: OrderTimelineProps) {
   if (!events.length) {
     return (
-      <Card className="gap-0 py-0 shadow-none">
+      <Card className={cn('gap-0 py-0 shadow-none', className)}>
         <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
           <CardTitle className="text-sm">{title}</CardTitle>
         </CardHeader>
@@ -29,16 +37,16 @@ export function OrderTimeline({ events, title = 'Activity' }: OrderTimelineProps
   }
 
   return (
-    <Card className="gap-0 py-0 shadow-none">
+    <Card className={cn('gap-0 py-0 shadow-none', className)}>
       <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
         <CardTitle className="text-sm">{title}</CardTitle>
       </CardHeader>
-      <CardContent className={ORDER_SECTION_BODY_CLASS}>
+      <CardContent className={cn(ORDER_SECTION_BODY_CLASS, bodyClassName)}>
         <ol className="relative space-y-0">
           {events.map((event, index) => {
             const isLast = index === events.length - 1;
             return (
-              <li key={event.id} className="relative flex gap-3 pb-4 last:pb-0">
+              <li key={event.id} className="relative flex gap-3 pb-3 last:pb-0">
                 {!isLast ? (
                   <span className="absolute top-2.5 left-[5px] h-[calc(100%-4px)] w-px bg-border" />
                 ) : null}
@@ -51,7 +59,7 @@ export function OrderTimeline({ events, title = 'Activity' }: OrderTimelineProps
                 <div className="min-w-0 flex-1 pt-0.5">
                   <p className="text-sm font-medium leading-snug">{event.label}</p>
                   {event.description ? (
-                    <p className="mt-0.5 text-sm text-muted-foreground">{event.description}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{event.description}</p>
                   ) : null}
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     {new Intl.DateTimeFormat('en-GB', {

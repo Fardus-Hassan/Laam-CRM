@@ -4,42 +4,38 @@ import * as React from 'react';
 import type {
   OrderDetail,
   OrderCourierTracking,
-  OrderFormOptionsResponse,
+  OrderSource,
 } from '@laam/types';
-import { MapPin, StickyNote } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { PageShell } from '@/components/layout/page-shell';
-import { FormField } from '@/components/form/form-field';
-import { FormTextarea } from '@/components/form/form-textarea';
+import { Button } from '@/components/ui/button';
+import { CreateOrderOtherSection } from '@/features/orders/components/create-order/create-order-other-section';
 import {
-  CustomerBlock,
-  orderToCustomerValue,
-} from '@/features/orders/components/shared/customer-block';
+  ORDER_DETAIL_PAGE_GAP,
+  ORDER_DETAIL_SIDEBAR_GRID_CLASS,
+  ORDER_STICKY_TOP_CLASS,
+} from '@/features/orders/components/create-order/section-layout';
 import { CustomerOrderHistoryCard } from '@/features/orders/components/shared/customer-order-history-card';
-import { CourierPhoneHistoryPanel } from '@/features/courier/components/courier-phone-history-panel';
 import { CourierTrackingCard } from '@/features/orders/components/shared/courier-tracking-card';
-import { EditableSectionCard } from '@/features/orders/components/shared/editable-section-card';
+import { CustomerBlock } from '@/features/orders/components/shared/customer-block';
 import { LinkedLeadCard } from '@/features/orders/components/shared/linked-lead-card';
-import { OrderRelatedLinks } from '@/features/orders/components/shared/order-related-links';
 import { MoneySummaryPanel } from '@/features/orders/components/shared/money-summary-panel';
 import { OrderActionBar } from '@/features/orders/components/shared/order-action-bar';
 import { OrderAssignSheet } from '@/features/orders/components/shared/order-assign-sheet';
 import { OrderDetailHeader } from '@/features/orders/components/shared/order-detail-header';
-import { OrderExtrasCard } from '@/features/orders/components/shared/order-extras-card';
-import { OrderLineItemsCard } from '@/features/orders/components/shared/order-line-items-card';
+import { OrderRelatedLinks } from '@/features/orders/components/shared/order-related-links';
+import { OrderReturnItemsButton } from '@/features/orders/components/shared/order-line-items-card';
 import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
 import { OrderTimeline } from '@/features/orders/components/shared/order-timeline';
 import { PrintPreviewDialog } from '@/features/orders/components/shared/print-preview-dialog';
-import {
-  ORDER_PAGE_GAP,
-  ORDER_SIDEBAR_GRID_CLASS,
-  ORDER_STICKY_MAX_H_CLASS,
-  ORDER_STICKY_TOP_CLASS,
-} from '@/features/orders/components/create-order/section-layout';
+import { ProductPicker } from '@/features/orders/components/shared/product-picker';
 import { ordersApi } from '@/features/orders/api/orders-api';
+import { useCreateOrderForm } from '@/features/orders/hooks/use-create-order-form';
 import { useOrderDetailMutations } from '@/features/orders/hooks/use-order-mutations';
 import { createOrderDetailBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
+import { orderDetailToCreateFormPatch } from '@/features/orders/lib/order-detail-to-create-form';
+import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const COURIER_TRACKING_STATUSES = new Set([
@@ -55,24 +51,34 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
   const [order, setOrder] = React.useState(initialOrder);
   const [courierTracking, setCourierTracking] = React.useState<OrderCourierTracking | null>(null);
   const [printType, setPrintType] = React.useState<'invoice' | 'packing' | null>(null);
-  const [deliveryNote, setDeliveryNote] = React.useState(order.notes ?? '');
-  const [customerDraft, setCustomerDraft] = React.useState(orderToCustomerValue(order));
   const [assignOpen, setAssignOpen] = React.useState(false);
   const [statusOpen, setStatusOpen] = React.useState(false);
-  const [formOptions, setFormOptions] = React.useState<OrderFormOptionsResponse | null>(null);
+  const [saving, setSaving] = React.useState(false);
+
+  const form = useCreateOrderForm();
+  const hydratedForId = React.useRef<string | null>(null);
 
   const { confirmOrder, cancelOrder, deleteOrder, changeStatus, updateOrder } =
-    useOrderDetailMutations(order, setOrder);
+    useOrderDetailMutations(order, (updated) => {
+      setOrder(updated);
+      // Keep live form in sync after Confirm / Cancel / Status (stock + status).
+      form.patch(orderDetailToCreateFormPatch(updated));
+      hydratedForId.current = updated.id;
+    });
+
+  // Load order into the same live form used by Create Order (always-editable fields).
+  React.useEffect(() => {
+    if (form.loadingMeta) return;
+    if (hydratedForId.current === order.id) return;
+    hydratedForId.current = order.id;
+    form.patch(orderDetailToCreateFormPatch(order));
+    // Customer Total Orders loads via CreateOrderCustomerSection when mobile is set.
+  }, [form, form.loadingMeta, order]);
 
   React.useEffect(() => {
-    let cancelled = false;
-    void ordersApi.getFormOptions().then((options) => {
-      if (!cancelled) setFormOptions(options);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setOrder(initialOrder);
+    hydratedForId.current = null;
+  }, [initialOrder]);
 
   React.useEffect(() => {
     if (COURIER_TRACKING_STATUSES.has(order.status)) {
@@ -85,7 +91,6 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
     }
   }, [order.id, order.status, order.courierStatus, order.courierStatusSyncedAt]);
 
-  // Soft refresh courier status while detail page is open (no full reload)
   React.useEffect(() => {
     if (
       (order.courierProvider !== 'pathao' && order.courierProvider !== 'carrybee') ||
@@ -109,8 +114,13 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
                 await import('@/features/orders/api/pathao-courier-api')
               ).pathaoCourierApi.syncOrder(order.id);
         if (!cancelled) {
-          setOrder(updated);
-          setCustomerDraft(orderToCustomerValue(updated));
+          // Soft-refresh courier fields only — do not wipe unsaved form edits.
+          setOrder((prev) => ({
+            ...prev,
+            ...updated,
+            // Keep timeline from sync response
+            timeline: updated.timeline ?? prev.timeline,
+          }));
         }
       } catch {
         // ignore transient sync errors on soft refresh
@@ -126,11 +136,106 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
     };
   }, [order.id, order.courierProvider, order.courierConsignmentId, order.status]);
 
-  React.useEffect(() => {
-    setOrder(initialOrder);
-    setCustomerDraft(orderToCustomerValue(initialOrder));
-    setDeliveryNote(initialOrder.notes ?? '');
-  }, [initialOrder]);
+  function applyOrderUpdate(updated: OrderDetail) {
+    setOrder(updated);
+    hydratedForId.current = null;
+  }
+
+  async function handleUpdate() {
+    if (saving) return;
+    if (!form.validate()) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { state, totals } = form;
+      const nextLineItems = state.lineItems.map((line) => ({
+        productId: line.productId || undefined,
+        variantId: line.variationId || undefined,
+        productName: line.productName,
+        variationLabel: line.variationLabel || undefined,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        discount: line.discount,
+      }));
+      const lineItemsChanged =
+        nextLineItems.length !== order.lineItems.length ||
+        nextLineItems.some((line, index) => {
+          const prev = order.lineItems[index];
+          if (!prev) return true;
+          return (
+            (line.productId ?? '') !== (prev.productId ?? '') ||
+            (line.variantId ?? '') !== (prev.variantId ?? '') ||
+            line.productName !== prev.productName ||
+            (line.variationLabel ?? '') !== (prev.variationLabel ?? '') ||
+            line.quantity !== prev.quantity ||
+            line.unitPrice !== prev.unitPrice ||
+            (line.discount ?? 0) !== (prev.discount ?? 0)
+          );
+        });
+
+      const updated = await updateOrder(order.id, {
+        customerName: state.name,
+        customerPhone: state.mobile,
+        customerEmail: state.email || undefined,
+        altMobile: state.altMobile || undefined,
+        shippingAddress: state.address,
+        shippingArea: state.district || state.pathaoLocation?.city || order.shippingArea,
+        district: state.district || undefined,
+        source: (state.orderSource || undefined) as OrderSource | undefined,
+        ...(state.orderStatus && state.orderStatus !== order.status
+          ? { status: state.orderStatus as OrderDetail['status'] }
+          : {}),
+        paymentMethod: state.paymentMethod || undefined,
+        deliveryCharge: state.shipping,
+        discount: totals.orderDiscount + totals.couponDiscount,
+        paidAmount: state.advancePayment,
+        notes: state.orderNote || undefined,
+        customerNote: state.customerNote || undefined,
+        courierNote: state.courierNote || undefined,
+        packingNote: state.packingNote || undefined,
+        referenceNo: state.referenceNo || undefined,
+        skipFollowup: state.skipFollowup,
+        couponCode: state.couponApplied ? state.couponCode : undefined,
+        customerTag: state.customerTag || undefined,
+        orderTag: state.orderTag || undefined,
+        pathaoCity: state.pathaoLocation?.city,
+        pathaoZone: state.pathaoLocation?.zone,
+        pathaoArea: state.pathaoLocation?.area,
+        pathaoCityId: state.pathaoLocation?.cityId,
+        pathaoZoneId: state.pathaoLocation?.zoneId,
+        pathaoAreaId: state.pathaoLocation?.areaId,
+        carrybeeCity: state.carrybeeLocation?.city,
+        carrybeeZone: state.carrybeeLocation?.zone,
+        carrybeeArea: state.carrybeeLocation?.area,
+        carrybeeCityId: state.carrybeeLocation?.cityId,
+        carrybeeZoneId: state.carrybeeLocation?.zoneId,
+        carrybeeAreaId: state.carrybeeLocation?.areaId,
+        attachmentNames: state.attachments.map((a) => a.name),
+        attachmentUrls: state.attachments.map((a) => a.url),
+        ...(lineItemsChanged ? { lineItems: nextLineItems } : {}),
+      });
+      setOrder(updated);
+      form.patch(orderDetailToCreateFormPatch(updated));
+      hydratedForId.current = updated.id;
+      toast.success('Order updated');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function refreshOrder() {
+    const updated = await ordersApi.getOrder(order.orderNumber);
+    if (updated) {
+      setOrder(updated);
+      form.patch(orderDetailToCreateFormPatch(updated));
+      hydratedForId.current = updated.id;
+    }
+  }
 
   return (
     <PageShell
@@ -138,7 +243,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
       description={order.customerName}
       breadcrumbs={createOrderDetailBreadcrumbs(order.orderNumber, order.status)}
     >
-      <div className={cn(ORDER_PAGE_GAP)}>
+      <div className={cn(ORDER_DETAIL_PAGE_GAP)}>
         <OrderActionBar
           order={order}
           onConfirm={confirmOrder}
@@ -166,147 +271,103 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
           onAssign={() => setAssignOpen(true)}
           onStatusClick={() => setStatusOpen(true)}
           onPrint={(type) => setPrintType(type)}
-          onCourierBooked={(updated) => {
-            setOrder(updated);
-            setCustomerDraft(orderToCustomerValue(updated));
-            setDeliveryNote(updated.notes ?? '');
-          }}
+          onCourierBooked={applyOrderUpdate}
         />
 
         <OrderDetailHeader order={order} />
 
-        <div className={cn('grid items-start gap-4', ORDER_SIDEBAR_GRID_CLASS)}>
-          <div className="min-w-0 space-y-4">
-            <OrderLineItemsCard
-              order={order}
-              onReturned={(updated) => setOrder(updated)}
-              onSaveLineItems={async (lineItems) => {
-                const updated = await updateOrder(order.id, {
-                  lineItems: lineItems.map((line) => ({
-                    productName: line.productName,
-                    sku: line.sku,
-                    productId: line.productId,
-                    variantId: line.variantId,
-                    variationLabel: line.variationLabel,
-                    quantity: line.quantity,
-                    unitPrice: line.unitPrice,
-                    discount: line.discount,
-                  })),
-                });
-                setOrder(updated);
-              }}
-            />
+        {order.stockDeducted ? (
+          <div className="rounded-md border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+            Stock is held for this order. Product edits adjust inventory on save; Pending also
+            restocks.
+          </div>
+        ) : null}
 
-            <CustomerBlock
-              mode="edit"
-              value={customerDraft}
-              onChange={setCustomerDraft}
-              districts={formOptions?.districts}
-              sources={formOptions?.sources}
-              onSave={async () => {
-                const updated = await updateOrder(order.id, {
-                  customerName: customerDraft.name,
-                  customerPhone: customerDraft.phone,
-                  customerEmail: customerDraft.email,
-                  shippingAddress: customerDraft.address,
-                  shippingArea: customerDraft.area,
-                  district: customerDraft.district,
-                  source: customerDraft.source,
-                });
-                setCustomerDraft(orderToCustomerValue(updated));
-              }}
-            />
-
-            <EditableSectionCard
-              title="Delivery & notes"
-              icon={<MapPin className="size-4 text-primary" />}
-              editContent={
-                <FormField label="Internal note">
-                  <FormTextarea
-                    rows={3}
-                    value={deliveryNote}
-                    onChange={(e) => setDeliveryNote(e.target.value)}
-                  />
-                </FormField>
-              }
-              onSave={async () => {
-                const updated = await updateOrder(order.id, { notes: deliveryNote });
-                setDeliveryNote(updated.notes ?? '');
-              }}
-              onCancel={() => setDeliveryNote(order.notes ?? '')}
-            >
-              <div className="space-y-3 text-sm">
-                <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/15 p-2.5 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Shipping address
-                    </p>
-                    <p className="mt-0.5 leading-relaxed">{order.shippingAddress}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Area
-                    </p>
-                    <p className="mt-0.5 font-medium">{order.shippingArea || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Assigned agent
-                    </p>
-                    <p className="mt-0.5 font-medium">{order.assignedAgentName ?? 'Unassigned'}</p>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    <StickyNote className="size-3.5" />
-                    Internal note
-                  </p>
-                  {order.notes ? (
-                    <p className="rounded-lg border border-border/60 bg-muted/25 px-2.5 py-2 leading-relaxed text-foreground">
-                      {order.notes}
-                    </p>
-                  ) : (
-                    <p className="text-muted-foreground">No internal notes yet.</p>
-                  )}
-                </div>
+        {/* Create-like form + wider sticky sidebar (summary + activity/related) */}
+        <div className={cn('grid items-start gap-3', ORDER_DETAIL_SIDEBAR_GRID_CLASS)}>
+          <div className="min-w-0 space-y-3 pb-24 xl:pb-0">
+            <div id="order-detail-customer" className="scroll-mt-24">
+              <CustomerBlock mode="create" form={form} />
+            </div>
+            <div id="order-detail-products" className="scroll-mt-24 space-y-2">
+              <div className="flex justify-end">
+                <OrderReturnItemsButton
+                  order={order}
+                  onReturned={(updated) => {
+                    setOrder(updated);
+                    form.patch(orderDetailToCreateFormPatch(updated));
+                    hydratedForId.current = updated.id;
+                  }}
+                />
               </div>
-            </EditableSectionCard>
-
-            <OrderExtrasCard
-              order={order}
-              options={formOptions}
-              onSave={async (patch) => {
-                const updated = await updateOrder(order.id, patch);
-                setOrder(updated);
-                return updated;
-              }}
-            />
+              <ProductPicker mode="create" form={form} />
+            </div>
+            <div id="order-detail-other" className="scroll-mt-24">
+              <CreateOrderOtherSection form={form} />
+            </div>
           </div>
 
-          <aside
-            className={cn(
-              'space-y-4 xl:sticky xl:self-start',
-              ORDER_STICKY_TOP_CLASS,
-              ORDER_STICKY_MAX_H_CLASS,
-              'xl:overflow-y-auto',
-            )}
-          >
-            <MoneySummaryPanel
-              mode="readonly"
-              order={order}
-              onCollected={() => {
-                void ordersApi.getOrder(order.orderNumber).then((updated) => {
-                  if (updated) setOrder(updated);
-                });
-              }}
-            />
-            <CustomerOrderHistoryCard phone={order.customerPhone} currentOrderId={order.id} />
-            <CourierPhoneHistoryPanel phone={order.customerPhone} />
-            <OrderTimeline events={order.timeline} />
-            {courierTracking ? <CourierTrackingCard tracking={courierTracking} /> : null}
-            {order.leadId ? <LinkedLeadCard leadId={order.leadId} /> : null}
-            <OrderRelatedLinks order={order} />
+          <aside className="min-w-0 w-full self-start">
+            {/* Height follows content — no viewport max-h (avoids blank gap when stuck). */}
+            <div
+              className={cn(
+                'flex w-full flex-col gap-3 xl:sticky xl:z-20',
+                ORDER_STICKY_TOP_CLASS,
+              )}
+            >
+              <MoneySummaryPanel
+                mode="edit"
+                form={form}
+                order={order}
+                isSaving={saving}
+                className="w-full"
+                onSubmit={() => void handleUpdate()}
+                onCollected={() => void refreshOrder()}
+              />
+
+              <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <OrderTimeline
+                  events={order.timeline}
+                  className="w-full"
+                  bodyClassName="custom-scrollbar max-h-48 overflow-y-auto pr-1"
+                />
+                <OrderRelatedLinks
+                  order={order}
+                  className="w-full"
+                  bodyClassName="custom-scrollbar max-h-48 overflow-y-auto pr-1"
+                />
+              </div>
+
+              <CustomerOrderHistoryCard
+                phone={order.customerPhone}
+                currentOrderId={order.id}
+                className="w-full"
+              />
+              {courierTracking ? (
+                <CourierTrackingCard tracking={courierTracking} className="w-full" />
+              ) : null}
+              {order.leadId ? <LinkedLeadCard leadId={order.leadId} className="w-full" /> : null}
+            </div>
           </aside>
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur supports-[backdrop-filter]:bg-background/80 xl:hidden">
+        <div className="mx-auto flex max-w-lg items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground">Grand Total</p>
+            <p className="truncate text-base font-semibold tabular-nums">
+              {formatCurrency(form.totals.grandTotal)}
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="shrink-0"
+            disabled={saving}
+            onClick={() => void handleUpdate()}
+          >
+            {saving ? 'Updating…' : 'Update'}
+          </Button>
         </div>
       </div>
 
@@ -323,7 +384,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         currentAgentName={order.assignedAgentName}
         onAssign={async (employeeName) => {
           const updated = await updateOrder(order.id, { assignedAgentName: employeeName });
-          setOrder(updated);
+          applyOrderUpdate(updated);
         }}
       />
 
@@ -331,7 +392,9 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         open={statusOpen}
         onOpenChange={setStatusOpen}
         currentStatus={order.status}
-        onSelect={changeStatus}
+        onSelect={async (status) => {
+          await changeStatus(status);
+        }}
       />
     </PageShell>
   );

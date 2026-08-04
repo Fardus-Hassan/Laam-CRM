@@ -78,6 +78,15 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
           ? 'Loading courier integrations…'
           : 'No courier connected — set address manually, or connect Pathao/Carrybee in Settings → Integrations.';
 
+  // Auto-load shop order stats when phone is valid (create + detail) — no blur required.
+  React.useEffect(() => {
+    if (phoneDigits(state.mobile).length < 10) return;
+    const handle = window.setTimeout(() => {
+      void lookupCustomer(state.mobile);
+    }, 280);
+    return () => window.clearTimeout(handle);
+  }, [state.mobile, lookupCustomer]);
+
   return (
     <>
       <Card className="gap-0 py-0 shadow-none">

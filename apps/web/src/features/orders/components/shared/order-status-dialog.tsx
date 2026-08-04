@@ -105,8 +105,8 @@ export function OrderStatusDialog({
           />
         </FormField>
         <p className="text-xs text-muted-foreground">
-          Custom statuses are registered to your org on update. Confirming cuts stock; cancelling
-          restocks if stock was deducted.
+          Custom statuses are registered to your org on update. Confirming cuts stock; moving back
+          to Pending (or cancelling) restocks if stock was deducted.
         </p>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
