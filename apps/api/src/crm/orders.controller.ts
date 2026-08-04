@@ -243,6 +243,15 @@ class CreateOrderDto {
   utmCampaign?: string;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  courierWeightKg?: number;
+
+  @IsOptional()
+  @IsString()
+  courierDeliveryType?: 'normal' | 'express';
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   attachmentNames?: string[];
@@ -445,6 +454,33 @@ class UpdateOrderDto {
   @IsArray()
   @IsString({ each: true })
   attachmentUrls?: string[];
+
+  @IsOptional()
+  @IsString()
+  utmSource?: string;
+
+  @IsOptional()
+  @IsString()
+  utmId?: string;
+
+  @IsOptional()
+  @IsString()
+  utmContent?: string;
+
+  @IsOptional()
+  @IsString()
+  utmCampaign?: string;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === null || value === undefined || value === '' ? value : Number(value),
+  )
+  @IsNumber()
+  courierWeightKg?: number | null;
+
+  @IsOptional()
+  @IsString()
+  courierDeliveryType?: 'normal' | 'express' | null;
 }
 
 function parseBoolQuery(value?: string): boolean | undefined {
@@ -513,6 +549,8 @@ export class OrdersController {
       utmId: body.utmId,
       utmContent: body.utmContent,
       utmCampaign: body.utmCampaign,
+      courierWeightKg: body.courierWeightKg,
+      courierDeliveryType: body.courierDeliveryType,
       attachmentNames: body.attachmentNames,
       attachmentUrls: body.attachmentUrls,
     };

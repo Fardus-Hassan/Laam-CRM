@@ -14,6 +14,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import {
   websiteIngestPaths,
   websiteSettingsApi,
@@ -36,6 +37,7 @@ function slugify(value: string) {
 }
 
 export function WebsiteIntegrationsSettingsPage() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [stores, setStores] = React.useState<WebsiteStore[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -124,7 +126,13 @@ export function WebsiteIntegrationsSettingsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Disconnect this website? Ingest will stop immediately.')) return;
+    const ok = await confirm({
+      title: 'Disconnect this website?',
+      description: 'Ingest will stop immediately.',
+      confirmLabel: 'Disconnect',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await websiteSettingsApi.disconnect(id);
       setStores((prev) => prev.filter((s) => s.id !== id));
@@ -364,6 +372,7 @@ export function WebsiteIntegrationsSettingsPage() {
           </CardContent>
         </Card>
       </div>
+      {confirmDialog}
     </PageShell>
   );
 }

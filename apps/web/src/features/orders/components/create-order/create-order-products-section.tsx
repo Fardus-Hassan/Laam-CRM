@@ -272,16 +272,44 @@ export function CreateOrderProductsSection({
             ) : null}
           </FormField>
 
-          <div className={cn('grid sm:grid-cols-2', ORDER_SECTION_GRID_GAP)}>
-            <FormField label="Courier Note" htmlFor="courierNote">
+          <div className={cn('grid sm:grid-cols-2 lg:grid-cols-4', ORDER_SECTION_GRID_GAP)}>
+            <FormField label="Package weight (kg)" htmlFor="courierWeightKg">
+              <FormInput
+                id="courierWeightKg"
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={state.courierWeightKg}
+                onChange={(event) => patch({ courierWeightKg: event.target.value })}
+                placeholder="Auto from products"
+              />
+            </FormField>
+            <FormField label="Delivery type" htmlFor="courierDeliveryType">
+              <select
+                id="courierDeliveryType"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={state.courierDeliveryType}
+                onChange={(event) =>
+                  patch({
+                    courierDeliveryType:
+                      event.target.value === 'express' ? 'express' : 'normal',
+                  })
+                }
+              >
+                <option value="normal">Normal</option>
+                <option value="express">Express</option>
+              </select>
+            </FormField>
+            <FormField label="Courier Note" htmlFor="courierNote" className="sm:col-span-2">
               <FormTextarea
                 id="courierNote"
                 rows={3}
                 value={state.courierNote}
                 onChange={(event) => patch({ courierNote: event.target.value })}
+                placeholder="Shown as special instruction on Pathao / Carrybee"
               />
             </FormField>
-            <FormField label="Packing Note" htmlFor="packingNote">
+            <FormField label="Packing Note" htmlFor="packingNote" className="sm:col-span-2 lg:col-span-4">
               <FormTextarea
                 id="packingNote"
                 rows={3}

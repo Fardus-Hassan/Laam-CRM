@@ -14,6 +14,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
 import {
@@ -35,6 +36,7 @@ type ReceiveLineState = {
 };
 
 export function PurchaseDetailPage() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const params = useParams<{ purchaseId: string }>();
   const router = useRouter();
   const purchaseId = params.purchaseId;
@@ -190,7 +192,13 @@ export function PurchaseDetailPage() {
 
   async function cancelPurchase() {
     if (!purchase) return;
-    if (!window.confirm(`Cancel ${purchase.purchaseNumber}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Cancel ${purchase.purchaseNumber}?`,
+      description: 'This cannot be undone.',
+      confirmLabel: 'Cancel purchase',
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await inventoryApi.cancelPurchase(purchase.id);
@@ -518,6 +526,7 @@ export function PurchaseDetailPage() {
           </>
         )}
       </div>
+      {confirmDialog}
     </PageShell>
   );
 }

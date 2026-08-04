@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
 import {
   ORDER_CARD_CLASS,
@@ -32,6 +33,7 @@ export function TeamsAdminPanel({
   teams,
   onChanged,
 }: TeamsAdminPanelProps) {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [selectedId, setSelectedId] = React.useState(teams[0]?.id ?? '');
   const [name, setName] = React.useState('');
   const [leaderUserId, setLeaderUserId] = React.useState('');
@@ -114,7 +116,13 @@ export function TeamsAdminPanel({
 
   async function handleDelete() {
     if (!selected) return;
-    if (!window.confirm(`Delete team “${selected.name}”?`)) return;
+    const ok = await confirm({
+      title: `Delete team “${selected.name}”?`,
+      description: 'This team and its assignments will be permanently removed.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     await rbacApi.deleteTeam(organizationId, selected.id);
     toast.success('Team deleted');
     setSelectedId('');
@@ -273,6 +281,7 @@ export function TeamsAdminPanel({
           )}
         </CardContent>
       </Card>
+      {confirmDialog}
     </div>
   );
 }

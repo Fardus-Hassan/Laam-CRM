@@ -529,6 +529,10 @@ model Order {
   utmId              String?
   utmContent         String?
   utmCampaign        String?
+  /// Optional package weight override (kg) for courier booking.
+  courierWeightKg    Float?
+  /// normal | express — mapped per courier provider on book.
+  courierDeliveryType String?
   attachmentNames    String[] @default([])
   attachmentUrls     String[] @default([])
   stockDeductedAt    DateTime?
@@ -967,6 +971,8 @@ model ProductVariant {
   baseUom        UnitOfMeasure?           @relation(fields: [baseUomId], references: [id], onDelete: SetNull)
   salePrice      Decimal                  @db.Decimal(12, 2)
   costPrice      Decimal?                 @db.Decimal(12, 2)
+  /// Shipping weight per unit in kilograms (used for Pathao/Carrybee booking).
+  weightKg       Float                   @default(0.5)
   stock          Int                      @default(0)
   reorderLevel   Int                      @default(5)
   createdAt      DateTime                 @default(now())

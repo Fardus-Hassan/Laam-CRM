@@ -115,7 +115,8 @@ export class PathaoCourierService {
   private async pathaoPost(
     organizationId: string,
     path: string,
-    body: Record<string, unknown>,
+    /** Pathao cancel expects an empty JSON array (`[]`), matching their merchant SDKs. */
+    body: Record<string, unknown> | unknown[] = {},
   ): Promise<unknown> {
     const { token, cfg } = await this.getAccessToken(organizationId);
     const res = await fetch(`${cfg.baseUrl}${path}`, {
@@ -132,11 +133,28 @@ export class PathaoCourierService {
       data?: unknown;
       message?: string;
       errors?: unknown;
+      type?: string;
+      code?: number | string;
+      error?: boolean | string;
+      success?: boolean | string;
     };
 
-    if (!res.ok) {
+    const softType = typeof json.type === 'string' ? json.type.toLowerCase() : '';
+    const softCode = Number(json.code);
+    const message = typeof json.message === 'string' ? json.message : '';
+    // Pathao cancel often returns HTTP 200 with `{ error: true, message: "Unauthorized!" }`.
+    const softFail =
+      softType === 'error' ||
+      json.error === true ||
+      /unauthorized/i.test(message) ||
+      (Number.isFinite(softCode) && softCode >= 400);
+
+    if (!res.ok || softFail) {
       throw new BadGatewayException(
-        formatPathaoError(json, `Pathao request failed (${res.status})`),
+        formatPathaoError(
+          json,
+          `Pathao request failed (${res.ok ? softCode || softType || message || 'error' : res.status})`,
+        ),
       );
     }
 
@@ -261,16 +279,29 @@ export class PathaoCourierService {
   async cancelOrder(
     organizationId: string,
     consignmentId: string,
+    _reason = 'Cancelled from CRM',
   ): Promise<{ ok: true }> {
     const id = consignmentId.trim();
     if (!id) {
       throw new BadGatewayException('Pathao consignment id is required to cancel');
     }
-    await this.pathaoPost(
-      organizationId,
-      `/aladdin/api/v1/orders/${encodeURIComponent(id)}/cancel`,
-      {},
-    );
+    // Pathao merchant SDKs POST an empty JSON array. Some accounts still get
+    // HTTP 200 + `{ error: true, message: "Unauthorized!" }` — treat as failure.
+    try {
+      await this.pathaoPost(
+        organizationId,
+        `/aladdin/api/v1/orders/${encodeURIComponent(id)}/cancel`,
+        [],
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/unauthorized/i.test(msg)) {
+        throw new BadGatewayException(
+          `Pathao API rejected cancel for ${id} (Unauthorized). These API credentials can book/track but Pathao is blocking cancel. Cancel the parcel in the Pathao merchant panel, then use Cancel courier / Unlink here. Ask Pathao support to enable order-cancel on your developer app if you need CRM cancel.`,
+        );
+      }
+      throw e;
+    }
     return { ok: true };
   }
 

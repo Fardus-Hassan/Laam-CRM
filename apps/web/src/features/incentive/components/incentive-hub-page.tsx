@@ -49,6 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { incentiveApi } from '@/features/incentive/api/incentive-api';
@@ -154,6 +155,7 @@ function OpsTableCard({
 }
 
 export function IncentiveHubPage() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const { can } = usePermissions();
   const { user } = useAuth();
   const canManage = can('incentive.manage');
@@ -239,7 +241,13 @@ export function IncentiveHubPage() {
   }
 
   async function handleDeletePlan(plan: IncentivePlan) {
-    if (!confirm(`Delete plan “${plan.name}”?`)) return;
+    const ok = await confirm({
+      title: `Delete plan “${plan.name}”?`,
+      description: 'This incentive plan will be permanently removed.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     await runAction(() => incentiveApi.deletePlan(plan.id), 'Plan deleted');
   }
 
@@ -1335,6 +1343,7 @@ export function IncentiveHubPage() {
         onClose={() => setSalaryOpen(false)}
         onSaved={() => void load()}
       />
+      {confirmDialog}
     </PageShell>
   );
 }

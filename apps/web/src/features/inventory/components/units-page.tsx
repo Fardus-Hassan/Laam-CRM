@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { InventoryResponsiveList } from '@/features/inventory/components/inventory-responsive-list';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
@@ -34,6 +35,7 @@ const DIMENSION_OPTIONS: { value: UomDimension; label: string }[] = [
 ];
 
 export function UnitsPage() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [units, setUnits] = React.useState<UnitOfMeasure[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -118,7 +120,13 @@ export function UnitsPage() {
 
   async function handleDelete(unit: UnitOfMeasure) {
     if (unit.isSystem) return;
-    if (!window.confirm(`Delete unit ${unit.code}?`)) return;
+    const ok = await confirm({
+      title: `Delete unit ${unit.code}?`,
+      description: 'This custom unit will be permanently removed.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await inventoryApi.deleteUnit(unit.id);
       toast.success('Unit deleted');
@@ -232,6 +240,7 @@ export function UnitsPage() {
           </DialogContent>
         </Dialog>
       </div>
+      {confirmDialog}
     </PageShell>
   );
 }

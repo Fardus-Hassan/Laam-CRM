@@ -59,6 +59,7 @@ function emptyVariant(sku: string): ProductVariant {
     costPrice: 0,
     stock: 0,
     reorderLevel: 5,
+    weightKg: 0.5,
   };
 }
 
@@ -376,6 +377,7 @@ export function CreateProductPage() {
           costPrice: v.costPrice,
           stock: v.stock,
           reorderLevel: v.reorderLevel,
+          weightKg: v.weightKg ?? 0.5,
         })),
       });
       if (pendingFile) {
@@ -661,6 +663,19 @@ export function CreateProductPage() {
                         value={variant.reorderLevel}
                         onChange={(e) =>
                           updateVariant(index, { reorderLevel: Number(e.target.value) })
+                        }
+                      />
+                    </FormField>
+                    <FormField label="Weight (kg)">
+                      <FormInput
+                        type="number"
+                        min={0.01}
+                        step={0.01}
+                        value={variant.weightKg ?? 0.5}
+                        onChange={(e) =>
+                          updateVariant(index, {
+                            weightKg: Math.max(0.01, Number(e.target.value) || 0.5),
+                          })
                         }
                       />
                     </FormField>

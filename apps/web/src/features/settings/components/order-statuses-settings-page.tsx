@@ -11,6 +11,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_GRID_GAP,
@@ -473,6 +474,7 @@ export function OrderStatusesSettingsPage() {
 }
 
 function QueueFoldersEditor() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [queues, setQueues] = React.useState<
     Array<{
       id?: string;
@@ -514,7 +516,12 @@ function QueueFoldersEditor() {
   }, [refresh]);
 
   if (loading) {
-    return <p className="text-xs text-muted-foreground">Loading folders…</p>;
+    return (
+      <>
+        <p className="text-xs text-muted-foreground">Loading folders…</p>
+        {confirmDialog}
+      </>
+    );
   }
 
   return (
@@ -585,8 +592,15 @@ function QueueFoldersEditor() {
                 variant="ghost"
                 className="h-8 text-destructive"
                 onClick={() => {
-                  if (!window.confirm(`Remove folder "${queue.label}" from nav?`)) return;
-                  void import('@/features/orders/api/order-queue-config-api').then(async (m) => {
+                  void (async () => {
+                    const ok = await confirm({
+                      title: `Remove folder "${queue.label}"?`,
+                      description: 'This folder will be removed from nav.',
+                      confirmLabel: 'Remove',
+                      destructive: true,
+                    });
+                    if (!ok) return;
+                    const m = await import('@/features/orders/api/order-queue-config-api');
                     try {
                       await m.orderQueueConfigApi.deactivate(queue.id!);
                       toast.success('Folder removed');
@@ -595,7 +609,7 @@ function QueueFoldersEditor() {
                     } catch (error) {
                       toast.error(error instanceof Error ? error.message : 'Delete failed');
                     }
-                  });
+                  })();
                 }}
               >
                 Delete
@@ -604,6 +618,7 @@ function QueueFoldersEditor() {
           </div>
         );
       })}
+      {confirmDialog}
     </div>
   );
 }

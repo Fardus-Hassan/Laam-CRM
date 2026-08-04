@@ -142,6 +142,7 @@ type VariantRow = {
   costPrice: unknown;
   stock: number;
   reorderLevel: number;
+  weightKg?: number;
 };
 
 type ActivityRow = {
@@ -810,6 +811,7 @@ export class InventoryCatalogService {
               baseUomId,
               salePrice: new Prisma.Decimal(v.salePrice),
               costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
+              weightKg: Number(v.weightKg ?? 0.5) > 0 ? Number(v.weightKg ?? 0.5) : 0.5,
               stock: v.stock ?? 0,
               reorderLevel: v.reorderLevel ?? input.reorderLevel ?? 5,
             },
@@ -975,6 +977,10 @@ export class InventoryCatalogService {
                   baseUomId,
                   salePrice: new Prisma.Decimal(v.salePrice),
                   costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
+                  weightKg:
+                    v.weightKg != null && Number(v.weightKg) > 0
+                      ? Number(v.weightKg)
+                      : undefined,
                   reorderLevel: v.reorderLevel ?? existing.reorderLevel,
                 },
               });
@@ -1023,6 +1029,7 @@ export class InventoryCatalogService {
                   baseUomId,
                   salePrice: new Prisma.Decimal(v.salePrice),
                   costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
+                  weightKg: Number(v.weightKg ?? 0.5) > 0 ? Number(v.weightKg ?? 0.5) : 0.5,
                   stock,
                   reorderLevel: v.reorderLevel ?? existing.reorderLevel,
                 },
@@ -2103,6 +2110,7 @@ export class InventoryCatalogService {
       costPrice: toNullableNumber(v.costPrice) ?? undefined,
       stock: v.stock,
       reorderLevel: v.reorderLevel,
+      weightKg: Number(v.weightKg ?? 0.5) > 0 ? Number(v.weightKg ?? 0.5) : 0.5,
     }));
 
     return {

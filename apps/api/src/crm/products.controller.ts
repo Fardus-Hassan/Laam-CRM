@@ -90,6 +90,13 @@ class VariantDto {
   reorderLevel?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  @Max(1000)
+  weightKg?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(64)
   baseUomId?: string;
@@ -310,6 +317,8 @@ export class ProductsController {
       costPrice: v.costPrice,
       stock: v.stock ?? 0,
       reorderLevel: v.reorderLevel ?? 5,
+      weightKg:
+        v.weightKg != null && Number(v.weightKg) > 0 ? Number(v.weightKg) : 0.5,
     }));
   }
 

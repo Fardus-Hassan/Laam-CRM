@@ -191,6 +191,14 @@ export const orderDetailSchema = orderListItemSchema.extend({
   attachments: z.array(orderAttachmentSchema).optional(),
   /** True when stock was already cut for this order (blocks line-item edits). */
   stockDeducted: z.boolean().optional(),
+  utmSource: z.string().optional(),
+  utmId: z.string().optional(),
+  utmContent: z.string().optional(),
+  utmCampaign: z.string().optional(),
+  /** Override package weight for courier booking (kg). When omitted, sum of variant weights. */
+  courierWeightKg: z.number().positive().optional(),
+  /** Courier service level: normal | express */
+  courierDeliveryType: z.enum(['normal', 'express']).optional(),
 });
 
 export type OrderDetail = z.infer<typeof orderDetailSchema>;
@@ -424,6 +432,8 @@ export const createOrderPayloadSchema = z.object({
   utmId: z.string().optional(),
   utmContent: z.string().optional(),
   utmCampaign: z.string().optional(),
+  courierWeightKg: z.number().positive().optional(),
+  courierDeliveryType: z.enum(['normal', 'express']).optional(),
   attachmentNames: z.array(z.string()).optional(),
   attachmentUrls: z.array(z.string()).optional(),
 });
@@ -518,6 +528,12 @@ export const updateOrderPayloadSchema = z.object({
   lineItems: z.array(createOrderLinePayloadSchema).optional(),
   attachmentNames: z.array(z.string()).optional(),
   attachmentUrls: z.array(z.string()).optional(),
+  utmSource: z.string().optional(),
+  utmId: z.string().optional(),
+  utmContent: z.string().optional(),
+  utmCampaign: z.string().optional(),
+  courierWeightKg: z.number().positive().nullable().optional(),
+  courierDeliveryType: z.enum(['normal', 'express']).nullable().optional(),
 });
 
 export type UpdateOrderPayload = z.infer<typeof updateOrderPayloadSchema>;

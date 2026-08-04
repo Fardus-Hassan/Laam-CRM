@@ -35,6 +35,7 @@ import { normalizeBdPhone } from './phone.util';
 import { OrderPaymentsService } from './order-payments.service';
 import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { PathaoCourierService } from './pathao-courier.service';
+import { isPathaoCancelledStatus } from './pathao-status.defaults';
 import { SmsService } from './sms.service';
 import { AutomationsService } from './automations.service';
 import type { PathaoSyncService } from './pathao-sync.service';
@@ -86,6 +87,8 @@ export type CreateOrderInput = CreateOrderPayload & {
   utmId?: string;
   utmContent?: string;
   utmCampaign?: string;
+  courierWeightKg?: number;
+  courierDeliveryType?: 'normal' | 'express';
   attachmentNames?: string[];
   attachmentUrls?: string[];
   lineItems: Array<
@@ -138,6 +141,12 @@ export type UpdateOrderInput = {
   lineItems?: CreateOrderInput['lineItems'];
   attachmentNames?: string[];
   attachmentUrls?: string[];
+  utmSource?: string;
+  utmId?: string;
+  utmContent?: string;
+  utmCampaign?: string;
+  courierWeightKg?: number | null;
+  courierDeliveryType?: 'normal' | 'express' | null;
 };
 
 const STOCK_CUT_STATUSES = new Set([
@@ -1633,6 +1642,14 @@ export class OrdersService {
           utmId: input.utmId?.trim() || null,
           utmContent: input.utmContent?.trim() || null,
           utmCampaign: input.utmCampaign?.trim() || null,
+          courierWeightKg:
+            input.courierWeightKg !== undefined && input.courierWeightKg !== null
+              ? Math.max(0.1, Number(input.courierWeightKg))
+              : null,
+          courierDeliveryType:
+            input.courierDeliveryType === 'express' || input.courierDeliveryType === 'normal'
+              ? input.courierDeliveryType
+              : null,
           attachmentNames: input.attachmentNames ?? [],
           attachmentUrls: input.attachmentUrls ?? [],
           websiteStoreId: input.websiteStoreId?.trim() || null,
@@ -2391,6 +2408,28 @@ export class OrdersService {
             input.referenceNo !== undefined
               ? input.referenceNo.trim() || null
               : undefined,
+          utmSource:
+            input.utmSource !== undefined ? input.utmSource.trim() || null : undefined,
+          utmId: input.utmId !== undefined ? input.utmId.trim() || null : undefined,
+          utmContent:
+            input.utmContent !== undefined ? input.utmContent.trim() || null : undefined,
+          utmCampaign:
+            input.utmCampaign !== undefined
+              ? input.utmCampaign.trim() || null
+              : undefined,
+          courierWeightKg:
+            input.courierWeightKg !== undefined
+              ? input.courierWeightKg === null
+                ? null
+                : Math.max(0.1, Number(input.courierWeightKg))
+              : undefined,
+          courierDeliveryType:
+            input.courierDeliveryType !== undefined
+              ? input.courierDeliveryType === 'express' ||
+                input.courierDeliveryType === 'normal'
+                ? input.courierDeliveryType
+                : null
+              : undefined,
           skipFollowup:
             input.skipFollowup !== undefined ? Boolean(input.skipFollowup) : undefined,
           couponCode:
@@ -2584,6 +2623,11 @@ export class OrdersService {
       .join(', ')
       .slice(0, 200);
 
+    const itemWeightKg = await this.resolveCourierWeightKg(organizationId, existing);
+    const deliveryType = this.resolvePathaoDeliveryType(
+      (existing as { courierDeliveryType?: string | null }).courierDeliveryType,
+    );
+
     const storeId = await this.pathao.resolveStoreId(organizationId);
     const booked = await this.pathao.createOrder(organizationId, {
       storeId,
@@ -2600,9 +2644,10 @@ export class OrdersService {
       recipientCity: existing.pathaoCityId ?? undefined,
       recipientZone: existing.pathaoZoneId ?? undefined,
       recipientArea: existing.pathaoAreaId ?? undefined,
+      deliveryType,
       specialInstruction: existing.courierNote?.trim() || undefined,
       itemQuantity,
-      itemWeight: 0.5,
+      itemWeight: itemWeightKg,
       itemDescription: itemDescription || existing.orderNumber,
       amountToCollect: due,
     });
@@ -2722,6 +2767,12 @@ export class OrdersService {
       .join(', ')
       .slice(0, 200);
 
+    const itemWeightKg = await this.resolveCourierWeightKg(organizationId, existing);
+    const itemWeightGrams = Math.max(1, Math.round(itemWeightKg * 1000));
+    const deliveryType = this.resolveCarrybeeDeliveryType(
+      (existing as { courierDeliveryType?: string | null }).courierDeliveryType,
+    );
+
     const storeId = await this.carrybee.assertStoreReady(organizationId);
     const booked = await this.carrybee.createOrder(organizationId, {
       storeId,
@@ -2738,9 +2789,10 @@ export class OrdersService {
       cityId: existing.carrybeeCityId,
       zoneId: existing.carrybeeZoneId,
       areaId: existing.carrybeeAreaId ?? undefined,
+      deliveryType,
       specialInstruction: existing.courierNote?.trim() || undefined,
       itemQuantity,
-      itemWeight: 500,
+      itemWeight: itemWeightGrams,
       productDescription: itemDescription || existing.orderNumber,
       collectableAmount: due,
     });
@@ -2844,9 +2896,97 @@ export class OrdersService {
     };
   }
 
+  /** Pathao: 48 = Normal, 12 = On Demand / Express. */
+  private resolvePathaoDeliveryType(value?: string | null): number {
+    return value === 'express' ? 12 : 48;
+  }
+
+  /** Carrybee: 1 = Normal, 2 = Express (when supported). */
+  private resolveCarrybeeDeliveryType(value?: string | null): number {
+    return value === 'express' ? 2 : 1;
+  }
+
+  /**
+   * Package weight in kg: order override → sum(variant.weightKg × qty) → 0.5 minimum.
+   */
+  private async resolveCourierWeightKg(
+    organizationId: string,
+    order: {
+      courierWeightKg?: number | null;
+      lineItems: Array<{ variantId?: string | null; quantity: number }>;
+    },
+  ): Promise<number> {
+    const override = order.courierWeightKg;
+    if (override != null && Number(override) > 0) {
+      return Math.max(0.5, Number(override));
+    }
+
+    const variantIds = [
+      ...new Set(
+        order.lineItems
+          .map((l) => l.variantId?.trim())
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (!variantIds.length) return 0.5;
+
+    const variants = await this.prisma.productVariant.findMany({
+      where: { organizationId, id: { in: variantIds } },
+      select: { id: true, weightKg: true },
+    });
+    const weightById = new Map(
+      variants.map((v) => [
+        v.id,
+        Number((v as { weightKg?: number }).weightKg ?? 0.5) || 0.5,
+      ]),
+    );
+
+    let total = 0;
+    let matched = false;
+    for (const line of order.lineItems) {
+      const id = line.variantId?.trim();
+      if (!id) continue;
+      const unit = weightById.get(id);
+      if (unit == null) continue;
+      total += unit * Math.max(1, line.quantity);
+      matched = true;
+    }
+
+    return Math.max(0.5, matched ? total : 0.5);
+  }
+
   private isRemoteCourierAlreadyGone(message: string): boolean {
-    return /already\s*cancel|not\s*found|cannot\s*be\s*cancel|does\s*not\s*exist|cancelled|canceled|no longer/i.test(
+    return /already\s*cancel|not\s*found|does\s*not\s*exist|no longer|already\s*been\s*cancel/i.test(
       message,
+    );
+  }
+
+  private isRemoteCourierCancelledStatus(status: string, slug?: string): boolean {
+    return isPathaoCancelledStatus(status, slug);
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Pathao status can lag a second or two after cancel — poll briefly before failing.
+   */
+  private async waitForPathaoCancelled(
+    organizationId: string,
+    consignmentId: string,
+  ): Promise<{ orderStatus: string; orderStatusSlug?: string }> {
+    const delaysMs = [0, 700, 1500, 2500];
+    let last: { orderStatus: string; orderStatusSlug?: string } | null = null;
+    for (const delay of delaysMs) {
+      if (delay > 0) await this.sleep(delay);
+      last = await this.pathao.getOrderInfo(organizationId, consignmentId);
+      if (this.isRemoteCourierCancelledStatus(last.orderStatus, last.orderStatusSlug)) {
+        return last;
+      }
+    }
+    throw new BadRequestException(
+      `Pathao still shows “${last?.orderStatus || last?.orderStatusSlug || 'active'}” for ${consignmentId}. Cancel it in the Pathao panel, then use Unlink if needed.`,
     );
   }
 
@@ -2866,9 +3006,27 @@ export class OrdersService {
 
     try {
       if (provider === 'pathao') {
-        await this.pathao.cancelOrder(organizationId, consignmentId);
+        await this.pathao.cancelOrder(organizationId, consignmentId, opts.reason);
+        await this.waitForPathaoCancelled(organizationId, consignmentId);
       } else if (provider === 'carrybee') {
         await this.carrybee.cancelOrder(organizationId, consignmentId, opts.reason);
+        try {
+          const details = await this.carrybee.getOrderDetails(
+            organizationId,
+            consignmentId,
+          );
+          if (
+            details.transferStatus &&
+            !this.isRemoteCourierCancelledStatus(details.transferStatus)
+          ) {
+            throw new BadRequestException(
+              `Carrybee still shows “${details.transferStatus}” for ${consignmentId}. Cancel it in the Carrybee panel, then use Unlink if needed.`,
+            );
+          }
+        } catch (e) {
+          if (e instanceof BadRequestException) throw e;
+          // Some Carrybee accounts omit status on cancel — accept API success.
+        }
       } else {
         throw new BadRequestException(
           `Cannot cancel unsupported courier provider: ${provider}`,
@@ -3192,6 +3350,15 @@ export class OrdersService {
       packingNote: row.packingNote ?? undefined,
       customerTag: row.customerTag ?? undefined,
       orderTag: row.orderTag ?? undefined,
+      utmSource: (row as { utmSource?: string | null }).utmSource ?? undefined,
+      utmId: (row as { utmId?: string | null }).utmId ?? undefined,
+      utmContent: (row as { utmContent?: string | null }).utmContent ?? undefined,
+      utmCampaign: (row as { utmCampaign?: string | null }).utmCampaign ?? undefined,
+      courierWeightKg: (row as { courierWeightKg?: number | null }).courierWeightKg ?? undefined,
+      courierDeliveryType: (() => {
+        const v = (row as { courierDeliveryType?: string | null }).courierDeliveryType;
+        return v === 'express' || v === 'normal' ? v : undefined;
+      })(),
       pathaoCity: row.pathaoCity ?? undefined,
       pathaoZone: row.pathaoZone ?? undefined,
       pathaoArea: row.pathaoArea ?? undefined,

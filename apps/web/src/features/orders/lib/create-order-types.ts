@@ -70,6 +70,9 @@ export type CreateOrderFormState = {
   utmId: string;
   utmContent: string;
   utmCampaign: string;
+  /** Package weight override (kg). Empty = auto from product variants. */
+  courierWeightKg: string;
+  courierDeliveryType: 'normal' | 'express';
 
   orderDate: Date;
   referenceNo: string;

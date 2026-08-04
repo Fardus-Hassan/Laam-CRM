@@ -42,6 +42,8 @@ export function normalizePathaoStatusSlug(raw: string | null | undefined): strin
     returned: 'return',
     cancelled: 'pickup_cancelled',
     canceled: 'pickup_cancelled',
+    pickup_cancel: 'pickup_cancelled',
+    pickup_canceled: 'pickup_cancelled',
     hold: 'on_hold',
     paid_return: 'paid_return',
     partial_delivered: 'partial_delivery',
@@ -49,4 +51,15 @@ export function normalizePathaoStatusSlug(raw: string | null | undefined): strin
     sorting_hub: 'at_the_sorting_hub',
   };
   return aliases[s] ?? s;
+}
+
+/** True when Pathao status means the consignment is cancelled / gone. */
+export function isPathaoCancelledStatus(
+  status?: string | null,
+  slug?: string | null,
+): boolean {
+  const normalized = normalizePathaoStatusSlug(slug || status);
+  if (normalized === 'pickup_cancelled' || normalized === 'return') return true;
+  const hay = `${status ?? ''} ${slug ?? ''}`.toLowerCase();
+  return /cancel|void|aborted/.test(hay);
 }

@@ -11,6 +11,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
 import {
@@ -23,6 +24,7 @@ import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export function PurchaseReturnDetailPage() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const params = useParams<{ returnId: string }>();
   const returnId = params.returnId;
   const [detail, setDetail] = React.useState<PurchaseReturnDetail | null>(null);
@@ -62,7 +64,13 @@ export function PurchaseReturnDetailPage() {
 
   async function reject() {
     if (!detail) return;
-    if (!window.confirm(`Reject ${detail.returnNumber}? No stock will be moved.`)) return;
+    const ok = await confirm({
+      title: `Reject ${detail.returnNumber}?`,
+      description: 'No stock will be moved.',
+      confirmLabel: 'Reject',
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await inventoryApi.rejectPurchaseReturn(detail.id);
@@ -77,13 +85,13 @@ export function PurchaseReturnDetailPage() {
 
   async function complete() {
     if (!detail) return;
-    if (
-      !window.confirm(
-        `Complete ${detail.returnNumber}? Stock will be deducted for returned lines.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Complete ${detail.returnNumber}?`,
+      description: 'Stock will be deducted for returned lines.',
+      confirmLabel: 'Complete',
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await inventoryApi.completePurchaseReturn(detail.id);
@@ -260,6 +268,7 @@ export function PurchaseReturnDetailPage() {
           </>
         )}
       </div>
+      {confirmDialog}
     </PageShell>
   );
 }

@@ -92,6 +92,8 @@ function createInitialState(): CreateOrderFormState {
     utmId: '',
     utmContent: '',
     utmCampaign: '',
+    courierWeightKg: '',
+    courierDeliveryType: 'normal',
     orderDate: new Date(),
     referenceNo: '',
     discountMode: 'amount',

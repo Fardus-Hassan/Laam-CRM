@@ -201,6 +201,14 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         couponCode: state.couponApplied ? state.couponCode : undefined,
         customerTag: state.customerTag || undefined,
         orderTag: state.orderTag || undefined,
+        utmSource: state.utmSource || undefined,
+        utmId: state.utmId || undefined,
+        utmContent: state.utmContent || undefined,
+        utmCampaign: state.utmCampaign || undefined,
+        courierWeightKg: state.courierWeightKg.trim()
+          ? Number(state.courierWeightKg)
+          : null,
+        courierDeliveryType: state.courierDeliveryType || null,
         pathaoCity: state.pathaoLocation?.city,
         pathaoZone: state.pathaoLocation?.zone,
         pathaoArea: state.pathaoLocation?.area,

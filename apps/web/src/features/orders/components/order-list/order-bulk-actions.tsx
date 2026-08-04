@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { FormField } from '@/components/form/form-field';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import {
   BULK_ACTIONS_REGISTRY,
   resolveBulkActions,
@@ -80,6 +81,7 @@ export function OrderBulkActions({
   const [bulkModal, setBulkModal] = React.useState<ReturnType<typeof bulkActionToModal>>(null);
   const { bulkAction, isLoading } = useOrderMutations();
   const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   React.useEffect(() => {
     if (variant !== 'card' || selectedCount === 0) return;
@@ -101,7 +103,7 @@ export function OrderBulkActions({
     return null;
   }
 
-  function handleAction(actionId: BulkActionId, label: string) {
+  async function handleAction(actionId: BulkActionId, label: string) {
     if (selectedCount === 0 && BULK_ACTIONS_REGISTRY[actionId]?.requiresSelection) {
       toast.error('Select at least one order');
       return;
@@ -120,9 +122,13 @@ export function OrderBulkActions({
     }
 
     if (actionId === 'courier_cancel') {
-      const ok = window.confirm(
-        `Cancel courier shipment on ${selectedCount} order(s)?\n\nThis cancels the parcel at Pathao/Carrybee and clears the booking link. CRM orders stay open (In Courier → Confirmed).`,
-      );
+      const ok = await confirm({
+        title: `Cancel courier on ${selectedCount} order(s)?`,
+        description:
+          'This cancels the parcel at Pathao/Carrybee and clears the booking link. CRM orders stay open (In Courier → Confirmed).',
+        confirmLabel: 'Cancel courier',
+        destructive: true,
+      });
       if (!ok) return;
       void bulkAction({
         action: 'courier_cancel',
@@ -132,9 +138,13 @@ export function OrderBulkActions({
     }
 
     if (actionId === 'courier_unlink') {
-      const ok = window.confirm(
-        `Unlink courier on ${selectedCount} order(s)?\n\nWARNING: This only clears the CRM link. It does NOT cancel the parcel at Pathao/Carrybee.\n\nUse “Cancel Courier” when you want to cancel the real shipment. Use Unlink only if the parcel is already cancelled there.`,
-      );
+      const ok = await confirm({
+        title: `Unlink courier on ${selectedCount} order(s)?`,
+        description:
+          'WARNING: This only clears the CRM link. It does NOT cancel the parcel at Pathao/Carrybee. Use “Cancel Courier” when you want to cancel the real shipment. Use Unlink only if the parcel is already cancelled there.',
+        confirmLabel: 'Unlink courier',
+        destructive: true,
+      });
       if (!ok) return;
       void bulkAction({
         action: 'courier_unlink',
@@ -182,7 +192,7 @@ export function OrderBulkActions({
                   : 'default'
           }
           disabled={(action.requiresSelection && selectedCount === 0) || isLoading}
-          onClick={() => handleAction(action.id, BULK_ACTIONS_REGISTRY[action.id].label)}
+          onClick={() => void handleAction(action.id, BULK_ACTIONS_REGISTRY[action.id].label)}
         >
           {action.label}
         </Button>
@@ -200,6 +210,7 @@ export function OrderBulkActions({
           onClose={() => setBulkModal(null)}
           onSuccess={onSuccess}
         />
+        {confirmDialog}
       </>
     );
   }
@@ -253,6 +264,7 @@ export function OrderBulkActions({
         onClose={() => setBulkModal(null)}
         onSuccess={onSuccess}
       />
+      {confirmDialog}
     </>
   );
 }

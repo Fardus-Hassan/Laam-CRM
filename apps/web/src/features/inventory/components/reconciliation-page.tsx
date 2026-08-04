@@ -10,6 +10,7 @@ import { FormSearchSelect } from '@/components/form/form-search-select';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { InventoryResponsiveList } from '@/features/inventory/components/inventory-responsive-list';
@@ -26,6 +27,7 @@ const EXPIRY_WINDOW_OPTIONS = [
 ];
 
 export function ReconciliationPage() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [data, setData] = React.useState<InventoryReconciliationResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [posting, setPosting] = React.useState(false);
@@ -66,13 +68,13 @@ export function ReconciliationPage() {
 
   async function postAdjust() {
     if (!data || data.isBalanced) return;
-    if (
-      !window.confirm(
-        `Post an adjusting journal for difference ${formatCurrency(data.difference)}? This aligns inventory GL with stock valuation.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Post an adjusting journal for difference ${formatCurrency(data.difference)}?`,
+      description: 'This aligns inventory GL with stock valuation.',
+      confirmLabel: 'Post adjusting entry',
+      destructive: true,
+    });
+    if (!ok) return;
     setPosting(true);
     try {
       const result = await inventoryApi.postReconciliationAdjust();
@@ -240,6 +242,7 @@ export function ReconciliationPage() {
           />
         </div>
       </div>
+      {confirmDialog}
     </PageShell>
   );
 }

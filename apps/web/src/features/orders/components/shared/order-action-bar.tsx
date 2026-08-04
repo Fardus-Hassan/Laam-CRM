@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -68,6 +69,7 @@ export function OrderActionBar({
   backHref = '/dashboard/orders',
   className,
 }: OrderActionBarProps) {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [smsOpen, setSmsOpen] = React.useState(false);
   const [bookOpen, setBookOpen] = React.useState(false);
   const [courierLoading, setCourierLoading] = React.useState(false);
@@ -168,9 +170,12 @@ export function OrderActionBar({
       return;
     }
     const provider = order.courierProvider === 'carrybee' ? 'Carrybee' : 'Pathao';
-    const ok = window.confirm(
-      `Cancel ${provider} shipment ${order.courierConsignmentId}?\n\nThis cancels the parcel at ${provider} and clears the booking link. The CRM order stays open (In Courier → Confirmed) so you can rebook.`,
-    );
+    const ok = await confirm({
+      title: `Cancel ${provider} shipment?`,
+      description: `Cancel shipment ${order.courierConsignmentId}? This cancels the parcel at ${provider} and clears the booking link. The CRM order stays open (In Courier → Confirmed) so you can rebook.`,
+      confirmLabel: 'Cancel courier',
+      destructive: true,
+    });
     if (!ok) return;
     setCourierLoading(true);
     try {
@@ -186,22 +191,30 @@ export function OrderActionBar({
     }
   }
 
-  function handleCancelOrderClick() {
+  async function handleCancelOrderClick() {
     if (!onCancel) return;
     if (alreadyBooked) {
       const provider = order.courierProvider === 'carrybee' ? 'Carrybee' : 'Pathao';
-      const ok = window.confirm(
-        `Cancel this order?\n\nThis will also cancel the ${provider} shipment (${order.courierConsignmentId}). Stock will be restocked if it was deducted.`,
-      );
+      const ok = await confirm({
+        title: 'Cancel this order?',
+        description: `This will also cancel the ${provider} shipment (${order.courierConsignmentId}). Stock will be restocked if it was deducted.`,
+        confirmLabel: 'Cancel order',
+        destructive: true,
+      });
       if (!ok) return;
     } else {
-      const ok = window.confirm('Cancel this order? Stock will be restocked if it was deducted.');
+      const ok = await confirm({
+        title: 'Cancel this order?',
+        description: 'Stock will be restocked if it was deducted.',
+        confirmLabel: 'Cancel order',
+        destructive: true,
+      });
       if (!ok) return;
     }
     onCancel();
   }
 
-  function handleDeleteClick() {
+  async function handleDeleteClick() {
     if (!onDelete) return;
     if (alreadyBooked) {
       toast.error(
@@ -209,9 +222,12 @@ export function OrderActionBar({
       );
       return;
     }
-    const ok = window.confirm(
-      'Move this order to the recycle bin?\n\nThis does not cancel any courier parcel. Soft-delete only.',
-    );
+    const ok = await confirm({
+      title: 'Move to recycle bin?',
+      description: 'This does not cancel any courier parcel. Soft-delete only.',
+      confirmLabel: 'Move to recycle bin',
+      destructive: true,
+    });
     if (!ok) return;
     onDelete();
   }
@@ -331,14 +347,14 @@ export function OrderActionBar({
                   <DropdownMenuItem
                     disabled={!canCancel}
                     className="text-destructive focus:text-destructive"
-                    onClick={handleCancelOrderClick}
+                    onClick={() => void handleCancelOrderClick()}
                   >
                     Cancel order
                   </DropdownMenuItem>
                   {onDelete ? (
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
-                      onClick={handleDeleteClick}
+                      onClick={() => void handleDeleteClick()}
                     >
                       Move to recycle bin
                     </DropdownMenuItem>
@@ -413,6 +429,7 @@ export function OrderActionBar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

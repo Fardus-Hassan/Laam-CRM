@@ -181,6 +181,10 @@ export function CreateOrderPage() {
       utmId: form.state.utmId || undefined,
       utmContent: form.state.utmContent || undefined,
       utmCampaign: form.state.utmCampaign || undefined,
+      courierWeightKg: form.state.courierWeightKg.trim()
+        ? Number(form.state.courierWeightKg)
+        : undefined,
+      courierDeliveryType: form.state.courierDeliveryType || undefined,
       attachmentNames: form.state.attachments.map((a) => a.name),
       attachmentUrls: form.state.attachments.map((a) => a.url),
     });

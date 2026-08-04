@@ -51,6 +51,7 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { downloadCsv } from '@/lib/export-csv';
 import { formatCurrency } from '@/lib/format';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { cn } from '@/lib/utils';
 
 function InventoryPageLayout({
@@ -117,6 +118,7 @@ function SearchField({
 }
 
 export function SuppliersListShell() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [search, setSearch] = React.useState('');
   const [items, setItems] = React.useState<SupplierListItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -200,7 +202,13 @@ export function SuppliersListShell() {
   }
 
   async function handleDelete(supplier: SupplierListItem) {
-    if (!window.confirm(`Delete ${supplier.name}?`)) return;
+    const ok = await confirm({
+      title: `Delete ${supplier.name}?`,
+      description: 'This supplier will be permanently removed.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await inventoryApi.deleteSupplier(supplier.id);
       toast.success('Supplier deleted');
@@ -360,11 +368,13 @@ export function SuppliersListShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </InventoryPageLayout>
   );
 }
 
 export function PurchaseListShell() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [search, setSearch] = React.useState('');
   const [page, setPage] = React.useState(1);
   const pageSize = 50;
@@ -398,7 +408,13 @@ export function PurchaseListShell() {
   }, [search, page]);
 
   async function cancelPurchase(p: PurchaseListItem) {
-    if (!window.confirm(`Cancel ${p.purchaseNumber}?`)) return;
+    const ok = await confirm({
+      title: `Cancel ${p.purchaseNumber}?`,
+      description: 'The purchase order will be cancelled.',
+      confirmLabel: 'Cancel purchase',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await inventoryApi.cancelPurchase(p.id);
       toast.success(`${p.purchaseNumber} cancelled`);
@@ -569,6 +585,7 @@ export function PurchaseListShell() {
           </div>
         </div>
       ) : null}
+      {confirmDialog}
     </InventoryPageLayout>
   );
 }
@@ -1077,6 +1094,7 @@ export function AdjustmentListShell() {
 }
 
 export function MixerListShell() {
+  const { confirm, confirmDialog } = useConfirmDialog();
   const { unitOptions, defaultCode } = useInventoryUnits();
   const [items, setItems] = React.useState<MixerRecipeListItem[]>([]);
   const [runs, setRuns] = React.useState<ProductionBatchResult[]>([]);
@@ -1202,7 +1220,13 @@ export function MixerListShell() {
   }
 
   async function deleteRecipe(recipe: MixerRecipeListItem) {
-    if (!window.confirm(`Delete recipe “${recipe.name}”?`)) return;
+    const ok = await confirm({
+      title: `Delete recipe “${recipe.name}”?`,
+      description: 'This saved recipe will be permanently removed.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await inventoryApi.deleteMixerRecipe(recipe.id);
       toast.success('Recipe deleted');
@@ -1392,6 +1416,7 @@ export function MixerListShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </InventoryPageLayout>
   );
 }

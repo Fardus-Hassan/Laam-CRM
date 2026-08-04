@@ -66,6 +66,7 @@ function emptyVariant(skuBase: string, baseUomCode = 'pcs'): ProductVariant {
     costPrice: 0,
     stock: 0,
     reorderLevel: 5,
+    weightKg: 0.5,
   };
 }
 
@@ -243,18 +244,19 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
       reorderLevel: draft.reorderLevel,
       imageUrl: draft.imageUrl.startsWith('data:') ? undefined : draft.imageUrl || undefined,
       tags: mergeMerchandisingTags(product.tags, draft.merchandising),
-      variants: draft.variants.map((v) => ({
-        id: v.id,
-        label: v.label.trim() || 'Standard',
-        sku: v.sku.trim().toUpperCase(),
-        barcode: v.barcode,
-        // Send code only — stale baseUomId would otherwise keep the old unit.
-        baseUomCode: v.baseUomCode || defaultCode('pcs'),
-        salePrice: v.salePrice,
-        costPrice: v.costPrice,
-        stock: v.stock,
-        reorderLevel: v.reorderLevel,
-      })),
+        variants: draft.variants.map((v) => ({
+          id: v.id,
+          label: v.label.trim() || 'Standard',
+          sku: v.sku.trim().toUpperCase(),
+          barcode: v.barcode,
+          // Send code only — stale baseUomId would otherwise keep the old unit.
+          baseUomCode: v.baseUomCode || defaultCode('pcs'),
+          salePrice: v.salePrice,
+          costPrice: v.costPrice,
+          stock: v.stock,
+          reorderLevel: v.reorderLevel,
+          weightKg: v.weightKg ?? 0.5,
+        })),
     });
     if (pendingFile) {
       await uploadProductImage(product.id, pendingFile);
@@ -709,6 +711,19 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         value={variant.stock}
                         onChange={(e) =>
                           patchVariant(index, { stock: Number(e.target.value) || 0 })
+                        }
+                      />
+                    </FormField>
+                    <FormField label="Weight (kg)">
+                      <FormInput
+                        type="number"
+                        min={0.01}
+                        step={0.01}
+                        value={variant.weightKg ?? 0.5}
+                        onChange={(e) =>
+                          patchVariant(index, {
+                            weightKg: Math.max(0.01, Number(e.target.value) || 0.5),
+                          })
                         }
                       />
                     </FormField>

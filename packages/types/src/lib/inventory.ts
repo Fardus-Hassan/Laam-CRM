@@ -29,6 +29,8 @@ export const productVariantSchema = z.object({
   costPrice: z.number().optional(),
   stock: z.number().int().default(0),
   reorderLevel: z.number().int().default(5),
+  /** Shipping weight per unit in kilograms (courier booking). Defaults to 0.5 when omitted. */
+  weightKg: z.number().nonnegative().optional(),
 });
 
 export type ProductVariant = z.infer<typeof productVariantSchema>;
@@ -44,6 +46,7 @@ export const productVariantInputSchema = productVariantSchema.extend({
   costPrice: z.number().nonnegative().optional(),
   stock: z.number().int().nonnegative().default(0),
   reorderLevel: z.number().int().nonnegative().default(5),
+  weightKg: z.number().nonnegative().optional(),
 });
 
 export type ProductVariantInput = z.infer<typeof productVariantInputSchema>;

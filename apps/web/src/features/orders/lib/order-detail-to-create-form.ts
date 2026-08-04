@@ -81,5 +81,14 @@ export function orderDetailToCreateFormPatch(
     couponApplied: Boolean(order.couponCode),
     couponDiscountAmount: 0,
     skipFollowup: order.skipFollowup ?? false,
+    utmSource: order.utmSource ?? '',
+    utmId: order.utmId ?? '',
+    utmContent: order.utmContent ?? '',
+    utmCampaign: order.utmCampaign ?? '',
+    courierWeightKg:
+      order.courierWeightKg != null && order.courierWeightKg > 0
+        ? String(order.courierWeightKg)
+        : '',
+    courierDeliveryType: order.courierDeliveryType ?? 'normal',
   };
 }
