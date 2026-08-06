@@ -156,6 +156,9 @@ const STOCK_CUT_STATUSES = new Set([
   'in_courier',
 ]);
 
+/** After stock is cut, these statuses keep inventory deducted (no restock). */
+const STOCK_KEEP_DEDUCTED_STATUSES = new Set(['delivered', 'completed']);
+
 /** Customer return completed — restock inventory (manual approve = move to this status). */
 const STOCK_RETURN_RESTOCK_STATUSES = new Set(['returned']);
 
@@ -1789,9 +1792,11 @@ export class OrdersService {
       !existing.stockDeductedAt;
     // Restock when cancelling, completing a return, or moving out of a
     // stock-cut status back to draft-like statuses (e.g. confirmed → pending).
+    // Do NOT restock on delivered/completed — inventory stays sold.
     const leavingStockCut =
       STOCK_CUT_STATUSES.has(prev) &&
       !STOCK_CUT_STATUSES.has(status) &&
+      !STOCK_KEEP_DEDUCTED_STATUSES.has(status) &&
       status !== 'pending_return' &&
       status !== 'returned' &&
       status !== 'cancelled';
@@ -2353,7 +2358,7 @@ export class OrdersService {
         }
       }
 
-      return tx.order.update({
+      const updated = await tx.order.update({
         where: { id: existing.id },
         data: {
           ...(nextStockDeductedAt !== undefined
@@ -2522,6 +2527,59 @@ export class OrdersService {
           activities: { orderBy: { createdAt: 'asc' } },
         },
       });
+
+      // Keep buyer profile in sync so detail-page customer lookup does not
+      // overwrite order fields with a stale CRM customer after reload.
+      const touchedCustomer =
+        input.customerName !== undefined ||
+        input.customerPhone !== undefined ||
+        input.customerEmail !== undefined ||
+        input.altMobile !== undefined ||
+        input.shippingAddress !== undefined ||
+        input.district !== undefined ||
+        input.customerNote !== undefined;
+      const nextName = (input.customerName ?? updated.customerName).trim();
+      const nextPhone = (input.customerPhone ?? updated.customerPhone).trim();
+      if (touchedCustomer && nextName && nextPhone) {
+        const customer = await this.customers.ensureFromOrder(
+          organizationId,
+          {
+            name: nextName,
+            phone: nextPhone,
+            email:
+              input.customerEmail !== undefined
+                ? input.customerEmail
+                : updated.customerEmail,
+            altMobile:
+              input.altMobile !== undefined ? input.altMobile : updated.altMobile,
+            district:
+              input.district !== undefined ? input.district : updated.district,
+            area: updated.shippingArea,
+            address:
+              input.shippingAddress !== undefined
+                ? input.shippingAddress
+                : updated.shippingAddress,
+            source: input.source ?? updated.source,
+            assignedAgentName:
+              input.assignedAgentName !== undefined
+                ? input.assignedAgentName
+                : updated.assignedAgentName,
+            notes:
+              input.customerNote !== undefined
+                ? input.customerNote
+                : updated.customerNote,
+          },
+          tx,
+        );
+        if (updated.customerId !== customer.id) {
+          await tx.order.update({
+            where: { id: updated.id },
+            data: { customerId: customer.id },
+          });
+        }
+      }
+
+      return updated;
     });
 
     if (input.status && input.status !== existing.status) {
@@ -2561,8 +2619,159 @@ export class OrdersService {
   }
 
   /**
+   * Hold inventory before calling a courier API (industry-standard: reserve → book).
+   * Returns true when this call newly held stock (caller must release on abort).
+   */
+  private async holdStockForCourierBook(
+    organizationId: string,
+    order: {
+      id: string;
+      orderNumber: string;
+      stockDeductedAt: Date | null;
+      lineItems: Array<{
+        productId: string | null;
+        variantId: string | null;
+        quantity: number;
+        productName: string;
+      }>;
+    },
+    actor: ActorLabel,
+  ): Promise<boolean> {
+    if (order.stockDeductedAt) return false;
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.inventory.applyOrderStockDeltas(
+        tx,
+        organizationId,
+        order.lineItems.map((l) => ({
+          productId: l.productId,
+          variantId: l.variantId,
+          quantity: l.quantity,
+          productName: l.productName,
+        })),
+        {
+          sign: -1,
+          orderNumber: order.orderNumber,
+          orderId: order.id,
+          actor: { userId: actor.userId, name: actor.name },
+        },
+      );
+      await tx.order.update({
+        where: { id: order.id },
+        data: { stockDeductedAt: new Date() },
+      });
+    });
+    return true;
+  }
+
+  /** Undo a pre-book stock hold when the courier API / CRM persist step fails. */
+  private async releaseStockForCourierBook(
+    organizationId: string,
+    order: {
+      id: string;
+      orderNumber: string;
+      lineItems: Array<{
+        productId: string | null;
+        variantId: string | null;
+        quantity: number;
+        productName: string;
+      }>;
+    },
+    actor: ActorLabel,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const fresh = await tx.order.findUnique({
+        where: { id: order.id },
+        select: { stockDeductedAt: true },
+      });
+      if (!fresh?.stockDeductedAt) return;
+
+      await this.inventory.applyOrderStockDeltas(
+        tx,
+        organizationId,
+        order.lineItems.map((l) => ({
+          productId: l.productId,
+          variantId: l.variantId,
+          quantity: l.quantity,
+          productName: l.productName,
+        })),
+        {
+          sign: 1,
+          orderNumber: order.orderNumber,
+          orderId: order.id,
+          actor: { userId: actor.userId, name: actor.name },
+        },
+      );
+      await tx.order.update({
+        where: { id: order.id },
+        data: { stockDeductedAt: null },
+      });
+    });
+  }
+
+  /**
+   * If CRM never saved the consignment, best-effort cancel the remote parcel and
+   * release any stock we held in this attempt.
+   */
+  private async compensateFailedCourierBook(
+    organizationId: string,
+    order: {
+      id: string;
+      orderNumber: string;
+      lineItems: Array<{
+        productId: string | null;
+        variantId: string | null;
+        quantity: number;
+        productName: string;
+      }>;
+    },
+    actor: ActorLabel,
+    opts: {
+      stockHeldNow: boolean;
+      provider: 'pathao' | 'carrybee';
+      remoteConsignmentId?: string | null;
+    },
+  ): Promise<void> {
+    const fresh = await this.prisma.order.findUnique({
+      where: { id: order.id },
+      select: { courierConsignmentId: true },
+    });
+    if (fresh?.courierConsignmentId) return;
+
+    const remoteId = opts.remoteConsignmentId?.trim();
+    if (remoteId) {
+      try {
+        if (opts.provider === 'pathao') {
+          await this.pathao.cancelOrder(
+            organizationId,
+            remoteId,
+            'CRM book aborted after courier accept',
+          );
+        } else {
+          await this.carrybee.cancelOrder(
+            organizationId,
+            remoteId,
+            'CRM book aborted after courier accept',
+          );
+        }
+      } catch {
+        // Pathao cancel may be Unauthorized on some accounts — stock still released below.
+      }
+    }
+
+    if (opts.stockHeldNow) {
+      try {
+        await this.releaseStockForCourierBook(organizationId, order, actor);
+      } catch {
+        // Do not mask the original book error.
+      }
+    }
+  }
+
+  /**
    * Book order on Pathao sandbox/live.
    * amount_to_collect = due; success → status in_courier.
+   * Flow: hold stock → remote book → persist → in_courier (no post-book stock surprise).
    */
   async bookWithPathao(
     organizationId: string,
@@ -2629,61 +2838,76 @@ export class OrdersService {
     );
 
     const storeId = await this.pathao.resolveStoreId(organizationId);
-    const booked = await this.pathao.createOrder(organizationId, {
-      storeId,
-      merchantOrderId: existing.orderNumber,
-      recipientName: existing.customerName.trim().slice(0, 100),
-      recipientPhone: phone,
-      recipientSecondaryPhone: (() => {
-        const alt = existing.altMobile?.replace(/\D/g, '') ?? '';
-        const normalized =
-          alt.length === 11 ? alt : alt.length === 10 ? `0${alt}` : alt.slice(-11);
-        return normalized.length === 11 ? normalized : undefined;
-      })(),
-      recipientAddress: address.slice(0, 220),
-      recipientCity: existing.pathaoCityId ?? undefined,
-      recipientZone: existing.pathaoZoneId ?? undefined,
-      recipientArea: existing.pathaoAreaId ?? undefined,
-      deliveryType,
-      specialInstruction: existing.courierNote?.trim() || undefined,
-      itemQuantity,
-      itemWeight: itemWeightKg,
-      itemDescription: itemDescription || existing.orderNumber,
-      amountToCollect: due,
-    });
 
-    const mapped = await this.courierIntegrations.resolveStatusMapping(
-      organizationId,
-      'pathao',
-      booked.orderStatus || 'pending',
-    );
+    let stockHeldNow = false;
+    let remoteConsignmentId: string | null = null;
+    try {
+      stockHeldNow = await this.holdStockForCourierBook(organizationId, existing, actor);
 
-    await this.prisma.order.update({
-      where: { id: existing.id },
-      data: {
-        courierProvider: 'pathao',
-        courierConsignmentId: booked.consignmentId,
-        courierTrackingCode: booked.consignmentId,
-        courierCollectAmount: due,
-        courierBookedAt: new Date(),
-        courierStatus: mapped.label,
-        courierStatusSlug: mapped.slug,
-        courierStatusSyncedAt: new Date(),
-        activities: {
-          create: {
-            organizationId,
-            type: 'note',
-            label: 'Booked with Pathao',
-            description: `Consignment ${booked.consignmentId} · collect ৳${due}`,
-            actorUserId: actor.userId ?? null,
-            actorName: actor.name ?? null,
+      const booked = await this.pathao.createOrder(organizationId, {
+        storeId,
+        merchantOrderId: existing.orderNumber,
+        recipientName: existing.customerName.trim().slice(0, 100),
+        recipientPhone: phone,
+        recipientSecondaryPhone: (() => {
+          const alt = existing.altMobile?.replace(/\D/g, '') ?? '';
+          const normalized =
+            alt.length === 11 ? alt : alt.length === 10 ? `0${alt}` : alt.slice(-11);
+          return normalized.length === 11 ? normalized : undefined;
+        })(),
+        recipientAddress: address.slice(0, 220),
+        recipientCity: existing.pathaoCityId ?? undefined,
+        recipientZone: existing.pathaoZoneId ?? undefined,
+        recipientArea: existing.pathaoAreaId ?? undefined,
+        deliveryType,
+        specialInstruction: existing.courierNote?.trim() || undefined,
+        itemQuantity,
+        itemWeight: itemWeightKg,
+        itemDescription: itemDescription || existing.orderNumber,
+        amountToCollect: due,
+      });
+      remoteConsignmentId = booked.consignmentId;
+
+      const mapped = await this.courierIntegrations.resolveStatusMapping(
+        organizationId,
+        'pathao',
+        booked.orderStatus || 'pending',
+      );
+
+      await this.prisma.order.update({
+        where: { id: existing.id },
+        data: {
+          courierProvider: 'pathao',
+          courierConsignmentId: booked.consignmentId,
+          courierTrackingCode: booked.consignmentId,
+          courierCollectAmount: due,
+          courierBookedAt: new Date(),
+          courierStatus: mapped.label,
+          courierStatusSlug: mapped.slug,
+          courierStatusSyncedAt: new Date(),
+          activities: {
+            create: {
+              organizationId,
+              type: 'note',
+              label: 'Booked with Pathao',
+              description: `Consignment ${booked.consignmentId} · collect ৳${due}`,
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+            },
           },
         },
-      },
-    });
+      });
 
-    // Move to in_courier (stock cut if not already deducted)
-    return this.updateStatus(organizationId, existing.id, 'in_courier', actor);
+      // Stock already held — status move will not cut again.
+      return this.updateStatus(organizationId, existing.id, 'in_courier', actor);
+    } catch (error) {
+      await this.compensateFailedCourierBook(organizationId, existing, actor, {
+        stockHeldNow,
+        provider: 'pathao',
+        remoteConsignmentId,
+      });
+      throw error;
+    }
   }
 
   async syncPathaoStatus(
@@ -2704,6 +2928,7 @@ export class OrdersService {
   /**
    * Book order on Carrybee sandbox/live.
    * collectable_amount = due; success → status in_courier.
+   * Flow: hold stock → remote book → persist → in_courier (no post-book stock surprise).
    */
   async bookWithCarrybee(
     organizationId: string,
@@ -2730,11 +2955,7 @@ export class OrdersService {
         `Already booked with ${existing.courierProvider ?? 'courier'} (${existing.courierConsignmentId})`,
       );
     }
-    if (!existing.carrybeeCityId || !existing.carrybeeZoneId) {
-      throw new BadRequestException(
-        'Select Carrybee city and zone (with IDs) before booking',
-      );
-    }
+    // Carrybee accepts address-only booking (city/zone optional — API auto-resolves).
     if (!existing.shippingAddress?.trim() || existing.shippingAddress.trim().length < 10) {
       throw new BadRequestException(
         'Shipping address must be at least 10 characters for Carrybee',
@@ -2774,61 +2995,76 @@ export class OrdersService {
     );
 
     const storeId = await this.carrybee.assertStoreReady(organizationId);
-    const booked = await this.carrybee.createOrder(organizationId, {
-      storeId,
-      merchantOrderId: existing.orderNumber,
-      recipientName: existing.customerName.trim().slice(0, 99),
-      recipientPhone: phone,
-      recipientSecondaryPhone: (() => {
-        const alt = existing.altMobile?.replace(/\D/g, '') ?? '';
-        const normalized =
-          alt.length === 11 ? alt : alt.length === 10 ? `0${alt}` : alt.slice(-11);
-        return normalized.length === 11 ? normalized : undefined;
-      })(),
-      recipientAddress: existing.shippingAddress.trim().slice(0, 200),
-      cityId: existing.carrybeeCityId,
-      zoneId: existing.carrybeeZoneId,
-      areaId: existing.carrybeeAreaId ?? undefined,
-      deliveryType,
-      specialInstruction: existing.courierNote?.trim() || undefined,
-      itemQuantity,
-      itemWeight: itemWeightGrams,
-      productDescription: itemDescription || existing.orderNumber,
-      collectableAmount: due,
-    });
 
-    const mapped = await this.courierIntegrations.resolveStatusMapping(
-      organizationId,
-      'carrybee',
-      'created',
-    );
+    let stockHeldNow = false;
+    let remoteConsignmentId: string | null = null;
+    try {
+      stockHeldNow = await this.holdStockForCourierBook(organizationId, existing, actor);
 
-    await this.prisma.order.update({
-      where: { id: existing.id },
-      data: {
-        courierProvider: 'carrybee',
-        courierConsignmentId: booked.consignmentId,
-        courierTrackingCode: booked.consignmentId,
-        courierCollectAmount: due,
-        courierBookedAt: new Date(),
-        courierStatus: mapped.label,
-        courierStatusSlug: mapped.slug,
-        courierStatusSyncedAt: new Date(),
-        activities: {
-          create: {
-            organizationId,
-            type: 'note',
-            label: 'Booked with Carrybee',
-            description: `Consignment ${booked.consignmentId} · collect ৳${due}`,
-            actorUserId: actor.userId ?? null,
-            actorName: actor.name ?? null,
+      const booked = await this.carrybee.createOrder(organizationId, {
+        storeId,
+        merchantOrderId: existing.orderNumber,
+        recipientName: existing.customerName.trim().slice(0, 99),
+        recipientPhone: phone,
+        recipientSecondaryPhone: (() => {
+          const alt = existing.altMobile?.replace(/\D/g, '') ?? '';
+          const normalized =
+            alt.length === 11 ? alt : alt.length === 10 ? `0${alt}` : alt.slice(-11);
+          return normalized.length === 11 ? normalized : undefined;
+        })(),
+        recipientAddress: existing.shippingAddress.trim().slice(0, 200),
+        cityId: existing.carrybeeCityId ?? undefined,
+        zoneId: existing.carrybeeZoneId ?? undefined,
+        areaId: existing.carrybeeAreaId ?? undefined,
+        deliveryType,
+        specialInstruction: existing.courierNote?.trim() || undefined,
+        itemQuantity,
+        itemWeight: itemWeightGrams,
+        productDescription: itemDescription || existing.orderNumber,
+        collectableAmount: due,
+      });
+      remoteConsignmentId = booked.consignmentId;
+
+      const mapped = await this.courierIntegrations.resolveStatusMapping(
+        organizationId,
+        'carrybee',
+        'created',
+      );
+
+      await this.prisma.order.update({
+        where: { id: existing.id },
+        data: {
+          courierProvider: 'carrybee',
+          courierConsignmentId: booked.consignmentId,
+          courierTrackingCode: booked.consignmentId,
+          courierCollectAmount: due,
+          courierBookedAt: new Date(),
+          courierStatus: mapped.label,
+          courierStatusSlug: mapped.slug,
+          courierStatusSyncedAt: new Date(),
+          activities: {
+            create: {
+              organizationId,
+              type: 'note',
+              label: 'Booked with Carrybee',
+              description: `Consignment ${booked.consignmentId} · collect ৳${due}`,
+              actorUserId: actor.userId ?? null,
+              actorName: actor.name ?? null,
+            },
           },
         },
-      },
-    });
+      });
 
-    // Move to in_courier (stock cut if not already deducted)
-    return this.updateStatus(organizationId, existing.id, 'in_courier', actor);
+      // Stock already held — status move will not cut again.
+      return this.updateStatus(organizationId, existing.id, 'in_courier', actor);
+    } catch (error) {
+      await this.compensateFailedCourierBook(organizationId, existing, actor, {
+        stockHeldNow,
+        provider: 'carrybee',
+        remoteConsignmentId,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -2870,6 +3106,64 @@ export class OrdersService {
             description: remote.consignmentId
               ? `Cancelled ${remote.provider} consignment ${remote.consignmentId}`
               : 'Courier consignment cancelled',
+            actorUserId: actor.userId ?? null,
+            actorName: actor.name ?? null,
+          },
+        },
+      },
+    });
+
+    if (existing.status === 'in_courier') {
+      return this.updateStatus(organizationId, existing.id, 'confirmed', actor);
+    }
+    return this.getById(organizationId, existing.id);
+  }
+
+  /**
+   * Clear local courier fields without calling the remote cancel API.
+   * Use only when the consignment is already cancelled/gone in the courier panel.
+   */
+  async unlinkCourierShipment(
+    organizationId: string,
+    idOrNumber: string,
+    actor: ActorLabel,
+  ): Promise<OrderDetail> {
+    const existing = await this.prisma.order.findFirst({
+      where: {
+        organizationId,
+        deletedAt: null,
+        OR: [{ id: idOrNumber }, { orderNumber: idOrNumber }],
+      },
+    });
+    if (!existing) throw new NotFoundException('Order not found');
+    const hadLink = Boolean(
+      existing.courierProvider ||
+        existing.courierConsignmentId ||
+        existing.courierTrackingCode,
+    );
+    if (!hadLink) {
+      throw new BadRequestException('No courier link to unlink on this order');
+    }
+
+    const prev = [
+      existing.courierProvider,
+      existing.courierConsignmentId ?? existing.courierTrackingCode,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    await this.prisma.order.update({
+      where: { id: existing.id },
+      data: {
+        ...this.courierClearFields(),
+        activities: {
+          create: {
+            organizationId,
+            type: 'note',
+            label: 'Courier unlinked',
+            description: prev
+              ? `Cleared local link (${prev}). Remote consignment not cancelled.`
+              : 'Cleared local courier link. Remote consignment not cancelled.',
             actorUserId: actor.userId ?? null,
             actorName: actor.name ?? null,
           },
@@ -3006,7 +3300,25 @@ export class OrdersService {
 
     try {
       if (provider === 'pathao') {
-        await this.pathao.cancelOrder(organizationId, consignmentId, opts.reason);
+        try {
+          await this.pathao.cancelOrder(organizationId, consignmentId, opts.reason);
+        } catch (cancelErr) {
+          const cancelMsg =
+            cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
+          // Some Pathao apps return Unauthorized on cancel but the parcel may
+          // already be cancelled in the merchant panel — verify before failing.
+          if (/unauthorized/i.test(cancelMsg)) {
+            try {
+              await this.waitForPathaoCancelled(organizationId, consignmentId);
+              return { provider, consignmentId };
+            } catch {
+              throw new BadRequestException(
+                `Pathao cancel API Unauthorized for ${consignmentId}. If the parcel is already cancelled in the Pathao panel, use Unlink. Otherwise ask Pathao to enable cancel on your developer app.`,
+              );
+            }
+          }
+          throw cancelErr;
+        }
         await this.waitForPathaoCancelled(organizationId, consignmentId);
       } else if (provider === 'carrybee') {
         await this.carrybee.cancelOrder(organizationId, consignmentId, opts.reason);

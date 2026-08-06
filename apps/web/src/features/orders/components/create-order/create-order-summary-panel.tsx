@@ -32,6 +32,8 @@ type CreateOrderSummaryPanelProps = {
   /** Hide cancel link when null. */
   cancelHref?: string | null;
   footerExtra?: React.ReactNode;
+  /** Shown under money totals (e.g. payment snapshot on order detail). */
+  moneyFooter?: React.ReactNode;
   /** Put primary actions above money fields (detail sticky sidebar). */
   actionsPlacement?: 'top' | 'bottom';
 };
@@ -53,6 +55,7 @@ export function CreateOrderSummaryPanel({
   submitLabel = 'Submit',
   cancelHref = '/dashboard/orders',
   footerExtra,
+  moneyFooter,
   actionsPlacement = 'bottom',
 }: CreateOrderSummaryPanelProps) {
   const { state, totals, errors, patch, applyCoupon } = form;
@@ -176,6 +179,8 @@ export function CreateOrderSummaryPanel({
               <FieldTooltip content="Courier fee absorbed by the merchant (internal tracking)." />
             </div>
           </FormField>
+
+          {moneyFooter}
         </div>
 
         <div className="space-y-2">

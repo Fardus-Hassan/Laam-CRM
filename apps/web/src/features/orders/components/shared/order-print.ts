@@ -38,13 +38,19 @@ function buildBarcodeSvg(value: string): string {
   JsBarcode(svg, value, {
     format: 'CODE128',
     displayValue: true,
-    fontSize: 15,
-    height: 64,
-    margin: 0,
-    textMargin: 3,
-    width: 2.1,
+    fontSize: 14,
+    height: 56,
+    margin: 4,
+    textMargin: 4,
+    width: 1.8,
+    background: '#ffffff',
+    lineColor: '#111111',
   });
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.removeAttribute('width');
+  svg.removeAttribute('height');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
   return svg.outerHTML;
 }
 
@@ -153,114 +159,145 @@ const SHARED_PRINT_STYLES = `
     font-size: 16px;
     font-weight: 700;
   }
-  .barcode-sheet {
-    border: 1px solid #111;
-    padding: 2mm 5mm;
-    text-align: center;
-    width: 100%;
-    height: 92mm;
-    max-height: 92mm;
-    overflow: hidden;
+  @media print {
+    .sheet { max-width: none; }
+  }
+`;
+
+/** Invoice / packing / shipping label — A4 default (user can still change in dialog). */
+const DOCUMENT_PAGE_STYLES = `
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+`;
+
+/**
+ * Product barcode sticker: exactly one label per printed page.
+ * Paper size is not forced — print dialog selection (A4 / A5 / label) wins;
+ * sticker card scales so it stays stickable on products.
+ */
+const BARCODE_PRINT_STYLES = `
+  html, body.barcode-print {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    background: #fff;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: #111;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    margin: 5mm;
+  }
+  .barcode-page {
     box-sizing: border-box;
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2mm;
+    page-break-after: always;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .barcode-page:last-of-type {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .barcode-sheet {
+    box-sizing: border-box;
+    width: min(100%, 95mm);
+    max-width: 100%;
+    padding: clamp(2.5mm, 1.8vw, 5mm) clamp(3mm, 2.2vw, 6mm);
+    border: 1.2pt solid #111;
+    border-radius: 1.5mm;
+    text-align: center;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.2mm;
   }
   .barcode-sheet .brand {
-    font-size: 10px;
+    font-size: clamp(8px, 1.6vw, 11px);
     font-weight: 700;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: #444;
-    margin: 0 0 1mm;
-    line-height: 1.1;
+    line-height: 1.15;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .barcode-sheet .order-no {
+    font-size: clamp(11px, 2.2vw, 14px);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.15;
   }
   .barcode-sheet .barcode-wrap {
     width: 100%;
-    height: 50mm;
-    max-height: 50mm;
+    height: clamp(22mm, 18vh, 36mm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     overflow: hidden;
   }
+  .barcode-sheet .barcode-wrap svg {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100%;
+  }
   .barcode-sheet .name {
-    font-size: 13px;
+    font-size: clamp(11px, 2.1vw, 14px);
     font-weight: 700;
-    margin-top: 1mm;
-    line-height: 1.1;
+    line-height: 1.15;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .barcode-sheet .phone {
-    font-size: 11px;
-    margin-top: 0.3mm;
-    line-height: 1.1;
+    font-size: clamp(10px, 1.8vw, 12px);
+    line-height: 1.15;
   }
   .barcode-sheet .meta {
-    margin-top: 0.6mm;
-    font-size: 10px;
+    font-size: clamp(8px, 1.5vw, 10px);
     color: #444;
-    line-height: 1.1;
+    line-height: 1.2;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .barcode-sheet .cod {
-    margin-top: 1mm;
-    font-size: 12px;
+    font-size: clamp(11px, 2vw, 13px);
     font-weight: 700;
-    line-height: 1.1;
-  }
-  .barcode-sheet svg {
-    display: block;
-    width: 100% !important;
-    max-width: 190mm;
-    height: 50mm !important;
-    max-height: 50mm !important;
-  }
-  .barcode-a4-page {
-    position: relative;
-    width: 210mm;
-    height: 297mm;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    page-break-after: always;
-    break-after: page;
-  }
-  .barcode-a4-page:last-of-type {
-    page-break-after: auto;
-    break-after: auto;
-  }
-  .barcode-a4-page .barcode-slot {
-    position: absolute;
-    left: 0;
-    width: 210mm;
-    height: 99mm;
-    padding: 3.5mm 8mm;
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-  .barcode-a4-page .barcode-slot:nth-child(1) { top: 0; }
-  .barcode-a4-page .barcode-slot:nth-child(2) { top: 99mm; }
-  .barcode-a4-page .barcode-slot:nth-child(3) { top: 198mm; }
-  body.barcode-print {
-    padding: 0 !important;
-    margin: 0 !important;
-    width: 210mm;
-  }
-  @page {
-    size: A4 portrait;
-    margin: 0;
+    line-height: 1.15;
+    margin-top: 0.5mm;
   }
   @media print {
     html, body.barcode-print {
-      width: 210mm !important;
+      width: 100% !important;
       height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
     }
-    .sheet { max-width: none; }
-    .barcode-a4-page {
-      width: 210mm;
-      height: 297mm;
-      overflow: hidden;
+    .barcode-page {
+      width: 100%;
+      height: 100vh;
+      min-height: 0;
+      padding: 0;
+    }
+    .barcode-sheet {
+      width: min(92%, 100mm);
     }
   }
 `;
@@ -420,6 +457,7 @@ function buildBarcodeSheet(order: OrderDetail, opts: BrandPrintOpts): string {
   return `
   <div class="barcode-sheet">
     <div class="brand">${escapeHtml(opts.brandName)}</div>
+    <div class="order-no">${escapeHtml(order.orderNumber)}</div>
     <div class="barcode-wrap">${buildBarcodeSvg(code)}</div>
     <div class="name">${escapeHtml(order.customerName)}</div>
     <div class="phone">${escapeHtml(order.customerPhone)}</div>
@@ -440,7 +478,9 @@ function wrapPrintDocument(
   bodyInner: string,
   opts?: { bodyClass?: string },
 ): string {
+  const isBarcode = opts?.bodyClass === 'barcode-print';
   const bodyClass = opts?.bodyClass ? ` class="${escapeHtml(opts.bodyClass)}"` : '';
+  const pageStyles = isBarcode ? BARCODE_PRINT_STYLES : DOCUMENT_PAGE_STYLES;
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -448,7 +488,8 @@ function wrapPrintDocument(
   <title>${escapeHtml(title)}</title>
   <style>
     :root { --print-primary: ${escapeHtml(primaryColor)}; }
-    ${SHARED_PRINT_STYLES}
+    ${isBarcode ? '' : SHARED_PRINT_STYLES}
+    ${pageStyles}
   </style>
 </head>
 <body${bodyClass}>
@@ -489,18 +530,13 @@ export function buildBulkPrintDocumentHtml({
 
   let sheets: string;
   if (type === 'barcode') {
-    const perPage = 3;
-    const pages: string[] = [];
-    for (let i = 0; i < orders.length; i += perPage) {
-      const chunk = orders.slice(i, i + perPage);
-      const slots = Array.from({ length: perPage }, (_, slotIndex) => {
-        const order = chunk[slotIndex];
-        const inner = order ? buildBarcodeSheet(order, brandOpts) : '';
-        return `<div class="barcode-slot">${inner}</div>`;
-      }).join('\n');
-      pages.push(`<div class="barcode-a4-page">${slots}</div>`);
-    }
-    sheets = pages.join('\n');
+    // Exactly one barcode sticker per printed page (any paper size from print dialog).
+    sheets = orders
+      .map(
+        (order) =>
+          `<div class="barcode-page">${buildBarcodeSheet(order, brandOpts)}</div>`,
+      )
+      .join('\n');
   } else {
     sheets = orders
       .map((order, index) => {
@@ -528,15 +564,15 @@ export function buildBulkPrintDocumentHtml({
   });
 }
 
-export function printHtmlDocument(html: string) {
+export function printHtmlDocument(html: string, opts?: { barcode?: boolean }) {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('title', 'Print document');
-  // Must be A4-sized off-screen — 0×0 iframes break mm layout / page breaks in Chrome.
+  // Off-screen frame — barcode uses flexible % layout; docs still use A4 preview size.
   iframe.style.position = 'fixed';
   iframe.style.left = '-10000px';
   iframe.style.top = '0';
-  iframe.style.width = '210mm';
-  iframe.style.height = '297mm';
+  iframe.style.width = opts?.barcode ? '100vw' : '210mm';
+  iframe.style.height = opts?.barcode ? '100vh' : '297mm';
   iframe.style.border = '0';
   iframe.style.opacity = '0';
   iframe.style.pointerEvents = 'none';

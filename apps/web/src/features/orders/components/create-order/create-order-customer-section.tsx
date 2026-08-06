@@ -68,15 +68,13 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
   const orderSourceOptions = options.sources;
   const orderTagOptions = options.orderTags;
 
-  const locationHint = state.carrybeeLocation
-    ? `Carrybee: ${state.carrybeeLocation.label}`
-    : state.pathaoLocation
-      ? `Pathao: ${state.pathaoLocation.label}`
-      : connected.length
-        ? 'Pick location once to auto-fill address, or type the full address manually (Pathao can book from address alone).'
-        : couriersLoading
-          ? 'Loading courier integrations…'
-          : 'No courier connected — set address manually, or connect Pathao/Carrybee in Settings → Integrations.';
+  const locationHint = state.address.trim()
+    ? 'Address ready for courier booking. Pick location again to replace, or edit manually.'
+    : connected.length
+      ? 'Pick location to fill address, or type the full address (Pathao & Carrybee both book from address).'
+      : couriersLoading
+        ? 'Loading location sources…'
+        : 'Type the full delivery address, or connect Pathao/Carrybee in Settings to use location picker.';
 
   // Auto-load shop order stats when phone is valid (create + detail) — no blur required.
   React.useEffect(() => {
@@ -155,13 +153,14 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
               labelAction={
                 hasCourierPicker ? (
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                    {state.pathaoLocation || state.carrybeeLocation ? (
+                    {state.address.trim() ? (
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2 text-xs"
                         onClick={() => {
+                          patch({ address: '' });
                           setPathaoLocation(null);
                           setCarrybeeLocation(null);
                         }}
@@ -176,9 +175,7 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
                       className="h-7 text-xs"
                       onClick={() => setLocationOpen(true)}
                     >
-                      {state.pathaoLocation || state.carrybeeLocation
-                        ? 'Change location'
-                        : 'Pick location'}
+                      {state.address.trim() ? 'Change location' : 'Pick location'}
                     </Button>
                   </div>
                 ) : null
@@ -297,15 +294,16 @@ export function CreateOrderCustomerSection({ form }: CreateOrderCustomerSectionP
             state.carrybeeLocation ? 'carrybee' : state.pathaoLocation ? 'pathao' : null
           }
           onConfirm={(result) => {
-            if (result.provider === 'pathao') {
-              setCarrybeeLocation(null);
-              setPathaoLocation(result.location);
-              toast.success('Pathao location applied to address');
-            } else {
-              setPathaoLocation(null);
-              setCarrybeeLocation(result.location);
-              toast.success('Carrybee location applied to address');
-            }
+            // Global location picker: fill address only — no courier IDs stored.
+            // Pathao & Carrybee both book from the typed/filled shipping address.
+            const loc = result.location;
+            patch({
+              address: loc.label,
+              district: loc.city || state.district,
+            });
+            setPathaoLocation(null);
+            setCarrybeeLocation(null);
+            toast.success('Location applied to address');
             clearFieldError('address');
           }}
         />

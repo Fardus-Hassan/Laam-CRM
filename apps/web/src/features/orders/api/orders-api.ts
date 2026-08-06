@@ -49,6 +49,7 @@ export type OrdersApi = {
   lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
   deleteOrder: (id: string) => Promise<void>;
   cancelCourier: (id: string, reason?: string) => Promise<OrderDetail>;
+  unlinkCourier: (id: string) => Promise<OrderDetail>;
   returnLines: (id: string, payload: ReturnOrderLinesPayload) => Promise<OrderDetail>;
 };
 
@@ -174,6 +175,9 @@ export function createMockOrdersApi(): OrdersApi {
         courierStatusSlug: undefined,
       };
       return store.mockOrderStore[index];
+    },
+    async unlinkCourier(id) {
+      return this.cancelCourier(id);
     },
     async returnLines(id, payload) {
       await delay(120);
@@ -340,6 +344,14 @@ export function createHttpOrdersApi(): OrdersApi {
           method: 'POST',
           body: JSON.stringify({ reason: reason || 'Cancelled from CRM' }),
         },
+      );
+    },
+    async unlinkCourier(id) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<OrderDetail>(
+        `${crmEndpoints.orders}/${encodeURIComponent(id)}/courier/unlink`,
+        { method: 'POST' },
       );
     },
     async returnLines(id, payload) {

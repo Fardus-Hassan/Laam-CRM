@@ -16,9 +16,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { getOrderStatuses } from '@/features/orders/data/order-status-store';
 import { exportOrdersToCsv } from '@/features/orders/lib/export-orders-csv';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
+import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
 import { orderSmsApi, smsSettingsApi } from '@/features/settings/api/sms-settings-api';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
 
@@ -46,25 +46,9 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
   const [smsTemplate, setSmsTemplate] = React.useState('');
   const [smsMessage, setSmsMessage] = React.useState('');
   const [smsSending, setSmsSending] = React.useState(false);
-  const [status, setStatus] = React.useState('');
   const [employee, setEmployee] = React.useState('');
   const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
   const [followUpDate, setFollowUpDate] = React.useState('');
-
-  const statusOptions = React.useMemo(
-    () => getOrderStatuses().map((s) => ({ value: s.slug, label: s.label })),
-    // Recompute when status modal opens
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state?.type],
-  );
-
-  React.useEffect(() => {
-    if (state?.type !== 'status') return;
-    setStatus((current) => {
-      if (current && statusOptions.some((o) => o.value === current)) return current;
-      return statusOptions[0]?.value ?? '';
-    });
-  }, [state?.type, statusOptions]);
 
   React.useEffect(() => {
     if (state?.type !== 'transfer') return;
@@ -152,16 +136,16 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
     }
   }
 
-  async function handleStatusSubmit() {
+  async function handleStatusSubmit(nextStatus: string) {
     if (state?.type !== 'status') return;
-    if (!status.trim()) {
+    if (!nextStatus.trim()) {
       toast.error('Select a status');
       return;
     }
     await bulkAction({
       action: 'status_change',
       orderIds: state.orderIds,
-      status: status.trim(),
+      status: nextStatus.trim(),
     });
     onSuccess?.();
     onClose();
@@ -259,40 +243,20 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
         </DialogContent>
       </Dialog>
 
-      <Dialog open={state.type === 'status'} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Change status
-              {state.type === 'status' ? (
-                <span className="ml-2 font-normal text-muted-foreground">
-                  ({state.orderIds.length} order{state.orderIds.length === 1 ? '' : 's'})
-                </span>
-              ) : null}
-            </DialogTitle>
-          </DialogHeader>
-          <FormField label="New status" required>
-            <FormSearchSelect
-              value={status}
-              onChange={setStatus}
-              options={statusOptions}
-              placeholder="Select status…"
-            />
-          </FormField>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void handleStatusSubmit()}
-              disabled={isLoading || !status}
-            >
-              {isLoading ? 'Updating…' : 'Update status'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <OrderStatusDialog
+        open={state.type === 'status'}
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+        currentStatus=""
+        allowSameStatus
+        title={
+          state.type === 'status'
+            ? `Change status for ${state.orderIds.length} order${state.orderIds.length === 1 ? '' : 's'}`
+            : 'Change status'
+        }
+        onSelect={handleStatusSubmit}
+      />
 
       <Dialog open={state.type === 'courier'} onOpenChange={(open) => !open && onClose()}>
         <DialogContent>

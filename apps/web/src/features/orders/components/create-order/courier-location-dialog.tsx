@@ -244,12 +244,6 @@ export function CourierLocationDialog({
     };
   }, [open, provider, cityId, zoneId]);
 
-  function handleProviderChange(next: string) {
-    pendingPathaoRef.current = null;
-    pendingCarrybeeRef.current = null;
-    setProvider(next as ActiveCourierProvider);
-  }
-
   function handleCityChange(next: string) {
     pendingPathaoRef.current = null;
     pendingCarrybeeRef.current = null;
@@ -315,11 +309,6 @@ export function CourierLocationDialog({
     onOpenChange(false);
   }
 
-  const providerOptions = available.map((id) => ({
-    value: id,
-    label: id === 'carrybee' ? 'Carrybee' : 'Pathao',
-  }));
-
   if (available.length === 0) return null;
 
   return (
@@ -328,25 +317,14 @@ export function CourierLocationDialog({
         <DialogHeader>
           <DialogTitle>Pick delivery location</DialogTitle>
           <DialogDescription>
-            Choose courier, then city / zone / area. Address fills automatically. You can still
-            type a full address manually instead and book Pathao without these IDs.
+            Select city / zone / area to fill the address field only. No courier location
+            IDs are saved — Pathao and Carrybee both book from this address. You can also
+            type the address manually.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-          {available.length > 1 ? (
-            <FormField label="Courier" required htmlFor="courier-provider">
-              <FormSelect
-                id="courier-provider"
-                value={provider}
-                onChange={handleProviderChange}
-                options={providerOptions}
-                placeholder="Select courier"
-              />
-            </FormField>
-          ) : null}
 
           <FormField label="City" required htmlFor="courier-city">
             <FormSelect

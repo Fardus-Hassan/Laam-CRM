@@ -42,10 +42,13 @@ import { PathaoSyncService } from './pathao-sync.service';
 import { CarrybeeCourierController } from './carrybee-courier.controller';
 import { CarrybeeCourierService } from './carrybee-courier.service';
 import { CarrybeeSyncService } from './carrybee-sync.service';
+import { CourierHubController } from './courier-hub.controller';
+import { CourierHubService } from './courier-hub.service';
 import { CourierIntegrationsController } from './courier-integrations.controller';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { CourierPhoneHistoryController } from './courier-phone-history.controller';
 import { CourierPhoneHistoryService } from './courier-phone-history.service';
+import { NavBadgesController } from './nav-badges.controller';
 import { SmsSettingsController, OrderSmsController } from './sms.controller';
 import { SmsService } from './sms.service';
 import { OrderPaymentsService } from './order-payments.service';
@@ -91,6 +94,8 @@ import { IncentiveService } from './incentive.service';
     PathaoCourierController,
     CarrybeeCourierController,
     CourierIntegrationsController,
+    CourierHubController,
+    NavBadgesController,
     CourierPhoneHistoryController,
     SmsSettingsController,
     WebsiteIntegrationsController,
@@ -140,6 +145,7 @@ import { IncentiveService } from './incentive.service';
     CarrybeeCourierService,
     CarrybeeSyncService,
     CourierIntegrationsService,
+    CourierHubService,
     CourierPhoneHistoryService,
     SmsService,
     WebsiteIntegrationsService,

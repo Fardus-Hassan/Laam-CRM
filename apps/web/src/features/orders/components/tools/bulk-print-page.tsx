@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import type { CrmColumnDef } from '@/components/data-table';
 import type { OrderDetail } from '@laam/types';
 
+import { StatusBadge } from '@/components/dashboard/status-badge';
 import { CrmDataTable } from '@/components/data-table';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
@@ -30,6 +31,8 @@ import {
   printHtmlDocument,
   type OrderPrintType,
 } from '@/features/orders/components/shared/order-print';
+import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
+import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { cn } from '@/lib/utils';
 
 type PreviewRow = {
@@ -38,12 +41,18 @@ type PreviewRow = {
   customerName: string;
   customerPhone: string;
   amount: number;
+  status: string;
 };
 
 const PREVIEW_COLUMNS: CrmColumnDef<PreviewRow>[] = [
   { id: 'order', header: 'Order', cell: ({ row }) => row.original.orderNumber },
   { id: 'customer', header: 'Customer', cell: ({ row }) => row.original.customerName },
   { id: 'phone', header: 'Phone', cell: ({ row }) => row.original.customerPhone },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: ({ row }) => <StatusBadge status={row.original.status} kind="order" />,
+  },
   {
     id: 'amount',
     header: 'Amount',
@@ -67,6 +76,7 @@ const TEMPLATE_OPTIONS: { value: OrderPrintType; label: string }[] = [
 export function BulkPrintPage() {
   const searchParams = useSearchParams();
   const brand = useBrand();
+  const { bulkAction, isLoading: statusUpdating } = useOrderMutations();
   const initialType = parseOrderPrintType(searchParams.get('type'));
   const initialIds = searchParams.get('ids') ?? '';
   const shouldAutoPrint = searchParams.get('autoprint') === '1';
@@ -78,6 +88,7 @@ export function BulkPrintPage() {
   const [missing, setMissing] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [printing, setPrinting] = React.useState(false);
+  const [statusOpen, setStatusOpen] = React.useState(false);
   const autoStartedRef = React.useRef(false);
 
   const previewRows: PreviewRow[] = orders.map((order) => ({
@@ -86,7 +97,13 @@ export function BulkPrintPage() {
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     amount: order.amount,
+    status: order.status,
   }));
+
+  const sharedStatus =
+    orders.length > 0 && orders.every((o) => o.status === orders[0]?.status)
+      ? orders[0]!.status
+      : '';
 
   const openPrint = React.useCallback(
     (list: OrderDetail[], printType: OrderPrintType) => {
@@ -108,7 +125,7 @@ export function BulkPrintPage() {
           logoUrl: absoluteUrl(logoUrl),
           primaryColor: brand.colors.primary || '#127A3B',
         });
-        printHtmlDocument(html);
+        printHtmlDocument(html, { barcode: printType === 'barcode' });
         setStep(3);
         toast.success(
           printType === 'barcode'
@@ -189,6 +206,17 @@ export function BulkPrintPage() {
     openPrint(orders, template);
   }
 
+  async function handleBulkStatusChange(status: string) {
+    const orderIds = orders.map((o) => o.id);
+    if (orderIds.length === 0) return;
+    await bulkAction({
+      action: 'status_change',
+      orderIds,
+      status,
+    });
+    setOrders((prev) => prev.map((o) => ({ ...o, status: status as OrderDetail['status'] })));
+  }
+
   return (
     <PageShell
       title="Bulk Print"
@@ -248,11 +276,23 @@ export function BulkPrintPage() {
                 showToolbar={false}
                 manualPagination={false}
               />
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={() => setStep(1)}>
                   Back
                 </Button>
-                <Button type="button" onClick={handlePrint} disabled={printing || orders.length === 0}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={orders.length === 0 || statusUpdating}
+                  onClick={() => setStatusOpen(true)}
+                >
+                  Status
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handlePrint}
+                  disabled={printing || orders.length === 0}
+                >
                   {printing
                     ? 'Opening…'
                     : template === 'barcode'
@@ -271,6 +311,19 @@ export function BulkPrintPage() {
           </p>
         ) : null}
       </div>
+
+      <OrderStatusDialog
+        open={statusOpen}
+        onOpenChange={setStatusOpen}
+        currentStatus={sharedStatus}
+        allowSameStatus
+        title={
+          orders.length > 1
+            ? `Change status for ${orders.length} orders`
+            : 'Change order status'
+        }
+        onSelect={handleBulkStatusChange}
+      />
     </PageShell>
   );
 }

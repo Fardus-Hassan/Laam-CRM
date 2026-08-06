@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,7 +32,6 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export function CreateOrderPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const form = useCreateOrderForm();
   const { createOrder, checkDuplicate, isLoading } = useOrderMutations();
@@ -132,7 +131,7 @@ export function CreateOrderPage() {
       discount: line.discount,
     }));
 
-    const order = await createOrder({
+    await createOrder({
       customerName: form.state.name,
       customerPhone: form.state.mobile,
       customerEmail: form.state.email || undefined,
@@ -189,8 +188,10 @@ export function CreateOrderPage() {
       attachmentUrls: form.state.attachments.map((a) => a.url),
     });
 
-    toast.success(`Order ${order.orderNumber} created`);
-    router.push(`/dashboard/orders/${order.orderNumber}`);
+    // Stay on create page with a fresh form for the next order.
+    setDuplicate(null);
+    setLeadPrefillId(null);
+    form.reset();
   }
 
   return (

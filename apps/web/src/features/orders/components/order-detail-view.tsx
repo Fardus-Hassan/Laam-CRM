@@ -23,7 +23,7 @@ import { LinkedLeadCard } from '@/features/orders/components/shared/linked-lead-
 import { MoneySummaryPanel } from '@/features/orders/components/shared/money-summary-panel';
 import { OrderActionBar } from '@/features/orders/components/shared/order-action-bar';
 import { OrderAssignSheet } from '@/features/orders/components/shared/order-assign-sheet';
-import { OrderDetailHeader } from '@/features/orders/components/shared/order-detail-header';
+import { OrderDetailSidebarMeta } from '@/features/orders/components/shared/order-detail-header';
 import { OrderRelatedLinks } from '@/features/orders/components/shared/order-related-links';
 import { OrderReturnItemsButton } from '@/features/orders/components/shared/order-line-items-card';
 import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
@@ -228,7 +228,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
       setOrder(updated);
       form.patch(orderDetailToCreateFormPatch(updated));
       hydratedForId.current = updated.id;
-      toast.success('Order updated');
+      // Toast comes from useOrderMutations.updateOrder — avoid duplicate.
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Update failed');
     } finally {
@@ -247,8 +247,8 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
 
   return (
     <PageShell
-      title={order.orderNumber}
-      description={order.customerName}
+      title="Order details"
+      description={`${order.orderNumber} · ${order.customerName}`}
       breadcrumbs={createOrderDetailBreadcrumbs(order.orderNumber, order.status)}
     >
       <div className={cn(ORDER_DETAIL_PAGE_GAP)}>
@@ -282,8 +282,6 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
           onCourierBooked={applyOrderUpdate}
         />
 
-        <OrderDetailHeader order={order} />
-
         {order.stockDeducted ? (
           <div className="rounded-md border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
             Stock is held for this order. Product edits adjust inventory on save; Pending also
@@ -291,7 +289,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
           </div>
         ) : null}
 
-        {/* Create-like form + wider sticky sidebar (summary + activity/related) */}
+        {/* Create-like form + wider sticky sidebar (meta + summary + activity) */}
         <div className={cn('grid items-start gap-3', ORDER_DETAIL_SIDEBAR_GRID_CLASS)}>
           <div className="min-w-0 space-y-3 pb-24 xl:pb-0">
             <div id="order-detail-customer" className="scroll-mt-24">
@@ -323,6 +321,8 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
                 ORDER_STICKY_TOP_CLASS,
               )}
             >
+              <OrderDetailSidebarMeta order={order} className="w-full" />
+
               <MoneySummaryPanel
                 mode="edit"
                 form={form}

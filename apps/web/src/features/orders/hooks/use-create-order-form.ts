@@ -33,6 +33,7 @@ export type OrderCatalogProduct = {
 
 type FormAction =
   | { type: 'patch'; patch: Partial<CreateOrderFormState> }
+  | { type: 'reset' }
   | {
       type: 'hydrate_defaults';
       courierNote: string;
@@ -119,6 +120,9 @@ function reducer(state: CreateOrderFormState, action: FormAction): CreateOrderFo
     case 'patch':
       return { ...state, ...action.patch };
 
+    case 'reset':
+      return createInitialState();
+
     case 'hydrate_defaults':
       return {
         ...state,
@@ -136,15 +140,24 @@ function reducer(state: CreateOrderFormState, action: FormAction): CreateOrderFo
           customerStats: { totalOrders: 0, completedDelivered: 0 },
         };
       }
+      // Only fill blank fields — never overwrite order/detail edits (or hydrated
+      // order data) with a stale customer profile after save/reload.
       return {
         ...state,
-        name: profile.name || state.name,
-        email: profile.email || state.email,
-        address: profile.address || state.address,
-        district: profile.district || state.district,
-        orderSource: (profile.orderSource ||
-          state.orderSource) as CreateOrderFormState['orderSource'],
-        customerTag: profile.customerTag || state.customerTag,
+        name: state.name.trim() ? state.name : profile.name || state.name,
+        email: state.email.trim() ? state.email : profile.email || state.email,
+        address: state.address.trim()
+          ? state.address
+          : profile.address || state.address,
+        district: state.district.trim()
+          ? state.district
+          : profile.district || state.district,
+        orderSource: (state.orderSource.trim()
+          ? state.orderSource
+          : profile.orderSource || state.orderSource) as CreateOrderFormState['orderSource'],
+        customerTag: state.customerTag.trim()
+          ? state.customerTag
+          : profile.customerTag || state.customerTag,
         customerStats: profile.stats,
       };
     }
@@ -395,6 +408,18 @@ export function useCreateOrderForm() {
     dispatch({ type: 'patch', patch });
   }, []);
 
+  const reset = React.useCallback(() => {
+    dispatch({ type: 'reset' });
+    setErrors({});
+    dispatch({
+      type: 'hydrate_defaults',
+      courierNote: options.defaultCourierNote,
+      shipping: options.defaultShipping,
+      status: options.statuses[0]?.value ?? 'pending',
+      paymentMethod: options.paymentMethods[0]?.value ?? 'cod',
+    });
+  }, [options]);
+
   const lookupCustomer = React.useCallback(async (phoneOverride?: string) => {
     const phone = (phoneOverride ?? state.mobile).trim();
     if (!phone) {
@@ -524,6 +549,7 @@ export function useCreateOrderForm() {
     loadingCatalog,
     getProductById,
     patch,
+    reset,
     lookupCustomer,
     addLineItemFromProduct,
     updateLineItem,

@@ -184,8 +184,13 @@ export class CarrybeeCourierService {
       );
     }
 
-    const liveStoreAlias = (process.env['CARRYBEE_LIVE_STORE_ID'] || process.env['CARRYBEE_STORE_ID'] || '')
-      .trim();
+    const liveStoreAlias = (
+      process.env['CARRYBEE_LIVE_STORE_ID'] ||
+      process.env['CARRYBEE_STORE_ID'] ||
+      ''
+    ).trim();
+    const sandboxStoreAlias = (process.env['CARRYBEE_SANDBOX_STORE_ID'] || '').trim();
+
     if (
       cfg.environment === 'sandbox' &&
       liveStoreAlias &&
@@ -193,6 +198,15 @@ export class CarrybeeCourierService {
     ) {
       throw new BadRequestException(
         `Store ${storeId} is a live Carrybee store, but environment is sandbox. Open Settings → Carrybee, click Test, pick a sandbox store, then Save.`,
+      );
+    }
+    if (
+      cfg.environment === 'live' &&
+      sandboxStoreAlias &&
+      storeId === sandboxStoreAlias
+    ) {
+      throw new BadRequestException(
+        `Store ${storeId} is a sandbox Carrybee store, but environment is live. Open Settings → Carrybee, click Test, pick a live store, then Save.`,
       );
     }
 
@@ -215,8 +229,9 @@ export class CarrybeeCourierService {
       recipientPhone: string;
       recipientSecondaryPhone?: string;
       recipientAddress: string;
-      cityId: number;
-      zoneId: number;
+      /** Optional — Carrybee can auto-resolve from recipient_address. */
+      cityId?: number;
+      zoneId?: number;
       areaId?: number;
       deliveryType?: number;
       productType?: number;
@@ -242,9 +257,6 @@ export class CarrybeeCourierService {
       recipient_phone: input.recipientPhone,
       recipient_name: input.recipientName,
       recipient_address: input.recipientAddress,
-      city_id: input.cityId,
-      zone_id: input.zoneId,
-      area_id: input.areaId || undefined,
       recipient_secendary_phone: input.recipientSecondaryPhone || undefined,
       special_instruction: input.specialInstruction || undefined,
       product_description: input.productDescription || undefined,
@@ -253,6 +265,17 @@ export class CarrybeeCourierService {
       collectable_amount: Math.max(0, Math.round(input.collectableAmount)),
       is_closed_box: Boolean(input.isClosedBox),
     };
+
+    // Omit city/zone when missing — empty string causes 400; API resolves from address.
+    if (input.cityId != null && Number(input.cityId) > 0) {
+      payload.city_id = Number(input.cityId);
+    }
+    if (input.zoneId != null && Number(input.zoneId) > 0) {
+      payload.zone_id = Number(input.zoneId);
+    }
+    if (input.areaId != null && Number(input.areaId) > 0) {
+      payload.area_id = Number(input.areaId);
+    }
 
     const data = await this.request<{
       order?: Record<string, unknown>;

@@ -17,11 +17,34 @@ import { ordersApi } from '@/features/orders/api/orders-api';
 import { ensureOrderStatusOnApi } from '@/features/orders/lib/ensure-order-status-api';
 import { mergeStatusSelectOptions } from '@/features/orders/lib/order-status-hierarchy';
 
+function toStatusSlug(raw: string) {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '')
+    .replace(/^_+|_+$/g, '');
+}
+
+function toStatusLabel(raw: string, slug: string) {
+  const trimmed = raw.trim();
+  if (trimmed && trimmed !== slug) return trimmed;
+  return slug
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 type OrderStatusDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currentStatus: string;
   onSelect: (statusSlug: string) => void | Promise<void>;
+  /** Override dialog title (e.g. bulk: "Change status for 10 orders"). */
+  title?: string;
+  /** When true, allow applying even if selected equals currentStatus (bulk / mixed). */
+  allowSameStatus?: boolean;
 };
 
 export function OrderStatusDialog({
@@ -29,6 +52,8 @@ export function OrderStatusDialog({
   onOpenChange,
   currentStatus,
   onSelect,
+  title = 'Change order status',
+  allowSameStatus = false,
 }: OrderStatusDialogProps) {
   const [status, setStatus] = React.useState(currentStatus);
   const [saving, setSaving] = React.useState(false);
@@ -74,13 +99,16 @@ export function OrderStatusDialog({
     setSaving(true);
     try {
       const selected = statusOptions.find((option) => option.value === status);
-      if (process.env.NEXT_PUBLIC_USE_API === 'true') {
-        await ensureOrderStatusOnApi({
-          value: status,
-          label: selected?.label ?? status,
-        });
+      const slug = selected?.value ?? toStatusSlug(status);
+      if (!slug || !/^[a-z][a-z0-9_]*$/.test(slug)) {
+        toast.error('Enter a valid status (letters, numbers, underscore)');
+        return;
       }
-      await onSelect(status);
+      const label = selected?.label ?? toStatusLabel(status, slug);
+      if (process.env.NEXT_PUBLIC_USE_API === 'true') {
+        await ensureOrderStatusOnApi({ value: slug, label });
+      }
+      await onSelect(slug);
       onOpenChange(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not update status');
@@ -93,20 +121,23 @@ export function OrderStatusDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Change order status</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <FormField label="Status">
           <FormSearchSelect
             value={status}
             onChange={setStatus}
             options={statusOptions}
-            placeholder={loading ? 'Loading…' : 'Search status'}
+            placeholder={loading ? 'Loading…' : 'Search or type custom status'}
+            searchPlaceholder="Search or create…"
             disabled={loading}
+            allowCustom
+            customOptionLabel={(query) => `Create “${query}”`}
           />
         </FormField>
         <p className="text-xs text-muted-foreground">
-          Custom statuses are registered to your org on update. Confirming cuts stock; moving back
-          to Pending (or cancelling) restocks if stock was deducted.
+          Type to create a custom status — it is registered to your org on update. Confirming cuts
+          stock; moving back to Pending (or cancelling) restocks if stock was deducted.
         </p>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -114,7 +145,12 @@ export function OrderStatusDialog({
           </Button>
           <Button
             type="button"
-            disabled={saving || loading || status === currentStatus}
+            disabled={
+              saving ||
+              loading ||
+              !status.trim() ||
+              (!allowSameStatus && status === currentStatus)
+            }
             onClick={() => void handleSave()}
           >
             Update status

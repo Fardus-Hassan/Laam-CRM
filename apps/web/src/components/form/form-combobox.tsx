@@ -29,6 +29,9 @@ type FormComboboxProps = {
   emptyMessage?: string;
   disabled?: boolean;
   searchable?: boolean;
+  /** Allow selecting free-text query as a new option (e.g. custom order status). */
+  allowCustom?: boolean;
+  customOptionLabel?: (query: string) => string;
   className?: string;
 };
 
@@ -42,6 +45,8 @@ export function FormCombobox({
   emptyMessage = 'No results found',
   disabled,
   searchable = true,
+  allowCustom = false,
+  customOptionLabel = (query) => `Use “${query}”`,
   className,
 }: FormComboboxProps) {
   const [open, setOpen] = React.useState(false);
@@ -62,9 +67,21 @@ export function FormCombobox({
     return options.filter(
       (option) =>
         option.label.toLowerCase().includes(q) ||
+        option.value.toLowerCase().includes(q) ||
         option.description?.toLowerCase().includes(q),
     );
   }, [options, query, searchable]);
+
+  const trimmedQuery = query.trim();
+  const showCustom =
+    allowCustom &&
+    searchable &&
+    trimmedQuery.length > 0 &&
+    !options.some(
+      (option) =>
+        option.value.toLowerCase() === trimmedQuery.toLowerCase() ||
+        option.label.toLowerCase() === trimmedQuery.toLowerCase(),
+    );
 
   function handleSelect(nextValue: string) {
     onChange(nextValue);
@@ -88,7 +105,9 @@ export function FormCombobox({
             className,
           )}
         >
-          <span className="truncate">{selected?.label ?? placeholder}</span>
+          <span className="truncate">
+            {selected?.label ?? (value ? value : placeholder)}
+          </span>
           <ChevronDown
             className={cn(
               'size-3.5 shrink-0 opacity-60 transition-transform duration-200',
@@ -122,7 +141,19 @@ export function FormCombobox({
           </div>
         ) : null}
         <div className="custom-scrollbar max-h-56 overflow-y-auto overscroll-contain p-1">
-          {filtered.length === 0 ? (
+          {showCustom ? (
+            <button
+              type="button"
+              className="mb-1 w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              onClick={() => handleSelect(trimmedQuery)}
+            >
+              <span className="block font-medium text-primary">
+                {customOptionLabel(trimmedQuery)}
+              </span>
+              <span className="block text-xs text-muted-foreground">Create custom status</span>
+            </button>
+          ) : null}
+          {filtered.length === 0 && !showCustom ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</p>
           ) : (
             filtered.map((option) => {

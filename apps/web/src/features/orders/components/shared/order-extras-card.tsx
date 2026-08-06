@@ -191,16 +191,8 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
 
   const pathao = draft.pathaoLocation?.label
     ?? [order.pathaoCity, order.pathaoZone, order.pathaoArea].filter(Boolean).join(' › ');
-  const pathaoReady = Boolean(
-    draft.pathaoLocation?.cityId &&
-      draft.pathaoLocation?.zoneId &&
-      draft.pathaoLocation?.areaId,
-  );
   const carrybee = draft.carrybeeLocation?.label
     ?? [order.carrybeeCity, order.carrybeeZone, order.carrybeeArea].filter(Boolean).join(' › ');
-  const carrybeeReady = Boolean(
-    draft.carrybeeLocation?.cityId && draft.carrybeeLocation?.zoneId,
-  );
   const attachments = order.attachments ?? [];
 
   const paymentOptions = (options?.paymentMethods ?? []).map((m) => ({
@@ -320,16 +312,8 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
       <div className="space-y-2">
         {hasCourierPicker ? (
           <FormField
-            label="Courier location"
-            hint={
-              pathaoReady || carrybeeReady
-                ? 'Ready to book with selected courier IDs'
-                : draft.pathaoLocation || draft.carrybeeLocation
-                  ? 'Re-select location to save courier IDs before booking'
-                  : showPathao
-                    ? 'Optional for Pathao (address alone works). Required for Carrybee city/zone.'
-                    : 'Select city & zone before Carrybee booking'
-            }
+            label="Location helper"
+            hint="Optional. Picks city/zone/area labels into a preview — prefer Address → Pick location above to fill the delivery address for booking."
           >
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" size="sm" variant="outline" onClick={() => setLocationOpen(true)}>
@@ -353,12 +337,12 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
             </div>
             {draft.pathaoLocation ? (
               <p className="mt-1.5 text-sm font-medium">
-                Pathao · {draft.pathaoLocation.label}
+                {draft.pathaoLocation.label}
               </p>
             ) : null}
             {draft.carrybeeLocation ? (
               <p className="mt-1.5 text-sm font-medium">
-                Carrybee · {draft.carrybeeLocation.label}
+                {draft.carrybeeLocation.label}
               </p>
             ) : null}
           </FormField>
@@ -599,13 +583,36 @@ export function OrderExtrasCard({ order, options, onSave, className }: OrderExtr
             draft.carrybeeLocation ? 'carrybee' : draft.pathaoLocation ? 'pathao' : null
           }
           onConfirm={(result) => {
+            // Address-only: keep labels for display; clear IDs so booking uses shipping address.
+            const loc = result.location;
             if (result.provider === 'pathao') {
-              patchDraft({ pathaoLocation: result.location, carrybeeLocation: null });
-              toast.success('Pathao location selected — save to apply');
+              patchDraft({
+                pathaoLocation: {
+                  cityId: 0,
+                  zoneId: 0,
+                  areaId: 0,
+                  city: loc.city,
+                  zone: loc.zone,
+                  area: loc.area ?? '',
+                  label: loc.label,
+                },
+                carrybeeLocation: null,
+              });
             } else {
-              patchDraft({ carrybeeLocation: result.location, pathaoLocation: null });
-              toast.success('Carrybee location selected — save to apply');
+              patchDraft({
+                carrybeeLocation: {
+                  cityId: 0,
+                  zoneId: 0,
+                  areaId: undefined,
+                  city: loc.city,
+                  zone: loc.zone,
+                  area: loc.area,
+                  label: loc.label,
+                },
+                pathaoLocation: null,
+              });
             }
+            toast.success('Location selected — use Address → Pick location to fill delivery address');
           }}
         />
       ) : null}

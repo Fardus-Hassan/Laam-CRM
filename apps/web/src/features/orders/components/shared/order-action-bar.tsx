@@ -88,13 +88,26 @@ export function OrderActionBar({
   const hasPathaoIds = Boolean(
     order.pathaoCityId && order.pathaoZoneId && order.pathaoAreaId,
   );
-  const hasAddressForPathao = (order.shippingAddress?.trim().length ?? 0) >= 10;
-  const canBookPathao = hasPathaoIds || hasAddressForPathao;
+  const hasAddressForCourier = (order.shippingAddress?.trim().length ?? 0) >= 10;
+  const canBookPathao = hasPathaoIds || hasAddressForCourier;
   const hasCarrybeeIds = Boolean(order.carrybeeCityId && order.carrybeeZoneId);
+  const canBookCarrybee = hasCarrybeeIds || hasAddressForCourier;
   const alreadyBooked = Boolean(order.courierConsignmentId);
   const due = collectAmount(order);
   const [bookProvider, setBookProvider] = React.useState<'pathao' | 'carrybee'>('pathao');
   const canManageCourier = can('courier.manage');
+
+  const bookLocationLabel = React.useMemo(() => {
+    const fromCourier =
+      bookProvider === 'carrybee'
+        ? [order.carrybeeArea, order.carrybeeZone, order.carrybeeCity]
+            .filter(Boolean)
+            .join(', ')
+        : [order.pathaoArea, order.pathaoZone, order.pathaoCity]
+            .filter(Boolean)
+            .join(', ');
+    return fromCourier || order.shippingAddress?.trim() || '—';
+  }, [bookProvider, order]);
 
   async function handleBookPathao() {
     setCourierLoading(true);
@@ -141,7 +154,7 @@ export function OrderActionBar({
     }
     if (!canBookPathao) {
       toast.error(
-        'Add a delivery address (min 10 chars), or pick Pathao city/zone/area in Order details',
+        'Add a delivery address (min 10 chars), or pick a location to fill the address',
       );
       return;
     }
@@ -156,8 +169,10 @@ export function OrderActionBar({
       );
       return;
     }
-    if (!hasCarrybeeIds) {
-      toast.error('Select Carrybee city & zone in Order details first');
+    if (!canBookCarrybee) {
+      toast.error(
+        'Add a delivery address (min 10 chars), or pick a location to fill the address',
+      );
       return;
     }
     setBookProvider('carrybee');
@@ -186,6 +201,31 @@ export function OrderActionBar({
       onCourierBooked?.(updated);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Courier cancel failed');
+    } finally {
+      setCourierLoading(false);
+    }
+  }
+
+  async function handleUnlinkCourier() {
+    if (!alreadyBooked) {
+      toast.message('No courier link on this order');
+      return;
+    }
+    const provider = order.courierProvider === 'carrybee' ? 'Carrybee' : 'Pathao';
+    const ok = await confirm({
+      title: `Unlink ${provider} shipment?`,
+      description: `Clears the local link to ${order.courierConsignmentId} without calling ${provider}. Use only if the parcel is already cancelled (or gone) in the ${provider} panel.`,
+      confirmLabel: 'Unlink courier',
+      destructive: true,
+    });
+    if (!ok) return;
+    setCourierLoading(true);
+    try {
+      const updated = await ordersApi.unlinkCourier(order.id);
+      toast.success(`Courier unlinked · ${order.courierConsignmentId}`);
+      onCourierBooked?.(updated);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Courier unlink failed');
     } finally {
       setCourierLoading(false);
     }
@@ -305,16 +345,29 @@ export function OrderActionBar({
               </Button>
             ) : null}
             {canManageCourier && alreadyBooked ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                className="h-8"
-                disabled={courierLoading || order.status === 'cancelled'}
-                onClick={() => void handleCancelCourier()}
-              >
-                {courierLoading ? 'Cancelling…' : 'Cancel courier'}
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  className="h-8"
+                  disabled={courierLoading || order.status === 'cancelled'}
+                  onClick={() => void handleCancelCourier()}
+                >
+                  {courierLoading ? 'Cancelling…' : 'Cancel courier'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  disabled={courierLoading || order.status === 'cancelled'}
+                  onClick={() => void handleUnlinkCourier()}
+                  title="Clear local link if already cancelled in courier panel"
+                >
+                  Courier Unlink
+                </Button>
+              </>
             ) : null}
           </Can>
 
@@ -341,6 +394,14 @@ export function OrderActionBar({
               <DropdownMenuItem asChild>
                 <Link href="/dashboard/courier">Courier hub</Link>
               </DropdownMenuItem>
+              {canManageCourier && alreadyBooked ? (
+                <DropdownMenuItem
+                  disabled={courierLoading || order.status === 'cancelled'}
+                  onClick={() => void handleUnlinkCourier()}
+                >
+                  Courier Unlink
+                </DropdownMenuItem>
+              ) : null}
               {showCancel ? (
                 <>
                   <DropdownMenuSeparator />
@@ -392,15 +453,7 @@ export function OrderActionBar({
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Location</span>
-              <span className="max-w-[14rem] text-right font-medium">
-                {bookProvider === 'carrybee'
-                  ? [order.carrybeeArea, order.carrybeeZone, order.carrybeeCity]
-                      .filter(Boolean)
-                      .join(', ') || '—'
-                  : [order.pathaoArea, order.pathaoZone, order.pathaoCity]
-                      .filter(Boolean)
-                      .join(', ') || '—'}
-              </span>
+              <span className="max-w-[14rem] text-right font-medium">{bookLocationLabel}</span>
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Collect amount</span>

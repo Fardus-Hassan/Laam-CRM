@@ -14,6 +14,7 @@ import {
   ORDER_STATUS_COUNTS_CHANGED,
   setLiveOrderNavCounts,
 } from '@/features/orders/data/order-status-counts-store';
+import { NAV_BADGES_CHANGED } from '@/features/navigation/data/nav-badges-store';
 import { isPlatformHost } from '@/lib/tenant';
 
 const STATUS_COUNTS_POLL_MS = 60_000;
@@ -31,10 +32,12 @@ export function useNavigation() {
     window.addEventListener(ORDER_QUEUE_FAVORITES_CHANGED, refresh);
     window.addEventListener(ORDER_STATUSES_CHANGED, refresh);
     window.addEventListener(ORDER_STATUS_COUNTS_CHANGED, refresh);
+    window.addEventListener(NAV_BADGES_CHANGED, refresh);
     return () => {
       window.removeEventListener(ORDER_QUEUE_FAVORITES_CHANGED, refresh);
       window.removeEventListener(ORDER_STATUSES_CHANGED, refresh);
       window.removeEventListener(ORDER_STATUS_COUNTS_CHANGED, refresh);
+      window.removeEventListener(NAV_BADGES_CHANGED, refresh);
     };
   }, []);
 
@@ -99,6 +102,42 @@ export function useNavigation() {
     void loadCounts();
     const id = window.setInterval(() => {
       void loadCounts();
+    }, STATUS_COUNTS_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [permissions]);
+
+  React.useEffect(() => {
+    if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
+    if (
+      !permissions.includes('orders.view') &&
+      !permissions.includes('courier.view') &&
+      !permissions.includes('courier.manage')
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadNavBadges() {
+      try {
+        const { navBadgesApi } = await import('@/features/navigation/api/nav-badges-api');
+        const { setLiveNavBadges } = await import(
+          '@/features/navigation/data/nav-badges-store'
+        );
+        const badges = await navBadgesApi.getBadges();
+        if (!cancelled) setLiveNavBadges(badges);
+      } catch {
+        // keep previous badges
+      }
+    }
+
+    void loadNavBadges();
+    const id = window.setInterval(() => {
+      void loadNavBadges();
     }, STATUS_COUNTS_POLL_MS);
 
     return () => {

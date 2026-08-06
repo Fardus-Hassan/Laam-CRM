@@ -42,6 +42,19 @@ export class FollowupsService {
     }
   }
 
+  /** Open follow-ups scheduled for today (sidebar badge). */
+  async todayDueCount(organizationId: string): Promise<number> {
+    const today = this.todayDate();
+    return this.prisma.followup.count({
+      where: {
+        organizationId,
+        skipped: false,
+        scheduleDate: today,
+        followupStatus: { notIn: ['done', 'converted'] },
+      },
+    });
+  }
+
   async createFromOrder(
     organizationId: string,
     input: {

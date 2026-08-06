@@ -23,6 +23,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { OrderPaymentStrip } from '@/features/orders/components/shared/order-detail-header';
 import type { CreateOrderFormApi } from '@/features/orders/hooks/use-create-order-form';
 import { orderPaymentsApi } from '@/features/orders/api/order-payments-api';
 import { formatCurrency } from '@/lib/format';
@@ -196,6 +197,7 @@ export function MoneySummaryPanel(props: MoneySummaryPanelProps) {
         submitLabel={props.isSaving ? 'Updating…' : 'Update order'}
         cancelHref={null}
         actionsPlacement="top"
+        moneyFooter={<OrderPaymentStrip order={props.order} />}
         footerExtra={
           <CollectPaymentControls order={props.order} onCollected={props.onCollected} />
         }

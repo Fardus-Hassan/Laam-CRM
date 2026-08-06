@@ -8,10 +8,17 @@ import { getOrderStore, updateMockOrder } from '@/features/orders/data/mock-orde
 import { onCourierSubmitted } from '@/features/ops-spine/domain-events';
 import { apiRequest } from '@/lib/api/client';
 
+export type CourierSubmitResult = {
+  submitted: number;
+  failed?: number;
+  message?: string;
+};
+
 export type CourierApi = {
   getOverview: () => Promise<CourierOverview>;
-  submitOrders: (orderIds: string[], provider: string) => Promise<{ submitted: number }>;
+  submitOrders: (orderIds: string[], provider: string) => Promise<CourierSubmitResult>;
   markInboxRead: (eventId: string) => Promise<void>;
+  settleCod: (orderId: string) => Promise<void>;
 };
 
 function delay(ms: number) {
@@ -44,10 +51,14 @@ export function createMockCourierApi(): CourierApi {
       for (const id of orderIds) {
         updateMockOrder(id, { status: 'in_courier' });
       }
-      return { submitted: orderIds.length };
+      return { submitted: orderIds.length, failed: 0, message: `Booked ${orderIds.length}` };
     },
     async markInboxRead() {
       await delay(50);
+    },
+    async settleCod(orderId) {
+      await delay(50);
+      updateMockOrder(orderId, { paymentStatus: 'paid' });
     },
   };
 }
@@ -56,9 +67,19 @@ export function createHttpCourierApi(): CourierApi {
   return {
     getOverview: () => apiRequest<CourierOverview>('/crm/courier/overview'),
     submitOrders: (orderIds, provider) =>
-      apiRequest('/crm/courier/submit', { method: 'POST', body: JSON.stringify({ orderIds, provider }) }),
+      apiRequest<CourierSubmitResult>('/crm/courier/submit', {
+        method: 'POST',
+        body: JSON.stringify({ orderIds, provider }),
+      }),
     markInboxRead: (eventId) =>
-      apiRequest(`/crm/courier/inbox/${eventId}/read`, { method: 'POST' }),
+      apiRequest(`/crm/courier/inbox/${encodeURIComponent(eventId)}/read`, {
+        method: 'POST',
+      }),
+    settleCod: (orderId) =>
+      apiRequest('/crm/courier/settle-cod', {
+        method: 'POST',
+        body: JSON.stringify({ orderId }),
+      }),
   };
 }
 

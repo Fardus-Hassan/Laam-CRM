@@ -208,6 +208,12 @@ export class InventoryCatalogService {
     private readonly advanced: InventoryAdvancedService,
   ) {}
 
+  /** Products at or below reorder level with stock still > 0 (sidebar badge). */
+  async lowStockCount(organizationId: string): Promise<number> {
+    const { summary } = await this.buildSummary(organizationId);
+    return summary.lowStockCount;
+  }
+
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
     if (!organizationId) {
       throw new ForbiddenException('Organization context required');
@@ -1746,6 +1752,9 @@ export class InventoryCatalogService {
           unitCost = originalAmount / soldQty;
           journalAmount = unitCost * line.quantity;
           const alreadyReturned = soldLine?.returnedQuantity ?? 0;
+          // Lot numbers must be unique per variant — reuse after cancel/rebook/status
+          // bounce used to fail with Prisma unique constraint on InventoryLot.
+          const lotSuffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
           await this.advanced.receiveStock(tx, organizationId, {
             productId: line.productId,
             variantId,
@@ -1754,7 +1763,7 @@ export class InventoryCatalogService {
             createLot: true,
             lot: {
               lotNumber:
-                `RST-${options.orderNumber}-${variantId.slice(0, 6)}-${alreadyReturned}+${line.quantity}`.slice(
+                `RST-${options.orderNumber}-${variantId.slice(0, 6)}-${alreadyReturned}+${line.quantity}-${lotSuffix}`.slice(
                   0,
                   64,
                 ),
@@ -1765,11 +1774,12 @@ export class InventoryCatalogService {
             sourceId,
             actor: options.actor,
             journalKind: 'sale_cogs_reversal',
-            journalEventKey: `sale-cogs-rev:${sourceId}:${variantId}:from${alreadyReturned}:q${line.quantity}`,
+            journalEventKey: `sale-cogs-rev:${sourceId}:${variantId}:from${alreadyReturned}:q${line.quantity}:${lotSuffix}`,
             journalDescription: `COGS reverse ${options.orderNumber} · ${line.productName}`,
             journalAmount,
           });
         } else {
+          const lotSuffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
           await this.advanced.receiveStock(tx, organizationId, {
             productId: line.productId,
             variantId,
@@ -1777,7 +1787,7 @@ export class InventoryCatalogService {
             createLot: true,
             lot: {
               lotNumber:
-                `RST-${options.orderNumber}-${variantId.slice(0, 6)}-${line.quantity}`.slice(
+                `RST-${options.orderNumber}-${variantId.slice(0, 6)}-${line.quantity}-${lotSuffix}`.slice(
                   0,
                   64,
                 ),

@@ -421,6 +421,12 @@ export class AccountingService {
     };
   }
 
+  /** Open COD/partial balances (sidebar badge). */
+  async openReceivablesCount(organizationId: string): Promise<number> {
+    const { items } = await this.listReceivables(organizationId);
+    return items.length;
+  }
+
   async listReceivables(
     organizationId: string,
   ): Promise<{ items: ReceivableItem[]; total: number }> {

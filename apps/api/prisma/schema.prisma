@@ -781,6 +781,18 @@ model OrderActivity {
   @@index([organizationId])
 }
 
+/// Per-user read state for derived Courier Hub inbox events (`${orderId}:${type}`).
+model CourierInboxRead {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  eventId        String
+  readAt         DateTime @default(now())
+
+  @@unique([organizationId, userId, eventId])
+  @@index([organizationId, userId])
+}
+
 /// Org-configurable create-order dropdowns / defaults (not hardcoded in UI).
 model OrderFormOption {
   id             String       @id @default(uuid())

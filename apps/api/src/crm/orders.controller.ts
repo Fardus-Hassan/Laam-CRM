@@ -1017,6 +1017,21 @@ export class OrdersController {
     );
   }
 
+  @Post(':id/courier/unlink')
+  @RequirePermissions('courier.manage', 'orders.cancel', 'orders.confirm')
+  @ApiOperation({
+    summary:
+      'Clear local courier link without remote cancel (use when already cancelled in courier panel)',
+  })
+  unlinkCourier(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.unlinkCourierShipment(
+      user.organizationId!,
+      id,
+      this.actor(user),
+    );
+  }
+
   @Post(':id/return-lines')
   @RequirePermissions('orders.confirm', 'orders.cancel', 'orders.create')
   @ApiOperation({ summary: 'Record partial/full line returns and restock returned qty' })
