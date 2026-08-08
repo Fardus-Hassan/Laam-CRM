@@ -11,10 +11,17 @@ import {
 } from '@/features/orders/lib/order-queue-favorites';
 import { ORDER_STATUSES_CHANGED } from '@/features/orders/data/order-status-store';
 import {
+  ORDER_NAV_COUNTS_REFRESH,
   ORDER_STATUS_COUNTS_CHANGED,
   setLiveOrderNavCounts,
 } from '@/features/orders/data/order-status-counts-store';
 import { NAV_BADGES_CHANGED } from '@/features/navigation/data/nav-badges-store';
+import {
+  SIDEBAR_NAV_ORDER_CHANGED,
+  getLiveSidebarNavOrder,
+  setLiveSidebarNavOrder,
+} from '@/features/navigation/data/sidebar-nav-order-store';
+import { applySidebarNavOrder } from '@/features/navigation/lib/apply-sidebar-nav-order';
 import { isPlatformHost } from '@/lib/tenant';
 
 const STATUS_COUNTS_POLL_MS = 60_000;
@@ -33,11 +40,13 @@ export function useNavigation() {
     window.addEventListener(ORDER_STATUSES_CHANGED, refresh);
     window.addEventListener(ORDER_STATUS_COUNTS_CHANGED, refresh);
     window.addEventListener(NAV_BADGES_CHANGED, refresh);
+    window.addEventListener(SIDEBAR_NAV_ORDER_CHANGED, refresh);
     return () => {
       window.removeEventListener(ORDER_QUEUE_FAVORITES_CHANGED, refresh);
       window.removeEventListener(ORDER_STATUSES_CHANGED, refresh);
       window.removeEventListener(ORDER_STATUS_COUNTS_CHANGED, refresh);
       window.removeEventListener(NAV_BADGES_CHANGED, refresh);
+      window.removeEventListener(SIDEBAR_NAV_ORDER_CHANGED, refresh);
     };
   }, []);
 
@@ -104,9 +113,15 @@ export function useNavigation() {
       void loadCounts();
     }, STATUS_COUNTS_POLL_MS);
 
+    function onRefreshRequest() {
+      void loadCounts();
+    }
+    window.addEventListener(ORDER_NAV_COUNTS_REFRESH, onRefreshRequest);
+
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      window.removeEventListener(ORDER_NAV_COUNTS_REFRESH, onRefreshRequest);
     };
   }, [permissions]);
 
@@ -146,9 +161,33 @@ export function useNavigation() {
     };
   }, [permissions]);
 
+  React.useEffect(() => {
+    if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { brandingApi } = await import('@/features/brand/api/branding-api');
+        const data = await brandingApi.get();
+        if (!cancelled) {
+          setLiveSidebarNavOrder(data.sidebarNavOrder ?? null);
+        }
+      } catch {
+        // Keep default registry order until branding loads
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return React.useMemo(() => {
     const includePlatform = user?.role === 'super_admin' && isPlatformHost();
-    const groups = filterNavigation(permissions, { includePlatform });
+    const groups = applySidebarNavOrder(
+      filterNavigation(permissions, { includePlatform }),
+      getLiveSidebarNavOrder(),
+    );
     const favorites = loadOrderQueueFavorites();
 
     return groups.map((group) => ({

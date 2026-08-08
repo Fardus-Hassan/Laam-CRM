@@ -1,7 +1,9 @@
 import type { OrderStatusCount } from '@laam/types';
 
-import { MOCK_ORDER_STATUSES } from '@/features/orders/data/mock-status-config';
-import { getStatusCount as getLiveStatusCount } from '@/features/orders/data/order-status-counts-store';
+import {
+  getLiveOrderNavCounts,
+  getStatusCount as getLiveStatusCount,
+} from '@/features/orders/data/order-status-counts-store';
 import { getOrderStatuses } from '@/features/orders/data/order-status-store';
 
 /** Demo counts for offline mock / group-by tiles before live hydrate. */
@@ -50,7 +52,11 @@ export function getStatusUnitCount(slug: string): number {
 
 export function getTotalOrderCount(): number {
   if (useHttpApi) {
-    return MOCK_ORDER_STATUSES.reduce((sum, item) => sum + getLiveStatusCount(item.slug), 0);
+    const live = getLiveOrderNavCounts();
+    if (live) {
+      return Object.values(live.byStatus).reduce((sum, count) => sum + count, 0);
+    }
+    return getOrderStatuses().reduce((sum, item) => sum + getLiveStatusCount(item.slug), 0);
   }
   return MOCK_STATUS_COUNTS.reduce((sum, item) => sum + item.count, 0);
 }

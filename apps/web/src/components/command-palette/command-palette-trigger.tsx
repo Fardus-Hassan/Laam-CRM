@@ -40,7 +40,7 @@ export function CommandPaletteTrigger({ className }: CommandPaletteTriggerProps)
         type="button"
         className={cn(
           triggerBaseClass,
-          'hidden h-9 min-w-[10.5rem] max-w-[14rem] gap-2 px-3 md:inline-flex lg:min-w-[13rem] lg:max-w-[18rem]',
+          'hidden h-9 min-w-[16rem] max-w-[22rem] gap-2 px-3 md:inline-flex lg:min-w-[20rem] lg:max-w-[28rem]',
           className,
         )}
         onClick={() => setOpen(true)}

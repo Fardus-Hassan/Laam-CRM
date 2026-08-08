@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import type { OrderStatusConfig } from '@laam/types';
+import type { BulkActionId, OrderStatusConfig } from '@laam/types';
 
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
@@ -11,6 +11,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import {
   ORDER_SECTION_BODY_CLASS,
@@ -18,6 +19,11 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { orderStatusConfigApi } from '@/features/orders/api/order-status-config-api';
+import {
+  DEFAULT_ORDER_BULK_ACTIONS,
+  listBulkActionDefinitions,
+  resolveConfiguredBulkActions,
+} from '@/features/orders/config/bulk-actions-registry';
 import {
   getOrderStatuses,
   ORDER_STATUSES_CHANGED,
@@ -33,8 +39,8 @@ import {
 import {
   statusShowsInNestedTabs,
   statusShowsInSidebar,
-  statusVisibilityLabel,
 } from '@/features/orders/lib/order-status-visibility';
+import { OrderStatusesSortableTable } from '@/features/settings/components/order-statuses-sortable-table';
 import { cn } from '@/lib/utils';
 
 const useApi = process.env.NEXT_PUBLIC_USE_API === 'true';
@@ -50,6 +56,7 @@ function slugify(value: string) {
 
 export function OrderStatusesSettingsPage() {
   const { statuses: liveStatuses, isLoading } = useOrderStatusConfig();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [statuses, setStatuses] = React.useState<OrderStatusConfig[]>(liveStatuses);
   const [draft, setDraft] = React.useState({
     label: '',
@@ -158,7 +165,7 @@ export function OrderStatusesSettingsPage() {
         isTerminal: false,
         isDefault: false,
         allowedTransitions: [],
-        bulkActions: ['export', 'status_change', 'send_sms'],
+        bulkActions: [...DEFAULT_ORDER_BULK_ACTIONS],
         showInGroupByStatus,
         sidebarOrder: 90 + statuses.length,
       });
@@ -216,6 +223,48 @@ export function OrderStatusesSettingsPage() {
     }
   }
 
+  async function reorderStatuses(nextOrdered: OrderStatusConfig[]) {
+    setStatuses(nextOrdered);
+    setSaving(true);
+    try {
+      for (const status of nextOrdered) {
+        const prev = statuses.find((item) => item.slug === status.slug);
+        if (prev && prev.sidebarOrder === status.sidebarOrder) continue;
+        await persistStatus(status);
+      }
+      toast.success('Status order updated — sidebar & nested tabs follow this list');
+    } catch (error) {
+      setStatuses(getOrderStatuses());
+      toast.error(error instanceof Error ? error.message : 'Failed to reorder statuses');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function applyFullBulkToAll() {
+    const ok = await confirm({
+      title: 'Apply full bulk bar to all statuses?',
+      description:
+        'Every status list will get the same options as All Orders (Change Status, Print, SMS, Pathao/Carrybee, Cancel/Unlink, …). You can still hide items per status afterward.',
+      confirmLabel: 'Apply to all',
+    });
+    if (!ok) return;
+    setSaving(true);
+    try {
+      for (const status of statuses) {
+        await persistStatus({
+          ...status,
+          bulkActions: [...DEFAULT_ORDER_BULK_ACTIONS],
+        });
+      }
+      toast.success('Full bulk actions applied to all statuses');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update statuses');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <PageShell
       title="Order Statuses"
@@ -226,6 +275,7 @@ export function OrderStatusesSettingsPage() {
       }
     >
       <div className="space-y-4">
+        {confirmDialog}
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading organization statuses…</p>
         ) : null}
@@ -310,87 +360,38 @@ export function OrderStatusesSettingsPage() {
         </Card>
 
         <Card className="gap-0 py-0 shadow-none">
-          <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+          <CardHeader
+            className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between gap-2')}
+          >
             <CardTitle className="text-sm">Configured statuses ({statuses.length})</CardTitle>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={saving || isLoading || statuses.length === 0}
+              onClick={() => void applyFullBulkToAll()}
+            >
+              Apply full bulk bar to all
+            </Button>
           </CardHeader>
           <CardContent className={ORDER_SECTION_BODY_CLASS}>
-            <div className="overflow-x-auto rounded-lg border border-border/70">
-              <table className="w-full min-w-[1080px] text-sm">
-                <thead className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Label</th>
-                    <th className="px-3 py-2 font-medium">Slug</th>
-                    <th className="px-3 py-2 font-medium">Parent</th>
-                    <th className="px-3 py-2 font-medium">Sidebar</th>
-                    <th className="px-3 py-2 font-medium">Nested tab</th>
-                    <th className="px-3 py-2 font-medium">Group by</th>
-                    <th className="px-3 py-2 font-medium">Effective</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {statuses.map((status) => {
-                    const parentOptions = [
-                      { value: '', label: 'None — top-level' },
-                      ...getStatusParentOptions(status.slug).map((option) => ({
-                        value: option.value,
-                        label: option.label,
-                      })),
-                    ];
-                    return (
-                      <tr key={status.id} className="border-b last:border-b-0">
-                        <td className="px-3 py-2.5 font-medium">{status.label}</td>
-                        <td className="px-3 py-2.5 font-mono text-xs">{status.slug}</td>
-                        <td className="px-3 py-2.5">
-                          <FormSelect
-                            value={status.parentSlug ?? ''}
-                            onChange={(parentSlug) =>
-                              void updateStatus(status, {
-                                parentSlug: parentSlug ? parentSlug : undefined,
-                              })
-                            }
-                            options={parentOptions}
-                            searchable
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <Checkbox
-                            checked={statusShowsInSidebar(status)}
-                            onCheckedChange={(checked) =>
-                              void updateStatus(status, { showInSidebar: checked === true })
-                            }
-                            aria-label={`Show ${status.label} in sidebar`}
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <Checkbox
-                            checked={statusShowsInNestedTabs(status)}
-                            onCheckedChange={(checked) =>
-                              void updateStatus(status, { showInNestedTabs: checked === true })
-                            }
-                            aria-label={`Show ${status.label} as nested tab`}
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <Checkbox
-                            checked={status.showInGroupByStatus !== false}
-                            onCheckedChange={(checked) =>
-                              void updateStatus(status, {
-                                showInGroupByStatus: checked === true,
-                              })
-                            }
-                            aria-label={`Show ${status.label} in Group by Status`}
-                          />
-                        </td>
-                        <td className="px-3 py-2.5 text-muted-foreground">
-                          {statusVisibilityLabel(status)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <OrderStatusesSortableTable
+              statuses={statuses}
+              disabled={saving || isLoading}
+              onReorder={(next) => void reorderStatuses(next)}
+              onUpdate={(status, patch) => void updateStatus(status, patch)}
+              renderBulkActions={(status) => (
+                <StatusBulkActionsEditor
+                  status={status}
+                  onSave={(bulkActions) => void updateStatus(status, { bulkActions })}
+                />
+              )}
+            />
             <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+              <p>
+                <strong>Drag rows</strong> to set order — sidebar and nested tabs both follow
+                this list (same parent group uses relative order).
+              </p>
               <p>
                 <strong>Parent = None</strong> + sidebar on → own link under Orders.
               </p>
@@ -399,6 +400,10 @@ export function OrderStatusesSettingsPage() {
               </p>
               <p>
                 <strong>Nested tab</strong> on → tabs on that parent page.
+              </p>
+              <p>
+                <strong>Bulk actions</strong> → which buttons appear above the order table for that
+                status (same modular bar as All Orders). Uncheck to hide on that page only.
               </p>
               <p>
                 <strong>Group by</strong> on → card on All Orders “Group by Status” (only if
@@ -470,6 +475,85 @@ export function OrderStatusesSettingsPage() {
         </Card>
       </div>
     </PageShell>
+  );
+}
+
+function StatusBulkActionsEditor({
+  status,
+  onSave,
+}: {
+  status: OrderStatusConfig;
+  onSave: (bulkActions: BulkActionId[]) => void;
+}) {
+  const effective = resolveConfiguredBulkActions(status.bulkActions);
+  const [selected, setSelected] = React.useState<Set<BulkActionId>>(
+    () => new Set(effective),
+  );
+  const [open, setOpen] = React.useState(false);
+  const definitions = listBulkActionDefinitions();
+
+  React.useEffect(() => {
+    if (!open) {
+      setSelected(new Set(resolveConfiguredBulkActions(status.bulkActions)));
+    }
+  }, [open, status.bulkActions]);
+
+  function toggle(id: BulkActionId, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" size="sm" variant="outline" className="h-8">
+          {effective.length} actions
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" align="start">
+        <p className="mb-2 text-xs text-muted-foreground">
+          Show/hide bulk buttons for <strong>{status.label}</strong> order list.
+        </p>
+        <div className="custom-scrollbar max-h-64 space-y-1.5 overflow-y-auto">
+          {definitions.map((action) => (
+            <label key={action.id} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={selected.has(action.id)}
+                onCheckedChange={(checked) => toggle(action.id, checked === true)}
+              />
+              <span>{action.label}</span>
+            </label>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => setSelected(new Set(DEFAULT_ORDER_BULK_ACTIONS))}
+          >
+            Full bar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              const next = definitions
+                .map((d) => d.id)
+                .filter((id) => selected.has(id));
+              onSave(next.length > 0 ? next : [...DEFAULT_ORDER_BULK_ACTIONS]);
+              setOpen(false);
+            }}
+          >
+            Save
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

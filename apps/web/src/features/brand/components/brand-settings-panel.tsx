@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import type { BrandColors, Permission, PublicTenantBrand } from '@laam/types';
+import type { BrandColors, Permission, PublicTenantBrand, SidebarNavOrder } from '@laam/types';
 import { ImagePlus, Palette, RotateCcw, Save } from 'lucide-react';
 
 import { BrandLogo } from '@/components/brand/brand-logo';
@@ -16,7 +16,9 @@ import {
   brandingApi,
   type BrandingApiClient,
 } from '@/features/brand/api/branding-api';
+import { SidebarNavOrderEditor } from '@/features/brand/components/sidebar-nav-order-editor';
 import { useBrandControls } from '@/features/brand/providers/brand-provider';
+import { setLiveSidebarNavOrder } from '@/features/navigation/data/sidebar-nav-order-store';
 import { parseApiErrorMessage } from '@/lib/api/parse-api-error';
 
 const COLOR_FIELDS: Array<{ key: keyof BrandColors; label: string }> = [
@@ -60,6 +62,9 @@ export function BrandSettingsPanel({
   const { brand, setBrand } = useBrandControls();
   const [colors, setColors] = React.useState<BrandColors>(brand.colors);
   const [logos, setLogos] = React.useState(brand.logos);
+  const [sidebarNavOrder, setSidebarNavOrder] = React.useState<SidebarNavOrder | null>(
+    null,
+  );
   const [orgMeta, setOrgMeta] = React.useState({ name: brand.name, slug: 'tenant' });
   const [saving, setSaving] = React.useState(false);
   const [uploading, setUploading] = React.useState<'light' | 'dark' | 'favicon' | null>(
@@ -75,8 +80,10 @@ export function BrandSettingsPanel({
       setOrgMeta({ name: data.name, slug: data.slug });
       setColors(merged.colors);
       setLogos(merged.logos);
+      setSidebarNavOrder(data.sidebarNavOrder ?? null);
       if (syncLiveBrand) {
         setBrand(merged);
+        setLiveSidebarNavOrder(data.sidebarNavOrder ?? null);
       }
     });
   }, [api, setBrand, syncLiveBrand]);
@@ -96,13 +103,19 @@ export function BrandSettingsPanel({
   async function handleSave() {
     setSaving(true);
     try {
-      const saved = await api.update({ colors, logos });
+      const saved = await api.update({
+        colors,
+        logos,
+        sidebarNavOrder: sidebarNavOrder ?? null,
+      });
       const merged = mergeBrandFromPublic(saved, env.apiUrl);
       setColors(merged.colors);
       setLogos(merged.logos);
+      setSidebarNavOrder(saved.sidebarNavOrder ?? null);
       setOrgMeta({ name: saved.name, slug: saved.slug });
       if (syncLiveBrand) {
         setBrand(merged);
+        setLiveSidebarNavOrder(saved.sidebarNavOrder ?? null);
       }
       toast.success('Brand updated');
     } catch (error) {
@@ -118,6 +131,7 @@ export function BrandSettingsPanel({
       const saved = await api.update({
         colors: DEFAULT_BRAND.colors,
         logos: { light: '', dark: '', favicon: '' },
+        sidebarNavOrder: null,
       });
       const merged = {
         ...DEFAULT_BRAND,
@@ -126,8 +140,10 @@ export function BrandSettingsPanel({
       setOrgMeta({ name: saved.name, slug: saved.slug });
       setColors(merged.colors);
       setLogos(merged.logos);
+      setSidebarNavOrder(null);
       if (syncLiveBrand) {
         setBrand(merged);
+        setLiveSidebarNavOrder(null);
       }
       toast.success('Reset to Laam defaults');
     } catch (error) {
@@ -274,6 +290,25 @@ export function BrandSettingsPanel({
             </p>
           </CardContent>
         </Card>
+
+        <Can permission={managePermission}>
+          <SidebarNavOrderEditor
+            value={sidebarNavOrder}
+            disabled={saving}
+            onChange={(next) => {
+              setSidebarNavOrder(next);
+              if (syncLiveBrand) {
+                setLiveSidebarNavOrder(next);
+              }
+            }}
+            onReset={() => {
+              setSidebarNavOrder(null);
+              if (syncLiveBrand) {
+                setLiveSidebarNavOrder(null);
+              }
+            }}
+          />
+        </Can>
 
         <Can permission={managePermission}>
           <div className="flex flex-wrap gap-2">

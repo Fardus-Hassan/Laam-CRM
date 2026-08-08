@@ -1,6 +1,10 @@
 import type { BulkActionId } from '@laam/types';
 
 import {
+  DEFAULT_ORDER_BULK_ACTIONS,
+  resolveConfiguredBulkActions,
+} from '@/features/orders/config/bulk-actions-registry';
+import {
   getQueueChildStatusSlugs,
   getQueuePageBySlug,
   getStatusConfigBySlug,
@@ -34,25 +38,13 @@ const DEFAULT_LIST_CONTEXT: Pick<
 > = {
   showFilterPanel: true,
   showSalesSummary: true,
-  bulkActions: [
-    'status_change',
-    'print_selected',
-    'print_barcode',
-    'print_info',
-    'export',
-    'send_sms',
-    'set_followup',
-    'transfer',
-    'submit_pathao',
-    'submit_carrybee',
-    'courier_cancel',
-    'courier_unlink',
-  ],
+  bulkActions: [...DEFAULT_ORDER_BULK_ACTIONS],
 };
 
-function withStatusChange(actions: BulkActionId[]): BulkActionId[] {
-  if (actions.includes('status_change')) return actions;
-  return ['status_change', ...actions];
+function bulkActionsForStatusSlug(statusSlug: string | undefined): BulkActionId[] {
+  if (!statusSlug) return [...DEFAULT_ORDER_BULK_ACTIONS];
+  const statusConfig = getStatusConfigBySlug(statusSlug);
+  return resolveConfiguredBulkActions(statusConfig?.bulkActions);
 }
 
 /** Tab strip parent: own nested tabs, or sibling strip under a status/queue parent. */
@@ -63,7 +55,6 @@ function resolveStatusTabParentSlug(
   if (parentSlug) {
     const siblings = getQueueChildStatusSlugs(parentSlug);
     if (siblings.includes(statusSlug) || siblings.length > 0) {
-      // Only treat as tab strip if this status is actually a nested-tab child.
       if (siblings.includes(statusSlug)) return parentSlug;
     }
   }
@@ -160,7 +151,6 @@ export function resolveOrderQueueFromPath(
         (childStatusSlugs.length > 0
           ? (page.defaultChildSlug ?? childStatusSlugs[0])
           : page.defaultChildSlug);
-      const statusConfig = activeChild ? getStatusConfigBySlug(activeChild) : undefined;
 
       return {
         queueSlug: page.slug,
@@ -172,9 +162,7 @@ export function resolveOrderQueueFromPath(
         parentSlug: page.slug,
         childStatusSlugs: childStatusSlugs.length > 0 ? childStatusSlugs : undefined,
         defaultChildSlug: page.defaultChildSlug,
-        bulkActions: withStatusChange(
-          statusConfig?.bulkActions ?? DEFAULT_LIST_CONTEXT.bulkActions,
-        ),
+        bulkActions: bulkActionsForStatusSlug(activeChild),
         showGroupByStatus: false,
         showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
         showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
@@ -186,7 +174,6 @@ export function resolveOrderQueueFromPath(
   if (statusParam) {
     const statusConfig = getStatusConfigBySlug(statusParam);
     if (statusConfig) {
-      // Nested tabs when this status is a tab-parent, or when it sits under a status parent.
       const tabParentSlug = resolveStatusTabParentSlug(statusParam, statusConfig.parentSlug);
       const childStatusSlugs = tabParentSlug
         ? getQueueChildStatusSlugs(tabParentSlug)
@@ -215,7 +202,7 @@ export function resolveOrderQueueFromPath(
         statusFilter: statusConfig.slug,
         parentSlug: tabParentSlug,
         childStatusSlugs: childStatusSlugs.length > 0 ? childStatusSlugs : undefined,
-        bulkActions: withStatusChange(statusConfig.bulkActions),
+        bulkActions: resolveConfiguredBulkActions(statusConfig.bulkActions),
         showGroupByStatus: false,
         showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
         showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,

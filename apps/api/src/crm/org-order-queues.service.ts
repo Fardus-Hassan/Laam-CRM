@@ -49,7 +49,8 @@ const SYSTEM_QUEUES: Array<Omit<OrderQueuePage, 'id' | 'childStatusSlugs' | 'dis
     kind: 'list',
     sidebarOrder: 15,
     title: 'Follow-ups Due',
-    description: 'Orders pending over 48 hours — call center follow-up and relationship.',
+    description:
+      'Orders with an open follow-up due today or overdue — call center callback queue.',
     showInNav: true,
     followUpDue: true,
     isSystem: true,

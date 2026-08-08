@@ -56,9 +56,21 @@ function asBranding(value: unknown): OrganizationBranding {
         ...(raw.logos.favicon?.trim() ? { favicon: raw.logos.favicon.trim() } : {}),
       }
     : undefined;
+
+  let sidebarNavOrder = raw.sidebarNavOrder ?? undefined;
+  if (
+    sidebarNavOrder &&
+    (!Array.isArray(sidebarNavOrder.groupIds) ||
+      typeof sidebarNavOrder.itemIdsByGroup !== 'object' ||
+      sidebarNavOrder.itemIdsByGroup === null)
+  ) {
+    sidebarNavOrder = undefined;
+  }
+
   return {
     colors: normalizeBrandColorInput(raw.colors) ?? raw.colors,
     logos: logos && Object.keys(logos).length > 0 ? logos : undefined,
+    ...(sidebarNavOrder ? { sidebarNavOrder } : {}),
   };
 }
 
@@ -122,11 +134,17 @@ export class BrandingService {
     if (!row) {
       throw new NotFoundException('Organization not found');
     }
-    return this.resolvePublicBrand({
-      name: row.name,
-      slug: row.slug,
-      branding: row.branding,
-    });
+    const branding = asBranding(row.branding);
+    return {
+      ...this.resolvePublicBrand({
+        name: row.name,
+        slug: row.slug,
+        branding: row.branding,
+      }),
+      ...(branding.sidebarNavOrder
+        ? { sidebarNavOrder: branding.sidebarNavOrder }
+        : {}),
+    };
   }
 
   async getPlatformBrand(): Promise<PublicTenantBrand> {
@@ -136,11 +154,17 @@ export class BrandingService {
     if (!row) {
       throw new NotFoundException('Platform organization not found');
     }
-    return this.resolvePublicBrand({
-      name: row.name || 'Laam',
-      slug: 'platform',
-      branding: row.branding,
-    });
+    const branding = asBranding(row.branding);
+    return {
+      ...this.resolvePublicBrand({
+        name: row.name || 'Laam',
+        slug: 'platform',
+        branding: row.branding,
+      }),
+      ...(branding.sidebarNavOrder
+        ? { sidebarNavOrder: branding.sidebarNavOrder }
+        : {}),
+    };
   }
 
   async getPlatformOrganizationId(): Promise<string> {
@@ -188,6 +212,14 @@ export class BrandingService {
       logos: nextLogos,
     };
 
+    if (patch.sidebarNavOrder === null) {
+      // cleared — leave undefined
+    } else if (patch.sidebarNavOrder !== undefined) {
+      next.sidebarNavOrder = patch.sidebarNavOrder;
+    } else if (current.sidebarNavOrder) {
+      next.sidebarNavOrder = current.sidebarNavOrder;
+    }
+
     const updated = await this.prisma.organization.update({
       where: { id: organizationId },
       data: { branding: next },
@@ -205,11 +237,17 @@ export class BrandingService {
         .catch(() => undefined);
     }
 
-    return this.resolvePublicBrand({
-      name: updated.name,
-      slug: updated.slug,
-      branding: updated.branding,
-    });
+    const branding = asBranding(updated.branding);
+    return {
+      ...this.resolvePublicBrand({
+        name: updated.name,
+        slug: updated.slug,
+        branding: updated.branding,
+      }),
+      ...(branding.sidebarNavOrder
+        ? { sidebarNavOrder: branding.sidebarNavOrder }
+        : {}),
+    };
   }
 
   async uploadLogo(

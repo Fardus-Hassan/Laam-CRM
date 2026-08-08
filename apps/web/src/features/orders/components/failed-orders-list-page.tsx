@@ -17,6 +17,7 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { failedOrdersApi } from '@/features/orders/api/failed-orders-api';
 import { FAILED_ORDER_WEBSITES } from '@/features/orders/data/mock-failed-orders';
+import { requestOrderNavCountsRefresh } from '@/features/orders/data/order-status-counts-store';
 import { cn } from '@/lib/utils';
 
 export function FailedOrdersListPage() {
@@ -64,6 +65,7 @@ export function FailedOrdersListPage() {
         return;
       }
       toast.success(result.message);
+      requestOrderNavCountsRefresh();
       void load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Retry failed');
@@ -74,6 +76,7 @@ export function FailedOrdersListPage() {
     try {
       await failedOrdersApi.dismissFailedOrder(row.id);
       toast.success('Failed order dismissed');
+      requestOrderNavCountsRefresh();
       void load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Dismiss failed');

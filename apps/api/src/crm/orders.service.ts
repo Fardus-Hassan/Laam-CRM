@@ -460,7 +460,25 @@ export class OrdersService {
       isTerminal: before?.isTerminal ?? false,
       isDefault: before?.isDefault ?? false,
       allowedTransitions: before?.allowedTransitions ?? [],
-      bulkActions: (before?.bulkActions as never[]) ?? [],
+      bulkActions: (() => {
+        const existingBulk = before?.bulkActions as never[] | undefined;
+        return existingBulk?.length
+          ? existingBulk
+          : ([
+              'status_change',
+              'print_selected',
+              'print_barcode',
+              'print_info',
+              'export',
+              'send_sms',
+              'set_followup',
+              'transfer',
+              'submit_pathao',
+              'submit_carrybee',
+              'courier_cancel',
+              'courier_unlink',
+            ] as never[]);
+      })(),
       showInGroupByStatus: before?.showInGroupByStatus ?? true,
     });
 
@@ -512,7 +530,46 @@ export class OrdersService {
     return { ok: true };
   }
 
-  /** Sidebar badge counts — groupBy status + follow-ups due (pending/hold older than 48h). */
+  /**
+   * Order IDs for the Follow-ups Due queue — same rules as list(`followUpDue`).
+   * Open follow-ups scheduled today or earlier, linked to a non-deleted order.
+   */
+  private async resolveFollowUpDueOrderIds(
+    organizationId: string,
+  ): Promise<string[]> {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const dueFollowups = await this.prisma.followup.findMany({
+      where: {
+        organizationId,
+        orderId: { not: null },
+        scheduleDate: { lte: startOfToday },
+        skipped: false,
+        followupStatus: { notIn: ['done', 'converted'] },
+      },
+      select: { orderId: true },
+    });
+    const candidateIds = [
+      ...new Set(
+        dueFollowups
+          .map((f) => f.orderId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (candidateIds.length === 0) return [];
+
+    const liveOrders = await this.prisma.order.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        id: { in: candidateIds },
+      },
+      select: { id: true },
+    });
+    return liveOrders.map((o) => o.id);
+  }
+
+  /** Sidebar badge counts — same filters as status / follow-ups / failed list pages. */
   async getNavStatusCounts(organizationId: string): Promise<{
     byStatus: Record<string, number>;
     followupsDue: number;
@@ -520,7 +577,7 @@ export class OrdersService {
   }> {
     const grouped = await this.prisma.order.groupBy({
       by: ['status'],
-      where: { organizationId },
+      where: { organizationId, deletedAt: null },
       _count: { _all: true },
     });
 
@@ -529,19 +586,8 @@ export class OrdersService {
       byStatus[row.status] = row._count._all;
     }
 
-    const followUpCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
-    const [followupsDue, failed] = await Promise.all([
-      this.prisma.order.count({
-        where: {
-          organizationId,
-          skipFollowup: false,
-          createdAt: { lte: followUpCutoff },
-          OR: [
-            { status: { startsWith: 'pending' } },
-            { status: { in: ['hold', 'hold_followup'] } },
-          ],
-        },
-      }),
+    const [dueOrderIds, failed] = await Promise.all([
+      this.resolveFollowUpDueOrderIds(organizationId),
       this.prisma.failedOrder.count({
         where: {
           organizationId,
@@ -553,7 +599,11 @@ export class OrdersService {
       }),
     ]);
 
-    return { byStatus, followupsDue, failed };
+    return {
+      byStatus,
+      followupsDue: dueOrderIds.length,
+      failed,
+    };
   }
 
   async bulkSetFollowUp(
@@ -1025,25 +1075,7 @@ export class OrdersService {
     if (courierBookedFilter) where.courierBookedAt = courierBookedFilter;
 
     if (query.followUpDue === true) {
-      const startOfToday = new Date();
-      startOfToday.setHours(0, 0, 0, 0);
-      const dueFollowups = await this.prisma.followup.findMany({
-        where: {
-          organizationId,
-          orderId: { not: null },
-          scheduleDate: { lte: startOfToday },
-          skipped: false,
-          followupStatus: { not: 'completed' },
-        },
-        select: { orderId: true },
-      });
-      const dueOrderIds = [
-        ...new Set(
-          dueFollowups
-            .map((f) => f.orderId)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      ];
+      const dueOrderIds = await this.resolveFollowUpDueOrderIds(organizationId);
       where.id = { in: dueOrderIds.length > 0 ? dueOrderIds : ['__none__'] };
     }
 

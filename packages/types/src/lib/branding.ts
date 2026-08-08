@@ -68,9 +68,21 @@ export const brandLogosSchema = z.object({
 
 export type BrandLogos = z.infer<typeof brandLogosSchema>;
 
+/** Org-wide sidebar layout — groups, top-level items, and nested children (e.g. Settings pages). */
+export const sidebarNavOrderSchema = z.object({
+  groupIds: z.array(z.string().min(1)),
+  itemIdsByGroup: z.record(z.string(), z.array(z.string().min(1))),
+  /** Nested children under a top-level item id (settings, people, …). Orders stays separate. */
+  childIdsByItem: z.record(z.string(), z.array(z.string().min(1))).optional(),
+});
+
+export type SidebarNavOrder = z.infer<typeof sidebarNavOrderSchema>;
+
 export const organizationBrandingSchema = z.object({
   colors: brandColorsSchema.partial().optional(),
   logos: brandLogosSchema.optional(),
+  /** Pass `null` on update to clear a custom sidebar order (reset to defaults). */
+  sidebarNavOrder: sidebarNavOrderSchema.nullish(),
 });
 
 export type OrganizationBranding = z.infer<typeof organizationBrandingSchema>;
@@ -89,6 +101,8 @@ export const publicTenantBrandSchema = z.object({
     dark: optionalLogoUrl,
     favicon: optionalLogoUrl,
   }),
+  /** Present on authenticated branding GET/PATCH; omitted on public login payloads. */
+  sidebarNavOrder: sidebarNavOrderSchema.optional(),
 });
 
 export type PublicTenantBrand = z.infer<typeof publicTenantBrandSchema>;

@@ -60,6 +60,7 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     parentSlug: 'pendings',
     displayMode: 'sidebar_and_tab',
     isDefault: true,
+    sidebarOrder: 10,
     allowedTransitions: ['pending_2', 'pending_3', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
   }),
@@ -70,6 +71,7 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     group: 'intake',
     parentSlug: 'pendings',
     displayMode: 'sidebar_and_tab',
+    sidebarOrder: 11,
     allowedTransitions: ['pending', 'pending_3', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
   }),
@@ -273,7 +275,8 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
     displayMode: 'sidebar',
     sidebarOrder: 15,
     title: 'Follow-ups Due',
-    description: 'Orders pending over 48 hours — call center follow-up and relationship.',
+    description:
+      'Orders with an open follow-up due today or overdue — call center callback queue.',
     showInNav: true,
   },
   {

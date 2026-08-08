@@ -30,6 +30,12 @@ class UpdateBrandingDto {
     dark?: string;
     favicon?: string;
   };
+
+  @IsOptional()
+  sidebarNavOrder?: {
+    groupIds: string[];
+    itemIdsByGroup: Record<string, string[]>;
+  } | null;
 }
 
 class UploadLogoDto {
@@ -65,6 +71,7 @@ export class PlatformBrandingController {
     return this.branding.updateBranding(organizationId, {
       colors: body.colors as never,
       logos: body.logos,
+      sidebarNavOrder: body.sidebarNavOrder as never,
     });
   }
 
@@ -122,6 +129,7 @@ export class PlatformBrandingController {
     return this.branding.updateBranding(id, {
       colors: body.colors as never,
       logos: body.logos,
+      sidebarNavOrder: body.sidebarNavOrder as never,
     });
   }
 

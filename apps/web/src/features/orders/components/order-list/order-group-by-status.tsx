@@ -6,6 +6,7 @@ import { Package, RotateCcw, ShoppingBag } from 'lucide-react';
 import { CollapsibleSection } from '@/components/form/collapsible-section';
 import { useStatusCounts } from '@/features/orders/hooks/use-status-counts';
 import { getStatusCountsForGroupBy } from '@/features/orders/data/mock-status-counts';
+import { ORDER_STATUS_COUNTS_CHANGED } from '@/features/orders/data/order-status-counts-store';
 import { ORDER_STATUSES_CHANGED } from '@/features/orders/data/order-status-store';
 import { cn } from '@/lib/utils';
 
@@ -28,12 +29,16 @@ export function OrderGroupByStatus({
       setStatusVersion((v) => v + 1);
     }
     window.addEventListener(ORDER_STATUSES_CHANGED, refresh);
-    return () => window.removeEventListener(ORDER_STATUSES_CHANGED, refresh);
+    window.addEventListener(ORDER_STATUS_COUNTS_CHANGED, refresh);
+    return () => {
+      window.removeEventListener(ORDER_STATUSES_CHANGED, refresh);
+      window.removeEventListener(ORDER_STATUS_COUNTS_CHANGED, refresh);
+    };
   }, []);
 
   const tiles = React.useMemo(
     () => getStatusCountsForGroupBy().filter((item) => item.count > 0).slice(0, 16),
-    // statusVersion forces refresh when Settings toggles Group by
+    // statusVersion forces refresh when Settings toggles Group by / live counts update
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [statusVersion, total],
   );

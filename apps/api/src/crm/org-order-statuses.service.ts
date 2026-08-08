@@ -71,6 +71,7 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     allowedTransitions: ['pending_2', 'pending_3', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
     showInGroupByStatus: true,
+    sidebarOrder: 10,
   },
   {
     slug: 'pending_2',
@@ -84,6 +85,7 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     allowedTransitions: ['pending', 'pending_3', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
     showInGroupByStatus: true,
+    sidebarOrder: 11,
   },
   {
     slug: 'pending_3',
@@ -352,7 +354,13 @@ export class OrgOrderStatusesService {
       isTerminal: input.isTerminal ?? false,
       isDefault: input.isDefault ?? false,
       allowedTransitions: input.allowedTransitions ?? [],
-      bulkActions: sanitizeBulkActions(input.bulkActions ?? []),
+      bulkActions: sanitizeBulkActions(
+        input.bulkActions && input.bulkActions.length > 0
+          ? input.bulkActions
+          : existing?.bulkActions?.length
+            ? existing.bulkActions
+            : DEFAULT_BULK,
+      ),
       showInGroupByStatus: input.showInGroupByStatus ?? true,
       isActive: true,
     };
@@ -360,7 +368,10 @@ export class OrgOrderStatusesService {
     const row = existing
       ? await this.prisma.orgOrderStatus.update({
           where: { id: existing.id },
-          data,
+          data: {
+            ...data,
+            sortOrder: input.sidebarOrder ?? existing.sortOrder ?? 100,
+          },
         })
       : await this.prisma.orgOrderStatus.create({
           data: {
