@@ -271,7 +271,16 @@ export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
 
 export const orderListSummarySchema = z.object({
   count: z.number(),
+  /** Filtered view grand total (sum of order.amount). */
   totalAmount: z.number(),
+  /** Sum of line/product subtotals before shipping. */
+  productTotal: z.number().optional(),
+  /** Sum of deliveryCharge collected from customers. */
+  shippingCollected: z.number().optional(),
+  discountTotal: z.number().optional(),
+  paidTotal: z.number().optional(),
+  /** Sum of courierChargedToMe (API / booked courier cost). */
+  courierChargeTotal: z.number().optional(),
 });
 
 export type OrderListSummary = z.infer<typeof orderListSummarySchema>;
@@ -373,6 +382,41 @@ export const orderSalesSummarySchema = z.object({
 });
 
 export type OrderSalesSummary = z.infer<typeof orderSalesSummarySchema>;
+
+/**
+ * Operational sales summary from list aggregates (no fabricated %).
+ * Purchase/COGS stays 0 until inventory costing is linked to orders.
+ */
+export function buildOrderSalesSummaryFromListSummary(
+  summary: OrderListSummary,
+): OrderSalesSummary {
+  const productTotal = summary.productTotal ?? summary.totalAmount;
+  const shippingCollected = summary.shippingCollected ?? 0;
+  const orderTotalWithShipping = summary.totalAmount;
+  const courierChargeApi = summary.courierChargeTotal ?? 0;
+  const courierChargeOther = 0;
+  const totalCourierCharge = courierChargeApi + courierChargeOther;
+  const afterCourierCharge = orderTotalWithShipping - totalCourierCharge;
+  const purchaseAmount = 0;
+  const salesProfitLoss = afterCourierCharge - purchaseAmount;
+  const otherExpense = 0;
+  const netIncome = salesProfitLoss - otherExpense;
+
+  return {
+    productTotal,
+    shippingCollected,
+    orderTotalWithShipping,
+    courierChargeApi,
+    courierChargeOther,
+    totalCourierCharge,
+    afterCourierCharge,
+    purchaseAmount,
+    salesProfitLoss,
+    otherExpense,
+    netIncome,
+    orderCount: summary.count,
+  };
+}
 
 export const createOrderLinePayloadSchema = z.object({
   productName: z.string(),

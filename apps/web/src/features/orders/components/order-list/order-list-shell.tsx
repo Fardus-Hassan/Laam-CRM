@@ -28,19 +28,19 @@ import { OrderQueueTabs } from '@/features/orders/components/order-list/order-qu
 import { OrderSalesSummaryPanel } from '@/features/orders/components/order-list/order-sales-summary-panel';
 import { OrderSelectionBar } from '@/features/orders/components/order-list/order-selection-bar';
 import { OrderWorkspaceHeader } from '@/features/orders/components/order-list/order-workspace-header';
-import { buildMockSalesSummary } from '@/features/orders/data/mock-orders';
-import { env } from '@/config/env';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { useOrderRowsList } from '@/features/orders/hooks/use-order-rows-list';
 import { createOrdersListBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { buildOrderSalesSummaryFromListSummary } from '@laam/types';
 
 type OrderListShellProps = {
   queue: OrderQueueContext;
 };
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 export function OrderListShell({ queue }: OrderListShellProps) {
   const router = useRouter();
@@ -146,10 +146,9 @@ export function OrderListShell({ queue }: OrderListShellProps) {
   );
 
   const salesSummary = React.useMemo(() => {
-    // Live API mode: never fabricate P&L — hide until real ledger exists
-    if (env.useApi) return null;
-    return buildMockSalesSummary(data?.summary.count ?? 0, data?.summary.totalAmount ?? 0);
-  }, [data?.summary.count, data?.summary.totalAmount]);
+    if (!data?.summary.count) return null;
+    return buildOrderSalesSummaryFromListSummary(data.summary);
+  }, [data?.summary]);
 
   const summaryItems = [
     {

@@ -167,7 +167,10 @@ export function OrderBulkActions({
       return;
     }
 
-    toast.error(`Bulk action "${label}" is not implemented yet`);
+    // All BulkActionId values are handled above (print / courier / modal).
+    // If this fires, a new registry id was added without a handler.
+    console.error(`Unhandled bulk action: ${actionId}`);
+    toast.error(`Could not run "${label}". Refresh and try again.`);
   }
 
   const transferOptions = teamUsers.map((u) => ({

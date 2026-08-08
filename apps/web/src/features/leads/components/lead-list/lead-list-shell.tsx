@@ -34,12 +34,13 @@ import { useLeadsList } from '@/features/leads/hooks/use-leads-list';
 import { navigateToConvertLead } from '@/features/leads/lib/lead-convert';
 import { createLeadsListBreadcrumbs } from '@/features/leads/lib/lead-breadcrumbs';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
 type LeadListShellProps = {
   context: LeadListContext;
 };
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 export function LeadListShell({ context }: LeadListShellProps) {
   const router = useRouter();

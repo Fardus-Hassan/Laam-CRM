@@ -39,8 +39,9 @@ import type { TransactionListQuery } from '@laam/types';
 import { downloadCsv } from '@/lib/export-csv';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 const PAYMENT_OPTIONS = Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }));
 const ACCOUNT_OPTIONS = [
   { value: 'Cash Register', label: 'Cash Register' },

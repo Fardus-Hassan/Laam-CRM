@@ -1096,7 +1096,7 @@ export class OrdersService {
 
     const orderBy = resolveOrderListSort(query.sortBy, query.sortDir);
 
-    const [total, rows] = await Promise.all([
+    const [total, rows, moneyAgg] = await Promise.all([
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
         where,
@@ -1105,6 +1105,17 @@ export class OrdersService {
         take: pageSize,
         include: {
           lineItems: { orderBy: { createdAt: 'asc' } },
+        },
+      }),
+      this.prisma.order.aggregate({
+        where,
+        _sum: {
+          amount: true,
+          subtotal: true,
+          deliveryCharge: true,
+          discount: true,
+          paidAmount: true,
+          courierChargedToMe: true,
         },
       }),
     ]);
@@ -1181,14 +1192,22 @@ export class OrdersService {
         shopByPhone.get(row.customerPhone),
       ),
     );
-    const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
+    const totalAmount = moneyAgg._sum.amount ?? 0;
 
     return {
       items,
       page,
       pageSize,
       total,
-      summary: { count: total, totalAmount },
+      summary: {
+        count: total,
+        totalAmount,
+        productTotal: moneyAgg._sum.subtotal ?? 0,
+        shippingCollected: moneyAgg._sum.deliveryCharge ?? 0,
+        discountTotal: moneyAgg._sum.discount ?? 0,
+        paidTotal: moneyAgg._sum.paidAmount ?? 0,
+        courierChargeTotal: moneyAgg._sum.courierChargedToMe ?? 0,
+      },
     };
   }
 

@@ -25,8 +25,9 @@ import { TaskWorkspaceHeader } from '@/features/tasks/components/task-list/task-
 import { useTaskMutations } from '@/features/tasks/hooks/use-task-mutations';
 import { useTasksList } from '@/features/tasks/hooks/use-tasks-list';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 export function TaskListShell() {
   const router = useRouter();

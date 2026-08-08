@@ -1,18 +1,19 @@
-import type {
-  BulkActionResult,
-  CreateOrderPayload,
-  DuplicateCheckQuery,
-  DuplicateCheckResult,
-  OrderBulkActionPayload,
-  OrderDetail,
-  OrderListItem,
-  OrderListQuery,
-  OrderListResponse,
-  OrderListRow,
-  OrderListRowResponse,
-  OrderSalesSummary,
-  OrderTimelineEvent,
-  UpdateOrderPayload,
+import {
+  buildOrderSalesSummaryFromListSummary,
+  type BulkActionResult,
+  type CreateOrderPayload,
+  type DuplicateCheckQuery,
+  type DuplicateCheckResult,
+  type OrderBulkActionPayload,
+  type OrderDetail,
+  type OrderListItem,
+  type OrderListQuery,
+  type OrderListResponse,
+  type OrderListRow,
+  type OrderListRowResponse,
+  type OrderSalesSummary,
+  type OrderTimelineEvent,
+  type UpdateOrderPayload,
 } from '@laam/types';
 
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
@@ -847,28 +848,23 @@ export function filterMockOrderRows(query: OrderListQuery): OrderListRowResponse
     summary: {
       count: total,
       totalAmount: allRows.reduce((sum, order) => sum + order.amount, 0),
+      productTotal: allRows.reduce((sum, order) => sum + order.subtotal, 0),
+      shippingCollected: allRows.reduce((sum, order) => sum + order.deliveryCharge, 0),
+      discountTotal: allRows.reduce((sum, order) => sum + (order.discount ?? 0), 0),
+      paidTotal: allRows.reduce((sum, order) => sum + (order.paidAmount ?? 0), 0),
+      courierChargeTotal: 0,
     },
   };
 }
 
 export function buildMockSalesSummary(orderCount: number, totalAmount: number): OrderSalesSummary {
-  const courierCharge = Math.round(totalAmount * 0.055);
-  const afterCourier = totalAmount - courierCharge;
-
-  return {
+  return buildOrderSalesSummaryFromListSummary({
+    count: orderCount,
+    totalAmount,
     productTotal: totalAmount,
     shippingCollected: 0,
-    orderTotalWithShipping: totalAmount,
-    courierChargeApi: courierCharge,
-    courierChargeOther: 0,
-    totalCourierCharge: courierCharge,
-    afterCourierCharge: afterCourier,
-    purchaseAmount: 0,
-    salesProfitLoss: afterCourier,
-    otherExpense: 0,
-    netIncome: afterCourier,
-    orderCount,
-  };
+    courierChargeTotal: 0,
+  });
 }
 
 export function filterMockOrders(query: OrderListQuery): OrderListResponse {
@@ -876,6 +872,10 @@ export function filterMockOrders(query: OrderListQuery): OrderListResponse {
 
   const total = items.length;
   const totalAmount = items.reduce((sum, order) => sum + order.amount, 0);
+  const productTotal = items.reduce((sum, order) => sum + order.subtotal, 0);
+  const shippingCollected = items.reduce((sum, order) => sum + order.deliveryCharge, 0);
+  const discountTotal = items.reduce((sum, order) => sum + (order.discount ?? 0), 0);
+  const paidTotal = items.reduce((sum, order) => sum + (order.paidAmount ?? 0), 0);
   const start = (query.page - 1) * query.pageSize;
   items = items.slice(start, start + query.pageSize);
 
@@ -887,6 +887,11 @@ export function filterMockOrders(query: OrderListQuery): OrderListResponse {
     summary: {
       count: total,
       totalAmount,
+      productTotal,
+      shippingCollected,
+      discountTotal,
+      paidTotal,
+      courierChargeTotal: 0,
     },
   };
 }

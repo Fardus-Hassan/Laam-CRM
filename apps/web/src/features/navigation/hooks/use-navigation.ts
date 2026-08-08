@@ -24,7 +24,7 @@ import {
 import { applySidebarNavOrder } from '@/features/navigation/lib/apply-sidebar-nav-order';
 import { isPlatformHost } from '@/lib/tenant';
 
-const STATUS_COUNTS_POLL_MS = 60_000;
+const STATUS_COUNTS_POLL_MS = 30_000;
 
 export function useNavigation() {
   const { user } = useAuth();
@@ -110,18 +110,27 @@ export function useNavigation() {
 
     void loadCounts();
     const id = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
       void loadCounts();
     }, STATUS_COUNTS_POLL_MS);
 
     function onRefreshRequest() {
       void loadCounts();
     }
+    function onVisibleOrFocus() {
+      if (document.visibilityState === 'hidden') return;
+      void loadCounts();
+    }
     window.addEventListener(ORDER_NAV_COUNTS_REFRESH, onRefreshRequest);
+    window.addEventListener('focus', onVisibleOrFocus);
+    document.addEventListener('visibilitychange', onVisibleOrFocus);
 
     return () => {
       cancelled = true;
       window.clearInterval(id);
       window.removeEventListener(ORDER_NAV_COUNTS_REFRESH, onRefreshRequest);
+      window.removeEventListener('focus', onVisibleOrFocus);
+      document.removeEventListener('visibilitychange', onVisibleOrFocus);
     };
   }, [permissions]);
 
@@ -152,12 +161,22 @@ export function useNavigation() {
 
     void loadNavBadges();
     const id = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
       void loadNavBadges();
     }, STATUS_COUNTS_POLL_MS);
+
+    function onVisibleOrFocus() {
+      if (document.visibilityState === 'hidden') return;
+      void loadNavBadges();
+    }
+    window.addEventListener('focus', onVisibleOrFocus);
+    document.addEventListener('visibilitychange', onVisibleOrFocus);
 
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      window.removeEventListener('focus', onVisibleOrFocus);
+      document.removeEventListener('visibilitychange', onVisibleOrFocus);
     };
   }, [permissions]);
 

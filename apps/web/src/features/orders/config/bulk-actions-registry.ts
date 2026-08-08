@@ -25,7 +25,11 @@ export const BULK_ACTIONS_REGISTRY: Record<BulkActionId, BulkActionDefinition> =
     variant: 'secondary',
     requiresSelection: true,
   },
-  update_courier_status: { id: 'update_courier_status', label: 'Update Courier Status' },
+  update_courier_status: {
+    id: 'update_courier_status',
+    label: 'Update Courier Status',
+    requiresSelection: true,
+  },
   send_sms: { id: 'send_sms', label: 'Send SMS', requiresSelection: true },
   set_followup: { id: 'set_followup', label: 'Set Followup', requiresSelection: true },
   transfer: { id: 'transfer', label: 'Transfer Selected', requiresSelection: true },

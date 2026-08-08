@@ -26,8 +26,9 @@ import { CONTACT_SOURCE_FILTERS, getContactPageCopy } from '@/features/contacts/
 import { useContactMutations } from '@/features/contacts/hooks/use-contact-mutations';
 import { useContactsList } from '@/features/contacts/hooks/use-contacts-list';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 type ContactListShellProps = {
   source?: string;

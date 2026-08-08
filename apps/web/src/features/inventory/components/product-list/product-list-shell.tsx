@@ -28,8 +28,9 @@ import { productBrandsApi } from '@/features/settings/api/product-brands-api';
 import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 export function ProductListShell() {
   const router = useRouter();

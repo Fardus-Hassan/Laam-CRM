@@ -34,10 +34,11 @@ import { useCustomerMutations } from '@/features/customers/hooks/use-customer-mu
 import { useCustomersList } from '@/features/customers/hooks/use-customers-list';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { Settings2 } from 'lucide-react';
 import Link from 'next/link';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 export function CustomerListShell() {
   const router = useRouter();

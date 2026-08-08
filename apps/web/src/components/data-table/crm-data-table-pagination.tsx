@@ -10,6 +10,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { FormSelect } from '@/components/form/form-select';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { cn } from '@/lib/utils';
 
 type CrmDataTablePaginationProps = {
@@ -47,7 +48,7 @@ export function CrmDataTablePagination({
   page,
   pageSize,
   total,
-  pageSizeOptions = [10, 25, 50, 100],
+  pageSizeOptions = [...CRM_PAGE_SIZE_OPTIONS],
   onPageChange,
   onPageSizeChange,
   showRangeSummary = true,

@@ -26,8 +26,9 @@ import { FollowupWorkspaceHeader } from '@/features/followups/components/followu
 import { useFollowupMutations } from '@/features/followups/hooks/use-followup-mutations';
 import { useFollowupsList } from '@/features/followups/hooks/use-followups-list';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 function parseQueue(value: string | null): FollowupQueue {
   if (value === '2') return 2;
