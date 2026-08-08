@@ -102,7 +102,16 @@ export function useOrderDetailMutations(order: OrderDetail | null, onUpdated?: (
 
   const confirmOrder = React.useCallback(async () => {
     if (!order) return;
-    const updated = await updateOrder(order.id, { status: 'confirmed' });
+    if (!order.fulfillmentWarehouseId) {
+      toast.error(
+        'Select a fulfillment warehouse before confirming (stock is cut from that warehouse)',
+      );
+      return;
+    }
+    const updated = await updateOrder(order.id, {
+      status: 'confirmed',
+      fulfillmentWarehouseId: order.fulfillmentWarehouseId,
+    });
     onUpdated?.(updated);
   }, [order, onUpdated, updateOrder]);
 
@@ -119,10 +128,15 @@ export function useOrderDetailMutations(order: OrderDetail | null, onUpdated?: (
   }, [order]);
 
   const changeStatus = React.useCallback(
-    async (status: string) => {
+    async (status: string, fulfillmentWarehouseId?: string) => {
       if (!order) return;
       const updated = await updateOrder(order.id, {
         status: status as OrderDetail['status'],
+        ...(fulfillmentWarehouseId
+          ? { fulfillmentWarehouseId }
+          : order.fulfillmentWarehouseId
+            ? { fulfillmentWarehouseId: order.fulfillmentWarehouseId }
+            : {}),
       });
       onUpdated?.(updated);
     },

@@ -536,6 +536,9 @@ model Order {
   attachmentNames    String[] @default([])
   attachmentUrls     String[] @default([])
   stockDeductedAt    DateTime?
+  /// Warehouse used to cut/hold stock on confirm / courier book.
+  fulfillmentWarehouseId String?
+  fulfillmentWarehouse   Warehouse? @relation(fields: [fulfillmentWarehouseId], references: [id], onDelete: SetNull)
   deletedAt          DateTime?
   /// Website / e-commerce connection that created this order (ingest).
   websiteStoreId     String?
@@ -1087,6 +1090,7 @@ model Warehouse {
   stockLevels    InventoryStockLevel[]
   lots           InventoryLot[]
   stockMovements InventoryStockMovement[]
+  fulfillmentOrders Order[]
 
   @@unique([organizationId, code])
   @@index([organizationId, isActive])

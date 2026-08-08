@@ -738,6 +738,9 @@ export class InventoryCatalogService {
     id: string,
     options?: { includeDeleted?: boolean },
   ): Promise<InventoryProductDetail> {
+    // Heal catalog↔warehouse gaps so UI and courier use the same on-hand qty.
+    await this.repairProductWarehouseGaps(organizationId, id);
+
     const row = await this.prisma.product.findFirst({
       where: {
         id,
@@ -753,7 +756,167 @@ export class InventoryCatalogService {
       },
     });
     if (!row) throw new NotFoundException('Product not found');
-    return this.toDetail(row);
+    return this.toDetailWithWarehouse(organizationId, row);
+  }
+
+  /**
+   * Push catalog stock into the default warehouse when warehouse is behind
+   * (legacy catalog_edit left warehouse at 0). Raises catalog when warehouse is ahead.
+   */
+  async repairOrgWarehouseStockGaps(
+    organizationId: string,
+    actor?: Actor,
+  ): Promise<{ repaired: number }> {
+    const variants = await this.prisma.productVariant.findMany({
+      where: { organizationId, product: { deletedAt: null } },
+      select: { id: true, productId: true, stock: true },
+    });
+    let repaired = 0;
+    for (const variant of variants) {
+      const changed = await this.prisma.$transaction(async (tx) =>
+        this.repairVariantWarehouseGap(tx, organizationId, {
+          productId: variant.productId,
+          variantId: variant.id,
+          catalogStock: variant.stock,
+          actor,
+        }),
+      );
+      if (changed) repaired += 1;
+    }
+    return { repaired };
+  }
+
+  private async repairProductWarehouseGaps(
+    organizationId: string,
+    productId: string,
+    actor?: Actor,
+  ): Promise<void> {
+    const variants = await this.prisma.productVariant.findMany({
+      where: { organizationId, productId },
+      select: { id: true, productId: true, stock: true },
+    });
+    if (!variants.length) return;
+    await this.prisma.$transaction(async (tx) => {
+      for (const variant of variants) {
+        await this.repairVariantWarehouseGap(tx, organizationId, {
+          productId: variant.productId,
+          variantId: variant.id,
+          catalogStock: variant.stock,
+          actor,
+        });
+      }
+    });
+  }
+
+  private async repairVariantWarehouseGap(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    input: {
+      productId: string;
+      variantId: string;
+      catalogStock: number;
+      actor?: Actor;
+    },
+  ): Promise<boolean> {
+    const warehouse = await this.advanced.ensureDefaultWarehouse(organizationId, tx);
+    const level = await tx.inventoryStockLevel.findUnique({
+      where: {
+        warehouseId_variantId: {
+          warehouseId: warehouse.id,
+          variantId: input.variantId,
+        },
+      },
+      select: { quantity: true },
+    });
+    const warehouseQty = level?.quantity ?? 0;
+    const catalog = Math.max(0, Math.trunc(input.catalogStock));
+
+    if (catalog > warehouseQty) {
+      await this.alignDefaultWarehouseToTarget(tx, organizationId, {
+        productId: input.productId,
+        variantId: input.variantId,
+        targetStock: catalog,
+        actor: input.actor,
+        reason: 'warehouse_sync',
+        note: 'Aligned warehouse to catalog on-hand',
+      });
+      return true;
+    }
+    if (warehouseQty > catalog) {
+      await tx.productVariant.update({
+        where: { id: input.variantId },
+        data: { stock: warehouseQty },
+      });
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Set default-warehouse on-hand (and catalog aggregate) to an absolute target.
+   */
+  private async alignDefaultWarehouseToTarget(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    input: {
+      productId: string;
+      variantId: string;
+      targetStock: number;
+      actor?: Actor;
+      reason: string;
+      note?: string;
+    },
+  ): Promise<void> {
+    const target = Math.max(0, Math.trunc(input.targetStock));
+    const warehouse = await this.advanced.ensureDefaultWarehouse(organizationId, tx);
+    const level = await tx.inventoryStockLevel.findUnique({
+      where: {
+        warehouseId_variantId: {
+          warehouseId: warehouse.id,
+          variantId: input.variantId,
+        },
+      },
+      select: { quantity: true },
+    });
+    const warehouseQty = level?.quantity ?? 0;
+    const diff = target - warehouseQty;
+
+    if (diff > 0) {
+      await this.advanced.receiveStock(tx, organizationId, {
+        productId: input.productId,
+        variantId: input.variantId,
+        warehouseId: warehouse.id,
+        quantity: diff,
+        createLot: true,
+        lot: { lotNumber: `SYNC-${Date.now().toString(36)}` },
+        reason: input.reason,
+        note: input.note,
+        sourceType: 'warehouse_sync',
+        sourceId: input.variantId,
+        actor: input.actor,
+        // Warehouse only — catalog set explicitly below to the absolute target.
+        skipAggregate: true,
+      });
+    } else if (diff < 0) {
+      await this.advanced.consumeStock(tx, organizationId, {
+        productId: input.productId,
+        variantId: input.variantId,
+        warehouseId: warehouse.id,
+        quantity: -diff,
+        preferFefo: true,
+        reason: input.reason,
+        note: input.note,
+        sourceType: 'warehouse_sync',
+        sourceId: input.variantId,
+        actor: input.actor,
+        skipAggregate: true,
+      });
+    }
+
+    await tx.productVariant.update({
+      where: { id: input.variantId },
+      data: { stock: target },
+    });
   }
 
   // ─── Products: create / update ────────────────────────────────────────────
@@ -993,33 +1156,17 @@ export class InventoryCatalogService {
                 },
               });
 
-              // Absolute stock set from a catalog edit → ledger the diff.
+              // Absolute stock from catalog edit → keep default warehouse in sync.
               if (v.stock != null) {
-                const current = await tx.productVariant.findUniqueOrThrow({
-                  where: { id: persistedId },
-                  select: { stock: true },
-                });
                 const target = Math.max(0, Math.trunc(v.stock));
-                if (target !== current.stock) {
-                  await tx.productVariant.update({
-                    where: { id: persistedId },
-                    data: { stock: target },
-                  });
-                  await tx.inventoryStockMovement.create({
-                    data: {
-                      organizationId,
-                      productId: existing.id,
-                      variantId: persistedId,
-                      delta: target - current.stock,
-                      previousStock: current.stock,
-                      newStock: target,
-                      reason: 'catalog_edit',
-                      note: 'Absolute stock set from product edit',
-                      actorUserId: actor?.userId ?? null,
-                      actorName: actor?.name ?? null,
-                    },
-                  });
-                }
+                await this.alignDefaultWarehouseToTarget(tx, organizationId, {
+                  productId: existing.id,
+                  variantId: persistedId,
+                  targetStock: target,
+                  actor,
+                  reason: 'catalog_edit',
+                  note: 'Absolute stock set from product edit',
+                });
               }
             } else {
               const stock = Math.max(0, Math.trunc(v.stock ?? 0));
@@ -1038,24 +1185,18 @@ export class InventoryCatalogService {
                   salePrice: new Prisma.Decimal(v.salePrice),
                   costPrice: v.costPrice != null ? new Prisma.Decimal(v.costPrice) : null,
                   weightKg: Number(v.weightKg ?? 0.5) > 0 ? Number(v.weightKg ?? 0.5) : 0.5,
-                  stock,
+                  stock: 0,
                   reorderLevel: v.reorderLevel ?? existing.reorderLevel,
                 },
               });
               if (stock > 0) {
-                await tx.inventoryStockMovement.create({
-                  data: {
-                    organizationId,
-                    productId: existing.id,
-                    variantId: created.id,
-                    delta: stock,
-                    previousStock: 0,
-                    newStock: stock,
-                    reason: 'initial_stock',
-                    note: 'Variant added via product edit',
-                    actorUserId: actor?.userId ?? null,
-                    actorName: actor?.name ?? null,
-                  },
+                await this.alignDefaultWarehouseToTarget(tx, organizationId, {
+                  productId: existing.id,
+                  variantId: created.id,
+                  targetStock: stock,
+                  actor,
+                  reason: 'initial_stock',
+                  note: 'Variant added via product edit',
                 });
               }
             }
@@ -1696,6 +1837,8 @@ export class InventoryCatalogService {
       orderNumber: string;
       orderId?: string;
       actor?: Actor;
+      /** When set, cut/receive from this warehouse (required for order fulfill). */
+      warehouseId?: string;
     },
   ): Promise<void> {
     for (const line of lines) {
@@ -1724,6 +1867,7 @@ export class InventoryCatalogService {
           productId: line.productId,
           variantId,
           quantity: line.quantity,
+          warehouseId: options.warehouseId,
           preferFefo: true,
           reason: 'order_sale',
           note,
@@ -1769,6 +1913,7 @@ export class InventoryCatalogService {
             variantId,
             quantity: line.quantity,
             unitCost,
+            warehouseId: options.warehouseId,
             createLot: true,
             lot: {
               lotNumber:
@@ -1793,6 +1938,7 @@ export class InventoryCatalogService {
             productId: line.productId,
             variantId,
             quantity: line.quantity,
+            warehouseId: options.warehouseId,
             createLot: true,
             lot: {
               lotNumber:
@@ -2197,6 +2343,60 @@ export class InventoryCatalogService {
         timestamp: activity.createdAt.toISOString(),
         actorName: activity.actorName ?? undefined,
       })),
+    };
+  }
+
+  private async toDetailWithWarehouse(
+    organizationId: string,
+    row: ProductRow,
+  ): Promise<InventoryProductDetail> {
+    const detail = this.toDetail(row);
+    const variantIds = detail.variants.map((v) => v.id);
+    if (!variantIds.length) return detail;
+
+    const levels = await this.prisma.inventoryStockLevel.findMany({
+      where: { organizationId, variantId: { in: variantIds } },
+      include: { warehouse: { select: { id: true, name: true, isDefault: true } } },
+    });
+
+    const byVariant = new Map<
+      string,
+      Array<{ warehouseId: string; warehouseName: string; quantity: number; isDefault: boolean }>
+    >();
+    for (const level of levels) {
+      const list = byVariant.get(level.variantId) ?? [];
+      list.push({
+        warehouseId: level.warehouse.id,
+        warehouseName: level.warehouse.name,
+        quantity: level.quantity,
+        isDefault: level.warehouse.isDefault,
+      });
+      byVariant.set(level.variantId, list);
+    }
+
+    return {
+      ...detail,
+      variants: detail.variants.map((v) => {
+        const rows = byVariant.get(v.id) ?? [];
+        const defaultRow = rows.find((r) => r.isDefault);
+        const warehouseStock = defaultRow?.quantity ?? 0;
+        return {
+          ...v,
+          // Prefer warehouse on-hand for UI / sellable qty after repair.
+          stock: warehouseStock,
+          warehouseStock,
+          stockByWarehouse: rows.map(({ warehouseId, warehouseName, quantity }) => ({
+            warehouseId,
+            warehouseName,
+            quantity,
+          })),
+        };
+      }),
+      stock: detail.variants.reduce((sum, v) => {
+        const rows = byVariant.get(v.id) ?? [];
+        const defaultRow = rows.find((r) => r.isDefault);
+        return sum + (defaultRow?.quantity ?? 0);
+      }, 0),
     };
   }
 }

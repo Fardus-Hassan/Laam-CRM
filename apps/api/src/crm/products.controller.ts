@@ -353,6 +353,16 @@ export class ProductsController {
     return this.catalog.bulkProductAction(user.organizationId!, body, this.actor(user));
   }
 
+  @Post('repair-warehouse-stock')
+  @RequirePermissions('inventory.adjust')
+  repairWarehouseStock(@CurrentUser() user: AuthUserPayload) {
+    this.catalog.requireOrg(user.organizationId);
+    return this.catalog.repairOrgWarehouseStockGaps(
+      user.organizationId!,
+      this.actor(user),
+    );
+  }
+
   @Get(':id/stock-movements')
   @RequirePermissions('inventory.view')
   listMovements(

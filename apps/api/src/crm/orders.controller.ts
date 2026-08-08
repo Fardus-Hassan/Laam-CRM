@@ -481,6 +481,10 @@ class UpdateOrderDto {
   @IsOptional()
   @IsString()
   courierDeliveryType?: 'normal' | 'express' | null;
+
+  @IsOptional()
+  @IsString()
+  fulfillmentWarehouseId?: string | null;
 }
 
 function parseBoolQuery(value?: string): boolean | undefined {
@@ -600,6 +604,7 @@ export class OrdersController {
       status?: string;
       employeeName?: string;
       courier?: string;
+      fulfillmentWarehouseId?: string;
     },
   ) {
     this.orders.requireOrg(user.organizationId);
@@ -611,6 +616,7 @@ export class OrdersController {
         status: body.status,
         employeeName: body.employeeName,
         courier: body.courier,
+        fulfillmentWarehouseId: body.fulfillmentWarehouseId,
       },
       this.actor(user),
     );

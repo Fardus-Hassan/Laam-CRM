@@ -572,7 +572,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                     onChange={setSelectedVariantId}
                     options={product.variants.map((v) => ({
                       value: v.id,
-                      label: `${v.label} (${v.stock})`,
+                      label: `${v.label} (${v.warehouseStock ?? v.stock})`,
                     }))}
                     searchable={false}
                   />
@@ -591,7 +591,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                   </Button>
                 </Can>
                 <span className="text-3xl font-bold tabular-nums">
-                  {selectedVariant?.stock ?? product.stock}
+                  {selectedVariant?.warehouseStock ?? selectedVariant?.stock ?? product.stock}
                 </span>
                 <Can permission="inventory.adjust">
                   <Button
@@ -607,11 +607,21 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
               </div>
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 {selectedVariant
-                  ? `${selectedVariant.label} · reorder at ${selectedVariant.reorderLevel}`
-                  : `Reorder at ${product.reorderLevel} units`}
+                  ? `${selectedVariant.label} · on hand (warehouse) · reorder at ${selectedVariant.reorderLevel}`
+                  : `On hand (warehouse) · reorder at ${product.reorderLevel}`}
               </p>
+              {selectedVariant?.stockByWarehouse && selectedVariant.stockByWarehouse.length > 0 ? (
+                <ul className="mt-3 space-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                  {selectedVariant.stockByWarehouse.map((row) => (
+                    <li key={row.warehouseId} className="flex justify-between gap-2">
+                      <span className="truncate">{row.warehouseName}</span>
+                      <span className="tabular-nums text-foreground">{row.quantity}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               <p className="mt-3 text-center text-sm">
-                Total stock {product.stock} · value ~{' '}
+                Total on hand {product.stock} · value ~{' '}
                 {formatCurrency(product.stock * (product.costPrice ?? product.salePriceMin * 0.6))}
               </p>
             </CardContent>
@@ -704,7 +714,10 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                         }
                       />
                     </FormField>
-                    <FormField label="Stock">
+                    <FormField
+                      label="On hand"
+                      hint="Updates default warehouse (orders/courier use this)"
+                    >
                       <FormInput
                         type="number"
                         min={0}

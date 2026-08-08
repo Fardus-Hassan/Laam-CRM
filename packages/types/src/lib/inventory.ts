@@ -28,6 +28,18 @@ export const productVariantSchema = z.object({
   salePrice: z.number(),
   costPrice: z.number().optional(),
   stock: z.number().int().default(0),
+  /** On-hand in default warehouse (sellable for orders/courier). */
+  warehouseStock: z.number().int().nonnegative().optional(),
+  /** Per-warehouse breakdown when loaded on product detail. */
+  stockByWarehouse: z
+    .array(
+      z.object({
+        warehouseId: z.string(),
+        warehouseName: z.string(),
+        quantity: z.number().int(),
+      }),
+    )
+    .optional(),
   reorderLevel: z.number().int().default(5),
   /** Shipping weight per unit in kilograms (courier booking). Defaults to 0.5 when omitted. */
   weightKg: z.number().nonnegative().optional(),

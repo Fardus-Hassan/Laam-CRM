@@ -102,6 +102,8 @@ export type InventoryApi = {
   updateProduct: (id: string, patch: UpdateProductPayload) => Promise<InventoryProductDetail>;
   deleteProduct: (id: string, opts?: { hard?: boolean }) => Promise<void>;
   adjustStock: (productId: string, payload: AdjustStockPayload) => Promise<InventoryProductDetail>;
+  /** Align default warehouse on-hand with catalog where warehouse was behind. */
+  repairWarehouseStock: () => Promise<{ repaired: number }>;
   listStockMovements: (
     productId: string,
     query: { page: number; pageSize: number },
@@ -219,6 +221,10 @@ export function createMockInventoryApi(): InventoryApi {
       const product = updateMockProduct(productId, { stockAdjustment: payload });
       if (!product) throw new Error('Product not found');
       return product;
+    },
+    async repairWarehouseStock() {
+      await delay(40);
+      return { repaired: 0 };
     },
     async listStockMovements(productId, query) {
       await delay(60);
@@ -537,6 +543,13 @@ export function createHttpInventoryApi(): InventoryApi {
         `/crm/inventory/products/${productId}/stock-adjust`,
         { method: 'POST', body: JSON.stringify(payload) },
       );
+    },
+    async repairWarehouseStock() {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<{ repaired: number }>('/crm/inventory/products/repair-warehouse-stock', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
     },
     async listStockMovements(productId, query) {
       const { apiRequest } = await import('@/lib/api/client');

@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { FulfillmentWarehouseSelect } from '@/features/orders/components/shared/fulfillment-warehouse-select';
 import { exportOrdersToCsv } from '@/features/orders/lib/export-orders-csv';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
@@ -49,6 +50,11 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
   const [employee, setEmployee] = React.useState('');
   const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
   const [followUpDate, setFollowUpDate] = React.useState('');
+  const [courierWarehouseId, setCourierWarehouseId] = React.useState('');
+
+  React.useEffect(() => {
+    if (state?.type === 'courier') setCourierWarehouseId('');
+  }, [state]);
 
   React.useEffect(() => {
     if (state?.type !== 'transfer') return;
@@ -136,7 +142,10 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
     }
   }
 
-  async function handleStatusSubmit(nextStatus: string) {
+  async function handleStatusSubmit(
+    nextStatus: string,
+    meta?: { fulfillmentWarehouseId?: string },
+  ) {
     if (state?.type !== 'status') return;
     if (!nextStatus.trim()) {
       toast.error('Select a status');
@@ -146,6 +155,9 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       action: 'status_change',
       orderIds: state.orderIds,
       status: nextStatus.trim(),
+      ...(meta?.fulfillmentWarehouseId
+        ? { fulfillmentWarehouseId: meta.fulfillmentWarehouseId }
+        : {}),
     });
     onSuccess?.();
     onClose();
@@ -158,11 +170,16 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       toast.error('Bulk submit supports Pathao and Carrybee only');
       return;
     }
+    if (!courierWarehouseId.trim()) {
+      toast.error('Select a fulfillment warehouse before booking courier');
+      return;
+    }
     try {
       await bulkAction({
         action: 'courier_submit',
         orderIds: state.orderIds,
         courier,
+        fulfillmentWarehouseId: courierWarehouseId.trim(),
       });
       onSuccess?.();
       onClose();
@@ -263,16 +280,27 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
           <DialogHeader>
             <DialogTitle>Submit to {state.type === 'courier' ? state.courier : 'courier'}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {state.type === 'courier'
-              ? `${state.orderIds.length} order(s) will be submitted to ${state.courier} API.`
-              : null}
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {state.type === 'courier'
+                ? `${state.orderIds.length} order(s) will be submitted to ${state.courier} API.`
+                : null}
+            </p>
+            <FulfillmentWarehouseSelect
+              value={courierWarehouseId}
+              onChange={setCourierWarehouseId}
+              disabled={isLoading}
+            />
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleCourierSubmit()} disabled={isLoading}>
+            <Button
+              type="button"
+              onClick={() => void handleCourierSubmit()}
+              disabled={isLoading || !courierWarehouseId.trim()}
+            >
               Confirm submit
             </Button>
           </DialogFooter>

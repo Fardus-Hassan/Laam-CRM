@@ -206,13 +206,19 @@ export function BulkPrintPage() {
     openPrint(orders, template);
   }
 
-  async function handleBulkStatusChange(status: string) {
+  async function handleBulkStatusChange(
+    status: string,
+    meta?: { fulfillmentWarehouseId?: string },
+  ) {
     const orderIds = orders.map((o) => o.id);
     if (orderIds.length === 0) return;
     await bulkAction({
       action: 'status_change',
       orderIds,
       status,
+      ...(meta?.fulfillmentWarehouseId
+        ? { fulfillmentWarehouseId: meta.fulfillmentWarehouseId }
+        : {}),
     });
     setOrders((prev) => prev.map((o) => ({ ...o, status: status as OrderDetail['status'] })));
   }

@@ -24,6 +24,7 @@ import { MoneySummaryPanel } from '@/features/orders/components/shared/money-sum
 import { OrderActionBar } from '@/features/orders/components/shared/order-action-bar';
 import { OrderAssignSheet } from '@/features/orders/components/shared/order-assign-sheet';
 import { OrderDetailSidebarMeta } from '@/features/orders/components/shared/order-detail-header';
+import { FulfillmentWarehouseSelect } from '@/features/orders/components/shared/fulfillment-warehouse-select';
 import { OrderRelatedLinks } from '@/features/orders/components/shared/order-related-links';
 import { OrderReturnItemsButton } from '@/features/orders/components/shared/order-line-items-card';
 import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
@@ -284,10 +285,33 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
 
         {order.stockDeducted ? (
           <div className="rounded-md border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-            Stock is held for this order. Product edits adjust inventory on save; Pending also
-            restocks.
+            Stock is held for this order
+            {order.fulfillmentWarehouseName
+              ? ` from ${order.fulfillmentWarehouseName}`
+              : ''}
+            . Product edits adjust inventory on save; Pending also restocks.
           </div>
-        ) : null}
+        ) : (
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-3">
+            <FulfillmentWarehouseSelect
+              value={order.fulfillmentWarehouseId ?? ''}
+              onChange={(warehouseId) => {
+                void (async () => {
+                  try {
+                    const updated = await updateOrder(order.id, {
+                      fulfillmentWarehouseId: warehouseId,
+                    });
+                    setOrder(updated);
+                    form.patch(orderDetailToCreateFormPatch(updated));
+                    hydratedForId.current = updated.id;
+                  } catch {
+                    // toast from mutation hook
+                  }
+                })();
+              }}
+            />
+          </div>
+        )}
 
         {/* Create-like form + wider sticky sidebar (meta + summary + activity) */}
         <div className={cn('grid items-start gap-3', ORDER_DETAIL_SIDEBAR_GRID_CLASS)}>
@@ -400,8 +424,9 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         open={statusOpen}
         onOpenChange={setStatusOpen}
         currentStatus={order.status}
-        onSelect={async (status) => {
-          await changeStatus(status);
+        fulfillmentWarehouseId={order.fulfillmentWarehouseId}
+        onSelect={async (status, meta) => {
+          await changeStatus(status, meta?.fulfillmentWarehouseId);
         }}
       />
     </PageShell>

@@ -152,6 +152,12 @@ export function OrderActionBar({
       );
       return;
     }
+    if (!order.fulfillmentWarehouseId && !order.stockDeducted) {
+      toast.error(
+        'Select a fulfillment warehouse before booking courier (stock is cut from that warehouse)',
+      );
+      return;
+    }
     if (!canBookPathao) {
       toast.error(
         'Add a delivery address (min 10 chars), or pick a location to fill the address',
@@ -166,6 +172,12 @@ export function OrderActionBar({
     if (alreadyBooked) {
       toast.message(
         `Already booked: ${order.courierConsignmentId ?? order.courierTrackingCode}`,
+      );
+      return;
+    }
+    if (!order.fulfillmentWarehouseId && !order.stockDeducted) {
+      toast.error(
+        'Select a fulfillment warehouse before booking courier (stock is cut from that warehouse)',
       );
       return;
     }
@@ -294,7 +306,7 @@ export function OrderActionBar({
               type="button"
               size="sm"
               className="h-8"
-              disabled={!canConfirm}
+              disabled={!canConfirm || !order.fulfillmentWarehouseId}
               onClick={onConfirm}
             >
               Confirm
@@ -462,6 +474,12 @@ export function OrderActionBar({
                 {due === 0 ? (
                   <span className="ml-1 font-normal text-muted-foreground">(fully paid)</span>
                 ) : null}
+              </span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Warehouse</span>
+              <span className="max-w-[14rem] text-right font-medium">
+                {order.fulfillmentWarehouseName || '—'}
               </span>
             </div>
           </div>

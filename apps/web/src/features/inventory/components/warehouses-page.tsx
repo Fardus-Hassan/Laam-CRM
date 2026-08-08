@@ -53,6 +53,7 @@ export function WarehousesPage() {
   const [quantity, setQuantity] = React.useState('1');
   const [note, setNote] = React.useState('');
   const [transferring, setTransferring] = React.useState(false);
+  const [repairing, setRepairing] = React.useState(false);
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -175,6 +176,23 @@ export function WarehousesPage() {
     }
   }
 
+  async function repairWarehouseStock() {
+    setRepairing(true);
+    try {
+      const result = await inventoryApi.repairWarehouseStock();
+      toast.success(
+        result.repaired > 0
+          ? `Synced ${result.repaired} variant(s) to warehouse on-hand`
+          : 'All variants already aligned with warehouse',
+      );
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not sync warehouse stock');
+    } finally {
+      setRepairing(false);
+    }
+  }
+
   const warehouseOptions = warehouses
     .filter((w) => w.isActive)
     .map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` }));
@@ -197,12 +215,25 @@ export function WarehousesPage() {
               Storage locations — move stock between them with a full audit trail.
             </p>
           </div>
-          <Can permission="inventory.warehouses">
-            <Button type="button" size="sm" className="shrink-0 self-start" onClick={openCreate}>
-              <Plus className="size-3.5" />
-              Add warehouse
-            </Button>
-          </Can>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
+            <Can permission="inventory.adjust">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={repairing}
+                onClick={() => void repairWarehouseStock()}
+              >
+                {repairing ? 'Syncing…' : 'Sync catalog → warehouse'}
+              </Button>
+            </Can>
+            <Can permission="inventory.warehouses">
+              <Button type="button" size="sm" onClick={openCreate}>
+                <Plus className="size-3.5" />
+                Add warehouse
+              </Button>
+            </Can>
+          </div>
         </div>
 
         <InventoryResponsiveList

@@ -84,6 +84,11 @@ export const orderListItemSchema = z.object({
   courierStatusSlug: z.string().optional(),
   courierConsignmentId: z.string().optional(),
   courierProvider: z.string().optional(),
+  /** Warehouse stock is cut from on confirm / courier book. */
+  fulfillmentWarehouseId: z.string().optional(),
+  fulfillmentWarehouseName: z.string().optional(),
+  /** True after inventory was reserved/cut for this order. */
+  stockDeducted: z.boolean().optional(),
   /** This shop (CRM): Total orders / Completed — top row. */
   courierShop: courierShopStatsSchema.optional(),
   /** Network lifetime To/Su/Fa + % — bottom row + bar. */
@@ -578,6 +583,7 @@ export const updateOrderPayloadSchema = z.object({
   utmCampaign: z.string().optional(),
   courierWeightKg: z.number().positive().nullable().optional(),
   courierDeliveryType: z.enum(['normal', 'express']).nullable().optional(),
+  fulfillmentWarehouseId: z.string().nullable().optional(),
 });
 
 export type UpdateOrderPayload = z.infer<typeof updateOrderPayloadSchema>;
@@ -622,6 +628,8 @@ export const orderBulkActionPayloadSchema = z.object({
   courier: z.string().optional(),
   smsTemplateId: z.string().optional(),
   smsMessage: z.string().optional(),
+  /** Required when confirming / booking courier (stock cut). */
+  fulfillmentWarehouseId: z.string().optional(),
 });
 
 export type OrderBulkActionPayload = z.infer<typeof orderBulkActionPayloadSchema>;

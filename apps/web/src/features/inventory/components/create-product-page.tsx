@@ -648,7 +648,10 @@ export function CreateProductPage() {
                         }
                       />
                     </FormField>
-                    <FormField label="Stock">
+                    <FormField
+                      label="On hand"
+                      hint="Stored in default warehouse for orders/courier"
+                    >
                       <FormInput
                         type="number"
                         min={0}

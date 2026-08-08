@@ -112,7 +112,7 @@ describe('InventoryCatalogService', () => {
     };
     service = new InventoryCatalogService(prisma as never, uom as never, {
       ...advanced,
-      ensureDefaultWarehouse: jest.fn(),
+      ensureDefaultWarehouse: jest.fn(async () => ({ id: 'wh-1', name: 'Main' })),
       applyWarehouseDelta: jest.fn(),
       postInventoryJournal: jest.fn(),
     } as never, {
@@ -346,7 +346,7 @@ describe('InventoryCatalogService', () => {
       service = new InventoryCatalogService(prisma as never, uom as never, {
       consumeStock: jest.fn(),
       receiveStock: jest.fn(),
-      ensureDefaultWarehouse: jest.fn(),
+      ensureDefaultWarehouse: jest.fn(async () => ({ id: 'wh-1', name: 'Main' })),
       applyWarehouseDelta: jest.fn(),
       postInventoryJournal: jest.fn(),
     } as never, {

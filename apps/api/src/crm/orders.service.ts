@@ -147,6 +147,8 @@ export type UpdateOrderInput = {
   utmCampaign?: string;
   courierWeightKg?: number | null;
   courierDeliveryType?: 'normal' | 'express' | null;
+  /** Warehouse stock is cut from on confirm / courier book. */
+  fulfillmentWarehouseId?: string | null;
 };
 
 const STOCK_CUT_STATUSES = new Set([
@@ -155,6 +157,9 @@ const STOCK_CUT_STATUSES = new Set([
   'processing_2',
   'in_courier',
 ]);
+
+const FULFILLMENT_WAREHOUSE_REQUIRED_MSG =
+  'Select a fulfillment warehouse before confirming or booking courier (stock is cut from that warehouse)';
 
 /** After stock is cut, these statuses keep inventory deducted (no restock). */
 const STOCK_KEEP_DEDUCTED_STATUSES = new Set(['delivered', 'completed']);
@@ -726,6 +731,7 @@ export class OrdersService {
       status?: string;
       employeeName?: string;
       courier?: string;
+      fulfillmentWarehouseId?: string;
     },
     actor: ActorLabel,
   ): Promise<{ successCount: number; failedCount: number; message: string }> {
@@ -737,12 +743,21 @@ export class OrdersService {
     if (payload.action === 'status_change') {
       const status = payload.status?.trim();
       if (!status) throw new BadRequestException('status required for status_change');
+      const warehouseOverride = payload.fulfillmentWarehouseId?.trim() || undefined;
+      if (STOCK_CUT_STATUSES.has(status) && !warehouseOverride) {
+        throw new BadRequestException(FULFILLMENT_WAREHOUSE_REQUIRED_MSG);
+      }
+      if (warehouseOverride) {
+        await this.assertActiveWarehouse(organizationId, warehouseOverride);
+      }
       let successCount = 0;
       let failedCount = 0;
       const errors: string[] = [];
       for (const orderId of ids) {
         try {
-          await this.updateStatus(organizationId, orderId, status, actor);
+          await this.updateStatus(organizationId, orderId, status, actor, {
+            fulfillmentWarehouseId: warehouseOverride,
+          });
           successCount += 1;
         } catch (e) {
           failedCount += 1;
@@ -786,11 +801,49 @@ export class OrdersService {
           'Bulk courier submit supports pathao or carrybee only',
         );
       }
+      const warehouseId = payload.fulfillmentWarehouseId?.trim();
+      if (!warehouseId) {
+        throw new BadRequestException(FULFILLMENT_WAREHOUSE_REQUIRED_MSG);
+      }
+      await this.assertActiveWarehouse(organizationId, warehouseId);
       let successCount = 0;
       let failedCount = 0;
       const errors: string[] = [];
       for (const orderId of ids) {
         try {
+          const existing = await this.prisma.order.findFirst({
+            where: { id: orderId, organizationId, deletedAt: null },
+            select: {
+              id: true,
+              fulfillmentWarehouseId: true,
+              stockDeductedAt: true,
+            },
+          });
+          if (!existing) {
+            throw new NotFoundException('Order not found');
+          }
+          if (
+            !existing.stockDeductedAt &&
+            existing.fulfillmentWarehouseId !== warehouseId
+          ) {
+            await this.prisma.order.update({
+              where: { id: existing.id },
+              data: { fulfillmentWarehouseId: warehouseId },
+            });
+          } else if (
+            existing.stockDeductedAt &&
+            existing.fulfillmentWarehouseId &&
+            existing.fulfillmentWarehouseId !== warehouseId
+          ) {
+            throw new BadRequestException(
+              'Cannot change fulfillment warehouse after stock was deducted',
+            );
+          } else if (!existing.fulfillmentWarehouseId && !existing.stockDeductedAt) {
+            await this.prisma.order.update({
+              where: { id: existing.id },
+              data: { fulfillmentWarehouseId: warehouseId },
+            });
+          }
           if (courier === 'pathao') {
             await this.bookWithPathao(organizationId, orderId, actor);
           } else {
@@ -1105,6 +1158,7 @@ export class OrdersService {
         take: pageSize,
         include: {
           lineItems: { orderBy: { createdAt: 'asc' } },
+          fulfillmentWarehouse: { select: { id: true, name: true } },
         },
       }),
       this.prisma.order.aggregate({
@@ -1217,6 +1271,7 @@ export class OrdersService {
       include: {
         lineItems: { orderBy: { createdAt: 'asc' } },
         activities: { orderBy: { createdAt: 'asc' } },
+        fulfillmentWarehouse: { select: { id: true, name: true } },
       },
     });
     if (!row) throw new NotFoundException('Order not found');
@@ -1229,6 +1284,7 @@ export class OrdersService {
       include: {
         lineItems: { orderBy: { createdAt: 'asc' } },
         activities: { orderBy: { createdAt: 'asc' } },
+        fulfillmentWarehouse: { select: { id: true, name: true } },
       },
     });
     if (!row) throw new NotFoundException('Order not found');
@@ -1806,6 +1862,7 @@ export class OrdersService {
     idOrNumber: string,
     nextStatus: string | undefined,
     actor: ActorLabel,
+    options?: { fulfillmentWarehouseId?: string },
   ): Promise<OrderDetail> {
     if (!nextStatus?.trim()) {
       throw new BadRequestException('status is required');
@@ -1858,8 +1915,18 @@ export class OrdersService {
           !STOCK_RETURN_RESTOCK_STATUSES.has(prev)) ||
         leavingStockCut);
 
+    let cutWarehouseId: string | undefined;
+    if (shouldCut) {
+      cutWarehouseId = await this.resolveFulfillmentWarehouseId(
+        organizationId,
+        existing,
+        options?.fulfillmentWarehouseId,
+      );
+    }
+    const restockWarehouseId = existing.fulfillmentWarehouseId ?? undefined;
+
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (shouldCut) {
+      if (shouldCut && cutWarehouseId) {
         await this.inventory.applyOrderStockDeltas(
           tx,
           organizationId,
@@ -1874,6 +1941,7 @@ export class OrdersService {
             orderNumber: existing.orderNumber,
             orderId: existing.id,
             actor: { userId: actor.userId, name: actor.name },
+            warehouseId: cutWarehouseId,
           },
         );
       }
@@ -1907,6 +1975,7 @@ export class OrdersService {
               orderNumber: existing.orderNumber,
               orderId: existing.id,
               actor: { userId: actor.userId, name: actor.name },
+              warehouseId: restockWarehouseId,
             },
           );
         }
@@ -1922,6 +1991,9 @@ export class OrdersService {
         where: { id: existing.id },
         data: {
           status,
+          ...(shouldCut && cutWarehouseId
+            ? { fulfillmentWarehouseId: cutWarehouseId }
+            : {}),
           ...(status === 'cancelled' && existing.courierConsignmentId
             ? this.courierClearFields()
             : {}),
@@ -1943,7 +2015,9 @@ export class OrdersService {
               description:
                 status === 'cancelled' && existing.courierConsignmentId
                   ? `${prev} → ${status} · courier consignment cancelled`
-                  : `${prev} → ${status}`,
+                  : shouldCut && cutWarehouseId
+                    ? `${prev} → ${status} · stock from warehouse`
+                    : `${prev} → ${status}`,
               actorUserId: actor.userId ?? null,
               actorName: actor.name ?? null,
             },
@@ -1952,6 +2026,7 @@ export class OrdersService {
         include: {
           lineItems: { orderBy: { createdAt: 'asc' } },
           activities: { orderBy: { createdAt: 'asc' } },
+          fulfillmentWarehouse: { select: { id: true, name: true } },
         },
       });
     });
@@ -2033,6 +2108,7 @@ export class OrdersService {
             orderNumber: existing.orderNumber,
             orderId: existing.id,
             actor: { userId: actor.userId, name: actor.name },
+            warehouseId: existing.fulfillmentWarehouseId ?? undefined,
           },
         );
       }
@@ -2121,6 +2197,7 @@ export class OrdersService {
               orderNumber: existing.orderNumber,
               orderId: existing.id,
               actor: { userId: actor.userId, name: actor.name },
+              warehouseId: existing.fulfillmentWarehouseId ?? undefined,
             },
           );
         }
@@ -2222,10 +2299,15 @@ export class OrdersService {
     const statusOnly =
       input.status !== undefined &&
       Object.entries(input).every(
-        ([key, value]) => key === 'status' || value === undefined,
+        ([key, value]) =>
+          key === 'status' ||
+          key === 'fulfillmentWarehouseId' ||
+          value === undefined,
       );
     if (statusOnly) {
-      return this.updateStatus(organizationId, existing.id, input.status, actor);
+      return this.updateStatus(organizationId, existing.id, input.status, actor, {
+        fulfillmentWarehouseId: input.fulfillmentWarehouseId ?? undefined,
+      });
     }
 
     if (input.lineItems !== undefined && input.lineItems.length === 0) {
@@ -2243,6 +2325,27 @@ export class OrdersService {
       const options = await this.getFormOptions(organizationId);
       if (!options.sources.some((s) => s.value === input.source)) {
         throw new BadRequestException(`Invalid order source: ${input.source}`);
+      }
+    }
+
+    let nextFulfillmentWarehouseId: string | null | undefined = undefined;
+    if (input.fulfillmentWarehouseId !== undefined) {
+      if (
+        existing.stockDeductedAt &&
+        (input.fulfillmentWarehouseId ?? null) !== existing.fulfillmentWarehouseId
+      ) {
+        throw new BadRequestException(
+          'Cannot change fulfillment warehouse after stock was deducted',
+        );
+      }
+      if (input.fulfillmentWarehouseId === null || input.fulfillmentWarehouseId === '') {
+        nextFulfillmentWarehouseId = null;
+      } else {
+        await this.assertActiveWarehouse(
+          organizationId,
+          input.fulfillmentWarehouseId.trim(),
+        );
+        nextFulfillmentWarehouseId = input.fulfillmentWarehouseId.trim();
       }
     }
 
@@ -2346,6 +2449,10 @@ export class OrdersService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       let nextStockDeductedAt: Date | null | undefined = undefined;
+      const warehouseForStock =
+        nextFulfillmentWarehouseId !== undefined
+          ? nextFulfillmentWarehouseId ?? undefined
+          : existing.fulfillmentWarehouseId ?? undefined;
 
       if (lineRows) {
         const stillNeedsStockHeld = STOCK_CUT_STATUSES.has(existing.status);
@@ -2373,6 +2480,7 @@ export class OrdersService {
                 orderNumber: existing.orderNumber,
                 orderId: existing.id,
                 actor: { userId: actor.userId, name: actor.name },
+                warehouseId: existing.fulfillmentWarehouseId ?? undefined,
               },
             );
           }
@@ -2389,6 +2497,9 @@ export class OrdersService {
         });
 
         if (stillNeedsStockHeld) {
+          if (!warehouseForStock) {
+            throw new BadRequestException(FULFILLMENT_WAREHOUSE_REQUIRED_MSG);
+          }
           await this.inventory.applyOrderStockDeltas(
             tx,
             organizationId,
@@ -2403,6 +2514,7 @@ export class OrdersService {
               orderNumber: existing.orderNumber,
               orderId: existing.id,
               actor: { userId: actor.userId, name: actor.name },
+              warehouseId: warehouseForStock,
             },
           );
           nextStockDeductedAt = new Date();
@@ -2414,6 +2526,9 @@ export class OrdersService {
         data: {
           ...(nextStockDeductedAt !== undefined
             ? { stockDeductedAt: nextStockDeductedAt }
+            : {}),
+          ...(nextFulfillmentWarehouseId !== undefined
+            ? { fulfillmentWarehouseId: nextFulfillmentWarehouseId }
             : {}),
           customerName: input.customerName?.trim() ?? undefined,
           customerPhone: input.customerPhone?.trim() ?? undefined,
@@ -2576,6 +2691,7 @@ export class OrdersService {
         include: {
           lineItems: { orderBy: { createdAt: 'asc' } },
           activities: { orderBy: { createdAt: 'asc' } },
+          fulfillmentWarehouse: { select: { id: true, name: true } },
         },
       });
 
@@ -2679,6 +2795,7 @@ export class OrdersService {
       id: string;
       orderNumber: string;
       stockDeductedAt: Date | null;
+      fulfillmentWarehouseId: string | null;
       lineItems: Array<{
         productId: string | null;
         variantId: string | null;
@@ -2689,6 +2806,11 @@ export class OrdersService {
     actor: ActorLabel,
   ): Promise<boolean> {
     if (order.stockDeductedAt) return false;
+
+    const warehouseId = await this.resolveFulfillmentWarehouseId(
+      organizationId,
+      order,
+    );
 
     await this.prisma.$transaction(async (tx) => {
       await this.inventory.applyOrderStockDeltas(
@@ -2705,11 +2827,15 @@ export class OrdersService {
           orderNumber: order.orderNumber,
           orderId: order.id,
           actor: { userId: actor.userId, name: actor.name },
+          warehouseId,
         },
       );
       await tx.order.update({
         where: { id: order.id },
-        data: { stockDeductedAt: new Date() },
+        data: {
+          stockDeductedAt: new Date(),
+          fulfillmentWarehouseId: warehouseId,
+        },
       });
     });
     return true;
@@ -2721,6 +2847,7 @@ export class OrdersService {
     order: {
       id: string;
       orderNumber: string;
+      fulfillmentWarehouseId?: string | null;
       lineItems: Array<{
         productId: string | null;
         variantId: string | null;
@@ -2733,7 +2860,7 @@ export class OrdersService {
     await this.prisma.$transaction(async (tx) => {
       const fresh = await tx.order.findUnique({
         where: { id: order.id },
-        select: { stockDeductedAt: true },
+        select: { stockDeductedAt: true, fulfillmentWarehouseId: true },
       });
       if (!fresh?.stockDeductedAt) return;
 
@@ -2751,6 +2878,10 @@ export class OrdersService {
           orderNumber: order.orderNumber,
           orderId: order.id,
           actor: { userId: actor.userId, name: actor.name },
+          warehouseId:
+            fresh.fulfillmentWarehouseId ??
+            order.fulfillmentWarehouseId ??
+            undefined,
         },
       );
       await tx.order.update({
@@ -3512,6 +3643,58 @@ export class OrdersService {
     return result;
   }
 
+  private async assertActiveWarehouse(
+    organizationId: string,
+    warehouseId: string,
+  ): Promise<{ id: string; name: string }> {
+    const warehouse = await this.prisma.warehouse.findFirst({
+      where: { id: warehouseId, organizationId, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (!warehouse) {
+      throw new BadRequestException('Select a valid fulfillment warehouse');
+    }
+    return warehouse;
+  }
+
+  /**
+   * Resolves warehouse for stock cut. Optional override is persisted when stock
+   * has not been deducted yet. After deduction, warehouse is locked.
+   */
+  private async resolveFulfillmentWarehouseId(
+    organizationId: string,
+    order: {
+      id: string;
+      fulfillmentWarehouseId: string | null;
+      stockDeductedAt: Date | null;
+    },
+    override?: string | null,
+  ): Promise<string> {
+    const trimmedOverride = override?.trim() || undefined;
+    if (order.stockDeductedAt) {
+      if (
+        trimmedOverride &&
+        order.fulfillmentWarehouseId &&
+        trimmedOverride !== order.fulfillmentWarehouseId
+      ) {
+        throw new BadRequestException(
+          'Cannot change fulfillment warehouse after stock was deducted',
+        );
+      }
+      if (!order.fulfillmentWarehouseId) {
+        throw new BadRequestException(FULFILLMENT_WAREHOUSE_REQUIRED_MSG);
+      }
+      return order.fulfillmentWarehouseId;
+    }
+
+    const warehouseId = trimmedOverride || order.fulfillmentWarehouseId || undefined;
+    if (!warehouseId) {
+      throw new BadRequestException(FULFILLMENT_WAREHOUSE_REQUIRED_MSG);
+    }
+    await this.assertActiveWarehouse(organizationId, warehouseId);
+    return warehouseId;
+  }
+
   private toListItem(
     row: {
       id: string;
@@ -3592,6 +3775,16 @@ export class OrdersService {
         (row as { courierStatusSlug?: string | null }).courierStatusSlug ?? undefined,
       courierConsignmentId:
         (row as { courierConsignmentId?: string | null }).courierConsignmentId ?? undefined,
+      fulfillmentWarehouseId:
+        (row as { fulfillmentWarehouseId?: string | null }).fulfillmentWarehouseId ??
+        (row as { fulfillmentWarehouse?: { id: string } | null }).fulfillmentWarehouse?.id ??
+        undefined,
+      fulfillmentWarehouseName:
+        (row as { fulfillmentWarehouse?: { name: string } | null }).fulfillmentWarehouse
+          ?.name ?? undefined,
+      stockDeducted: Boolean(
+        (row as { stockDeductedAt?: Date | null }).stockDeductedAt,
+      ),
       courierShop: courierShop ?? { to: 0, co: 0 },
       courier: courier ?? {
         to: 0,
