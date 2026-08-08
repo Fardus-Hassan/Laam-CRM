@@ -15,13 +15,27 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { notificationsApi } from '@/features/notifications/api/notifications-api';
+import { openNotificationUnreadStream } from '@/features/notifications/lib/notification-unread-stream';
+import { formatNotificationTime } from '@/lib/format-relative-time';
 import { cn } from '@/lib/utils';
+
+/** Slow backup if SSE drops; primary updates are instant via stream. */
+const UNREAD_BACKUP_POLL_MS = 180_000;
 
 export function NotificationBell() {
   const [items, setItems] = React.useState<AppNotification[]>([]);
   const [unread, setUnread] = React.useState(0);
 
-  const refresh = React.useCallback(async () => {
+  const refreshUnread = React.useCallback(async () => {
+    try {
+      const count = await notificationsApi.unreadCount();
+      setUnread(count);
+    } catch {
+      // keep previous badge on transient errors
+    }
+  }, []);
+
+  const refreshPreview = React.useCallback(async () => {
     try {
       const [page, count] = await Promise.all([
         notificationsApi.list({ limit: 8 }),
@@ -36,34 +50,70 @@ export function NotificationBell() {
   }, []);
 
   React.useEffect(() => {
-    void refresh();
-    const interval = window.setInterval(() => {
-      void refresh();
-    }, 30_000);
-    return () => window.clearInterval(interval);
-  }, [refresh]);
+    const ac = new AbortController();
+    let retryTimer = 0;
+    let attempt = 0;
+
+    async function connect() {
+      try {
+        attempt = 0;
+        await openNotificationUnreadStream({
+          signal: ac.signal,
+          onUnread: (count) => setUnread(count),
+        });
+      } catch {
+        // fall through to reconnect
+      }
+      if (ac.signal.aborted) return;
+      attempt += 1;
+      const delay = Math.min(30_000, 1500 * 2 ** Math.min(attempt, 4));
+      retryTimer = window.setTimeout(() => void connect(), delay);
+    }
+
+    void connect();
+
+    const backup = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      void refreshUnread();
+    }, UNREAD_BACKUP_POLL_MS);
+
+    function onVisibleOrFocus() {
+      if (document.visibilityState === 'hidden') return;
+      void refreshUnread();
+    }
+    window.addEventListener('focus', onVisibleOrFocus);
+    document.addEventListener('visibilitychange', onVisibleOrFocus);
+
+    return () => {
+      ac.abort();
+      window.clearTimeout(retryTimer);
+      window.clearInterval(backup);
+      window.removeEventListener('focus', onVisibleOrFocus);
+      document.removeEventListener('visibilitychange', onVisibleOrFocus);
+    };
+  }, [refreshUnread]);
 
   async function handleOpen(open: boolean) {
-    if (open) await refresh();
+    if (open) await refreshPreview();
   }
 
   async function handleClick(item: AppNotification) {
     if (!item.isRead) {
       await notificationsApi.markRead(item.id);
-      await refresh();
+      await refreshPreview();
     }
   }
 
   async function handleMarkAll() {
     await notificationsApi.markAllRead();
-    await refresh();
+    await refreshPreview();
   }
 
   async function handleDeleteOne(event: React.MouseEvent, id: string) {
     event.preventDefault();
     event.stopPropagation();
     await notificationsApi.deleteOne(id);
-    await refresh();
+    await refreshPreview();
   }
 
   return (
@@ -114,6 +164,12 @@ export function NotificationBell() {
               >
                 <span className="text-sm font-medium">{item.title}</span>
                 <span className="text-xs text-muted-foreground line-clamp-2">{item.body}</span>
+                <time
+                  className="text-[11px] text-muted-foreground/80"
+                  dateTime={item.createdAt}
+                >
+                  {formatNotificationTime(item.createdAt)}
+                </time>
               </Link>
               <button
                 type="button"

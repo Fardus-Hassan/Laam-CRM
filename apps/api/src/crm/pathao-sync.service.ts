@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import type { OrdersService } from './orders.service';
 import { PathaoCourierService } from './pathao-courier.service';
+import { NotificationsService } from './notifications.service';
 
 const TICK_MS = 60_000;
 const BATCH_SIZE = 40;
@@ -30,6 +31,7 @@ export class PathaoSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly pathao: PathaoCourierService,
     @Inject(forwardRef(() => require('./orders.service').OrdersService))
     private readonly orders: OrdersService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -199,6 +201,16 @@ export class PathaoSyncService implements OnModuleInit, OnModuleDestroy {
           }`,
         );
       }
+    }
+
+    if (statusChanged) {
+      this.notifications.notifySafe({
+        organizationId,
+        type: 'courier_update',
+        title: `${order.orderNumber}: ${mapped.label}`,
+        body: `Pathao status → ${mapped.label}`,
+        href: `/dashboard/orders/${order.orderNumber}`,
+      });
     }
 
     return { updated: statusChanged };

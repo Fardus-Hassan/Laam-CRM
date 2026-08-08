@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CarrybeeCourierService } from './carrybee-courier.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import type { OrdersService } from './orders.service';
+import { NotificationsService } from './notifications.service';
 
 const TICK_MS = 180_000;
 const BATCH_SIZE = 40;
@@ -30,6 +31,7 @@ export class CarrybeeSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly carrybee: CarrybeeCourierService,
     @Inject(forwardRef(() => require('./orders.service').OrdersService))
     private readonly orders: OrdersService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -198,6 +200,16 @@ export class CarrybeeSyncService implements OnModuleInit, OnModuleDestroy {
           }`,
         );
       }
+    }
+
+    if (statusChanged) {
+      this.notifications.notifySafe({
+        organizationId,
+        type: 'courier_update',
+        title: `${order.orderNumber}: ${mapped.label}`,
+        body: `Carrybee status → ${mapped.label}`,
+        href: `/dashboard/orders/${order.orderNumber}`,
+      });
     }
 
     return { updated: statusChanged };

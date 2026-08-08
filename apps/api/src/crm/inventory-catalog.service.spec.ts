@@ -115,6 +115,9 @@ describe('InventoryCatalogService', () => {
       ensureDefaultWarehouse: jest.fn(),
       applyWarehouseDelta: jest.fn(),
       postInventoryJournal: jest.fn(),
+    } as never, {
+      notifySafe: jest.fn(),
+      wasRecentlyNotified: jest.fn(async () => false),
     } as never);
   });
 
@@ -346,6 +349,9 @@ describe('InventoryCatalogService', () => {
       ensureDefaultWarehouse: jest.fn(),
       applyWarehouseDelta: jest.fn(),
       postInventoryJournal: jest.fn(),
+    } as never, {
+      notifySafe: jest.fn(),
+      wasRecentlyNotified: jest.fn(async () => false),
     } as never);
 
       prisma.orgCategory.count.mockResolvedValue(10);

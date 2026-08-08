@@ -17,6 +17,7 @@ import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { OrdersService } from './orders.service';
+import { NotificationsService } from './notifications.service';
 
 const READY_STATUSES = new Set([
   'pending',
@@ -50,6 +51,7 @@ export class CourierHubService {
     private readonly integrations: CourierIntegrationsService,
     @Inject(forwardRef(() => OrdersService))
     private readonly orders: OrdersService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
@@ -333,6 +335,7 @@ export class CourierHubService {
       },
       select: {
         id: true,
+        orderNumber: true,
         status: true,
         amount: true,
         courierConsignmentId: true,
@@ -355,6 +358,16 @@ export class CourierHubService {
       },
       actor,
     );
+
+    this.notifications.notifySafe({
+      organizationId,
+      type: 'courier_update',
+      title: `COD collected — ${order.orderNumber}`,
+      body: `৳${order.amount} marked paid`,
+      href: '/dashboard/courier',
+      excludeUserId: actor.userId,
+    });
+
     return { ok: true };
   }
 

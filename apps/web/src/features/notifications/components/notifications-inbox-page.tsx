@@ -20,18 +20,8 @@ import {
   type NotificationListQuery,
 } from '@/features/notifications/api/notifications-api';
 import { toISODateRange } from '@/lib/date-range';
+import { formatNotificationTime } from '@/lib/format-relative-time';
 import { cn } from '@/lib/utils';
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 type DateMode = 'single' | 'range';
 
@@ -381,7 +371,7 @@ export function NotificationsInboxPage() {
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="text-sm font-medium">{item.title}</span>
                   <time className="text-xs text-muted-foreground" dateTime={item.createdAt}>
-                    {formatWhen(item.createdAt)}
+                    {formatNotificationTime(item.createdAt)}
                   </time>
                 </div>
                 <p className="text-sm text-muted-foreground">{item.body}</p>

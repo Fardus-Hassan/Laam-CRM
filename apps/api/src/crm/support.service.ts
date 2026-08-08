@@ -17,10 +17,14 @@ import { randomUUID } from 'crypto';
 
 import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from './notifications.service';
 
 @Injectable()
 export class SupportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
     if (!organizationId) {
@@ -144,6 +148,17 @@ export class SupportService {
         createdByName: actor?.name || null,
         messages: messages as unknown as Prisma.InputJsonValue,
       },
+    });
+
+    const priority = row.priority ?? 'medium';
+    const isUrgent = priority === 'urgent' || priority === 'high';
+    this.notifications.notifySafe({
+      organizationId,
+      type: 'ticket',
+      title: isUrgent ? `Urgent ticket: ${subject}` : `New ticket: ${subject}`,
+      body: `${customerName} — ${customerMobile}`,
+      href: '/dashboard/support',
+      excludeUserId: actor?.userId,
     });
 
     return this.toTicket(row);

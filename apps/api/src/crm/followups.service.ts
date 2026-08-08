@@ -1,7 +1,10 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import type {
   FollowupDetail,
@@ -17,6 +20,7 @@ import type { Followup, Prisma } from '@prisma/client';
 
 import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from './notifications.service';
 
 type RecentProductJson = {
   orderedAt: string;
@@ -32,9 +36,76 @@ type ActivityJson = {
   actorName?: string;
 };
 
+const OVERDUE_SCAN_MS = 60 * 60 * 1000;
+const OVERDUE_NOTIFY_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
 @Injectable()
-export class FollowupsService {
-  constructor(private readonly prisma: PrismaService) {}
+export class FollowupsService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(FollowupsService.name);
+  private scanTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
+
+  onModuleInit() {
+    this.scanTimer = setInterval(() => {
+      void this.scanAndNotifyOverdue();
+    }, OVERDUE_SCAN_MS);
+    if (typeof this.scanTimer.unref === 'function') this.scanTimer.unref();
+    setTimeout(() => void this.scanAndNotifyOverdue(), 45_000).unref?.();
+  }
+
+  onModuleDestroy() {
+    if (this.scanTimer) {
+      clearInterval(this.scanTimer);
+      this.scanTimer = null;
+    }
+  }
+
+  /** Notify org roles with overdue_followup permission (deduped per 12h). */
+  async scanAndNotifyOverdue(): Promise<void> {
+    try {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+
+      const groups = await this.prisma.followup.groupBy({
+        by: ['organizationId'],
+        where: {
+          skipped: false,
+          scheduleDate: { lt: start },
+          followupStatus: { notIn: ['done', 'converted'] },
+        },
+        _count: { _all: true },
+      });
+
+      for (const group of groups) {
+        const count = group._count._all;
+        if (count <= 0) continue;
+        const recent = await this.notifications.wasRecentlyNotified({
+          organizationId: group.organizationId,
+          type: 'overdue_followup',
+          withinMs: OVERDUE_NOTIFY_COOLDOWN_MS,
+        });
+        if (recent) continue;
+        this.notifications.notifySafe({
+          organizationId: group.organizationId,
+          type: 'overdue_followup',
+          title:
+            count === 1
+              ? '1 overdue follow-up'
+              : `${count} overdue follow-ups`,
+          body: 'Customers are waiting for callback.',
+          href: '/dashboard/followups',
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `overdue follow-up scan failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
     if (!organizationId) {

@@ -17,6 +17,7 @@ import type {
 import type { OrgBillingSubscription as SubRow } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from './notifications.service';
 
 const PLAN_CATALOG: BillingPlanOption[] = [
   {
@@ -64,7 +65,10 @@ const PLAN_CATALOG: BillingPlanOption[] = [
 
 @Injectable()
 export class BillingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
     if (!organizationId) {
@@ -173,6 +177,19 @@ export class BillingService {
         periodLabel: input.periodLabel.trim(),
       },
     });
+
+    const status = row.status ?? 'pending';
+    if (status === 'pending' || status === 'overdue') {
+      const dueLabel = row.dueDate.toISOString().slice(0, 10);
+      this.notifications.notifySafe({
+        organizationId,
+        type: 'payment_due',
+        title: `Invoice ${row.number} due`,
+        body: `${row.periodLabel} · ৳${row.amountBdt} due ${dueLabel}`,
+        href: '/dashboard/billing',
+      });
+    }
+
     return this.toInvoice(row);
   }
 

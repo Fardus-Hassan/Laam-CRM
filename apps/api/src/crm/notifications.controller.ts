@@ -4,11 +4,14 @@ import {
   Controller,
   Delete,
   Get,
+  MessageEvent,
   Param,
   Post,
   Query,
+  Sse,
 } from '@nestjs/common';
 import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsString } from 'class-validator';
+import type { Observable } from 'rxjs';
 
 import {
   CurrentUser,
@@ -68,6 +71,12 @@ export class NotificationsController {
   @RequirePermissions('notifications.view')
   unreadCount(@CurrentUser() user: AuthUserPayload) {
     return this.notifications.unreadCount(user.userId);
+  }
+
+  @Sse('stream')
+  @RequirePermissions('notifications.view')
+  stream(@CurrentUser() user: AuthUserPayload): Observable<MessageEvent> {
+    return this.notifications.watchUnread(user.userId);
   }
 
   @Post('read-all')

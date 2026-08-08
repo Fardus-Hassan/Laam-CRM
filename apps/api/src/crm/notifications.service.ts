@@ -2,11 +2,13 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  MessageEvent,
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import type { AppNotification, NotificationType, Permission } from '@laam/types';
+import { Observable, Subject, filter, map, merge, interval } from 'rxjs';
 
 import { PermissionResolverService } from '../common/permission-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -38,11 +40,46 @@ export type CreateNotificationInput = {
 export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(NotificationsService.name);
   private purgeTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly unreadBus = new Subject<{ userId: string; count: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionResolverService,
   ) {}
+
+  /** Live unread stream for the notification bell (SSE). */
+  watchUnread(userId: string): Observable<MessageEvent> {
+    return new Observable<MessageEvent>((subscriber) => {
+      let active = true;
+      const send = (payload: { type: string; count?: number }) => {
+        if (!active) return;
+        subscriber.next({ data: payload } as MessageEvent);
+      };
+
+      void this.unreadCount(userId)
+        .then((count) => send({ type: 'unread', count }))
+        .catch(() => undefined);
+
+      const sub = merge(
+        this.unreadBus.pipe(
+          filter((event) => event.userId === userId),
+          map((event) => ({ type: 'unread' as const, count: event.count })),
+        ),
+        interval(25_000).pipe(map(() => ({ type: 'ping' as const }))),
+      ).subscribe((payload) => send(payload));
+
+      return () => {
+        active = false;
+        sub.unsubscribe();
+      };
+    });
+  }
+
+  private publishUnread(userId: string): void {
+    void this.unreadCount(userId)
+      .then((count) => this.unreadBus.next({ userId, count }))
+      .catch(() => undefined);
+  }
 
   onModuleInit() {
     void this.purgeOlderThanRetention();
@@ -232,6 +269,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         where: { id: row.id },
         data: { isRead: true },
       });
+      this.publishUnread(userId);
     }
   }
 
@@ -248,6 +286,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       where: { userId, isRead: false, type: { in: types } },
       data: { isRead: true },
     });
+    this.publishUnread(userId);
   }
 
   async deleteOne(userId: string, id: string): Promise<void> {
@@ -264,6 +303,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Notification not found');
     }
     await this.prisma.notification.delete({ where: { id: row.id } });
+    this.publishUnread(userId);
   }
 
   async deleteMany(userId: string, ids: string[]): Promise<{ deleted: number }> {
@@ -282,6 +322,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     const result = await this.prisma.notification.deleteMany({
       where: { userId, id: { in: uniqueIds }, type: { in: types } },
     });
+    if (result.count > 0) {
+      this.publishUnread(userId);
+    }
     return { deleted: result.count };
   }
 
@@ -296,7 +339,49 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         href: input.href,
       },
     });
+    this.publishUnread(input.userId);
     return this.toDto(row);
+  }
+
+  /** Fire-and-forget role-scoped notify — never fails the business action. */
+  notifySafe(input: {
+    organizationId: string;
+    type: NotificationType;
+    title: string;
+    body: string;
+    href?: string;
+    excludeUserId?: string;
+  }): void {
+    void this.notifyUsersWithPermission(input).catch((err) => {
+      this.logger.warn(
+        `notifySafe(${input.type}) failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
+
+  /**
+   * True when this org already got a notification of this type recently
+   * (optional href substring match for per-entity dedupe).
+   */
+  async wasRecentlyNotified(input: {
+    organizationId: string;
+    type: NotificationType;
+    withinMs: number;
+    hrefContains?: string;
+  }): Promise<boolean> {
+    const since = new Date(Date.now() - input.withinMs);
+    const existing = await this.prisma.notification.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        type: input.type,
+        createdAt: { gte: since },
+        ...(input.hrefContains
+          ? { href: { contains: input.hrefContains } }
+          : {}),
+      },
+      select: { id: true },
+    });
+    return Boolean(existing);
   }
 
   /**

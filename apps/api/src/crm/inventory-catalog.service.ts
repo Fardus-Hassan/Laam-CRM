@@ -32,6 +32,7 @@ import type {
 import { PrismaService } from '../prisma/prisma.service';
 import type { InventoryAdvancedService } from './inventory-advanced.service';
 import { InventoryUomService } from './inventory-uom.service';
+import { NotificationsService } from './notifications.service';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -206,6 +207,7 @@ export class InventoryCatalogService {
     private readonly uom: InventoryUomService,
     @Inject(forwardRef(() => require('./inventory-advanced.service').InventoryAdvancedService))
     private readonly advanced: InventoryAdvancedService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Products at or below reorder level with stock still > 0 (sidebar badge). */
@@ -1177,7 +1179,14 @@ export class InventoryCatalogService {
       });
     });
 
-    return this.getProduct(organizationId, productId);
+    const detail = await this.getProduct(organizationId, productId);
+    if (
+      detail.stockStatus === 'low_stock' ||
+      detail.stockStatus === 'out_of_stock'
+    ) {
+      this.scheduleLowStockChecks(organizationId, [productId]);
+    }
+    return detail;
   }
 
   async listStockMovements(
@@ -1803,6 +1812,59 @@ export class InventoryCatalogService {
           });
         }
       }
+    }
+
+    if (options.sign < 0) {
+      const productIds = lines
+        .map((line) => line.productId)
+        .filter((id): id is string => Boolean(id));
+      this.scheduleLowStockChecks(organizationId, productIds);
+    }
+  }
+
+  /** After stock drops — notify role holders once per product / 24h. */
+  scheduleLowStockChecks(organizationId: string, productIds: string[]): void {
+    const unique = [...new Set(productIds.filter(Boolean))];
+    if (unique.length === 0) return;
+    setTimeout(() => {
+      for (const productId of unique) {
+        void this.emitLowStockIfNeeded(organizationId, productId);
+      }
+    }, 0);
+  }
+
+  private async emitLowStockIfNeeded(
+    organizationId: string,
+    productId: string,
+  ): Promise<void> {
+    try {
+      const detail = await this.getProduct(organizationId, productId);
+      if (
+        detail.stockStatus !== 'low_stock' &&
+        detail.stockStatus !== 'out_of_stock'
+      ) {
+        return;
+      }
+      const href = `/dashboard/inventory/products/${productId}`;
+      const recent = await this.notifications.wasRecentlyNotified({
+        organizationId,
+        type: 'low_stock',
+        withinMs: 24 * 60 * 60 * 1000,
+        hrefContains: productId,
+      });
+      if (recent) return;
+
+      const label =
+        detail.stockStatus === 'out_of_stock' ? 'Out of stock' : 'Low stock';
+      this.notifications.notifySafe({
+        organizationId,
+        type: 'low_stock',
+        title: `${label}: ${detail.name}`,
+        body: `Only ${detail.stock} left (reorder at ${detail.reorderLevel}).`,
+        href,
+      });
+    } catch {
+      // never block stock ops on notify failure
     }
   }
 
