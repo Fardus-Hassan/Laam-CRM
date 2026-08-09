@@ -33,6 +33,12 @@ type FormComboboxProps = {
   allowCustom?: boolean;
   customOptionLabel?: (query: string) => string;
   className?: string;
+  /**
+   * Render menu in a portal (escapes overflow parents).
+   * Default false so menus inside Dialog scroll containers stay wheel-scroll friendly.
+   * Use true when the trigger sits near a clipped overflow edge.
+   */
+  portal?: boolean;
 };
 
 export function FormCombobox({
@@ -48,6 +54,7 @@ export function FormCombobox({
   allowCustom = false,
   customOptionLabel = (query) => `Use “${query}”`,
   className,
+  portal = false,
 }: FormComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
@@ -117,10 +124,15 @@ export function FormCombobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        // In-dialog: avoid portal so Dialog scroll-lock allows native smooth wheel scroll.
-        portal={false}
-        className="w-[var(--radix-popover-trigger-width)] overflow-hidden p-0"
+        // Default in-place so Dialog scroll-lock allows native wheel scroll.
+        // Pass portal when the trigger is inside overflow:hidden / overflow-y-auto.
+        portal={portal}
+        className={cn(
+          'w-[var(--radix-popover-trigger-width)] overflow-hidden p-0',
+          portal && 'z-[100]',
+        )}
         align="start"
+        collisionPadding={12}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >

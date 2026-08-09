@@ -268,7 +268,7 @@ export class InventoryUomService {
     organizationId: string,
     variantId: string,
     quantity: number,
-    opts?: { uomId?: string | null; uomCode?: string | null },
+    opts?: { uomId?: string | null; uomCode?: string | null; allowZero?: boolean },
     tx?: Prisma.TransactionClient,
   ): Promise<{ baseQuantity: number; uomCode: string; baseUomCode: string }> {
     if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -277,10 +277,12 @@ export class InventoryUomService {
 
     const ctx = await this.loadVariantContext(organizationId, variantId, tx);
     const baseUom = ctx.baseUom;
+    const minBase = opts?.allowZero ? 0 : 1;
+    const toBaseInt = (n: number) => Math.max(minBase, Math.round(n));
 
     if (!opts?.uomId && !opts?.uomCode?.trim()) {
       return {
-        baseQuantity: Math.max(1, Math.round(quantity)),
+        baseQuantity: toBaseInt(quantity),
         uomCode: baseUom.code,
         baseUomCode: baseUom.code,
       };
@@ -290,7 +292,7 @@ export class InventoryUomService {
 
     if (inputUom.id === baseUom.id) {
       return {
-        baseQuantity: Math.max(1, Math.round(quantity)),
+        baseQuantity: toBaseInt(quantity),
         uomCode: inputUom.code,
         baseUomCode: baseUom.code,
       };
@@ -300,7 +302,7 @@ export class InventoryUomService {
     if (variantConversion) {
       const factor = toNumber(variantConversion.factorToVariantBase);
       return {
-        baseQuantity: Math.max(1, Math.round(quantity * factor)),
+        baseQuantity: toBaseInt(quantity * factor),
         uomCode: inputUom.code,
         baseUomCode: baseUom.code,
       };
@@ -322,7 +324,7 @@ export class InventoryUomService {
     const baseQty = dimensionBaseQty / baseFactor;
 
     return {
-      baseQuantity: Math.max(1, Math.round(baseQty)),
+      baseQuantity: toBaseInt(baseQty),
       uomCode: inputUom.code,
       baseUomCode: baseUom.code,
     };

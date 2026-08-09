@@ -9,8 +9,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import type { OtpInboxItem } from '@laam/types';
+import { OTP_PURPOSE_LABELS, type OtpInboxItem, type OtpPurpose as SharedOtpPurpose } from '@laam/types';
 
+import { NotificationsService } from '../crm/notifications.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { OtpDelivery, OtpPurpose } from './otp.types';
@@ -34,6 +35,7 @@ export class OtpService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private generateCode(): string {
@@ -62,6 +64,15 @@ export class OtpService {
       throw new HttpException('Wait 1 minute before requesting another OTP', HttpStatus.TOO_MANY_REQUESTS);
     }
 
+    let userName: string | null = null;
+    if (input.userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { name: true },
+      });
+      userName = user?.name ?? null;
+    }
+
     const code = this.generateCode();
     const now = new Date();
     const challenge = await this.prisma.otpChallenge.create({
@@ -84,6 +95,7 @@ export class OtpService {
       purpose: input.purpose,
       code,
       organizationId: input.organizationId,
+      userName,
     });
 
     return {
@@ -197,14 +209,59 @@ export class OtpService {
     purpose: OtpPurpose;
     code: string;
     organizationId?: string | null;
+    userName?: string | null;
   }) {
     if (input.delivery === 'admin_inbox') {
       this.logger.warn(
-        `[Admin OTP inbox] ${input.purpose} for ${input.email}: ${input.code} (org: ${input.organizationId ?? 'n/a'})`,
+        `[Admin OTP inbox] ${input.purpose} for ${input.email} (org: ${input.organizationId ?? 'n/a'})`,
       );
+      this.notifyOrgAdminsOfInboxOtp(input);
       return;
     }
 
     await this.email.sendOtpEmail(input.email, input.code, input.purpose);
+  }
+
+  /** Live bell for org admins — code stays in Staff OTP inbox only. */
+  private notifyOrgAdminsOfInboxOtp(input: {
+    email: string;
+    purpose: OtpPurpose;
+    organizationId?: string | null;
+    userName?: string | null;
+  }) {
+    if (!input.organizationId) return;
+
+    const purposeLabel =
+      OTP_PURPOSE_LABELS[input.purpose as SharedOtpPurpose] ?? input.purpose;
+    const who = input.userName?.trim() || input.email;
+
+    void this.prisma.user
+      .findMany({
+        where: {
+          organizationId: input.organizationId,
+          systemRole: 'org_admin',
+          status: { in: ['active', 'invited'] },
+        },
+        select: { id: true },
+      })
+      .then(async (admins) => {
+        await Promise.all(
+          admins.map((admin) =>
+            this.notifications.create({
+              organizationId: input.organizationId!,
+              userId: admin.id,
+              type: 'system',
+              title: `Staff OTP: ${purposeLabel}`,
+              body: `${who} needs a ${purposeLabel.toLowerCase()} code. Open Security → Staff OTP inbox.`,
+              href: '/dashboard/settings/security',
+            }),
+          ),
+        );
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `Admin OTP notification failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
   }
 }

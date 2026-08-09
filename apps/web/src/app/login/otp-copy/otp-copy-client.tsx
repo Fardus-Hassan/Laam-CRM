@@ -3,11 +3,10 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Check, Copy, KeyRound, Loader2 } from 'lucide-react';
+import { Check, Copy, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { env } from '@/config/env';
 import { AuthBrandShell } from '@/features/auth/components/auth-brand-shell';
 import { apiRequest } from '@/lib/api/client';
@@ -81,61 +80,53 @@ export default function OtpCopyPageClient() {
   }, [token, copyToClipboard]);
 
   return (
-    <AuthBrandShell subtitle="Your OTP is ready to paste on the login page.">
-      <Card className="w-full border-border/70 shadow-xl backdrop-blur-sm">
-        <CardHeader className="space-y-3 text-center">
-          <div className="mx-auto flex size-11 items-center justify-center rounded-xl bg-primary/10">
-            <KeyRound className="size-5 text-primary" />
+    <AuthBrandShell
+      title="Your verification code"
+      subtitle="Copy the code, then paste it on the sign-in or reset page."
+    >
+      {loading ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-sm text-muted-foreground">
+          <Loader2 className="size-6 animate-spin text-primary" />
+          Loading code…
+        </div>
+      ) : null}
+
+      {!loading && error ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-center text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {!loading && code ? (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border/80 bg-muted/25 px-4 py-8 text-center">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              One-time code
+            </p>
+            <p className="font-mono text-4xl font-bold tracking-[0.35em] text-primary tabular-nums sm:text-5xl">
+              {code}
+            </p>
           </div>
-          <CardTitle className="text-xl">Copy verification code</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loading ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-sm text-muted-foreground">
-              <Loader2 className="size-6 animate-spin text-primary" />
-              Loading code…
-            </div>
-          ) : null}
 
-          {!loading && error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-center text-sm text-destructive">
-              {error}
-            </div>
-          ) : null}
-
-          {!loading && code ? (
-            <>
-              <div className="rounded-xl border bg-muted/40 px-4 py-6 text-center">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Your code
-                </p>
-                <p className="font-mono text-4xl font-bold tracking-[0.35em] text-primary tabular-nums">
-                  {code}
-                </p>
-              </div>
-
-              <Button
-                type="button"
-                className="w-full"
-                size="lg"
-                onClick={() => void copyToClipboard(code)}
-              >
-                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                {copied ? 'Copied!' : 'Copy code again'}
-              </Button>
-
-              <p className="text-center text-xs text-muted-foreground">
-                Go back to the login tab and paste the code, or use the paste button next to the
-                OTP field.
-              </p>
-            </>
-          ) : null}
-
-          <Button type="button" variant="outline" className="w-full" asChild>
-            <Link href="/login">Back to sign in</Link>
+          <Button
+            type="button"
+            className="h-11 w-full text-sm font-semibold"
+            size="lg"
+            onClick={() => void copyToClipboard(code)}
+          >
+            {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+            {copied ? 'Copied' : 'Copy code'}
           </Button>
-        </CardContent>
-      </Card>
+
+          <p className="text-center text-xs leading-relaxed text-muted-foreground">
+            Return to the other tab and paste the code into the verification field.
+          </p>
+        </div>
+      ) : null}
+
+      <Button type="button" variant="outline" className="mt-2 h-10 w-full" asChild>
+        <Link href="/login">Back to sign in</Link>
+      </Button>
     </AuthBrandShell>
   );
 }

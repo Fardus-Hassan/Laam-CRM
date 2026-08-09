@@ -23,6 +23,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export function CarrybeeIntegrationSettingsPage() {
@@ -299,7 +300,7 @@ export function CarrybeeIntegrationSettingsPage() {
                 ) : null}
                 {settings.lastSyncAt ? (
                   <p className="text-xs text-muted-foreground">
-                    Last sync: {new Date(settings.lastSyncAt).toLocaleString()}
+                    Last sync: {formatDateTime(settings.lastSyncAt)}
                   </p>
                 ) : null}
 

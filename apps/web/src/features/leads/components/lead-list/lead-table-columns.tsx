@@ -15,7 +15,7 @@ import {
 import { EntityStatusBadge } from '@/components/dashboard/entity-status-badge';
 import { Button } from '@/components/ui/button';
 import { LEAD_SOURCE_LABELS } from '@/features/leads/config/lead-filters';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 
 export const LEAD_TABLE_PINNED = {
   left: ['select', 'status'],
@@ -23,16 +23,7 @@ export const LEAD_TABLE_PINNED = {
 };
 
 export function formatLeadDateTime(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
-    .format(new Date(value))
-    .replace(',', ' -');
+  return formatDateTime(value);
 }
 
 export function buildLeadTableColumns(options?: {

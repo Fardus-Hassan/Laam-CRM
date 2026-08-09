@@ -12,7 +12,7 @@ import type {
   StockAdjustmentListItem,
   SupplierListItem,
 } from '@laam/types';
-import { Plus, RefreshCw, Search } from 'lucide-react';
+import { Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -51,7 +52,7 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { downloadCsv } from '@/lib/export-csv';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { cn } from '@/lib/utils';
 
@@ -1130,7 +1131,7 @@ export function AdjustmentListShell() {
             a.newStock,
             ADJUSTMENT_REASON_LABELS[a.reason],
             a.adjustedBy,
-            new Date(a.adjustedAt).toLocaleDateString('en-GB'),
+            formatDate(a.adjustedAt),
           ],
           mobile: (
             <div className="space-y-2">
@@ -1147,7 +1148,7 @@ export function AdjustmentListShell() {
                 <span>{a.previousStock} → {a.newStock}</span>
                 <span>{ADJUSTMENT_REASON_LABELS[a.reason]}</span>
                 <span>{a.adjustedBy}</span>
-                <span>{new Date(a.adjustedAt).toLocaleDateString('en-GB')}</span>
+                <span>{formatDate(a.adjustedAt)}</span>
               </div>
             </div>
           ),
@@ -1172,7 +1173,7 @@ export function AdjustmentListShell() {
 
 export function MixerListShell() {
   const { confirm, confirmDialog } = useConfirmDialog();
-  const { unitOptions, defaultCode } = useInventoryUnits();
+  const { defaultCode, units } = useInventoryUnits();
   const [items, setItems] = React.useState<MixerRecipeListItem[]>([]);
   const [recipesTotal, setRecipesTotal] = React.useState(0);
   const [recipesPage, setRecipesPage] = React.useState(1);
@@ -1298,10 +1299,43 @@ export function MixerListShell() {
       toast.error('Pick a raw product and quantity');
       return;
     }
-    setRecipeInputs((rows) => [...rows, { productId: inputProductId, quantity: qty, unit: inputUnit }]);
+    const existing = recipeInputs.findIndex((r) => r.productId === inputProductId);
+    if (existing >= 0) {
+      setRecipeInputs((rows) =>
+        rows.map((row, i) =>
+          i === existing ? { ...row, quantity: row.quantity + qty, unit: inputUnit } : row,
+        ),
+      );
+    } else {
+      setRecipeInputs((rows) => [
+        ...rows,
+        { productId: inputProductId, quantity: qty, unit: inputUnit },
+      ]);
+    }
     setInputProductId('');
     setInputQty('1');
   }
+
+  function onPickInputProduct(productId: string) {
+    setInputProductId(productId);
+    const product = products.find((p) => p.id === productId);
+    if (product?.primaryBaseUomCode) {
+      setInputUnit(defaultCode(product.primaryBaseUomCode));
+    }
+  }
+
+  const recipeFormulaPreview = React.useMemo(() => {
+    if (!recipeInputs.length) return null;
+    const materials = recipeInputs
+      .map((row) => {
+        const product = products.find((p) => p.id === row.productId);
+        return `${row.quantity}${row.unit} ${product?.name ?? 'Material'}`;
+      })
+      .join(' + ');
+    const output = products.find((p) => p.id === outputProductId);
+    const outLabel = output ? `${outputQty || '?'}× ${output.name}` : `${outputQty || '?'}× finished`;
+    return `${materials} → ${outLabel}`;
+  }, [recipeInputs, products, outputProductId, outputQty]);
 
   async function saveRecipe() {
     const qty = Number(outputQty);
@@ -1354,8 +1388,8 @@ export function MixerListShell() {
   function applyRecipe(recipe: MixerRecipeListItem) {
     setGuideRecipe(recipe);
     setGuideNonce((n) => n + 1);
-    toast.success(`Loaded guide: ${recipe.name}`, {
-      description: 'Output and raw materials filled — set costs and variant units, then run.',
+    toast.success(`Loaded recipe: ${recipe.name}`, {
+      description: 'Materials scale with pack quantities. Pick warehouse, then save.',
     });
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1365,7 +1399,7 @@ export function MixerListShell() {
   return (
     <InventoryPageLayout
       title="Mixer & production"
-      description="Record raw materials in any unit (kg, g, L, pcs…) and how many of each variant you made — full hisab kept."
+      description="Multi-material recipes → finished packs (500g, 1kg…). Stock moves from the selected warehouse."
       actions={
         <Can permission="inventory.mixer">
           <Button type="button" size="sm" onClick={openCreate}>
@@ -1378,185 +1412,361 @@ export function MixerListShell() {
       <ProductionBatchPanel
         guideRecipe={guideRecipe}
         guideNonce={guideNonce}
+        recipes={items}
         onCompleted={() => {
           loadRuns(1, runsPageSize);
+          loadRecipes();
         }}
       />
 
-      <div className="space-y-2">
-        <ProductionLedger runs={runs} total={runsTotal} />
-        {runsTotal > 0 ? (
-          <CrmDataTablePagination
-            page={runsPage}
-            pageSize={runsPageSize}
-            total={runsTotal}
-            pageSizeOptions={INV_LIST_PAGE_SIZES}
-            onPageChange={setRunsPage}
-            onPageSizeChange={(size) => {
-              setRunsPageSize(size);
-              setRunsPage(1);
-            }}
-          />
-        ) : null}
-      </div>
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">Recipes</h3>
+            <span className="text-[11px] text-muted-foreground">{recipesTotal} saved</span>
+          </div>
+          {loading ? (
+            <div className="h-28 animate-pulse rounded-xl border bg-muted/40" />
+          ) : !items.length ? (
+            <Card className={ORDER_CARD_CLASS}>
+              <CardContent className="p-4">
+                <p className="text-center text-sm text-muted-foreground">
+                  No recipes yet — create one for your mix (e.g. honey + kalojira).
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-border/70">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-muted/40 text-[11px] text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Recipe</th>
+                    <th className="hidden px-3 py-2 font-medium sm:table-cell">Output</th>
+                    <th className="px-3 py-2 font-medium">Materials</th>
+                    <th className="px-3 py-2 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((recipe) => (
+                    <tr key={recipe.id} className="border-t border-border/50">
+                      <td className="px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate font-medium">{recipe.name}</span>
+                          <Badge
+                            variant={recipe.status === 'active' ? 'default' : 'secondary'}
+                            className="shrink-0"
+                          >
+                            {recipe.status}
+                          </Badge>
+                        </div>
+                        {recipe.lastMixedAt ? (
+                          <p className="text-[10px] text-muted-foreground">
+                            Last {formatDate(recipe.lastMixedAt)}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="hidden px-3 py-2 sm:table-cell">
+                        <span className="font-medium tabular-nums">{recipe.outputQty}×</span>{' '}
+                        <span className="text-muted-foreground">{recipe.outputProductName}</span>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {recipe.inputCount} items
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-7"
+                            variant="outline"
+                            onClick={() => applyRecipe(recipe)}
+                          >
+                            Use
+                          </Button>
+                          <Can permission="inventory.mixer">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-7"
+                              variant="ghost"
+                              onClick={() => openEdit(recipe)}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-7"
+                              variant="ghost"
+                              onClick={() => void deleteRecipe(recipe)}
+                            >
+                              Delete
+                            </Button>
+                          </Can>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {recipesTotal > 0 ? (
+            <CrmDataTablePagination
+              page={recipesPage}
+              pageSize={recipesPageSize}
+              total={recipesTotal}
+              pageSizeOptions={INV_LIST_PAGE_SIZES}
+              onPageChange={setRecipesPage}
+              onPageSizeChange={(size) => {
+                setRecipesPageSize(size);
+                setRecipesPage(1);
+              }}
+            />
+          ) : null}
+        </div>
 
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium">Saved recipes</h3>
-        {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {Array.from({ length: 2 }).map((_, i) => (
-              <Card key={i} className={ORDER_CARD_CLASS}>
-                <CardContent className="h-32 animate-pulse bg-muted/40" />
-              </Card>
-            ))}
-          </div>
-        ) : !items.length ? (
-          <Card className={ORDER_CARD_CLASS}>
-            <CardContent className="p-6">
-              <p className="text-center text-sm text-muted-foreground">No saved recipes yet.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-            {items.map((recipe) => (
-              <Card key={recipe.id} className={cn(ORDER_CARD_CLASS, 'min-w-0')}>
-                <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="min-w-0 truncate text-sm">{recipe.name}</CardTitle>
-                    <Badge variant={recipe.status === 'active' ? 'default' : 'secondary'} className="shrink-0">
-                      {recipe.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className={ORDER_SECTION_BODY_CLASS}>
-                  <p className="text-sm">
-                    Output: <strong>{recipe.outputQty}×</strong> {recipe.outputProductName}{' '}
-                    <span className="font-mono text-xs text-muted-foreground">({recipe.outputSku})</span>
-                  </p>
-                  <p className="mt-3 text-xs font-medium text-muted-foreground">Inputs</p>
-                  <ul className="mt-1 space-y-1">
-                    {recipe.inputs.map((input, i) => (
-                      <li key={i} className="text-sm">
-                        {input.quantity} {input.unit} — {input.productName}{' '}
-                        <span className="font-mono text-xs text-muted-foreground">({input.sku})</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {recipe.lastMixedAt ? (
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      Last mixed {new Date(recipe.lastMixedAt).toLocaleDateString('en-GB')}
-                    </p>
-                  ) : null}
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" className="h-7" variant="outline" onClick={() => applyRecipe(recipe)}>
-                      Use as guide
-                    </Button>
-                    <Can permission="inventory.mixer">
-                      <Button type="button" size="sm" className="h-7" variant="ghost" onClick={() => openEdit(recipe)}>
-                        Edit
-                      </Button>
-                      <Button type="button" size="sm" className="h-7" variant="ghost" onClick={() => void deleteRecipe(recipe)}>
-                        Delete
-                      </Button>
-                    </Can>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-        {recipesTotal > 0 ? (
-          <CrmDataTablePagination
-            page={recipesPage}
-            pageSize={recipesPageSize}
-            total={recipesTotal}
-            pageSizeOptions={INV_LIST_PAGE_SIZES}
-            onPageChange={setRecipesPage}
-            onPageSizeChange={(size) => {
-              setRecipesPageSize(size);
-              setRecipesPage(1);
-            }}
-          />
-        ) : null}
+        <div className="space-y-2">
+          <ProductionLedger runs={runs} total={runsTotal} />
+          {runsTotal > 0 ? (
+            <CrmDataTablePagination
+              page={runsPage}
+              pageSize={runsPageSize}
+              total={runsTotal}
+              pageSizeOptions={INV_LIST_PAGE_SIZES}
+              onPageChange={setRunsPage}
+              onPageSizeChange={(size) => {
+                setRunsPageSize(size);
+                setRunsPage(1);
+              }}
+            />
+          ) : null}
+        </div>
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="gap-0 overflow-visible p-0 sm:max-w-xl">
+          <DialogHeader className="space-y-1 border-b border-border/60 px-5 py-4 text-left">
             <DialogTitle>{editing ? 'Edit recipe' : 'New recipe'}</DialogTitle>
+            <DialogDescription>
+              Save a mix template. When you use it later, materials scale with pack quantities.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <FormField label="Name" required className="sm:col-span-2">
-              <FormInput value={name} onChange={(e) => setName(e.target.value)} />
-            </FormField>
-            <FormField label="Output product" required className="sm:col-span-2">
-              <FormSearchSelect
-                value={outputProductId}
-                onChange={setOutputProductId}
-                options={productOptions}
-                placeholder="Select finished product…"
-              />
-            </FormField>
-            <FormField label="Output qty" required>
-              <FormInput type="number" min={1} value={outputQty} onChange={(e) => setOutputQty(e.target.value)} />
-            </FormField>
-            <FormField label="Status">
-              <FormSearchSelect
-                value={status}
-                onChange={(v) => setStatus(v as 'active' | 'draft')}
-                options={[
-                  { value: 'draft', label: 'Draft' },
-                  { value: 'active', label: 'Active' },
-                ]}
-                searchable={false}
-              />
-            </FormField>
-            <div className="sm:col-span-2 space-y-2 rounded-md border border-border/60 p-3">
-              <p className="text-xs font-medium text-muted-foreground">Inputs (any unit)</p>
-              {recipeInputs.map((row, index) => {
-                const product = products.find((p) => p.id === row.productId);
-                return (
-                  <div key={`${row.productId}-${index}`} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="min-w-0 truncate">
-                      {row.quantity} {row.unit} — {product?.name ?? row.productId}
-                    </span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setRecipeInputs((rows) => rows.filter((_, i) => i !== index))}
-                    >
-                      Remove
-                    </Button>
+
+          <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto overflow-x-visible px-5 py-4">
+            <section className="space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                1. Finished product
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Recipe name" required className="sm:col-span-2">
+                  <FormInput
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Modho kalo Jira mix"
+                  />
+                </FormField>
+                <FormField label="Output product" required className="sm:col-span-2">
+                  <FormSearchSelect
+                    value={outputProductId}
+                    onChange={(id) => {
+                      setOutputProductId(id);
+                      if (!name.trim()) {
+                        const product = products.find((p) => p.id === id);
+                        if (product) setName(`${product.name} recipe`);
+                      }
+                    }}
+                    options={productOptions}
+                    placeholder="Select finished product…"
+                    portal
+                  />
+                </FormField>
+                <FormField
+                  label="Base output qty"
+                  required
+                  hint="Scales with pack quantities on production."
+                >
+                  <FormInput
+                    type="number"
+                    min={1}
+                    value={outputQty}
+                    onChange={(e) => setOutputQty(e.target.value)}
+                  />
+                </FormField>
+                <FormField label="Status">
+                  <div className="flex h-8 overflow-hidden rounded-md border border-border/70">
+                    {(
+                      [
+                        { value: 'draft', label: 'Draft' },
+                        { value: 'active', label: 'Active' },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={cn(
+                          'flex-1 text-sm transition-colors',
+                          status === opt.value
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-background text-muted-foreground hover:bg-muted/50',
+                        )}
+                        onClick={() => setStatus(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
-                );
-              })}
-              <div className="grid gap-2 sm:grid-cols-3">
-                <FormSearchSelect
-                  value={inputProductId}
-                  onChange={setInputProductId}
-                  options={productOptions}
-                  placeholder="Raw product…"
-                />
-                <FormInput type="number" min={0.0001} step="any" value={inputQty} onChange={(e) => setInputQty(e.target.value)} />
-                <FormSearchSelect
-                  value={inputUnit || defaultCode('kg')}
-                  onChange={setInputUnit}
-                  options={unitOptions}
-                  searchable={false}
-                />
+                </FormField>
               </div>
-              <Button type="button" size="sm" variant="outline" onClick={addInputLine}>
-                Add input
-              </Button>
-            </div>
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-end justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  2. Raw materials
+                </p>
+                <span className="text-[11px] text-muted-foreground">
+                  {recipeInputs.length} item{recipeInputs.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {recipeInputs.length ? (
+                <ul className="divide-y divide-border/50 rounded-md border border-border/70">
+                  {recipeInputs.map((row, index) => {
+                    const product = products.find((p) => p.id === row.productId);
+                    return (
+                      <li
+                        key={`${row.productId}-${index}`}
+                        className="flex items-center gap-2 bg-background/40 px-2.5 py-1.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {product?.name ?? 'Material'}
+                          </p>
+                          {product?.sku ? (
+                            <p className="font-mono text-[10px] text-muted-foreground">
+                              {product.sku}
+                            </p>
+                          ) : null}
+                        </div>
+                        <FormInput
+                          type="number"
+                          min={0.0001}
+                          step="any"
+                          className="h-8 w-[4.5rem]"
+                          value={String(row.quantity)}
+                          onChange={(e) => {
+                            const qty = Number(e.target.value);
+                            setRecipeInputs((rows) =>
+                              rows.map((r, i) =>
+                                i === index
+                                  ? {
+                                      ...r,
+                                      quantity: Number.isFinite(qty) && qty > 0 ? qty : r.quantity,
+                                    }
+                                  : r,
+                              ),
+                            );
+                          }}
+                        />
+                        <select
+                          className="h-8 w-16 shrink-0 rounded-md border border-input bg-background px-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={row.unit}
+                          onChange={(e) =>
+                            setRecipeInputs((rows) =>
+                              rows.map((r, i) =>
+                                i === index ? { ...r, unit: e.target.value } : r,
+                              ),
+                            )
+                          }
+                          aria-label="Unit"
+                        >
+                          {units.map((u) => (
+                            <option key={u.code} value={u.code}>
+                              {u.code}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() =>
+                            setRecipeInputs((rows) => rows.filter((_, i) => i !== index))
+                          }
+                          aria-label="Remove material"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="rounded-md border border-dashed border-border/70 px-3 py-3 text-center text-xs text-muted-foreground">
+                  No materials yet. Add each raw product below.
+                </div>
+              )}
+
+              <div className="rounded-md border border-border/70 bg-muted/20 p-2.5">
+                <p className="mb-2 text-[11px] font-medium text-muted-foreground">Add material</p>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_4.5rem_4rem_auto]">
+                  <FormSearchSelect
+                    value={inputProductId}
+                    onChange={onPickInputProduct}
+                    options={productOptions}
+                    placeholder="Raw product…"
+                    portal
+                  />
+                  <FormInput
+                    type="number"
+                    min={0.0001}
+                    step="any"
+                    value={inputQty}
+                    onChange={(e) => setInputQty(e.target.value)}
+                    placeholder="Qty"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addInputLine();
+                      }
+                    }}
+                  />
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={inputUnit || defaultCode('kg')}
+                    onChange={(e) => setInputUnit(e.target.value)}
+                    aria-label="Unit"
+                  >
+                    {units.map((u) => (
+                      <option key={u.code} value={u.code}>
+                        {u.code}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="button" variant="outline" className="h-8" onClick={addInputLine}>
+                    <Plus className="size-3.5" />
+                    Add
+                  </Button>
+                </div>
+              </div>
+            </section>
+
+            {recipeFormulaPreview ? (
+              <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                <span className="font-medium text-foreground">Formula: </span>
+                {recipeFormulaPreview}
+              </div>
+            ) : null}
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+
+          <DialogFooter className="border-t border-border/60 px-5 py-3 sm:justify-between">
+            <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
             <Button type="button" disabled={saving} onClick={() => void saveRecipe()}>
-              {saving ? 'Saving…' : editing ? 'Save recipe' : 'Create recipe'}
+              {saving ? 'Saving…' : editing ? 'Save changes' : 'Create recipe'}
             </Button>
           </DialogFooter>
         </DialogContent>

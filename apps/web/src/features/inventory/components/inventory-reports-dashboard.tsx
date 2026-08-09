@@ -36,7 +36,7 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { downloadCsv } from '@/lib/export-csv';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { rangeFromISO, toISODateRange } from '@/lib/date-range';
 import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
@@ -155,7 +155,7 @@ export function InventoryReportsDashboard() {
             <p className="mt-0.5 text-sm text-muted-foreground">
               Live stock valuation and operational health.
               {data?.generatedAt
-                ? ` Updated ${new Date(data.generatedAt).toLocaleString('en-GB')}`
+                ? ` Updated ${formatDateTime(data.generatedAt)}`
                 : ''}
             </p>
           </div>

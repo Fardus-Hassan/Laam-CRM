@@ -10,6 +10,7 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { supportApi } from '@/features/support/api/support-api';
+import { formatDateTime } from '@/lib/format';
 
 type TimelineItem = {
   id: string;
@@ -95,7 +96,7 @@ export function CustomerTimeline({ phone, activities }: CustomerTimelineProps) {
                     {item.kind}
                   </Badge>
                   <span className="text-[10px] text-muted-foreground">
-                    {new Date(item.timestamp).toLocaleString()}
+                    {formatDateTime(item.timestamp)}
                   </span>
                 </div>
               </li>

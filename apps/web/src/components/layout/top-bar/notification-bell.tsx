@@ -25,6 +25,8 @@ const UNREAD_BACKUP_POLL_MS = 180_000;
 export function NotificationBell() {
   const [items, setItems] = React.useState<AppNotification[]>([]);
   const [unread, setUnread] = React.useState(0);
+  const menuOpenRef = React.useRef(false);
+  const lastUnreadRef = React.useRef<number | null>(null);
 
   const refreshUnread = React.useCallback(async () => {
     try {
@@ -59,7 +61,15 @@ export function NotificationBell() {
         attempt = 0;
         await openNotificationUnreadStream({
           signal: ac.signal,
-          onUnread: (count) => setUnread(count),
+          onUnread: (count) => {
+            const prev = lastUnreadRef.current;
+            lastUnreadRef.current = count;
+            setUnread(count);
+            // Dropdown open + new unread → refresh list so OTP purpose shows live.
+            if (menuOpenRef.current && prev !== null && count > prev) {
+              void refreshPreview();
+            }
+          },
         });
       } catch {
         // fall through to reconnect
@@ -91,9 +101,10 @@ export function NotificationBell() {
       window.removeEventListener('focus', onVisibleOrFocus);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
     };
-  }, [refreshUnread]);
+  }, [refreshUnread, refreshPreview]);
 
   async function handleOpen(open: boolean) {
+    menuOpenRef.current = open;
     if (open) await refreshPreview();
   }
 

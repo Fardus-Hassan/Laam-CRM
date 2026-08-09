@@ -8,6 +8,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type CourierTrackingCardProps = {
@@ -47,12 +48,7 @@ export function CourierTrackingCard({ tracking, className }: CourierTrackingCard
                 </p>
                 {step.timestamp ? (
                   <p className="text-xs text-muted-foreground">
-                    {new Intl.DateTimeFormat('en-GB', {
-                      day: '2-digit',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    }).format(new Date(step.timestamp))}
+                    {formatDateTime(step.timestamp)}
                   </p>
                 ) : index === tracking.steps.findIndex((s) => !s.completed) ? (
                   <p className="text-xs text-primary">In progress</p>

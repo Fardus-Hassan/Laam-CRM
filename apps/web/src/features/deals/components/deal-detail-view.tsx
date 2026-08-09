@@ -8,7 +8,7 @@ import { EntityStatusBadge } from '@/components/dashboard/entity-status-badge';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 
 export function DealDetailView({ deal }: { deal: DealDetail }) {
   return (
@@ -44,7 +44,7 @@ export function DealDetailView({ deal }: { deal: DealDetail }) {
                 {deal.activities.map((a) => (
                   <li key={a.id} className="text-sm">
                     <p className="font-medium">{a.label}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(a.timestamp).toLocaleString('en-GB')}</p>
+                    <p className="text-xs text-muted-foreground">{formatDateTime(a.timestamp)}</p>
                   </li>
                 ))}
               </ol>

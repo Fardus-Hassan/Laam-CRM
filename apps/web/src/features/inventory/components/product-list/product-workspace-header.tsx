@@ -5,6 +5,7 @@ import { Plus, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Can } from '@/components/auth/can';
+import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type ProductWorkspaceHeaderProps = {
@@ -21,7 +22,7 @@ export function ProductWorkspaceHeader({
   className,
 }: ProductWorkspaceHeaderProps) {
   const refreshedLabel = lastRefreshedAt
-    ? `Updated ${lastRefreshedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+    ? `Updated ${formatTime(lastRefreshedAt)}`
     : null;
 
   return (

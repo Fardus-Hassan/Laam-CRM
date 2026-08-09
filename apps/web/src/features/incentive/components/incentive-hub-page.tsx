@@ -62,7 +62,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { downloadCsv } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
@@ -1223,7 +1223,7 @@ export function IncentiveHubPage() {
               ) : (
                 <>
                   <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-                    <span>Calculated {new Date(selectedPeriod.calculatedAt).toLocaleString()}</span>
+                    <span>Calculated {formatDateTime(selectedPeriod.calculatedAt)}</span>
                     {selectedPeriod.approvedByName ? <span>Approved by {selectedPeriod.approvedByName}</span> : null}
                     {selectedPeriod.paidByName ? <span>Paid by {selectedPeriod.paidByName}</span> : null}
                   </div>

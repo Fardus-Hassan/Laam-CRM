@@ -13,11 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { formatCurrency } from '@/lib/format';
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
-}
+import { formatCurrency, formatDate } from '@/lib/format';
 
 const COLUMNS: DataTableColumn<DealListItem>[] = [
   {

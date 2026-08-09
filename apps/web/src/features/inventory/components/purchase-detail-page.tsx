@@ -27,7 +27,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type ReceiveLineState = {
@@ -314,7 +314,7 @@ export function PurchaseDetailPage() {
                   )}
                   {purchase.receivedAt ? (
                     <div className="sm:col-span-2 text-xs text-muted-foreground">
-                      Last received {new Date(purchase.receivedAt).toLocaleString('en-GB')}
+                      Last received {formatDateTime(purchase.receivedAt)}
                       {purchase.receivedByName ? ` by ${purchase.receivedByName}` : ''}
                     </div>
                   ) : null}

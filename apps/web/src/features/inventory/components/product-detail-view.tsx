@@ -46,7 +46,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type ProductDetailViewProps = {
@@ -371,7 +371,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
       title={product.name}
       description={
         isArchived
-          ? `SKU ${product.sku} · Archived ${new Date(product.deletedAt!).toLocaleString()}`
+          ? `SKU ${product.sku} · Archived ${formatDateTime(product.deletedAt!)}`
           : `SKU ${product.sku}`
       }
       breadcrumbs={[
@@ -917,7 +917,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                           </p>
                         </div>
                         <div className="shrink-0 text-right text-[11px] leading-snug text-muted-foreground">
-                          <p>{new Date(movement.createdAt).toLocaleString()}</p>
+                          <p>{formatDateTime(movement.createdAt)}</p>
                           {movement.actorName ? (
                             <p className="max-w-[9rem] truncate">{movement.actorName}</p>
                           ) : null}
@@ -965,7 +965,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
                             {activity.label}
                           </p>
                           <p className="shrink-0 text-[11px] leading-snug text-muted-foreground">
-                            {new Date(activity.timestamp).toLocaleString()}
+                            {formatDateTime(activity.timestamp)}
                           </p>
                         </div>
                         {activity.description ? (

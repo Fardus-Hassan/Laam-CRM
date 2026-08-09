@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Plus, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type LeadWorkspaceHeaderProps = {
@@ -25,7 +26,7 @@ export function LeadWorkspaceHeader({
   className,
 }: LeadWorkspaceHeaderProps) {
   const refreshedLabel = lastRefreshedAt
-    ? `Updated ${lastRefreshedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+    ? `Updated ${formatTime(lastRefreshedAt)}`
     : null;
 
   return (

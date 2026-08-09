@@ -22,6 +22,8 @@ export const sessionUserSchema = z.object({
   organizationId: z.string().uuid(),
   avatarUrl: z.string().url().optional(),
   customRoleId: z.string().min(1).optional(),
+  /** Display name of assigned custom/preset role (e.g. "Sales Head"). */
+  customRoleName: z.string().min(1).optional(),
   dashboardTemplate: dashboardTemplateSchema.optional(),
   permissionGrants: z.array(permissionSchema).optional(),
   permissionDenies: z.array(permissionSchema).optional(),

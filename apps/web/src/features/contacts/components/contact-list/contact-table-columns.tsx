@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { CourierScoreCell } from '@/features/customers/components/shared/courier-score-cell';
 import { ContactTypeBadge } from '@/features/contacts/components/shared/contact-type-badge';
 import { CONTACT_SOURCE_LABELS } from '@/features/contacts/config/contact-filters';
+import { formatDate } from '@/lib/format';
 
 export const CONTACT_TABLE_PINNED = {
   left: ['select', 'contactId'],
@@ -30,11 +31,7 @@ export const CONTACT_TABLE_PINNED = {
 };
 
 export function formatContactDate(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(value));
+  return formatDate(value);
 }
 
 export function buildContactTableColumns(options?: {

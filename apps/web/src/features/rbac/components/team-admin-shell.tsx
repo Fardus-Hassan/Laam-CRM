@@ -57,6 +57,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'secondary'> = {
@@ -502,7 +503,7 @@ export function TeamAdminShell() {
                           {user.lastSeenAt ? (
                             <span className="flex items-center gap-1">
                               <Clock className="size-3" />
-                              {new Date(user.lastSeenAt).toLocaleDateString()}
+                              {formatDate(user.lastSeenAt)}
                             </span>
                           ) : (
                             '—'

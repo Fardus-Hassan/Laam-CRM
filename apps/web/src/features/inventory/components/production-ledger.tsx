@@ -11,8 +11,9 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { displayPackGrams } from '@/features/inventory/lib/production-pack-size';
 
 function formatDateKey(iso: string): string {
   return iso.slice(0, 10);
@@ -26,10 +27,6 @@ function formatDateLabel(dateKey: string): string {
     month: 'short',
     year: 'numeric',
   });
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
 function groupByDate(runs: ProductionBatchResult[]) {
@@ -63,9 +60,8 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
   if (!runs.length) {
     return (
       <Card className={cn(ORDER_CARD_CLASS, className)}>
-        <CardContent className="p-6 text-center text-sm text-muted-foreground">
-          No production yet. Add each raw material (qty, unit, cost), variants made — full hisab
-          appears here for accounting.
+        <CardContent className="p-5 text-center text-sm text-muted-foreground">
+          No production yet. Saved batches will appear here with material and pack cost.
         </CardContent>
       </Card>
     );
@@ -79,13 +75,11 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
       : String(runs.length);
 
   return (
-    <div className={cn('space-y-4', className)}>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className={cn('space-y-3', className)}>
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h3 className="text-sm font-semibold">Production hisab (ledger)</h3>
-          <p className="text-xs text-muted-foreground">
-            Date · each raw material cost · variants · cost per product · per-product raw usage.
-          </p>
+          <h3 className="text-sm font-semibold">Production (ledger)</h3>
+          <p className="text-xs text-muted-foreground">Materials · pack cost · batch total</p>
         </div>
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
           <span>
@@ -95,7 +89,7 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
             Units: <strong className="text-foreground">{totalUnits}</strong>
           </span>
           <span>
-            Total cost: <strong className="text-foreground">{formatCurrency(totalCost)}</strong>
+            Total: <strong className="text-foreground">{formatCurrency(totalCost)}</strong>
           </span>
         </div>
       </div>
@@ -104,7 +98,7 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
         const dayCost = dayRuns.reduce((s, r) => s + r.materialCost, 0);
         const dayUnits = dayRuns.reduce((s, r) => s + r.unitsProduced, 0);
         return (
-          <div key={dateKey} className="space-y-2">
+          <div key={dateKey} className="space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium">{formatDateLabel(dateKey)}</p>
               <p className="text-xs text-muted-foreground">
@@ -112,7 +106,7 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {dayRuns.map((run) => {
                 const open = openId === run.id;
                 return (
@@ -121,7 +115,7 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
                       type="button"
                       className={cn(
                         ORDER_SECTION_HEADER_CLASS,
-                        'flex w-full items-start gap-2 text-left hover:bg-muted/40',
+                        'flex w-full items-start gap-2 py-2.5 text-left hover:bg-muted/40',
                       )}
                       onClick={() => setOpenId(open ? null : run.id)}
                     >
@@ -131,22 +125,21 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
                         <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-xs font-semibold">{run.batchNumber}</span>
                           <span className="text-xs text-muted-foreground">
                             {formatTime(run.createdAt)}
                           </span>
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
                             {run.unitsProduced} units
                           </Badge>
                         </div>
                         <p className="mt-0.5 truncate text-sm font-medium">{run.outputProductName}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                           {(run.inputs ?? [])
                             .map((i) => `${i.name} ${i.quantity}${i.unit}`)
                             .join(' + ') || '—'}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {' · '}
                           {(run.outputs ?? [])
                             .map((o) => `${o.units}×${o.variantLabel}`)
                             .join(' · ') || '—'}
@@ -157,57 +150,60 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
                           {formatCurrency(run.materialCost)}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          {formatCurrency(run.costPerUnit)}/product
+                          {formatCurrency(run.costPerUnit)}/unit avg
                         </p>
                       </div>
                     </button>
 
                     {open ? (
-                      <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-4 border-t')}>
-                        {/* Each raw separate */}
+                      <CardContent
+                        className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3 border-t py-3')}
+                      >
                         <div>
-                          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                             <Scale className="size-3.5" />
-                            Raw materials (each line separate)
+                            Raw materials
                           </p>
-                          <div className="overflow-x-auto rounded-lg border">
-                            <table className="w-full min-w-[480px] text-sm">
+                          <div className="overflow-x-auto rounded-md border">
+                            <table className="w-full min-w-[420px] text-sm">
                               <thead>
-                                <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
-                                  <th className="px-3 py-2 font-medium">Material</th>
-                                  <th className="px-3 py-2 font-medium">Qty</th>
-                                  <th className="px-3 py-2 font-medium">৳ / unit</th>
-                                  <th className="px-3 py-2 text-right font-medium">Line cost</th>
+                                <tr className="border-b bg-muted/30 text-left text-[11px] text-muted-foreground">
+                                  <th className="px-2.5 py-1.5 font-medium">Material</th>
+                                  <th className="px-2.5 py-1.5 font-medium">Qty</th>
+                                  <th className="px-2.5 py-1.5 font-medium">Rate</th>
+                                  <th className="px-2.5 py-1.5 text-right font-medium">Cost</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {(run.inputs ?? []).map((input, i) => (
-                                  <tr key={`${input.name}-${i}`} className="border-b border-border/50">
-                                    <td className="px-3 py-2">
-                                      <p className="font-medium">{input.name}</p>
+                                  <tr
+                                    key={`${input.name}-${i}`}
+                                    className="border-b border-border/40"
+                                  >
+                                    <td className="px-2.5 py-1.5">
+                                      <span className="font-medium">{input.name}</span>
                                       {input.sku ? (
-                                        <p className="font-mono text-[11px] text-muted-foreground">
+                                        <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
                                           {input.sku}
-                                        </p>
+                                        </span>
                                       ) : null}
                                     </td>
-                                    <td className="px-3 py-2 tabular-nums">
+                                    <td className="px-2.5 py-1.5 tabular-nums">
                                       {input.quantity} {input.unit}
                                     </td>
-                                    <td className="px-3 py-2 tabular-nums">
-                                      {formatCurrency(input.costPerKg)}
-                                      <span className="text-muted-foreground">/{input.unit}</span>
+                                    <td className="px-2.5 py-1.5 tabular-nums text-muted-foreground">
+                                      {formatCurrency(input.costPerKg)}/{input.unit}
                                     </td>
-                                    <td className="px-3 py-2 text-right font-medium tabular-nums">
+                                    <td className="px-2.5 py-1.5 text-right font-medium tabular-nums">
                                       {formatCurrency(input.totalCost)}
                                     </td>
                                   </tr>
                                 ))}
                                 <tr className="bg-muted/20 font-semibold">
-                                  <td className="px-3 py-2" colSpan={3}>
-                                    Total production cost
+                                  <td className="px-2.5 py-1.5" colSpan={3}>
+                                    Total
                                   </td>
-                                  <td className="px-3 py-2 text-right tabular-nums">
+                                  <td className="px-2.5 py-1.5 text-right tabular-nums text-primary">
                                     {formatCurrency(run.materialCost)}
                                   </td>
                                 </tr>
@@ -216,89 +212,66 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
                           </div>
                         </div>
 
-                        {/* Per product raw usage */}
                         <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Per product — each raw how much
+                          <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <Package className="size-3.5" />
+                            Cost per pack
                           </p>
-                          <div className="mb-2 flex flex-wrap gap-3 text-sm">
-                            <span>
-                              Cost per product:{' '}
-                              <strong>{formatCurrency(run.costPerUnit)}</strong>
-                            </span>
-                            <span className="text-muted-foreground">
-                              ({run.unitsProduced} units)
-                            </span>
-                          </div>
-                          <div className="overflow-x-auto rounded-lg border">
-                            <table className="w-full min-w-[400px] text-sm">
+                          <div className="overflow-x-auto rounded-md border">
+                            <table className="w-full min-w-[420px] text-sm">
                               <thead>
-                                <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
-                                  <th className="px-3 py-2 font-medium">Raw material</th>
-                                  <th className="px-3 py-2 font-medium">Qty / product</th>
-                                  <th className="px-3 py-2 text-right font-medium">৳ / product</th>
+                                <tr className="border-b bg-muted/30 text-left text-[11px] text-muted-foreground">
+                                  <th className="px-2.5 py-1.5 font-medium">Pack</th>
+                                  <th className="px-2.5 py-1.5 font-medium">Qty</th>
+                                  <th className="px-2.5 py-1.5 font-medium">Cost / unit</th>
+                                  <th className="px-2.5 py-1.5 text-right font-medium">
+                                    Batch share
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {(run.perUnitRawUsage ?? []).map((u, i) => (
-                                  <tr key={`${u.name}-${i}`} className="border-b border-border/50">
-                                    <td className="px-3 py-2 font-medium">{u.name}</td>
-                                    <td className="px-3 py-2 tabular-nums">
-                                      {u.quantityPerUnit} {u.unit}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                      {formatCurrency(u.costPerUnit)}
-                                    </td>
-                                  </tr>
+                                {(run.outputs ?? []).map((o) => (
+                                  <React.Fragment key={o.variantId}>
+                                    <tr className="border-b border-border/40">
+                                      <td className="px-2.5 py-1.5 font-medium">
+                                        {o.variantLabel}{' '}
+                                        <span className="text-[11px] font-normal text-muted-foreground">
+                                          ({displayPackGrams(o.variantLabel, o.gramsPerUnit)}g)
+                                        </span>
+                                      </td>
+                                      <td className="px-2.5 py-1.5 tabular-nums">{o.units}</td>
+                                      <td className="px-2.5 py-1.5 tabular-nums">
+                                        {formatCurrency(o.costPerUnit)}
+                                      </td>
+                                      <td className="px-2.5 py-1.5 text-right font-medium tabular-nums text-primary">
+                                        {formatCurrency(o.cost)}
+                                      </td>
+                                    </tr>
+                                    {(o.rawUsage?.length ?? 0) > 0 ? (
+                                      <tr className="border-b border-border/30 bg-muted/10">
+                                        <td
+                                          colSpan={4}
+                                          className="px-2.5 py-1 text-[11px] leading-relaxed text-muted-foreground"
+                                        >
+                                          {(o.rawUsage ?? [])
+                                            .map(
+                                              (u) =>
+                                                `${u.name} ${u.quantityPerUnit}${u.unit} (${formatCurrency(u.costPerUnit)})`,
+                                            )
+                                            .join(' · ')}
+                                        </td>
+                                      </tr>
+                                    ) : null}
+                                  </React.Fragment>
                                 ))}
                               </tbody>
                             </table>
                           </div>
                         </div>
 
-                        {/* Variants */}
-                        <div>
-                          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            <Package className="size-3.5" />
-                            Variants made (weight share)
-                          </p>
-                          <div className="space-y-2">
-                            {(run.outputs ?? []).map((o) => (
-                              <div key={o.variantId} className="rounded-lg border p-3">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <p className="text-sm font-medium">
-                                    {o.units}× {o.variantLabel}{' '}
-                                    <span className="text-xs text-muted-foreground">
-                                      ({o.gramsPerUnit}g)
-                                    </span>
-                                  </p>
-                                  <span className="text-xs font-medium tabular-nums">
-                                    {formatCurrency(o.costPerUnit)}/unit · batch{' '}
-                                    {formatCurrency(o.cost)}
-                                  </span>
-                                </div>
-                                <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-                                  {(o.rawUsage ?? []).map((u, i) => (
-                                    <li key={`${o.variantId}-${u.name}-${i}`}>
-                                      {u.name}: {u.quantityPerUnit} {u.unit} ·{' '}
-                                      {formatCurrency(u.costPerUnit)}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">Accounting:</span> batch{' '}
-                          <span className="font-mono">{run.batchNumber}</span> · total material{' '}
-                          {formatCurrency(run.materialCost)} · avg{' '}
-                          {formatCurrency(run.costPerUnit)}/product · journal raw → finished goods.
-                          {run.note ? (
-                            <span className="mt-1 block">Note: {run.note}</span>
-                          ) : null}
-                        </div>
+                        {run.note ? (
+                          <p className="text-[11px] text-muted-foreground">Note: {run.note}</p>
+                        ) : null}
                       </CardContent>
                     ) : null}
                   </Card>

@@ -27,7 +27,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const EVENT_LABELS: Record<string, string> = {
@@ -264,10 +264,7 @@ export function CourierHubPage() {
                       {EVENT_LABELS[ev.type] ?? ev.type}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(ev.createdAt).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatTime(ev.createdAt)}
                     </span>
                   </div>
                   <p className="mt-1 font-medium">

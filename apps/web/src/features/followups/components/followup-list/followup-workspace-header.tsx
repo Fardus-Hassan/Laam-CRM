@@ -4,6 +4,7 @@ import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type FollowupWorkspaceHeaderProps = {
@@ -20,7 +21,7 @@ export function FollowupWorkspaceHeader({
   className,
 }: FollowupWorkspaceHeaderProps) {
   const refreshedLabel = lastRefreshedAt
-    ? `Updated ${lastRefreshedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+    ? `Updated ${formatTime(lastRefreshedAt)}`
     : null;
 
   return (

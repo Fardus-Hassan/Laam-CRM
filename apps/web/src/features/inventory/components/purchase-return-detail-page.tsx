@@ -20,7 +20,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export function PurchaseReturnDetailPage() {
@@ -178,7 +178,7 @@ export function PurchaseReturnDetailPage() {
                   ) : null}
                   {detail.completedAt ? (
                     <div className="sm:col-span-2 text-xs text-muted-foreground">
-                      Completed {new Date(detail.completedAt).toLocaleString('en-GB')}
+                      Completed {formatDateTime(detail.completedAt)}
                     </div>
                   ) : null}
                 </CardContent>

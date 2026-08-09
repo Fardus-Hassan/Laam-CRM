@@ -25,6 +25,7 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { downloadCsv } from '@/lib/export-csv';
 import { rangeFromISO, toISODateRange } from '@/lib/date-range';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
 
@@ -134,7 +135,7 @@ export function StockMovementsPage() {
       'stock-movements.csv',
       ['Date', 'Product', 'SKU', 'Variant', 'Warehouse', 'Change', 'Before', 'After', 'Reason', 'Note', 'By'],
       items.map((m) => [
-        new Date(m.createdAt).toLocaleString('en-GB'),
+        formatDateTime(m.createdAt),
         m.productName ?? '',
         m.productSku ?? '',
         m.variantLabel ?? '',
@@ -246,12 +247,7 @@ export function StockMovementsPage() {
             id: m.id,
             cells: [
               <span key="d" className="whitespace-nowrap text-muted-foreground">
-                {new Date(m.createdAt).toLocaleString('en-GB', {
-                  day: '2-digit',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {formatDateTime(m.createdAt)}
               </span>,
               <div key="p" className="min-w-0">
                 <p className="truncate font-medium">{m.productName ?? '—'}</p>

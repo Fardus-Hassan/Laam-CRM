@@ -601,15 +601,17 @@ export type UpdateMixerRecipePayload = z.infer<typeof updateMixerRecipePayloadSc
 
 /** One raw material line in a production batch (own qty unit + cost). */
 export const productionRawMaterialSchema = z.object({
-  /** Optional inventory product for stock deduct. */
-  productId: z.string().optional(),
+  /** Linked inventory product — required for stock deduction. */
+  productId: z.string().min(1),
+  /** Prefer this variant; otherwise server picks best-stocked in warehouse. */
+  variantId: z.string().optional(),
   name: z.string().min(1),
   quantity: z.number().positive(),
   unit: z.string().min(1).max(32),
   uomId: z.string().optional(),
   /** Line total in ৳. */
   totalCost: z.number().nonnegative(),
-  /** Rate in ৳ per base mass/volume unit (legacy field name costPerKg). */
+  /** Rate in ৳ per selected unit (legacy field name costPerKg). */
   costPerKg: z.number().nonnegative(),
 });
 
@@ -637,9 +639,13 @@ export const productionRawUsageSchema = z.object({
 export type ProductionRawUsage = z.infer<typeof productionRawUsageSchema>;
 
 export const runProductionBatchPayloadSchema = z.object({
-  outputProductId: z.string(),
-  /** Multiple raw materials (Kalojira, Honey, Jafran, …). */
-  rawMaterials: z.array(productionRawMaterialSchema).min(1),
+  outputProductId: z.string().min(1),
+  /** When set, run is tied to this recipe (lastMixedAt + audit). */
+  recipeId: z.string().optional(),
+  /** Warehouse to consume from / receive into. Omit = org default. */
+  warehouseId: z.string().optional(),
+  /** Multiple raw materials (must be linked products). */
+  rawMaterials: z.array(productionRawMaterialSchema).min(1).max(50),
   /** Per-variant output plan (e.g. 20×500g + 10×1kg). */
   outputs: z.array(productionOutputLineSchema).min(1),
   note: z.string().optional(),
@@ -653,6 +659,8 @@ export const productionBatchResultSchema = z.object({
   outputProductId: z.string(),
   outputProductName: z.string(),
   outputSku: z.string(),
+  recipeId: z.string().optional(),
+  warehouseId: z.string().optional(),
   unitsProduced: z.number().int(),
   /** Sum of all raw line costs. */
   materialCost: z.number(),
@@ -662,6 +670,7 @@ export const productionBatchResultSchema = z.object({
   inputs: z.array(
     z.object({
       productId: z.string().optional(),
+      variantId: z.string().optional(),
       name: z.string(),
       sku: z.string().optional(),
       quantity: z.number(),
@@ -710,6 +719,7 @@ export const productionPreviewResultSchema = z.object({
   inputs: z.array(
     z.object({
       productId: z.string().optional(),
+      variantId: z.string().optional(),
       name: z.string(),
       sku: z.string().optional(),
       quantity: z.number(),

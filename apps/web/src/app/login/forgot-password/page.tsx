@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
@@ -24,7 +24,7 @@ import type { OtpChallengeResponse } from '@laam/types';
 
 const STEPS = [
   { id: 'email', label: 'Email' },
-  { id: 'verify', label: 'Verify OTP' },
+  { id: 'verify', label: 'Verify' },
   { id: 'reset', label: 'New password' },
 ];
 
@@ -128,115 +128,123 @@ export default function ForgotPasswordPage() {
     );
   }
 
+  const stepSubtitles = [
+    `We'll send a verification code for your ${brand.name} account.`,
+    'Enter the 6-digit code to continue.',
+    'Choose a new password for your account.',
+  ];
+
   return (
-    <AuthBrandShell subtitle={`Reset password for ${brand.name}`}>
-      <Card className="w-full border-border/70 shadow-xl backdrop-blur-sm">
-        <CardHeader className="space-y-4">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10">
-            <KeyRound className="size-5 text-primary" />
-          </div>
-          <div>
-            <CardTitle className="text-xl">Reset password</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {platform ? 'Platform account' : `${tenantSlug} — company account`}
-            </p>
-          </div>
-          <Stepper steps={STEPS} currentStep={step} />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {step === 1 ? (
-            <form className="space-y-4" onSubmit={(e) => void handleRequestOtp(e)}>
-              <FormField label="Email" required>
-                <FormInput
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
-                />
-              </FormField>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Sending…' : 'Send verification code'}
-              </Button>
-            </form>
-          ) : null}
+    <AuthBrandShell
+      title="Reset password"
+      subtitle={stepSubtitles[step - 1]}
+      footer={
+        <p>
+          {platform ? 'Platform account' : tenantSlug ? `${tenantSlug} workspace` : 'Workspace'}
+        </p>
+      }
+    >
+      <Stepper steps={STEPS} currentStep={step} className="mb-2" />
 
-          {step === 2 ? (
-            <form className="space-y-4" onSubmit={(e) => void handleVerifyOtp(e)}>
-              {challenge ? (
-                <>
-                  <OtpDeliveryHint
-                    delivery={challenge.delivery}
-                    message={challenge.message}
-                    devOtp={challenge.devOtp}
-                  />
-                  <OtpCountdown
-                    expiresAt={challenge.expiresAt}
-                    resendAfter={challenge.resendAfter}
-                    onResend={handleResend}
-                  />
-                </>
-              ) : null}
-
-              <FormField label="Verification code" required>
-                <OtpInput value={code} onChange={setCode} autoFocus />
-              </FormField>
-              <Button type="submit" className="w-full" disabled={loading || code.length < 6}>
-                {loading ? 'Verifying…' : 'Verify code'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                onClick={() => {
-                  setStep(1);
-                  setCode('');
-                  setChallenge(null);
-                }}
-              >
-                Use a different email
-              </Button>
-            </form>
-          ) : null}
-
-          {step === 3 ? (
-            <form className="space-y-4" onSubmit={(e) => void handleReset(e)}>
-              <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground">
-                Code verified for <strong>{email}</strong>. Choose a new password below.
-              </p>
-              <FormField label="New password" required>
-                <FormInput
-                  type="password"
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  autoFocus
-                />
-              </FormField>
-              <FormField label="Confirm password" required>
-                <FormInput
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-              </FormField>
-              <Button type="submit" className="w-full" disabled={loading}>
-                <ShieldCheck className="size-4" />
-                {loading ? 'Updating…' : 'Update password'}
-              </Button>
-            </form>
-          ) : null}
-
-          <Button type="button" variant="link" className="w-full" asChild>
-            <Link href="/login">
-              <ArrowLeft className="size-3.5" />
-              Back to sign in
-            </Link>
+      {step === 1 ? (
+        <form className="space-y-4" onSubmit={(e) => void handleRequestOtp(e)}>
+          <FormField label="Email" required>
+            <FormInput
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+              className="h-10"
+            />
+          </FormField>
+          <Button type="submit" size="lg" className="h-11 w-full text-sm font-semibold" disabled={loading}>
+            {loading ? 'Sending…' : 'Send verification code'}
           </Button>
-        </CardContent>
-      </Card>
+        </form>
+      ) : null}
+
+      {step === 2 ? (
+        <form className="space-y-4" onSubmit={(e) => void handleVerifyOtp(e)}>
+          {challenge ? (
+            <>
+              <OtpDeliveryHint
+                delivery={challenge.delivery}
+                message={challenge.message}
+                devOtp={challenge.devOtp}
+              />
+              <OtpCountdown
+                expiresAt={challenge.expiresAt}
+                resendAfter={challenge.resendAfter}
+                onResend={handleResend}
+              />
+            </>
+          ) : null}
+
+          <FormField label="Verification code" required>
+            <OtpInput value={code} onChange={setCode} autoFocus />
+          </FormField>
+          <Button
+            type="submit"
+            size="lg"
+            className="h-11 w-full text-sm font-semibold"
+            disabled={loading || code.length < 6}
+          >
+            {loading ? 'Verifying…' : 'Verify code'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => {
+              setStep(1);
+              setCode('');
+              setChallenge(null);
+            }}
+          >
+            Use a different email
+          </Button>
+        </form>
+      ) : null}
+
+      {step === 3 ? (
+        <form className="space-y-4" onSubmit={(e) => void handleReset(e)}>
+          <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
+            Verified <span className="font-medium text-foreground">{email}</span>
+          </p>
+          <FormField label="New password" required>
+            <FormInput
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              className="h-10"
+              autoFocus
+            />
+          </FormField>
+          <FormField label="Confirm password" required>
+            <FormInput
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="h-10"
+            />
+          </FormField>
+          <Button type="submit" size="lg" className="h-11 w-full text-sm font-semibold" disabled={loading}>
+            <ShieldCheck className="size-4" />
+            {loading ? 'Updating…' : 'Update password'}
+          </Button>
+        </form>
+      ) : null}
+
+      <Button type="button" variant="link" className="mt-2 h-auto w-full px-0 text-muted-foreground" asChild>
+        <Link href="/login">
+          <ArrowLeft className="size-3.5" />
+          Back to sign in
+        </Link>
+      </Button>
     </AuthBrandShell>
   );
 }

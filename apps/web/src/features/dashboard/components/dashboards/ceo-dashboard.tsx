@@ -28,6 +28,8 @@ import { CHART_COLORS } from '@/components/charts/chart-theme';
 import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardDate } from '@/features/dashboard/providers/dashboard-date-provider';
+import { useAuth } from '@/features/auth/hooks/use-auth';
+import { getDashboardChromeForUser } from '@/features/dashboard/config/dashboard-templates';
 import { useViewMore } from '@/features/dashboard/hooks/use-view-more';
 import { DashboardWidget } from '@/features/dashboard/hooks/use-dashboard-widget';
 import { formatCurrency } from '@/lib/format';
@@ -57,7 +59,12 @@ const HIGHLIGHT_ICONS: Record<string, LucideIcon> = {
 };
 
 export function CeoDashboardView({ data }: CeoDashboardViewProps) {
+  const { user } = useAuth();
   const { range, setRange } = useDashboardDate();
+  const chrome = user ? getDashboardChromeForUser(user) : null;
+  const title = chrome?.title ?? data.title;
+  const welcomeMessage = chrome?.welcomeMessage ?? data.welcomeMessage;
+  const subtitle = chrome?.subtitle ?? data.subtitle;
 
   const deptViewMore = useViewMore(data.departmentPerformance.rows, 4);
   const teamsViewMore = useViewMore(data.topTeams.rows, 4);
@@ -95,17 +102,17 @@ export function CeoDashboardView({ data }: CeoDashboardViewProps) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-foreground sm:text-lg">
-            {data.title}
+            {title}
           </h2>
-          {data.welcomeMessage ? (
+          {welcomeMessage ? (
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {data.welcomeMessage}
-              {data.subtitle ? (
-                <span className="text-foreground"> · {data.subtitle}</span>
+              {welcomeMessage}
+              {subtitle ? (
+                <span className="text-foreground"> · {subtitle}</span>
               ) : null}
             </p>
-          ) : data.subtitle ? (
-            <p className="mt-0.5 text-sm text-muted-foreground">{data.subtitle}</p>
+          ) : subtitle ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
           ) : null}
         </div>
         <DateRangePicker

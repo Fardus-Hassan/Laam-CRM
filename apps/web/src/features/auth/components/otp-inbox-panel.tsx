@@ -18,25 +18,26 @@ import {
 } from '@/components/ui/table';
 import { otpInboxApi } from '@/features/auth/api/otp-inbox-api';
 import { OtpCountdown } from '@/features/auth/components/otp-countdown';
+import { openNotificationUnreadStream } from '@/features/notifications/lib/notification-unread-stream';
 import { parseApiErrorMessage } from '@/lib/api/parse-api-error';
+import { formatDateTime } from '@/lib/format';
+
+/** Backup poll; primary refresh is via notification SSE when a new OTP lands. */
+const INBOX_BACKUP_POLL_MS = 30_000;
 
 function formatPurpose(purpose: OtpInboxItem['purpose']) {
   return OTP_PURPOSE_LABELS[purpose] ?? purpose;
 }
 
 function formatWhen(iso: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(iso));
+  return formatDateTime(iso);
 }
 
 export function OtpInboxPanel() {
   const [items, setItems] = React.useState<OtpInboxItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const lastUnreadRef = React.useRef<number | null>(null);
 
   const load = React.useCallback(async (silent = false) => {
     if (!silent) {
@@ -48,7 +49,9 @@ export function OtpInboxPanel() {
       const next = await otpInboxApi.list();
       setItems(next);
     } catch (error) {
-      toast.error(parseApiErrorMessage(error, 'Could not load OTP inbox'));
+      if (!silent) {
+        toast.error(parseApiErrorMessage(error, 'Could not load OTP inbox'));
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -57,8 +60,55 @@ export function OtpInboxPanel() {
 
   React.useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(true), 30_000);
-    return () => window.clearInterval(timer);
+  }, [load]);
+
+  React.useEffect(() => {
+    const ac = new AbortController();
+    let retryTimer = 0;
+    let attempt = 0;
+
+    async function connect() {
+      try {
+        attempt = 0;
+        await openNotificationUnreadStream({
+          signal: ac.signal,
+          onUnread: (count) => {
+            const prev = lastUnreadRef.current;
+            lastUnreadRef.current = count;
+            // New unread (OTP notify) → refresh inbox immediately.
+            if (prev !== null && count > prev) {
+              void load(true);
+            }
+          },
+        });
+      } catch {
+        // reconnect below
+      }
+      if (ac.signal.aborted) return;
+      attempt += 1;
+      const delay = Math.min(30_000, 1500 * 2 ** Math.min(attempt, 4));
+      retryTimer = window.setTimeout(() => void connect(), delay);
+    }
+
+    void connect();
+
+    const backup = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      void load(true);
+    }, INBOX_BACKUP_POLL_MS);
+
+    function onVisible() {
+      if (document.visibilityState === 'hidden') return;
+      void load(true);
+    }
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      ac.abort();
+      window.clearTimeout(retryTimer);
+      window.clearInterval(backup);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [load]);
 
   return (
@@ -82,17 +132,20 @@ export function OtpInboxPanel() {
           disabled={refreshing}
           onClick={() => void load(true)}
         >
-          <RefreshCw className={refreshing ? 'size-3.5 animate-spin' : 'size-3.5'} />
+          <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </CardHeader>
       <CardContent className="p-0">
         {loading ? (
-          <p className="p-4 text-sm text-muted-foreground">Loading inbox…</p>
+          <div className="space-y-2 p-4">
+            <div className="h-10 animate-pulse rounded-md bg-muted/50" />
+            <div className="h-10 animate-pulse rounded-md bg-muted/40" />
+          </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+          <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
             <Shield className="size-8 text-muted-foreground/50" />
-            <p className="text-sm font-medium">No active OTP requests</p>
+            <p className="text-sm font-medium">No active OTP requests.</p>
             <p className="max-w-sm text-xs text-muted-foreground">
               When a team member resets a password, changes password, or signs in from a new
               device, their code will appear here.
@@ -102,38 +155,35 @@ export function OtpInboxPanel() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
+                <TableHead>Staff</TableHead>
                 <TableHead>Purpose</TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead>Expires</TableHead>
+                <TableHead>Requested</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>
-                    <div className="font-medium">{item.userName ?? '—'}</div>
-                    <div className="text-xs text-muted-foreground">{item.email}</div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{item.userName ?? '—'}</p>
+                      <p className="truncate text-xs text-muted-foreground">{item.email}</p>
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm">{formatPurpose(item.purpose)}</TableCell>
                   <TableCell>
                     {item.relayCode ? (
-                      <DataTableCopyableText
-                        value={item.relayCode}
-                        copyToastMessage="OTP copied"
-                        className="font-mono text-base font-semibold tracking-widest"
-                      />
+                      <DataTableCopyableText value={item.relayCode} className="font-mono text-sm" />
                     ) : (
-                      <span className="text-xs text-muted-foreground">Consumed</span>
+                      <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-xs">
-                    <div>{formatWhen(item.expiresAt)}</div>
-                    <OtpCountdown
-                      expiresAt={item.expiresAt}
-                      resendAfter={item.resendAfter}
-                      className="mt-1 text-xs"
-                    />
+                  <TableCell>
+                    <OtpCountdown expiresAt={item.expiresAt} resendAfter={item.resendAfter} />
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {formatWhen(item.createdAt)}
                   </TableCell>
                 </TableRow>
               ))}

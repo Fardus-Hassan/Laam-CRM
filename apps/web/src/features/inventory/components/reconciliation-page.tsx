@@ -16,7 +16,7 @@ import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { InventoryResponsiveList } from '@/features/inventory/components/inventory-responsive-list';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
 import { ORDER_PAGE_GAP } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const EXPIRY_WINDOW_OPTIONS = [
@@ -228,7 +228,7 @@ export function ReconciliationPage() {
                         : 'text-muted-foreground',
                     )}
                   >
-                    {new Date(lot.expiresAt).toLocaleDateString('en-GB')}
+                    {formatDate(lot.expiresAt)}
                     {lot.daysToExpiry !== undefined ? ` (${lot.daysToExpiry}d)` : ''}
                   </span>
                 ) : (

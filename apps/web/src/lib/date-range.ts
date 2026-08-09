@@ -129,7 +129,7 @@ export function formatDateRangeLabelLong(range: DateRange | undefined): string {
   if (!range?.from || !range.to) {
     return 'All Time';
   }
-  return `${format(range.from, 'dd/MM/yyyy HH:mm:ss')} - ${format(range.to, 'dd/MM/yyyy HH:mm:ss')}`;
+  return `${format(range.from, 'dd/MM/yyyy h:mm:ss a')} - ${format(range.to, 'dd/MM/yyyy h:mm:ss a')}`;
 }
 
 export function toISODateRange(range: DateRange | undefined): {

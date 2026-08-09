@@ -19,6 +19,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export function BdCourierIntegrationSettingsPage() {
@@ -211,7 +212,7 @@ export function BdCourierIntegrationSettingsPage() {
                   <p className="text-xs text-destructive">Last error: {settings.lastError}</p>
                 ) : settings?.lastSyncAt ? (
                   <p className="text-xs text-muted-foreground">
-                    Last OK sync: {new Date(settings.lastSyncAt).toLocaleString()}
+                    Last OK sync: {formatDateTime(settings.lastSyncAt)}
                   </p>
                 ) : null}
 
@@ -415,7 +416,7 @@ function BdCourierPlanCard({
             ) : null}
 
             <p className="text-[10px] text-muted-foreground">
-              Updated {new Date(plan.fetchedAt).toLocaleString()}
+              Updated {formatDateTime(plan.fetchedAt)}
             </p>
           </>
         )}
@@ -463,7 +464,7 @@ function UsageBar({ label, used, limit }: { label: string; used: number; limit: 
 }
 
 function formatPlanDate(value: string): string {
-  const d = new Date(value.includes('T') ? value : value.replace(' ', 'T'));
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString();
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  const formatted = formatDate(normalized);
+  return formatted === '—' ? value : formatted;
 }

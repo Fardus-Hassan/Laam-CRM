@@ -20,6 +20,7 @@ import {
   CourierLogoStrip,
   CourierSuccessRing,
 } from '@/features/courier/components/courier-success-visuals';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type CourierPhoneHistoryPanelProps = {
@@ -179,7 +180,7 @@ export function CourierPhoneHistoryPanel({
 
           {data ? (
             <p className="text-[10px] text-muted-foreground">
-              Updated {new Date(data.fetchedAt).toLocaleString()} · {data.source}
+              Updated {formatDateTime(data.fetchedAt)} · {data.source}
               {data.stale ? ' · cache expired — Refresh for latest' : ''}
               {providers.length ? ` · ${providers.length} couriers` : ''}
             </p>

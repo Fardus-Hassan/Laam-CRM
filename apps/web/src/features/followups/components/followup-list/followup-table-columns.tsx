@@ -25,6 +25,7 @@ import {
   FOLLOWUP_TYPE_LABELS,
 } from '@/features/followups/config/followup-filters';
 import { FormSelect } from '@/components/form/form-select';
+import { formatDate, formatDateTime } from '@/lib/format';
 
 export const FOLLOWUP_TABLE_PINNED = {
   left: ['select', 'sl'],
@@ -32,21 +33,11 @@ export const FOLLOWUP_TABLE_PINNED = {
 };
 
 export function formatFollowupDate(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(value));
+  return formatDate(value);
 }
 
 export function formatFollowupDateTime(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+  return formatDateTime(value);
 }
 
 const STATUS_OPTIONS = (

@@ -443,9 +443,13 @@ class CreatePurchaseReturnDto {
 }
 
 class ProductionRawMaterialDto {
+  @IsString()
+  @MinLength(1)
+  productId!: string;
+
   @IsOptional()
   @IsString()
-  productId?: string;
+  variantId?: string;
 
   @IsString()
   @MinLength(1)

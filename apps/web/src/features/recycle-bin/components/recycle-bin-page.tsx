@@ -27,6 +27,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDateTime } from '@/lib/format';
 
 const ENTITY_LABELS: Record<RecycleEntityType, string> = {
   order: 'Order',
@@ -184,7 +185,7 @@ export function RecycleBinPage() {
                       </TableCell>
                       <TableCell>{item.deletedBy}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(item.deletedAt).toLocaleString()}
+                        {formatDateTime(item.deletedAt)}
                       </TableCell>
                       <TableCell className="text-right">
                         <Can permission="recycle.manage">

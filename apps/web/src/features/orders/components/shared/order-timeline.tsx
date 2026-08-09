@@ -7,6 +7,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type OrderTimelineProps = {
@@ -62,13 +63,7 @@ export function OrderTimeline({
                     <p className="mt-0.5 text-xs text-muted-foreground">{event.description}</p>
                   ) : null}
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    {new Intl.DateTimeFormat('en-GB', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    }).format(new Date(event.timestamp))}
+                    {formatDateTime(event.timestamp)}
                     {event.actorName ? ` · ${event.actorName}` : ''}
                   </p>
                 </div>

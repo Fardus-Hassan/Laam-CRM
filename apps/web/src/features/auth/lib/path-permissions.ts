@@ -42,7 +42,7 @@ const EXTRA_DASHBOARD_PATH_PERMISSIONS: Record<string, Permission[]> = {
   '/dashboard/inventory/mixer': ['inventory.view', 'inventory.mixer'],
   '/dashboard/inventory/purchase-returns': ['inventory.purchase'],
   '/dashboard/accounting': ['accounting.view'],
-  '/dashboard/settings/security': ['security.view'],
+  // Own password / security — any signed-in user (OTP inbox gated in-page).
   '/dashboard/settings/brand': ['brand.view', 'brand.manage', 'settings.manage'],
   '/dashboard/settings/categories': [
     'settings.manage',
@@ -55,6 +55,12 @@ const EXTRA_DASHBOARD_PATH_PERMISSIONS: Record<string, Permission[]> = {
   '/dashboard/platform/tenants': ['platform.view', 'platform.manage'],
   '/dashboard/users': ['users.view', 'users.manage', 'users.invite'],
 };
+
+/**
+ * Personal account routes — available to every authenticated user.
+ * Page UI still gates admin-only sections (e.g. Staff OTP inbox).
+ */
+const AUTHENTICATED_ONLY_PATHS = new Set<string>(['/dashboard/settings/security']);
 
 let cachedMap: Map<string, Permission[]> | null = null;
 
@@ -99,6 +105,11 @@ export function canAccessPath(
   userPermissions: readonly Permission[],
 ): boolean {
   const path = normalizePath(pathname);
+
+  if (AUTHENTICATED_ONLY_PATHS.has(path)) {
+    return true;
+  }
+
   const required = requiredPermissionsForPath(pathname);
 
   // Unmapped /dashboard/* routes are denied (nav + extras are the allowlist).

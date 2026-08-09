@@ -1,7 +1,7 @@
 import type { OrderDetail } from '@laam/types';
 import JsBarcode from 'jsbarcode';
 
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 
 export type OrderPrintType = 'invoice' | 'packing' | 'label' | 'barcode';
 
@@ -13,12 +13,7 @@ export function parseOrderPrintType(value: string | null | undefined): OrderPrin
 }
 
 export function formatPrintDate(iso?: string) {
-  const d = iso ? new Date(iso) : new Date();
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(d);
+  return formatDate(iso ?? new Date());
 }
 
 export function escapeHtml(value: string) {

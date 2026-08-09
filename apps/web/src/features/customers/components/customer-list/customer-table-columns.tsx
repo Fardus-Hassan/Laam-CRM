@@ -30,6 +30,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
+import { formatDate, formatDateTime } from '@/lib/format';
 
 export const CUSTOMER_TABLE_PINNED = {
   left: ['select', 'customerNumber'],
@@ -37,21 +38,11 @@ export const CUSTOMER_TABLE_PINNED = {
 };
 
 export function formatCustomerDate(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(value));
+  return formatDate(value);
 }
 
 export function formatCustomerDateTime(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+  return formatDateTime(value);
 }
 
 export function buildCustomerTableColumns(options?: {

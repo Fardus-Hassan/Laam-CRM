@@ -2,10 +2,7 @@ import type { UserRole } from '@laam/types';
 import { ROLE_LABELS } from '@laam/types';
 
 /** Roles that share the Sales Head dashboard layout (extend per COO spec). */
-export const SALES_HEAD_ROLES: UserRole[] = [
-  'sales_manager',
-  'org_admin',
-];
+export const SALES_HEAD_ROLES: UserRole[] = ['sales_manager'];
 
 /** Roles that share the Super Admin dashboard layout. */
 export const SUPER_ADMIN_ROLES: UserRole[] = ['super_admin'];

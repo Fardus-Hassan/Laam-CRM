@@ -3,7 +3,6 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Fingerprint, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
@@ -142,122 +141,124 @@ function LoginPageContent() {
     return <SessionBootScreen message="Loading your workspace…" />;
   }
 
+  const hostLabel = platform ? 'Laam Platform' : tenantSlug ? `${tenantSlug}.localhost` : 'Workspace';
+
   return (
     <AuthBrandShell
+      title={step === 1 ? 'Sign in' : 'Verify device'}
       subtitle={
         step === 1
           ? platform
-            ? 'Super admin — sign in at localhost (not a company subdomain).'
-            : `Sign in to ${brand.name}`
-          : 'New device detected — enter the verification code'
+            ? 'Super admin access for the platform host.'
+            : `Continue to ${brand.name}`
+          : 'Enter the code sent for this device to finish signing in.'
+      }
+      footer={
+        step === 1 ? (
+          <>
+            <p>
+              Signing in to <span className="font-medium text-foreground">{hostLabel}</span>
+            </p>
+            {/* {!platform ? (
+              <p>
+                Super admin? Use{' '}
+                <Link href="http://localhost:3000/login" className="text-primary underline-offset-2 hover:underline">
+                  localhost:3000/login
+                </Link>
+              </p>
+            ) : (
+              <p>
+                Company admin? Open{' '}
+                <Link
+                  href="http://laam.localhost:3000/login"
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  laam.localhost:3000/login
+                </Link>
+              </p>
+            )} */}
+          </>
+        ) : null
       }
     >
-      <Card className="w-full border-border/70 shadow-xl backdrop-blur-sm">
-        <CardHeader className="space-y-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10">
-            {step === 1 ? (
-              <LogIn className="size-5 text-primary" />
-            ) : (
-              <Fingerprint className="size-5 text-primary" />
-            )}
+      {step === 2 ? (
+        <Stepper steps={STEPS} currentStep={step} className="mb-2" />
+      ) : null}
+
+      {step === 1 ? (
+        <form className="space-y-4" onSubmit={(e) => void handleCredentials(e)}>
+          <FormField label="Email" required>
+            <FormInput
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+              className="h-10"
+            />
+          </FormField>
+          <FormField label="Password" required>
+            <FormInput
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-10"
+            />
+          </FormField>
+          <div className="flex justify-end">
+            <Link
+              href="/login/forgot-password"
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Forgot password?
+            </Link>
           </div>
-          <div>
-            <CardTitle className="text-xl">
-              {step === 1 ? 'Welcome back' : 'Verify device'}
-            </CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {platform ? 'Laam Platform' : `${tenantSlug}.localhost`}
-            </p>
-          </div>
-          <Stepper steps={STEPS} currentStep={step} />
-          {!platform && step === 1 ? (
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-800 dark:text-amber-200">
-              Super admin account works only on{' '}
-              <Link href="http://localhost:3000/login" className="font-medium underline">
-                localhost:3000/login
-              </Link>
-              . Use tenant owner credentials here.
-            </p>
+          <Button type="submit" size="lg" className="h-11 w-full text-sm font-semibold" disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign in'}
+          </Button>
+        </form>
+      ) : (
+        <form className="space-y-4" onSubmit={(e) => void handleDeviceVerify(e)}>
+          {deviceChallenge ? (
+            <>
+              <OtpDeliveryHint
+                delivery={deviceChallenge.delivery}
+                message={deviceChallenge.message}
+                devOtp={deviceChallenge.devOtp}
+              />
+              <OtpCountdown
+                expiresAt={deviceChallenge.expiresAt}
+                resendAfter={deviceChallenge.resendAfter}
+                onResend={handleResendDeviceOtp}
+              />
+            </>
           ) : null}
-        </CardHeader>
-        <CardContent>
-          {step === 1 ? (
-            <form className="space-y-4" onSubmit={(e) => void handleCredentials(e)}>
-              <FormField label="Email" required>
-                <FormInput
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="crm.laam@gmail.com"
-                />
-              </FormField>
-              <FormField label="Password" required>
-                <FormInput
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </FormField>
-              <div className="flex justify-end">
-                <Link
-                  href="/login/forgot-password"
-                  className="text-xs text-primary hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Signing in…' : 'Sign in'}
-              </Button>
-            </form>
-          ) : (
-            <form className="space-y-4" onSubmit={(e) => void handleDeviceVerify(e)}>
-              {deviceChallenge ? (
-                <>
-                  <OtpDeliveryHint
-                    delivery={deviceChallenge.delivery}
-                    message={deviceChallenge.message}
-                    devOtp={deviceChallenge.devOtp}
-                  />
-                  <OtpCountdown
-                    expiresAt={deviceChallenge.expiresAt}
-                    resendAfter={deviceChallenge.resendAfter}
-                    onResend={handleResendDeviceOtp}
-                  />
-                </>
-              ) : null}
-              <FormField label="Device verification code" required>
-                <OtpInput value={otpCode} onChange={setOtpCode} autoFocus />
-              </FormField>
-              <Button type="submit" className="w-full" disabled={loading || otpCode.length < 6}>
-                {loading ? 'Verifying…' : 'Verify & sign in'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                onClick={() => {
-                  setStep(1);
-                  setOtpCode('');
-                  setDeviceChallenge(null);
-                }}
-              >
-                Back to sign in
-              </Button>
-            </form>
-          )}
-          {platform && step === 1 ? (
-            <p className="mt-4 text-center text-xs text-muted-foreground">
-              Tenant admin? Open{' '}
-              <Link href="http://laam.localhost:3000/login" className="text-primary underline">
-                laam.localhost:3000/login
-              </Link>
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
+          <FormField label="Verification code" required>
+            <OtpInput value={otpCode} onChange={setOtpCode} autoFocus />
+          </FormField>
+          <Button
+            type="submit"
+            size="lg"
+            className="h-11 w-full text-sm font-semibold"
+            disabled={loading || otpCode.length < 6}
+          >
+            {loading ? 'Verifying…' : 'Verify & sign in'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => {
+              setStep(1);
+              setOtpCode('');
+              setDeviceChallenge(null);
+            }}
+          >
+            Back to sign in
+          </Button>
+        </form>
+      )}
     </AuthBrandShell>
   );
 }

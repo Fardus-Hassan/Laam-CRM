@@ -43,6 +43,7 @@ import {
   ORDER_PAGE_GAP,
   ORDER_SECTION_BODY_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 10;
@@ -224,11 +225,11 @@ export function BlockedListShell() {
                       </TableCell>
                       <TableCell className="text-sm">{entry.blockedByName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(entry.createdAt).toLocaleDateString()}
+                        {formatDate(entry.createdAt)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {entry.expiresAt
-                          ? new Date(entry.expiresAt).toLocaleDateString()
+                          ? formatDate(entry.expiresAt)
                           : 'Permanent'}
                       </TableCell>
                       <TableCell className="text-right">

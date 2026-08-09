@@ -14,7 +14,7 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { calcOrderPaymentTotals } from '@/features/orders/lib/order-payment-totals';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type OrderDetailSidebarMetaProps = {
@@ -26,16 +26,6 @@ type OrderPaymentStripProps = {
   order: OrderDetail;
   className?: string;
 };
-
-function formatOrderDate(iso: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(iso));
-}
 
 /** Compact order identity for the detail sidebar (replaces the old full-width header). */
 export function OrderDetailSidebarMeta({ order, className }: OrderDetailSidebarMetaProps) {
@@ -66,7 +56,7 @@ export function OrderDetailSidebarMeta({ order, className }: OrderDetailSidebarM
               <span className="text-border">·</span>
               <span className="inline-flex items-center gap-1">
                 <CalendarClock className="size-3" />
-                {formatOrderDate(order.createdAt)}
+                {formatDateTime(order.createdAt)}
               </span>
             </p>
             {order.assignedAgentName ? (

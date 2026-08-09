@@ -838,10 +838,12 @@ export function previewProductionBatch(payload: RunProductionBatchPayload): Prev
   };
   if (!output) return empty;
 
-  const raws = (payload.rawMaterials ?? []).filter((r) => r.name.trim() && r.quantity > 0);
+  const raws = (payload.rawMaterials ?? []).filter(
+    (r) => r.productId?.trim() && r.name.trim() && r.quantity > 0,
+  );
   const lines = (payload.outputs ?? []).filter((o) => o.units > 0);
   if (!raws.length) {
-    return { ...empty, limitedBy: 'Add at least one raw material' };
+    return { ...empty, limitedBy: 'Add at least one linked raw material' };
   }
   if (!lines.length) {
     return { ...empty, limitedBy: 'Enter units for at least one variant' };

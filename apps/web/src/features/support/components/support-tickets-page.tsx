@@ -29,6 +29,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'secondary'> = {
@@ -212,7 +213,7 @@ export function SupportTicketsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">{msg.authorName}</span>
                           <span className="text-xs text-muted-foreground">
-                            {new Date(msg.createdAt).toLocaleString()}
+                            {formatDateTime(msg.createdAt)}
                           </span>
                         </div>
                         <p className="mt-1 text-muted-foreground">{msg.body}</p>

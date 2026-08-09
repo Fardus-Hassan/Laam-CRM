@@ -25,6 +25,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 function slugify(value: string) {
@@ -233,7 +234,7 @@ export function WebsiteIntegrationsSettingsPage() {
                         <p className="text-xs text-muted-foreground">
                           Last ingest:{' '}
                           {store.lastIngestAt
-                            ? new Date(store.lastIngestAt).toLocaleString()
+                            ? formatDateTime(store.lastIngestAt)
                             : '—'}
                           {store.lastError ? ` · Error: ${store.lastError}` : ''}
                         </p>

@@ -27,7 +27,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -561,7 +561,7 @@ function LoginHistoryPanel() {
         r.email,
         r.ip,
         r.device,
-        new Date(r.loggedInAt).toLocaleString(),
+        formatDateTime(r.loggedInAt),
         r.status,
       ])}
       statusColumn={5}

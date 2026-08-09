@@ -8,7 +8,8 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import type { AuthSession, OtpChallengeResponse } from '@laam/types';
+import type { AuthSession, DashboardTemplate, OtpChallengeResponse } from '@laam/types';
+import { ROLE_DASHBOARD_TEMPLATE } from '@laam/types';
 
 import { PermissionResolverService } from '../common/permission-resolver.service';
 import { NotificationsService } from '../crm/notifications.service';
@@ -28,7 +29,11 @@ type UserWithOrg = {
   customRoleId: string | null;
   permissionGrants: string[];
   permissionDenies: string[];
-  customRole?: { permissions: string[] } | null;
+  customRole?: {
+    permissions: string[];
+    name: string;
+    dashboardTemplate: string | null;
+  } | null;
   organization: {
     id: string;
     name: string;
@@ -151,7 +156,8 @@ export class AuthService {
       delivery,
     });
 
-    if (user.organizationId) {
+    // Email delivery: notify the user. Admin-inbox OTPs notify org admins from OtpService.
+    if (user.organizationId && delivery === 'email') {
       this.emitSafe(
         this.notifications.create({
           organizationId: user.organizationId,
@@ -228,15 +234,17 @@ export class AuthService {
 
     this.assertLoginContext(user, tenantSlug);
 
+    const delivery = this.otpDeliveryForUser(user);
     const challenge = await this.otp.createChallenge({
       purpose: 'forgot_password',
       email: user.email,
       userId: user.id,
       organizationId: user.organizationId,
-      delivery: this.otpDeliveryForUser(user),
+      delivery,
     });
 
-    if (user.organizationId) {
+    // Email delivery: notify the user. Admin-inbox OTPs notify org admins from OtpService.
+    if (user.organizationId && delivery === 'email') {
       this.emitSafe(
         this.notifications.create({
           organizationId: user.organizationId,
@@ -558,15 +566,34 @@ export class AuthService {
     };
 
     const permissions = await this.permissionResolver.resolveFromUserRow(user);
+    const systemRole = user.systemRole as AuthSession['user']['role'];
+    const customTemplate = user.customRole?.dashboardTemplate;
+    const knownTemplates = new Set<string>([
+      'platform',
+      'executive',
+      'sales_head',
+      'team_leader',
+      'agent',
+      'marketing',
+      'support',
+      'finance',
+      'default',
+    ]);
+    const dashboardTemplate: DashboardTemplate =
+      customTemplate && knownTemplates.has(customTemplate)
+        ? (customTemplate as DashboardTemplate)
+        : ROLE_DASHBOARD_TEMPLATE[systemRole];
 
     return {
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.systemRole as AuthSession['user']['role'],
+        role: systemRole,
         organizationId: organization.id,
         customRoleId: user.customRoleId ?? undefined,
+        customRoleName: user.customRole?.name?.trim() || undefined,
+        dashboardTemplate,
         permissionGrants: user.permissionGrants as AuthSession['user']['permissionGrants'],
         permissionDenies: user.permissionDenies as AuthSession['user']['permissionDenies'],
         permissions,

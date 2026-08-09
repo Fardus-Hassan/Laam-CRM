@@ -2,8 +2,18 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { BadgeCheck, ChevronsUpDown, LogOut, Sparkles } from 'lucide-react';
+import {
+  Bell,
+  Building2,
+  ChevronsUpDown,
+  CreditCard,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  Shield,
+} from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/use-auth';
+import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import {
   DEMO_DASHBOARD_VIEWS,
   isDemoDashboardViewActive,
@@ -39,13 +49,19 @@ function getInitials(name: string) {
 }
 
 function UserMenuDropdownContent() {
-  const { user, logout, switchRole, canSwitchRole } = useAuth();
+  const { user, roleLabel, organization, logout, switchRole, canSwitchRole } = useAuth();
+  const { can } = usePermissions();
 
   if (!user) {
     return null;
   }
 
   const initials = getInitials(user.name);
+  const showDashboard = can('dashboard.view');
+  const showNotifications = can('notifications.view');
+  const showSettings = can('settings.view');
+  const showBrand = can(['brand.view', 'brand.manage', 'settings.manage']);
+  const showBilling = can(['billing.view', 'billing.manage']);
 
   return (
     <>
@@ -54,27 +70,66 @@ function UserMenuDropdownContent() {
           <Avatar className="size-8">
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
-          <div className="grid flex-1 text-left text-sm leading-tight">
+          <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium">{user.name}</span>
             <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+            {roleLabel ? (
+              <span className="mt-0.5 truncate text-[11px] font-medium text-primary">
+                {roleLabel}
+              </span>
+            ) : null}
           </div>
         </div>
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
-        <DropdownMenuItem>
-          <Sparkles />
-          Upgrade to Pro
-        </DropdownMenuItem>
-      </DropdownMenuGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuGroup>
+        {showDashboard ? (
+          <DropdownMenuItem asChild>
+            <Link href="/dashboard">
+              <LayoutDashboard />
+              Dashboard
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
+        {showNotifications ? (
+          <DropdownMenuItem asChild>
+            <Link href="/dashboard/notifications">
+              <Bell />
+              Notifications
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
+        {/* Own password — always available; page gates admin-only OTP inbox. */}
         <DropdownMenuItem asChild>
-          <Link href="/dashboard/settings">
-            <BadgeCheck />
-            Account & Settings
+          <Link href="/dashboard/settings/security">
+            <Shield />
+            Security & password
           </Link>
         </DropdownMenuItem>
+        {showSettings ? (
+          <DropdownMenuItem asChild>
+            <Link href="/dashboard/settings">
+              <Settings />
+              Account & settings
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
+        {showBrand ? (
+          <DropdownMenuItem asChild>
+            <Link href="/dashboard/settings/brand">
+              <Building2 />
+              {organization?.name ? `${organization.name} brand` : 'Organization brand'}
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
+        {showBilling ? (
+          <DropdownMenuItem asChild>
+            <Link href="/dashboard/billing">
+              <CreditCard />
+              Billing
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         {canSwitchRole ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>Switch dashboard (demo)</DropdownMenuSubTrigger>
@@ -188,7 +243,7 @@ export function TopBarUser() {
           roleLabel={roleLabel}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56 rounded-lg">
+      <DropdownMenuContent align="end" className="min-w-60 rounded-lg">
         <UserMenuDropdownContent />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -217,7 +272,7 @@ export function SidebarUser() {
             />
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="z-50 min-w-56 rounded-lg"
+            className="z-50 min-w-60 rounded-lg"
             side={isMobile ? 'bottom' : 'right'}
             align="end"
             sideOffset={8}

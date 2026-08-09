@@ -1259,29 +1259,42 @@ export class InventoryOperationsService {
     });
     if (!output) throw new NotFoundException('Finished product not found');
 
+    if (payload.recipeId) {
+      const recipe = await this.prisma.mixerRecipe.findFirst({
+        where: { id: payload.recipeId, organizationId },
+        select: { id: true, outputProductId: true },
+      });
+      if (!recipe) throw new BadRequestException('Mixer recipe not found');
+      if (recipe.outputProductId !== payload.outputProductId) {
+        throw new BadRequestException('Recipe output product does not match this run');
+      }
+    }
+
+    const warehouseId = await this.resolveProductionWarehouseId(
+      organizationId,
+      payload.warehouseId,
+    );
+
     const batchCount = await this.prisma.productionBatch.count({ where: { organizationId } });
     const batchNumber = `PRD-${2400 + batchCount + 1}`;
 
     const result = await this.prisma.$transaction(async (tx) => {
       for (const input of preview.inputs) {
-        if (!input.productId || !input.usedUnits) continue;
-        const variant = await tx.productVariant.findFirst({
-          where: { productId: input.productId, organizationId },
-          orderBy: { createdAt: 'asc' },
-          select: { id: true },
-        });
-        if (!variant) {
-          throw new BadRequestException(`${input.name} has no stock variants`);
+        if (!input.productId || !input.variantId || !input.usedUnits) {
+          throw new BadRequestException(
+            `${input.name} must be a linked product with convertible stock units`,
+          );
         }
         await this.applyVariantDelta(tx, organizationId, {
           productId: input.productId,
-          variantId: variant.id,
+          variantId: input.variantId,
           delta: -input.usedUnits,
           reason: 'production_consume',
           note: `Production — ${input.quantity}${input.unit} ${input.name}`,
           sourceType: 'production',
           sourceId: batchNumber,
           actor,
+          warehouseId,
         });
       }
 
@@ -1297,6 +1310,7 @@ export class InventoryOperationsService {
           sourceType: 'production',
           sourceId: batchNumber,
           actor,
+          warehouseId,
         });
         await tx.productVariant.update({
           where: { id: line.variantId },
@@ -1310,6 +1324,8 @@ export class InventoryOperationsService {
         outputProductId: output.id,
         outputProductName: output.name,
         outputSku: output.sku,
+        recipeId: payload.recipeId,
+        warehouseId,
         unitsProduced: preview.unitsProduced,
         materialCost: preview.materialCost,
         costPerUnit: preview.costPerUnit,
@@ -1320,7 +1336,7 @@ export class InventoryOperationsService {
         createdAt: new Date().toISOString(),
       };
 
-      const created = await tx.productionBatch.create({
+      await tx.productionBatch.create({
         data: {
           id: batchResult.id,
           organizationId,
@@ -1332,19 +1348,83 @@ export class InventoryOperationsService {
         },
       });
 
-      await tx.mixerRecipe.updateMany({
-        where: {
-          organizationId,
-          outputProductId: output.id,
-          status: 'active',
-        },
-        data: { lastMixedAt: new Date() },
-      });
+      if (payload.recipeId) {
+        await tx.mixerRecipe.updateMany({
+          where: { id: payload.recipeId, organizationId },
+          data: { lastMixedAt: new Date() },
+        });
+      } else {
+        await tx.mixerRecipe.updateMany({
+          where: {
+            organizationId,
+            outputProductId: output.id,
+            status: 'active',
+          },
+          data: { lastMixedAt: new Date() },
+        });
+      }
 
-      return created.result as unknown as ProductionBatchResult;
+      return batchResult;
     });
 
     return result;
+  }
+
+  private async resolveProductionWarehouseId(
+    organizationId: string,
+    warehouseId?: string,
+  ): Promise<string> {
+    if (warehouseId) {
+      const wh = await this.prisma.warehouse.findFirst({
+        where: { id: warehouseId, organizationId, isActive: true },
+        select: { id: true },
+      });
+      if (!wh) throw new BadRequestException('Invalid or inactive warehouse');
+      return wh.id;
+    }
+    const fallback = await this.prisma.warehouse.findFirst({
+      where: { organizationId, isActive: true },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    });
+    if (!fallback) throw new BadRequestException('No active warehouse — create one in Inventory');
+    return fallback.id;
+  }
+
+  private async pickRawVariantForProduction(
+    organizationId: string,
+    productId: string,
+    warehouseId: string,
+    preferredVariantId?: string,
+  ): Promise<{ id: string; stock: number } | null> {
+    const variants = await this.prisma.productVariant.findMany({
+      where: { productId, organizationId },
+      select: { id: true, stock: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!variants.length) return null;
+
+    const levels = await this.prisma.inventoryStockLevel.findMany({
+      where: {
+        organizationId,
+        warehouseId,
+        variantId: { in: variants.map((v) => v.id) },
+      },
+      select: { variantId: true, quantity: true },
+    });
+    const qtyByVariant = new Map(levels.map((l) => [l.variantId, l.quantity]));
+
+    if (preferredVariantId && variants.some((v) => v.id === preferredVariantId)) {
+      return {
+        id: preferredVariantId,
+        stock: qtyByVariant.get(preferredVariantId) ?? 0,
+      };
+    }
+
+    const ranked = variants
+      .map((v) => ({ id: v.id, stock: qtyByVariant.get(v.id) ?? 0 }))
+      .sort((a, b) => b.stock - a.stock || a.id.localeCompare(b.id));
+    return ranked[0] ?? null;
   }
 
   private async buildProductionPreview(
@@ -1368,6 +1448,19 @@ export class InventoryOperationsService {
     });
     if (!output) return empty;
 
+    let warehouseId: string;
+    try {
+      warehouseId = await this.resolveProductionWarehouseId(
+        organizationId,
+        payload.warehouseId,
+      );
+    } catch (err) {
+      return {
+        ...empty,
+        limitedBy: err instanceof Error ? err.message : 'Warehouse required',
+      };
+    }
+
     const raws = (payload.rawMaterials ?? []).filter((r) => r.name.trim() && r.quantity > 0);
     const lines = (payload.outputs ?? []).filter((o) => o.units > 0);
     if (!raws.length) {
@@ -1375,6 +1468,9 @@ export class InventoryOperationsService {
     }
     if (!lines.length) {
       return { ...empty, limitedBy: 'Enter units for at least one variant' };
+    }
+    if (raws.some((r) => !r.productId?.trim())) {
+      return { ...empty, limitedBy: 'Every raw material must be a linked product' };
     }
 
     for (const line of lines) {
@@ -1393,53 +1489,72 @@ export class InventoryOperationsService {
     const inputs: ProductionBatchResult['inputs'] = [];
     for (const raw of raws) {
       const unitCode = raw.uomId ? undefined : raw.unit;
-      let sku: string | undefined;
-      let usedUnits: number | undefined;
-      let availableStock = 0;
-
-      if (raw.productId) {
-        const product = await this.prisma.product.findFirst({
-          where: { id: raw.productId, organizationId, deletedAt: null },
-          include: {
-            variants: {
-              select: { id: true, stock: true },
-              orderBy: { createdAt: 'asc' },
-            },
-          },
-        });
-        if (!product) {
-          return { ...empty, limitedBy: `Raw material product not found: ${raw.name}` };
-        }
-        sku = product.sku;
-        const variantId = product.variants[0]?.id;
-        availableStock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
-        if (variantId) {
-          const converted = await this.uom.convertToVariantBase(
-            organizationId,
-            variantId,
-            raw.quantity,
-            { uomId: raw.uomId, uomCode: unitCode },
-          );
-          usedUnits = converted.baseQuantity;
-        }
+      const product = await this.prisma.product.findFirst({
+        where: { id: raw.productId, organizationId, deletedAt: null },
+        select: { id: true, name: true, sku: true },
+      });
+      if (!product) {
+        return { ...empty, limitedBy: `Raw material product not found: ${raw.name}` };
       }
 
-      const qtyKg =
-        unitCode === 'kg'
-          ? raw.quantity
-          : unitCode === 'g'
-            ? raw.quantity / 1000
-            : usedUnits != null
-              ? usedUnits / 1000
-              : raw.quantity;
+      const picked = await this.pickRawVariantForProduction(
+        organizationId,
+        product.id,
+        warehouseId,
+        raw.variantId,
+      );
+      if (!picked) {
+        return { ...empty, limitedBy: `${raw.name.trim()} has no stock variants` };
+      }
+
+      let usedUnits: number;
+      try {
+        const converted = await this.uom.convertToVariantBase(
+          organizationId,
+          picked.id,
+          raw.quantity,
+          { uomId: raw.uomId, uomCode: unitCode, allowZero: true },
+        );
+        usedUnits = converted.baseQuantity;
+      } catch (err) {
+        return {
+          ...empty,
+          limitedBy:
+            err instanceof Error
+              ? `${raw.name.trim()}: ${err.message}`
+              : `${raw.name.trim()}: unit conversion failed`,
+        };
+      }
+
+      if (usedUnits <= 0) {
+        return {
+          ...empty,
+          limitedBy: `${raw.name.trim()}: quantity converts to 0 stock units — increase qty or check UOM`,
+        };
+      }
+
+      if (picked.stock < usedUnits) {
+        return {
+          ...empty,
+          limitedBy: `${raw.name.trim()} stock in warehouse (need ${usedUnits}, have ${picked.stock})`,
+          ok: false,
+          inputs: [],
+          outputs: [],
+          perUnitRawUsage: [],
+        };
+      }
+
+      const qtyForRate = raw.quantity;
       const costPerKg =
-        raw.costPerKg > 0 ? raw.costPerKg : qtyKg > 0 ? raw.totalCost / qtyKg : 0;
-      const totalCost = raw.totalCost > 0 ? raw.totalCost : Math.round(costPerKg * qtyKg);
+        raw.costPerKg > 0 ? raw.costPerKg : qtyForRate > 0 ? raw.totalCost / qtyForRate : 0;
+      const totalCost =
+        raw.totalCost > 0 ? raw.totalCost : Math.round(costPerKg * qtyForRate);
 
       inputs.push({
-        productId: raw.productId,
-        name: raw.name.trim(),
-        sku,
+        productId: product.id,
+        variantId: picked.id,
+        name: raw.name.trim() || product.name,
+        sku: product.sku,
         quantity: raw.quantity,
         unit: unitCode ?? raw.unit,
         uomId: raw.uomId,
@@ -1447,19 +1562,6 @@ export class InventoryOperationsService {
         costPerKg: Math.round(costPerKg * 100) / 100,
         usedUnits,
       });
-
-      if (usedUnits != null && availableStock < usedUnits) {
-        return {
-          unitsProduced: 0,
-          materialCost: 0,
-          costPerUnit: 0,
-          limitedBy: `${raw.name.trim()} stock (need ${usedUnits}, have ${availableStock})`,
-          ok: false,
-          inputs: [],
-          outputs: [],
-          perUnitRawUsage: [],
-        };
-      }
     }
 
     const materialCost = inputs.reduce((sum, input) => sum + input.totalCost, 0);
@@ -1467,7 +1569,8 @@ export class InventoryOperationsService {
     const perUnitRawUsage = inputs.map((input) => ({
       name: input.name,
       unit: input.unit,
-      quantityPerUnit: unitsProduced > 0 ? Math.round((input.quantity / unitsProduced) * 1000) / 1000 : 0,
+      quantityPerUnit:
+        unitsProduced > 0 ? Math.round((input.quantity / unitsProduced) * 1000) / 1000 : 0,
       costPerUnit: unitsProduced > 0 ? Math.round(input.totalCost / unitsProduced) : 0,
     }));
 
@@ -1665,6 +1768,7 @@ export class InventoryOperationsService {
       actor?: Actor;
       expiresAt?: Date | null;
       lotNumber?: string;
+      warehouseId?: string;
     },
   ): Promise<void> {
     const qty = Math.abs(Math.trunc(input.delta));
@@ -1676,6 +1780,7 @@ export class InventoryOperationsService {
         productId: input.productId,
         variantId: input.variantId,
         quantity: qty,
+        warehouseId: input.warehouseId,
         preferFefo: true,
         reason: input.reason,
         note: input.note,
@@ -1696,6 +1801,7 @@ export class InventoryOperationsService {
       productId: input.productId,
       variantId: input.variantId,
       quantity: qty,
+      warehouseId: input.warehouseId,
       unitCost: input.unitCost,
       createLot: true,
       lot: {
