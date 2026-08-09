@@ -25,15 +25,16 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { LEAD_SOURCE_LABELS } from '@/features/leads/config/lead-filters';
-import { LEAD_AGENTS } from '@/features/leads/data/mock-leads';
 import { useLeadMutations } from '@/features/leads/hooks/use-lead-mutations';
 import { createLeadsListBreadcrumbs } from '@/features/leads/lib/lead-breadcrumbs';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export function CreateLeadPage() {
   const router = useRouter();
   const { createLead, isLoading } = useLeadMutations();
+  const { agents } = useAgentOptions();
   const [lineItems, setLineItems] = React.useState<DraftLineItem[]>([]);
   const [draft, setDraft] = React.useState({
     name: '',
@@ -149,7 +150,7 @@ export function CreateLeadPage() {
               <FormSelect
                 value={draft.assignedAgentName}
                 onChange={(assignedAgentName) => patch({ assignedAgentName })}
-                options={LEAD_AGENTS.map((name) => ({ value: name, label: name }))}
+                options={agents.map((name) => ({ value: name, label: name }))}
                 placeholder="Optional"
               />
             </FormField>

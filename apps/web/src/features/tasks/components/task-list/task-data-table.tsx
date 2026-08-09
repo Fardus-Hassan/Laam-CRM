@@ -113,6 +113,7 @@ export function TaskDataTable({
       mobileCard={mobileCard}
       selection={selectionState}
       density="compact"
+      entityLabel="tasks"
       page={page}
       pageSize={pageSize}
       total={total}

@@ -16,8 +16,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { LeadBulkActionId } from '@/features/leads/config/lead-bulk-actions';
-import { LEAD_AGENTS } from '@/features/leads/data/mock-leads';
 import { useLeadMutations } from '@/features/leads/hooks/use-lead-mutations';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 
 type LeadBulkModalState =
   | { type: 'assign'; leadIds: string[] }
@@ -47,6 +47,7 @@ type LeadBulkModalsProps = {
 
 export function LeadBulkModals({ state, onClose, onSuccess }: LeadBulkModalsProps) {
   const { bulkAction, isLoading } = useLeadMutations();
+  const { agents } = useAgentOptions();
   const [employee, setEmployee] = React.useState('');
   const [followUpDate, setFollowUpDate] = React.useState('');
   const [note, setNote] = React.useState('');
@@ -96,7 +97,7 @@ export function LeadBulkModals({ state, onClose, onSuccess }: LeadBulkModalsProp
 
   function handleSms() {
     if (state?.type !== 'sms') return;
-    toast.success(`SMS queued for ${state.leadIds.length} lead(s) (mock)`);
+    toast.message('Open SMS / Marketing campaigns to send live messages to these leads.');
     onClose();
   }
 
@@ -118,7 +119,7 @@ export function LeadBulkModals({ state, onClose, onSuccess }: LeadBulkModalsProp
             <FormSearchSelect
               value={employee}
               onChange={setEmployee}
-              options={LEAD_AGENTS.map((name) => ({ value: name, label: name }))}
+              options={agents.map((name) => ({ value: name, label: name }))}
               placeholder="Select agent…"
             />
           </FormField>

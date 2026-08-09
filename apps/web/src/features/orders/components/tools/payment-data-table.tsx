@@ -37,6 +37,7 @@ export function PaymentDataTable({
       getRowId={(row) => row.id}
       isLoading={isLoading}
       emptyMessage="No payment records found."
+      entityLabel="payments"
       page={page}
       pageSize={pageSize}
       total={total}

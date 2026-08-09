@@ -58,11 +58,11 @@ export function ScoreBoardCard({
             {data.totalScore.toLocaleString('en-BD')}
           </p>
           <div className="mt-0.5 flex items-center gap-0.5">
-            <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            <span className="text-sm font-medium text-primary">
               {data.rating}
             </span>
             <ChevronDown
-              className="size-4 text-emerald-600 dark:text-emerald-400"
+              className="size-4 text-primary"
               aria-hidden
             />
           </div>
@@ -72,7 +72,7 @@ export function ScoreBoardCard({
       <Progress
         value={progressPercent}
         className="h-2.5 bg-muted"
-        indicatorClassName="bg-emerald-500 dark:bg-emerald-500"
+        indicatorClassName="bg-primary"
       />
 
       <dl className="grid grid-cols-3 gap-2 border-t border-border/60 pt-4 sm:gap-3">
@@ -80,21 +80,21 @@ export function ScoreBoardCard({
           <div className="space-y-0.5">
             <span>#{data.rank}</span>
             {data.rankChange !== undefined && data.rankChange !== 0 ? (
-              <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 sm:text-xs">
+              <p className="text-[10px] font-medium text-primary sm:text-xs">
                 ↑ {Math.abs(data.rankChange)} Position
               </p>
             ) : null}
           </div>
         </StatBlock>
         <StatBlock label="This Month">
-          <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+          <span className="inline-flex items-center gap-0.5 text-primary">
             + {data.monthChange}
             <ArrowUp className="size-3.5" aria-hidden />
           </span>
         </StatBlock>
         <StatBlock label="Progress to Next Rank">
           <span>
-            <span className="text-emerald-600 dark:text-emerald-400">
+            <span className="text-primary">
               {data.progressCurrent}
             </span>
             <span className="text-muted-foreground"> / {data.progressTarget}</span>

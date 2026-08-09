@@ -16,6 +16,7 @@ import {
 
 import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
+import { Can } from '@/components/auth/can';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +35,19 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { FormField } from '@/components/form/form-field';
+import { FormInput } from '@/components/form/form-input';
+import { FormSearchSelect } from '@/components/form/form-search-select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import type { AccountType, ChartOfAccount } from '@laam/types';
+import { Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { useDragToScroll } from '@/hooks/use-drag-to-scroll';
 import { downloadCsv } from '@/lib/export-csv';
 import { formatCurrency } from '@/lib/format';
@@ -264,7 +278,9 @@ export function ReceivablesPage() {
   return (
     <ReportPageShell title="Accounts receivable" description="Money customers owe you — COD pending, partial payments.">
       <div className="flex justify-end">
-        <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+        <Can permission="accounting.export">
+          <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+        </Can>
       </div>
       <SimpleTable
         headers={['Customer', 'Order', 'Amount', 'Due', 'Status', 'Collected', '']}
@@ -311,7 +327,9 @@ export function PayablesPage() {
   return (
     <ReportPageShell title="Accounts payable" description="Money you owe suppliers — purchase orders, courier bills.">
       <div className="flex justify-end">
-        <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+        <Can permission="accounting.export">
+          <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+        </Can>
       </div>
       <SimpleTable
         headers={['Supplier', 'Reference', 'Amount', 'Due', 'Status', 'Paid', '']}
@@ -362,20 +380,135 @@ export function CashBankPage() {
 }
 
 export function ChartOfAccountsPage() {
-  const [items, setItems] = React.useState<Awaited<ReturnType<typeof accountingApi.listChartOfAccounts>>['items']>([]);
-  React.useEffect(() => { void accountingApi.listChartOfAccounts().then((r) => setItems(r.items)); }, []);
+  const [items, setItems] = React.useState<ChartOfAccount[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState({
+    code: '',
+    name: '',
+    type: 'expense' as AccountType,
+  });
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await accountingApi.listChartOfAccounts();
+      setItems(res.items);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load chart of accounts');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleCreate() {
+    if (!draft.code.trim() || !draft.name.trim()) {
+      toast.error('Code and name are required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await accountingApi.createChartOfAccount(draft);
+      setOpen(false);
+      setDraft({ code: '', name: '', type: 'expense' });
+      toast.success('Account added');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save account');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggle(account: ChartOfAccount) {
+    try {
+      await accountingApi.setChartOfAccountActive(account.id, !account.isActive);
+      toast.success(account.isActive ? 'Account deactivated' : 'Account activated');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update account');
+    }
+  }
+
   return (
-    <ReportPageShell title="Chart of accounts" description="Your account structure — assets, liabilities, equity, income, expenses.">
-      <SimpleTable
-        headers={['Code', 'Account name', 'Type', 'Balance', 'Status']}
-        rows={items.map((a) => [
-          <span key="c" className="font-mono">{a.code}</span>,
-          a.name,
-          <Badge key="t" variant="outline" className="text-[10px]">{ACCOUNT_TYPE_LABELS[a.type]}</Badge>,
-          formatCurrency(a.balance),
-          <Badge key="s" variant={a.isActive ? 'default' : 'secondary'}>{a.isActive ? 'Active' : 'Inactive'}</Badge>,
-        ])}
-      />
+    <ReportPageShell
+      title="Chart of accounts"
+      description="Your account structure — assets, liabilities, equity, income, expenses."
+      action={
+        <Button type="button" size="sm" onClick={() => setOpen(true)}>
+          <Plus className="size-4" />
+          Add account
+        </Button>
+      }
+    >
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading accounts…</p>
+      ) : (
+        <SimpleTable
+          headers={['Code', 'Account name', 'Type', 'Balance', 'Status', 'Actions']}
+          rows={items.map((account) => [
+            <span key="c" className="font-mono">{account.code}</span>,
+            account.name,
+            <Badge key="t" variant="outline" className="text-[10px]">{ACCOUNT_TYPE_LABELS[account.type]}</Badge>,
+            formatCurrency(account.balance),
+            <Badge key="s" variant={account.isActive ? 'default' : 'secondary'}>{account.isActive ? 'Active' : 'Inactive'}</Badge>,
+            <Button
+              key="a"
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7"
+              onClick={() => void handleToggle(account)}
+            >
+              {account.isActive ? 'Deactivate' : 'Activate'}
+            </Button>,
+          ])}
+        />
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add ledger account</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <FormField label="Account code">
+              <FormInput
+                value={draft.code}
+                onChange={(event) => setDraft((current) => ({ ...current, code: event.target.value }))}
+                placeholder="6100"
+              />
+            </FormField>
+            <FormField label="Account name">
+              <FormInput
+                value={draft.name}
+                onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Office supplies"
+              />
+            </FormField>
+            <FormField label="Type">
+              <FormSearchSelect
+                value={draft.type}
+                onChange={(value) => setDraft((current) => ({ ...current, type: value as AccountType }))}
+                options={Object.entries(ACCOUNT_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+                searchable={false}
+              />
+            </FormField>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="button" disabled={saving} onClick={() => void handleCreate()}>
+              {saving ? 'Saving…' : 'Save account'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ReportPageShell>
   );
 }
@@ -463,12 +596,25 @@ function ReportSection({
   );
 }
 
-function ReportPageShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+function ReportPageShell({
+  title,
+  description,
+  children,
+  action,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
     <PageShell title="Accounting" description={description}>
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
         <CrmPageActions moduleId="accounting" />
-        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          {action}
+        </div>
         {children}
       </div>
     </PageShell>

@@ -1,5 +1,7 @@
 import type { ProductCategory, ProductFilter, ProductStatus } from '@laam/types';
 
+import { getProductCategoryLabels } from '@/features/settings/data/org-categories-store';
+
 export type ProductFilterDefinition = {
   id: ProductFilter;
   label: string;
@@ -13,6 +15,7 @@ export const PRODUCT_FILTERS: ProductFilterDefinition[] = [
   { id: 'inactive', label: 'Inactive' },
 ];
 
+/** @deprecated Use getProductCategoryLabels() for dynamic org categories */
 export const PRODUCT_CATEGORY_LABELS: Record<ProductCategory, string> = {
   honey: 'Honey',
   dates: 'Dates',
@@ -22,6 +25,10 @@ export const PRODUCT_CATEGORY_LABELS: Record<ProductCategory, string> = {
   packaging: 'Packaging',
   other: 'Other',
 };
+
+export function resolveProductCategoryLabel(slug: string): string {
+  return getProductCategoryLabels()[slug] ?? PRODUCT_CATEGORY_LABELS[slug as ProductCategory] ?? slug;
+}
 
 export const PRODUCT_STATUS_LABELS: Record<ProductStatus, string> = {
   active: 'Active',
@@ -55,4 +62,5 @@ export const PURCHASE_STOCK_LABELS = {
   pending: 'Pending',
   received: 'Received',
   partial: 'Partial',
+  cancelled: 'Cancelled',
 } as const;

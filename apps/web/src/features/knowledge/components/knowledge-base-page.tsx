@@ -8,7 +8,9 @@ import { toast } from 'sonner';
 import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
+import { FormSearchSelect } from '@/components/form/form-search-select';
 import { FormTextarea } from '@/components/form/form-textarea';
+import Link from 'next/link';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,6 +23,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { knowledgeApi } from '@/features/knowledge/api/knowledge-api';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
+import { getOrgCategoryLabel } from '@/features/settings/data/org-categories-store';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -32,8 +36,10 @@ import { cn } from '@/lib/utils';
 const CHANNELS: KnowledgeChannel[] = ['all', 'whatsapp', 'messenger'];
 
 export function KnowledgeBasePage() {
+  const knowledgeCategoryOptions = useOrgCategoryOptions('knowledge');
   const [articles, setArticles] = React.useState<KnowledgeArticle[]>([]);
   const [channel, setChannel] = React.useState<KnowledgeChannel | 'any'>('any');
+  const [categoryFilter, setCategoryFilter] = React.useState('any');
   const [search, setSearch] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState<CreateKnowledgeArticlePayload>({
@@ -51,8 +57,12 @@ export function KnowledgeBasePage() {
       channel: channel === 'any' ? undefined : channel,
       q: search || undefined,
     });
-    setArticles(items);
-  }, [channel, search]);
+    setArticles(
+      categoryFilter === 'any'
+        ? items
+        : items.filter((item) => item.category === categoryFilter),
+    );
+  }, [categoryFilter, channel, search]);
 
   React.useEffect(() => {
     const t = setTimeout(() => void refresh(), search ? 250 : 0);
@@ -102,6 +112,27 @@ export function KnowledgeBasePage() {
               </Button>
             ))}
           </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={categoryFilter === 'any' ? 'default' : 'outline'}
+              onClick={() => setCategoryFilter('any')}
+            >
+              All categories
+            </Button>
+            {knowledgeCategoryOptions.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                variant={categoryFilter === option.value ? 'default' : 'outline'}
+                onClick={() => setCategoryFilter(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
           <Can permission="knowledge.manage">
             <Button type="button" size="sm" onClick={() => setOpen(true)}>
               <Plus className="size-4" />
@@ -121,7 +152,11 @@ export function KnowledgeBasePage() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Future bots: <code className="rounded bg-muted px-1">GET /crm/knowledge?channel=whatsapp&amp;q=…</code>
+          Manage categories in{' '}
+          <Link href="/dashboard/settings/categories" className="font-medium text-primary hover:underline">
+            Settings → Categories
+          </Link>
+          . Future bots: <code className="rounded bg-muted px-1">GET /crm/knowledge?channel=whatsapp&amp;q=…</code>
         </p>
 
         {!articles.length ? (
@@ -144,6 +179,9 @@ export function KnowledgeBasePage() {
                       ))}
                       <Badge variant={article.status === 'active' ? 'success' : 'secondary'} className="text-[10px]">
                         {article.status}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px]">
+                        {getOrgCategoryLabel('knowledge', article.category)}
                       </Badge>
                     </div>
                   </div>
@@ -178,6 +216,14 @@ export function KnowledgeBasePage() {
             </FormField>
             <FormField label="Answer body">
               <FormTextarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={4} />
+            </FormField>
+            <FormField label="Category">
+              <FormSearchSelect
+                value={draft.category}
+                onChange={(value) => setDraft((current) => ({ ...current, category: value }))}
+                options={knowledgeCategoryOptions}
+                searchable={false}
+              />
             </FormField>
             <FormField label="Keywords (comma separated)">
               <FormInput value={keywordText} onChange={(e) => setKeywordText(e.target.value)} placeholder="cod, payment, delivery" />

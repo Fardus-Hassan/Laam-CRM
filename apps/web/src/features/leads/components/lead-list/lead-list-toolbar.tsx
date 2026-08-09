@@ -1,14 +1,15 @@
 'use client';
 
 import * as React from 'react';
-import { Filter, Search, X } from 'lucide-react';
+import { Filter, Search } from 'lucide-react';
 import type { OrderSource } from '@laam/types';
 
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { Button } from '@/components/ui/button';
 import { LEAD_SOURCE_LABELS } from '@/features/leads/config/lead-filters';
-import { LEAD_AGENTS } from '@/features/leads/data/mock-leads';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 import { cn } from '@/lib/utils';
 
 export type LeadFilterValues = {
@@ -46,6 +47,7 @@ export function LeadListToolbar({
   onAgentChange,
   className,
 }: LeadListToolbarProps) {
+  const { agents } = useAgentOptions();
   const hasActiveFilters = Boolean(filters.source || filters.agent);
 
   return (
@@ -102,39 +104,27 @@ export function LeadListToolbar({
           <FormSearchSelect
             value={filters.agent ?? ''}
             onChange={(value) => onAgentChange(value || undefined)}
-            options={LEAD_AGENTS.map((name) => ({ value: name, label: name }))}
+            options={agents.map((name) => ({ value: name, label: name }))}
             placeholder="Filter by agent"
           />
         </div>
       ) : null}
 
       {hasActiveFilters ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {filters.source ? (
-            <FilterChip
-              label={LEAD_SOURCE_LABELS[filters.source]}
-              onRemove={() => onSourceChange(undefined)}
-            />
-          ) : null}
-          {filters.agent ? (
-            <FilterChip label={filters.agent} onRemove={() => onAgentChange(undefined)} />
-          ) : null}
-          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onClearFilters}>
-            Clear all
-          </Button>
-        </div>
+        <ActiveFilterChips
+          chips={[
+            ...(filters.source
+              ? [{ id: 'source', label: LEAD_SOURCE_LABELS[filters.source] }]
+              : []),
+            ...(filters.agent ? [{ id: 'agent', label: filters.agent }] : []),
+          ]}
+          onRemove={(id) => {
+            if (id === 'source') onSourceChange(undefined);
+            if (id === 'agent') onAgentChange(undefined);
+          }}
+          onClearAll={onClearFilters}
+        />
       ) : null}
     </div>
-  );
-}
-
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-2 py-0.5 text-xs">
-      {label}
-      <button type="button" onClick={onRemove} className="rounded-full p-0.5 hover:bg-muted">
-        <X className="size-3" />
-      </button>
-    </span>
   );
 }

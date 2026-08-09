@@ -5,9 +5,12 @@ import {
   BookOpen,
   FileUp,
   GitBranch,
+  LockKeyhole,
   MessageSquare,
+  Palette,
   Plug,
   Settings2,
+  Tags,
   Trash2,
   UserCog,
   Users,
@@ -24,10 +27,22 @@ const SETTINGS_LINKS = [
     icon: Settings2,
   },
   {
+    title: 'Brand',
+    description: 'Colors and light/dark logos for CRM and login screens.',
+    href: '/dashboard/settings/brand',
+    icon: Palette,
+  },
+  {
     title: 'Integrations',
     description: 'Couriers, bKash, Facebook leads, email SMTP, and WooCommerce.',
     href: '/dashboard/settings/integrations',
     icon: Plug,
+  },
+  {
+    title: 'Categories',
+    description: 'Product, income, expense, and knowledge categories per organization.',
+    href: '/dashboard/settings/categories',
+    icon: Tags,
   },
   {
     title: 'Order Statuses',
@@ -36,10 +51,22 @@ const SETTINGS_LINKS = [
     icon: GitBranch,
   },
   {
+    title: 'Order form options',
+    description: 'District, source, tags, payment, status list, and default courier note.',
+    href: '/dashboard/settings/order-form-options',
+    icon: Tags,
+  },
+  {
     title: 'SMS Templates',
     description: 'Bulk SMS message templates for order notifications.',
     href: '/dashboard/settings/sms-templates',
     icon: MessageSquare,
+  },
+  {
+    title: 'Security',
+    description: 'Change password, device verification, and staff OTP inbox.',
+    href: '/dashboard/settings/security',
+    icon: LockKeyhole,
   },
   {
     title: 'Roles & Permissions',

@@ -15,6 +15,7 @@ import {
   type FollowupBulkActionId,
 } from '@/features/followups/config/followup-bulk-actions';
 import { useFollowupMutations } from '@/features/followups/hooks/use-followup-mutations';
+import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
 type FollowupBulkActionsProps = {
@@ -32,8 +33,12 @@ export function FollowupBulkActions({
   onSuccess,
   className,
 }: FollowupBulkActionsProps) {
+  const { can } = usePermissions();
   const { bulkAction, isLoading } = useFollowupMutations();
   const [bulkModal, setBulkModal] = React.useState<ReturnType<typeof bulkActionToModal>>(null);
+  const visibleActions = FOLLOWUP_BULK_ACTIONS.filter(
+    (action) => !action.permission || can(action.permission),
+  );
 
   function handleAction(actionId: FollowupBulkActionId) {
     runFollowupBulkAction(actionId, selectedFollowupIds, {
@@ -77,10 +82,14 @@ export function FollowupBulkActions({
     });
   }
 
+  if (visibleActions.length === 0) {
+    return null;
+  }
+
   return (
     <>
       <div className={cn('flex flex-wrap gap-2', className)}>
-        {FOLLOWUP_BULK_ACTIONS.map((action) => (
+        {visibleActions.map((action) => (
           <Button
             key={action.id}
             type="button"

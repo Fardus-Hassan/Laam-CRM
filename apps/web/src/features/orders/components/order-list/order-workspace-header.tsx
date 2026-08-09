@@ -10,6 +10,7 @@ import {
   isOrderQueueFavorite,
   toggleOrderQueueFavorite,
 } from '@/features/orders/lib/order-queue-favorites';
+import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type OrderWorkspaceHeaderProps = {
@@ -45,7 +46,7 @@ export function OrderWorkspaceHeader({
   }
 
   const refreshedLabel = lastRefreshedAt
-    ? `Updated ${lastRefreshedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+    ? `Updated ${formatTime(lastRefreshedAt)}`
     : null;
 
   return (

@@ -2,17 +2,14 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import type { CustomerDetail } from '@laam/types';
+import type { CustomerDetail, CustomerDuplicateGroup } from '@laam/types';
 import { toast } from 'sonner';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  findDuplicatePhones,
-  mergeCustomers,
-} from '@/features/customers/data/mock-customers';
+import { customersApi } from '@/features/customers/api/customers-api';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -23,53 +20,79 @@ import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export function CustomerMergePage() {
-  const [groups, setGroups] = React.useState(findDuplicatePhones());
+  const [groups, setGroups] = React.useState<CustomerDuplicateGroup[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [merging, setMerging] = React.useState(false);
 
-  function refresh() {
-    setGroups(findDuplicatePhones());
-  }
+  const refresh = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await customersApi.findDuplicates();
+      setGroups(res.groups);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load duplicates');
+      setGroups([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  function handleMerge(primaryId: string, duplicateIds: string[]) {
-    const result = mergeCustomers(primaryId, duplicateIds);
-    if (result) {
+  React.useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function handleMerge(primaryId: string, duplicateIds: string[]) {
+    setMerging(true);
+    try {
+      const result = await customersApi.mergeCustomers({ primaryId, duplicateIds });
       toast.success(`Merged into ${result.name}`);
-      refresh();
-    } else {
-      toast.error('Merge failed');
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Merge failed');
+    } finally {
+      setMerging(false);
     }
   }
 
   return (
     <PageShell
       title="Merge customers"
-      description="Duplicate phone numbers — keep one profile, remove the rest."
+      description="Duplicate phones or same name+district — keep one profile, reassign orders."
     >
       <div className={ORDER_PAGE_GAP}>
-        <div className="flex justify-between">
+        <div className="flex justify-between gap-2">
           <p className="text-sm text-muted-foreground">
-            {groups.length} phone number{groups.length === 1 ? '' : 's'} with duplicates
+            {loading
+              ? 'Loading…'
+              : `${groups.length} group${groups.length === 1 ? '' : 's'} with duplicates`}
           </p>
-          <Button type="button" size="sm" variant="outline" asChild>
-            <Link href="/dashboard/customers">Back to customers</Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => void refresh()} disabled={loading}>
+              Refresh
+            </Button>
+            <Button type="button" size="sm" variant="outline" asChild>
+              <Link href="/dashboard/customers">Back to customers</Link>
+            </Button>
+          </div>
         </div>
 
-        {!groups.length ? (
+        {!loading && !groups.length ? (
           <Card className={ORDER_CARD_CLASS}>
             <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'py-10 text-center text-sm text-muted-foreground')}>
-              No duplicate phones found.
+              No duplicate customers found. Phone-unique profiles are already enforced.
             </CardContent>
           </Card>
-        ) : (
-          groups.map((group) => (
-            <DuplicateGroupCard
-              key={group.phone}
-              phone={group.phone}
-              customers={group.customers}
-              onMerge={handleMerge}
-            />
-          ))
-        )}
+        ) : null}
+
+        {groups.map((group) => (
+          <DuplicateGroupCard
+            key={group.phoneNormalized}
+            phone={group.phone}
+            customers={group.customers}
+            onMerge={handleMerge}
+            disabled={merging}
+          />
+        ))}
       </div>
     </PageShell>
   );
@@ -79,12 +102,18 @@ function DuplicateGroupCard({
   phone,
   customers,
   onMerge,
+  disabled,
 }: {
   phone: string;
   customers: CustomerDetail[];
-  onMerge: (primaryId: string, duplicateIds: string[]) => void;
+  onMerge: (primaryId: string, duplicateIds: string[]) => void | Promise<void>;
+  disabled?: boolean;
 }) {
   const [primaryId, setPrimaryId] = React.useState(customers[0]?.id ?? '');
+
+  React.useEffect(() => {
+    setPrimaryId(customers[0]?.id ?? '');
+  }, [customers]);
 
   return (
     <Card className={ORDER_CARD_CLASS}>
@@ -107,6 +136,7 @@ function DuplicateGroupCard({
                 name={`primary-${phone}`}
                 checked={primaryId === c.id}
                 onChange={() => setPrimaryId(c.id)}
+                disabled={disabled}
               />
               <div>
                 <p className="text-sm font-medium">{c.name}</p>
@@ -122,12 +152,12 @@ function DuplicateGroupCard({
           type="button"
           size="sm"
           onClick={() =>
-            onMerge(
+            void onMerge(
               primaryId,
               customers.filter((c) => c.id !== primaryId).map((c) => c.id),
             )
           }
-          disabled={!primaryId || customers.length < 2}
+          disabled={disabled || !primaryId || customers.length < 2}
         >
           Merge into primary
         </Button>

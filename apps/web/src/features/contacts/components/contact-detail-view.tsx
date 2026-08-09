@@ -19,7 +19,7 @@ import { CourierScoreCell } from '@/features/customers/components/shared/courier
 import { ContactTypeBadge } from '@/features/contacts/components/shared/contact-type-badge';
 import { CONTACT_SOURCE_LABELS } from '@/features/contacts/config/contact-filters';
 import { formatContactDate } from '@/features/contacts/components/contact-list/contact-table-columns';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 
 export function ContactDetailView({ contact }: { contact: ContactDetail }) {
   const phoneDigits = contact.phone.replace(/\D/g, '');
@@ -56,6 +56,14 @@ export function ContactDetailView({ contact }: { contact: ContactDetail }) {
               <MessageCircle className="size-4" />
               WhatsApp
             </Button>
+            {contact.inventorySupplierId ? (
+              <Button type="button" size="sm" variant="outline" asChild>
+                <Link href="/dashboard/inventory/suppliers">
+                  <Building2 className="size-4" />
+                  Inventory supplier
+                </Link>
+              </Button>
+            ) : null}
             {isCustomer ? (
               <Button type="button" size="sm" asChild>
                 <Link href={`/dashboard/orders/new?phone=${encodeURIComponent(contact.phone)}`}>
@@ -205,7 +213,7 @@ export function ContactDetailView({ contact }: { contact: ContactDetail }) {
                   <p className="font-medium">{a.label}</p>
                   {a.description ? <p className="text-muted-foreground">{a.description}</p> : null}
                   <p className="text-xs text-muted-foreground">
-                    {new Date(a.timestamp).toLocaleString('en-GB')}
+                    {formatDateTime(a.timestamp)}
                     {a.actorName ? ` · ${a.actorName}` : ''}
                   </p>
                 </li>

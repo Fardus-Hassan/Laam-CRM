@@ -78,6 +78,7 @@ export function OrderDataTable({
       mobileCard={mobileCard}
       selection={selectionState}
       density="compact"
+      entityLabel="orders"
       page={page}
       pageSize={pageSize}
       total={total}

@@ -12,6 +12,7 @@ import type {
 import { toast } from 'sonner';
 
 import { ordersApi } from '@/features/orders/api/orders-api';
+import { requestOrderNavCountsRefresh } from '@/features/orders/data/order-status-counts-store';
 
 export function useOrderMutations() {
   const [isLoading, setIsLoading] = React.useState(false);
@@ -21,6 +22,7 @@ export function useOrderMutations() {
     try {
       const order = await ordersApi.createOrder(payload);
       toast.success(`Order ${order.orderNumber} created`);
+      requestOrderNavCountsRefresh();
       return order;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create order');
@@ -35,6 +37,7 @@ export function useOrderMutations() {
     try {
       const order = await ordersApi.updateOrder(id, patch);
       toast.success('Order updated');
+      requestOrderNavCountsRefresh();
       return order;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update order');
@@ -55,7 +58,13 @@ export function useOrderMutations() {
     setIsLoading(true);
     try {
       const result: BulkActionResult = await ordersApi.bulkAction(payload);
-      toast.success(result.message ?? `Updated ${result.successCount} order(s)`);
+      const msg = result.message ?? `Updated ${result.successCount} order(s)`;
+      if (result.failedCount > 0) {
+        toast.warning(msg);
+      } else {
+        toast.success(msg);
+      }
+      requestOrderNavCountsRefresh();
       return result;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Bulk action failed');
@@ -70,6 +79,7 @@ export function useOrderMutations() {
     try {
       const result: BulkActionResult = await ordersApi.bulkSetFollowUp(orderIds, followUpDate);
       toast.success(result.message ?? `Follow-up set for ${result.successCount} order(s)`);
+      requestOrderNavCountsRefresh();
       return result;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to set follow-up');
@@ -92,7 +102,16 @@ export function useOrderDetailMutations(order: OrderDetail | null, onUpdated?: (
 
   const confirmOrder = React.useCallback(async () => {
     if (!order) return;
-    const updated = await updateOrder(order.id, { status: 'confirmed' });
+    if (!order.fulfillmentWarehouseId) {
+      toast.error(
+        'Select a fulfillment warehouse before confirming (stock is cut from that warehouse)',
+      );
+      return;
+    }
+    const updated = await updateOrder(order.id, {
+      status: 'confirmed',
+      fulfillmentWarehouseId: order.fulfillmentWarehouseId,
+    });
     onUpdated?.(updated);
   }, [order, onUpdated, updateOrder]);
 
@@ -102,16 +121,27 @@ export function useOrderDetailMutations(order: OrderDetail | null, onUpdated?: (
     onUpdated?.(updated);
   }, [order, onUpdated, updateOrder]);
 
+  const deleteOrder = React.useCallback(async () => {
+    if (!order) return;
+    await ordersApi.deleteOrder(order.id);
+    requestOrderNavCountsRefresh();
+  }, [order]);
+
   const changeStatus = React.useCallback(
-    async (status: string) => {
+    async (status: string, fulfillmentWarehouseId?: string) => {
       if (!order) return;
       const updated = await updateOrder(order.id, {
         status: status as OrderDetail['status'],
+        ...(fulfillmentWarehouseId
+          ? { fulfillmentWarehouseId }
+          : order.fulfillmentWarehouseId
+            ? { fulfillmentWarehouseId: order.fulfillmentWarehouseId }
+            : {}),
       });
       onUpdated?.(updated);
     },
     [order, onUpdated, updateOrder],
   );
 
-  return { isLoading, confirmOrder, cancelOrder, changeStatus, updateOrder };
+  return { isLoading, confirmOrder, cancelOrder, deleteOrder, changeStatus, updateOrder };
 }

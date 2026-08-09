@@ -1,15 +1,26 @@
 'use client';
 
 import * as React from 'react';
-import type { IntegrationConfig } from '@laam/types';
-import { CheckCircle2, Link2, Plug, Unplug, XCircle } from 'lucide-react';
+import Link from 'next/link';
+import type {
+  BdCourierIntegrationSettings,
+  CarrybeeIntegrationSettings,
+  PathaoIntegrationSettings,
+  SmsIntegrationSettings,
+} from '@laam/types';
+import { CheckCircle2, Plug, Unplug, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { orgSettingsApi } from '@/features/settings/api/org-settings-api';
+import { bdCourierSettingsApi } from '@/features/settings/api/bdcourier-settings-api';
+import { carrybeeSettingsApi } from '@/features/settings/api/carrybee-settings-api';
+import { pathaoSettingsApi } from '@/features/settings/api/pathao-settings-api';
+import { smsSettingsApi } from '@/features/settings/api/sms-settings-api';
+import { websiteSettingsApi } from '@/features/settings/api/website-settings-api';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -18,33 +29,74 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { cn } from '@/lib/utils';
 
-const STATUS_CONFIG: Record<string, { label: string; variant: 'success' | 'warning' | 'destructive' | 'secondary'; icon: React.ComponentType<{ className?: string }> }> = {
-  connected: { label: 'Connected', variant: 'success', icon: CheckCircle2 },
-  disconnected: { label: 'Not connected', variant: 'secondary', icon: Unplug },
-  pending: { label: 'Pending', variant: 'warning', icon: Link2 },
-  error: { label: 'Error', variant: 'destructive', icon: XCircle },
-};
+const COMING_SOON = [
+  { id: 'bkash', label: 'bKash Payment', icon: '💳' },
+  { id: 'smtp', label: 'Email (SMTP)', icon: '✉️' },
+] as const;
 
-const PROVIDER_ICONS: Record<string, string> = {
-  steadfast: '🚚',
-  pathao: '📦',
-  redx: '🔴',
-  facebook: '📘',
-  bkash: '💳',
-  nagad: '🟠',
-  smtp: '✉️',
-  woocommerce: '🛒',
-};
+function statusOf(cfg: { enabled?: boolean; hasCredentials?: boolean; lastError?: string | null } | null) {
+  if (!cfg?.enabled || !cfg.hasCredentials) return 'disconnected' as const;
+  // Sync warnings (stale consignments, etc.) are shown on the detail page — not as "Error".
+  return 'connected' as const;
+}
+
+function websiteHubStatus(
+  stores: Array<{ enabled: boolean; lastError: string | null }> | null,
+): 'connected' | 'error' | 'disconnected' {
+  if (!stores?.length) return 'disconnected';
+  if (stores.some((s) => s.lastError)) return 'error';
+  if (stores.some((s) => s.enabled)) return 'connected';
+  return 'disconnected';
+}
+
+function StatusBadge({ status }: { status: 'connected' | 'error' | 'disconnected' }) {
+  return (
+    <Badge
+      variant={
+        status === 'connected' ? 'success' : status === 'error' ? 'destructive' : 'secondary'
+      }
+      className="gap-1 text-[10px]"
+    >
+      {status === 'connected' ? (
+        <CheckCircle2 className="size-3" />
+      ) : status === 'error' ? (
+        <XCircle className="size-3" />
+      ) : (
+        <Unplug className="size-3" />
+      )}
+      {status === 'connected' ? 'Connected' : status === 'error' ? 'Error' : 'Not connected'}
+    </Badge>
+  );
+}
 
 export function IntegrationsSettingsPage() {
-  const [integrations, setIntegrations] = React.useState<IntegrationConfig[]>([]);
+  const [pathao, setPathao] = React.useState<PathaoIntegrationSettings | null>(null);
+  const [carrybee, setCarrybee] = React.useState<CarrybeeIntegrationSettings | null>(null);
+  const [bdcourier, setBdCourier] = React.useState<BdCourierIntegrationSettings | null>(null);
+  const [sms, setSms] = React.useState<SmsIntegrationSettings | null>(null);
+  const [websitesConnected, setWebsitesConnected] = React.useState(0);
+  const [websiteStatus, setWebsiteStatus] = React.useState<
+    'connected' | 'error' | 'disconnected'
+  >('disconnected');
   const [loading, setLoading] = React.useState(true);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      const settings = await orgSettingsApi.getSettings();
-      setIntegrations(settings.integrations);
+      const [p, c, b, s, websites] = await Promise.all([
+        pathaoSettingsApi.get().catch(() => null),
+        carrybeeSettingsApi.get().catch(() => null),
+        bdCourierSettingsApi.get().catch(() => null),
+        smsSettingsApi.get().catch(() => null),
+        websiteSettingsApi.list().catch(() => null),
+      ]);
+      setPathao(p);
+      setCarrybee(c);
+      setBdCourier(b);
+      setSms(s);
+      setWebsitesConnected(websites?.filter((w) => w.enabled).length ?? 0);
+      setWebsiteStatus(websiteHubStatus(websites));
+      if (!p && !c && !b && !s && !websites) toast.error('Failed to load integrations');
     } finally {
       setLoading(false);
     }
@@ -54,84 +106,187 @@ export function IntegrationsSettingsPage() {
     void refresh();
   }, [refresh]);
 
-  async function handleConnect(provider: IntegrationConfig['provider']) {
-    await orgSettingsApi.updateIntegration({ provider, config: { apiKey: 'demo-key' } });
-    await refresh();
-  }
-
-  async function handleDisconnect(provider: string) {
-    await orgSettingsApi.disconnectIntegration(provider);
-    await refresh();
-  }
+  const pathaoStatus = statusOf(pathao);
+  const carrybeeStatus = statusOf(carrybee);
+  const bdCourierStatus = statusOf(bdcourier);
+  const smsStatus = statusOf(sms);
 
   return (
     <PageShell
       title="Integrations"
-      description="Connect couriers, payments, Facebook leads, and email."
+      description="Connect couriers and other services. Credentials are stored per organization."
     >
       <div className={ORDER_PAGE_GAP}>
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            {integrations.map((integration) => {
-              const status = STATUS_CONFIG[integration.status] ?? STATUS_CONFIG.disconnected;
-              const StatusIcon = status.icon;
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🛡️</span>
+                    <CardTitle className="text-sm">BD Courier (Fraud check)</CardTitle>
+                  </div>
+                  <StatusBadge status={bdCourierStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  Phone success rate across Pathao, Steadfast, RedX, CarryBee &amp; Paperfly —
+                  shown on create order, order table, and customer pages.
+                </p>
+                {bdcourier?.apiKeyMasked ? (
+                  <p className="text-xs text-muted-foreground">
+                    Key: <span className="font-medium">{bdcourier.apiKeyMasked}</span>
+                  </p>
+                ) : null}
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/bdcourier">
+                      <Plug className="size-3.5" />
+                      Configure BD Courier
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
 
-              return (
-                <Card key={integration.id} className={ORDER_CARD_CLASS}>
-                  <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{PROVIDER_ICONS[integration.provider] ?? '🔌'}</span>
-                        <CardTitle className="text-sm">{integration.label}</CardTitle>
-                      </div>
-                      <Badge variant={status.variant} className="gap-1 text-[10px]">
-                        <StatusIcon className="size-3" />
-                        {status.label}
-                      </Badge>
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📦</span>
+                    <CardTitle className="text-sm">Pathao Courier</CardTitle>
+                  </div>
+                  <StatusBadge status={pathaoStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  Book parcels, sync courier status, and map Pathao → CRM status.
+                </p>
+                {pathao?.environment ? (
+                  <p className="text-xs text-muted-foreground">
+                    Environment: <span className="font-medium">{pathao.environment}</span>
+                    {pathao.storeId ? ` · Store ${pathao.storeId}` : ''}
+                  </p>
+                ) : null}
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/pathao">
+                      <Plug className="size-3.5" />
+                      Configure Pathao
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
+
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📦</span>
+                    <CardTitle className="text-sm">Carrybee Courier</CardTitle>
+                  </div>
+                  <StatusBadge status={carrybeeStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  Book parcels, sync status, and map Carrybee → CRM (incl. RTS Carrybee).
+                </p>
+                {carrybee?.environment ? (
+                  <p className="text-xs text-muted-foreground">
+                    Environment: <span className="font-medium">{carrybee.environment}</span>
+                    {carrybee.storeId ? ` · Store ${carrybee.storeId}` : ''}
+                  </p>
+                ) : null}
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/carrybee">
+                      <Plug className="size-3.5" />
+                      Configure Carrybee
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
+
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">💬</span>
+                    <CardTitle className="text-sm">SMS Gateway</CardTitle>
+                  </div>
+                  <StatusBadge status={smsStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  Custom HTTP SMS (Gennet / SSL / any). Send from order detail &amp; bulk actions.
+                </p>
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/sms">
+                      <Plug className="size-3.5" />
+                      Configure SMS
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
+
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🛒</span>
+                    <CardTitle className="text-sm">Website / E-commerce</CardTitle>
+                  </div>
+                  <StatusBadge status={websiteStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  WooCommerce + custom sites → CRM orders via secure ingest token (idempotent).
+                </p>
+                {websitesConnected > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {websitesConnected} enabled store{websitesConnected === 1 ? '' : 's'}
+                  </p>
+                ) : null}
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/websites">
+                      <Plug className="size-3.5" />
+                      Configure websites
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
+
+            {COMING_SOON.map((item) => (
+              <Card key={item.id} className={ORDER_CARD_CLASS}>
+                <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{item.icon}</span>
+                      <CardTitle className="text-sm">{item.label}</CardTitle>
                     </div>
-                  </CardHeader>
-                  <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
-                    {integration.lastSyncAt ? (
-                      <p className="text-xs text-muted-foreground">
-                        Last sync: {new Date(integration.lastSyncAt).toLocaleString()}
-                      </p>
-                    ) : null}
-                    {integration.errorMessage ? (
-                      <p className="text-xs text-destructive">{integration.errorMessage}</p>
-                    ) : null}
-                    <Can permission="settings.manage">
-                      <div className="flex gap-2">
-                        {integration.status === 'connected' ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void handleDisconnect(integration.provider)}
-                          >
-                            <Unplug className="size-4" />
-                            Disconnect
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => void handleConnect(integration.provider)}
-                          >
-                            <Plug className="size-4" />
-                            Connect
-                          </Button>
-                        )}
-                        {integration.status === 'connected' ? (
-                          <Button type="button" size="sm" variant="ghost">Configure</Button>
-                        ) : null}
-                      </div>
-                    </Can>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                    <Badge variant="secondary" className="text-[10px]">
+                      Coming soon
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className={ORDER_SECTION_BODY_CLASS}>
+                  <p className="text-xs text-muted-foreground">Not configured yet.</p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
       </div>

@@ -9,9 +9,8 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { getOrderStore } from '@/features/orders/data/mock-orders';
-import { MOCK_FOLLOWUPS } from '@/features/followups/data/mock-followups';
-import { filterTickets } from '@/features/support/data/mock-support';
+import { supportApi } from '@/features/support/api/support-api';
+import { formatDateTime } from '@/lib/format';
 
 type TimelineItem = {
   id: string;
@@ -27,54 +26,52 @@ type CustomerTimelineProps = {
 };
 
 export function CustomerTimeline({ phone, activities }: CustomerTimelineProps) {
+  const [tickets, setTickets] = React.useState<TimelineItem[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void supportApi
+      .listTickets({ search: phone, page: 1, pageSize: 20 })
+      .then((res) => {
+        if (cancelled) return;
+        const digits = phone.replace(/\D/g, '');
+        setTickets(
+          res.items
+            .filter((t) => t.customerMobile.replace(/\D/g, '') === digits)
+            .map((t) => ({
+              id: `tk-${t.id}`,
+              label: `Ticket: ${t.subject}`,
+              description: t.status,
+              timestamp: t.createdAt,
+              kind: 'ticket' as const,
+            })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTickets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phone]);
+
   const items = React.useMemo(() => {
-    const digits = phone.replace(/\D/g, '');
     const timeline: TimelineItem[] = activities.map((a) => ({
       id: a.id,
       label: a.label,
       description: a.description,
       timestamp: a.timestamp,
-      kind: 'activity' as const,
+      kind: a.label.toLowerCase().includes('follow')
+        ? ('followup' as const)
+        : a.label.toLowerCase().startsWith('order')
+          ? ('order' as const)
+          : ('activity' as const),
     }));
 
-    for (const order of getOrderStore()) {
-      if (order.customerPhone.replace(/\D/g, '') !== digits) continue;
-      timeline.push({
-        id: `ord-${order.id}`,
-        label: `Order ${order.orderNumber}`,
-        description: `${order.status} · ${order.amount}`,
-        timestamp: order.createdAt,
-        kind: 'order',
-      });
-    }
-
-    for (const f of MOCK_FOLLOWUPS) {
-      if (f.phone.replace(/\D/g, '') !== digits) continue;
-      timeline.push({
-        id: `fu-${f.id}`,
-        label: 'Follow-up',
-        description: f.followupNotes ?? f.followupStatus,
-        timestamp: f.createdAt,
-        kind: 'followup',
-      });
-    }
-
-    const tickets = filterTickets({ search: phone, page: 1, pageSize: 20 }).items;
-    for (const t of tickets) {
-      if (t.customerMobile.replace(/\D/g, '') !== digits) continue;
-      timeline.push({
-        id: `tk-${t.id}`,
-        label: `Ticket: ${t.subject}`,
-        description: t.status,
-        timestamp: t.createdAt,
-        kind: 'ticket',
-      });
-    }
-
-    return timeline.sort(
+    return [...timeline, ...tickets].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
-  }, [phone, activities]);
+  }, [activities, tickets]);
 
   return (
     <Card className="gap-0 py-0 shadow-none">
@@ -85,22 +82,26 @@ export function CustomerTimeline({ phone, activities }: CustomerTimelineProps) {
         {!items.length ? (
           <p className="text-sm text-muted-foreground">No activity yet.</p>
         ) : (
-          <ol className="space-y-3 text-sm">
-            {items.slice(0, 20).map((item) => (
-              <li key={item.id}>
-                <div className="flex items-center gap-2">
-                  <p className="font-medium">{item.label}</p>
-                  <Badge variant="outline" className="text-[10px]">{item.kind}</Badge>
+          <ul className="space-y-3">
+            {items.map((item) => (
+              <li key={item.id} className="flex items-start justify-between gap-3 border-b pb-3 last:border-0">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{item.label}</p>
+                  {item.description ? (
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                  ) : null}
                 </div>
-                {item.description ? (
-                  <p className="text-muted-foreground">{item.description}</p>
-                ) : null}
-                <p className="text-xs text-muted-foreground">
-                  {new Date(item.timestamp).toLocaleString('en-GB')}
-                </p>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Badge variant="outline" className="text-[10px] uppercase">
+                    {item.kind}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground">
+                    {formatDateTime(item.timestamp)}
+                  </span>
+                </div>
               </li>
             ))}
-          </ol>
+          </ul>
         )}
       </CardContent>
     </Card>

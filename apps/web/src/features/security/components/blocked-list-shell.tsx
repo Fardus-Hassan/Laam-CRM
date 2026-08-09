@@ -5,6 +5,7 @@ import type { BlockedEntry, BlockedListResponse, CreateBlockedEntryPayload } fro
 import { Ban, Plus, RefreshCw, Search, Smartphone, Trash2 } from 'lucide-react';
 
 import { Can } from '@/components/auth/can';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -42,6 +43,7 @@ import {
   ORDER_PAGE_GAP,
   ORDER_SECTION_BODY_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 10;
@@ -159,6 +161,27 @@ export function BlockedListShell() {
               </div>
             </div>
 
+            <ActiveFilterChips
+              chips={[
+                ...(typeFilter !== 'all'
+                  ? [{ id: 'type', label: BLOCK_TYPE_LABELS[typeFilter] }]
+                  : []),
+                ...(search.trim()
+                  ? [{ id: 'search', label: `Search: ${search.trim()}` }]
+                  : []),
+              ]}
+              onRemove={(id) => {
+                if (id === 'type') setTypeFilter('all');
+                if (id === 'search') setSearch('');
+                setPage(1);
+              }}
+              onClearAll={() => {
+                setTypeFilter('all');
+                setSearch('');
+                setPage(1);
+              }}
+            />
+
             {loading ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
             ) : !data?.items.length ? (
@@ -202,11 +225,11 @@ export function BlockedListShell() {
                       </TableCell>
                       <TableCell className="text-sm">{entry.blockedByName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(entry.createdAt).toLocaleDateString()}
+                        {formatDate(entry.createdAt)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {entry.expiresAt
-                          ? new Date(entry.expiresAt).toLocaleDateString()
+                          ? formatDate(entry.expiresAt)
                           : 'Permanent'}
                       </TableCell>
                       <TableCell className="text-right">

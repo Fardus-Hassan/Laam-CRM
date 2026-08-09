@@ -7,27 +7,33 @@ import { cn } from '@/lib/utils';
 
 type CustomerSegmentChipsProps = {
   segments: CustomerSegmentCount[];
-  activeSegmentId: string;
+  activeId: string;
+  mode?: 'segment' | 'status';
   className?: string;
 };
 
 export function CustomerSegmentChips({
   segments,
-  activeSegmentId,
+  activeId,
+  mode = 'segment',
   className,
 }: CustomerSegmentChipsProps) {
   return (
     <div className={cn('flex flex-wrap gap-1.5', className)}>
       {segments.map((segment) => {
-        const isActive = segment.id === activeSegmentId;
+        const isActive = segment.id === activeId;
         const href =
-          segment.id === 'all'
-            ? '/dashboard/customers'
-            : `/dashboard/customers?segment=${segment.id}`;
+          mode === 'status'
+            ? isActive
+              ? '/dashboard/customers'
+              : `/dashboard/customers?status=${encodeURIComponent(segment.id)}`
+            : segment.id === 'all'
+              ? '/dashboard/customers'
+              : `/dashboard/customers?segment=${encodeURIComponent(segment.id)}`;
 
         return (
           <Link
-            key={segment.id}
+            key={`${mode}-${segment.id}`}
             href={href}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',

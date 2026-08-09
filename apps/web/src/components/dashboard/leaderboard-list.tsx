@@ -20,9 +20,9 @@ function initials(name: string) {
 }
 
 const TROPHY_COLOR = {
-  gold: 'text-amber-500',
+  gold: 'text-[var(--brand-accent,#FFD700)]',
   silver: 'text-slate-400',
-  bronze: 'text-amber-700',
+  bronze: 'text-[color-mix(in_oklab,var(--brand-accent,#FFD700)_55%,#7c3f00)]',
 } as const;
 
 export function LeaderboardList({ rows, className }: LeaderboardListProps) {

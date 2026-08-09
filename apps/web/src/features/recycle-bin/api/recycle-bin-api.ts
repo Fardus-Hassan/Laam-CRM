@@ -43,8 +43,9 @@ export function createHttpRecycleBinApi(): RecycleBinApi {
       const qs = params.toString();
       return apiRequest(`/crm/recycle-bin${qs ? `?${qs}` : ''}`);
     },
-    restore: (id) => apiRequest(`/crm/recycle-bin/${id}/restore`, { method: 'POST' }),
-    purge: (id) => apiRequest(`/crm/recycle-bin/${id}`, { method: 'DELETE' }),
+    restore: (id) =>
+      apiRequest(`/crm/recycle-bin/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
+    purge: (id) => apiRequest(`/crm/recycle-bin/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   };
 }
 

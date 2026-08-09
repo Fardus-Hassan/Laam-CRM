@@ -2,16 +2,13 @@
 
 import * as React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import type { CreateLeadLinePayload } from '@laam/types';
+import type { CreateLeadLinePayload, InventoryProductListItem } from '@laam/types';
 
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  getProductById,
-  searchProducts,
-} from '@/features/orders/data/mock-create-order';
+import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import {
   ORDER_CARD_CLASS,
   ORDER_SECTION_BODY_CLASS,
@@ -32,37 +29,76 @@ function nextId() {
   return `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const handle = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(handle);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function CreateLeadProductsSection({
   lineItems,
   onChange,
   className,
 }: CreateLeadProductsSectionProps) {
   const [filter, setFilter] = React.useState('');
-  const products = React.useMemo(() => searchProducts(filter), [filter]);
+  const debouncedFilter = useDebouncedValue(filter, 300);
+  const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [addingId, setAddingId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void inventoryApi
+      .listProducts({
+        filter: 'active',
+        search: debouncedFilter.trim() || undefined,
+        page: 1,
+        pageSize: 40,
+      })
+      .then((page) => {
+        if (!cancelled) setProducts(page.items);
+      })
+      .catch(() => {
+        if (!cancelled) setProducts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedFilter]);
 
   const subtotal = lineItems.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
 
-  function addFromProduct(productId: string) {
-    const product = getProductById(productId);
-    const variation = product?.variations[0];
-    if (!product || !variation) return;
-
-    onChange([
-      ...lineItems,
-      {
-        id: nextId(),
-        productName: product.name,
-        sku: product.sku,
-        quantity: 1,
-        unitPrice: variation.unitPrice,
-      },
-    ]);
+  async function addFromProduct(productId: string) {
+    setAddingId(productId);
+    try {
+      const detail = await inventoryApi.getProduct(productId);
+      if (!detail) return;
+      const variant = detail.variants[0];
+      const unitPrice = variant?.salePrice ?? detail.salePriceMin ?? 0;
+      onChange([
+        ...lineItems,
+        {
+          id: nextId(),
+          productName: detail.name,
+          sku: variant?.sku ?? detail.sku,
+          quantity: 1,
+          unitPrice,
+        },
+      ]);
+    } finally {
+      setAddingId(null);
+    }
   }
 
   function updateLine(id: string, patch: Partial<DraftLineItem>) {
-    onChange(
-      lineItems.map((line) => (line.id === id ? { ...line, ...patch } : line)),
-    );
+    onChange(lineItems.map((line) => (line.id === id ? { ...line, ...patch } : line)));
   }
 
   function removeLine(id: string) {
@@ -84,9 +120,14 @@ export function CreateLeadProductsSection({
             />
           </FormField>
           <div className="custom-scrollbar max-h-[320px] space-y-1 overflow-y-auto rounded-lg border border-border/70 p-1">
-            {products.map((product) => {
-              const minPrice = Math.min(...product.variations.map((v) => v.unitPrice));
-              return (
+            {loading ? (
+              <p className="px-2 py-6 text-center text-sm text-muted-foreground">Loading products…</p>
+            ) : !products.length ? (
+              <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                No active products found.
+              </p>
+            ) : (
+              products.map((product) => (
                 <div
                   key={product.id}
                   className="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-muted/60"
@@ -94,27 +135,40 @@ export function CreateLeadProductsSection({
                   <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    onClick={() => addFromProduct(product.id)}
+                    onClick={() => void addFromProduct(product.id)}
+                    disabled={addingId === product.id}
                   >
-                    <img
-                      src={product.imageUrl}
-                      alt={product.name}
-                      className="size-10 shrink-0 rounded-md border object-cover"
-                      loading="lazy"
-                    />
+                    {product.imageUrl ? (
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="size-10 shrink-0 rounded-md border object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-md border bg-muted text-xs text-muted-foreground">
+                        SKU
+                      </span>
+                    )}
                     <span className="min-w-0">
                       <p className="truncate text-sm font-medium">{product.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {product.sku} · from {formatCurrency(minPrice)}
+                        {product.sku} · from {formatCurrency(product.salePriceMin)}
                       </p>
                     </span>
                   </button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => addFromProduct(product.id)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={addingId === product.id}
+                    onClick={() => void addFromProduct(product.id)}
+                  >
                     <Plus className="size-3.5" />
                   </Button>
                 </div>
-              );
-            })}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

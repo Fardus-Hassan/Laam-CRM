@@ -87,6 +87,7 @@ export function filterMockFailedOrders(query: FailedOrderListQuery): FailedOrder
       confirmed: Math.round(mockFailedOrderStore.length * 0.12),
       failedToConfirmedPercent: 4.44,
     },
+    websites: [...WEBSITES],
   };
 }
 

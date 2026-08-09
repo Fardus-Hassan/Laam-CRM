@@ -4,19 +4,23 @@ import * as React from 'react';
 import type {
   InventoryProductDetail,
   InventoryProductListItem,
+  MixerRecipeListItem,
   ProductionBatchResult,
   ProductVariant,
+  Warehouse,
 } from '@laam/types';
 import { Calculator, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
+import { ProductionHisabPreview } from '@/features/inventory/components/production-hisab-preview';
+import { useInventoryUnits } from '@/features/inventory/hooks/use-inventory-units';
 import {
   ORDER_CARD_CLASS,
   ORDER_SECTION_BODY_CLASS,
@@ -24,15 +28,17 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { gramsFromVariant } from '@/features/inventory/lib/production-pack-size';
 
 type RawRow = {
   key: string;
   productId: string;
   name: string;
   quantity: string;
-  unit: 'kg' | 'g';
+  unit: string;
   totalCost: string;
   costPerKg: string;
+  locked?: boolean;
 };
 
 type VariantPlan = {
@@ -44,46 +50,56 @@ type VariantPlan = {
 
 type ProductionBatchPanelProps = {
   onCompleted?: (result: ProductionBatchResult) => void;
+  guideRecipe?: MixerRecipeListItem | null;
+  guideNonce?: number;
+  recipes?: MixerRecipeListItem[];
 };
 
-export function parseGramsFromLabel(label: string): number {
-  const kg = label.match(/([\d.]+)\s*kg/i);
-  if (kg) return Math.round(parseFloat(kg[1]) * 1000);
-  const g = label.match(/([\d.]+)\s*g/i);
-  if (g) return Math.round(parseFloat(g[1]));
-  return 500;
+function normalizeGuideUnit(unit: string): string {
+  const u = unit.trim().toLowerCase();
+  if (u === 'g' || u === 'gram' || u === 'grams' || u === 'gm') return 'g';
+  if (u === 'kg' || u === 'kilogram' || u === 'kilograms') return 'kg';
+  if (u === 'l' || u === 'litre' || u === 'liter') return 'L';
+  if (u === 'ml') return 'ml';
+  if (u === 'pcs' || u === 'pc' || u === 'piece' || u === 'pieces') return 'pcs';
+  return unit.trim() || 'kg';
 }
 
 function plansFromVariants(variants: ProductVariant[]): VariantPlan[] {
   return variants.map((v) => ({
     variantId: v.id,
     variantLabel: v.label,
-    gramsPerUnit: String(parseGramsFromLabel(v.label)),
+    gramsPerUnit: String(gramsFromVariant(v)),
     units: '',
   }));
 }
 
-function emptyRawRow(): RawRow {
+function emptyRawRow(defaultUnit = 'kg'): RawRow {
   return {
     key: `raw-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     productId: '',
     name: '',
     quantity: '',
-    unit: 'kg',
+    unit: defaultUnit,
     totalCost: '',
     costPerKg: '',
   };
 }
 
-function qtyToKg(quantity: number, unit: 'kg' | 'g') {
-  return unit === 'kg' ? quantity : quantity / 1000;
-}
-
-export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps) {
+export function ProductionBatchPanel({
+  onCompleted,
+  guideRecipe,
+  guideNonce = 0,
+  recipes = [],
+}: ProductionBatchPanelProps) {
+  const { unitOptions, defaultCode } = useInventoryUnits();
   const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
+  const [warehouses, setWarehouses] = React.useState<Warehouse[]>([]);
+  const [warehouseId, setWarehouseId] = React.useState('');
+  const [recipeId, setRecipeId] = React.useState('');
   const [outputDetail, setOutputDetail] = React.useState<InventoryProductDetail | null>(null);
   const [outputProductId, setOutputProductId] = React.useState('');
-  const [rawRows, setRawRows] = React.useState<RawRow[]>([emptyRawRow(), emptyRawRow()]);
+  const [rawRows, setRawRows] = React.useState<RawRow[]>(() => [emptyRawRow('kg')]);
   const [variantPlans, setVariantPlans] = React.useState<VariantPlan[]>([]);
   const [note, setNote] = React.useState('');
   const [running, setRunning] = React.useState(false);
@@ -91,9 +107,83 @@ export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps)
     ReturnType<typeof inventoryApi.previewProduction>
   > | null>(null);
 
+  const recipeBase = React.useRef<{
+    outputQty: number;
+    inputs: Array<{ productId: string; name: string; quantity: number; unit: string; costPerKg: string }>;
+  } | null>(null);
+  const pendingGuideUnits = React.useRef<number | null>(null);
+  const appliedGuideNonce = React.useRef(0);
+
   React.useEffect(() => {
-    void inventoryApi.listProducts({ page: 1, pageSize: 100, filter: 'active' }).then((r) => setProducts(r.items));
+    void Promise.all([
+      inventoryApi.listProducts({ page: 1, pageSize: 200, filter: 'active' }),
+      inventoryApi.listWarehouses(),
+    ]).then(([productRes, whRes]) => {
+      setProducts(productRes.items);
+      setWarehouses(whRes.items);
+      const def = whRes.items.find((w) => w.isDefault) ?? whRes.items[0];
+      if (def) setWarehouseId((prev) => prev || def.id);
+    });
   }, []);
+
+  const applyRecipeMaterials = React.useCallback(
+    (recipe: MixerRecipeListItem, scale = 1) => {
+      const inputs = recipe.inputs
+        .filter((input) => input.productId)
+        .map((input) => {
+          const matched =
+            products.find((p) => p.id === input.productId) ??
+            products.find((p) => p.sku === input.sku);
+          const unit = normalizeGuideUnit(input.unit);
+          const qty = Math.round(input.quantity * scale * 1000) / 1000;
+          const costPerKg = matched?.costPrice != null ? String(matched.costPrice) : '';
+          const totalCost =
+            costPerKg && qty > 0 ? String(Math.round(Number(costPerKg) * qty)) : '';
+          return {
+            key: `raw-${input.productId}-${Math.random().toString(36).slice(2, 6)}`,
+            productId: matched?.id ?? input.productId!,
+            name: matched?.name ?? input.productName,
+            quantity: String(qty),
+            unit,
+            totalCost,
+            costPerKg,
+            locked: true,
+          } satisfies RawRow;
+        });
+
+      recipeBase.current = {
+        outputQty: Math.max(1, recipe.outputQty),
+        inputs: inputs.map((row) => ({
+          productId: row.productId,
+          name: row.name,
+          quantity: Number(row.quantity) / scale,
+          unit: row.unit,
+          costPerKg: row.costPerKg,
+        })),
+      };
+
+      setRecipeId(recipe.id);
+      setRawRows(inputs.length ? inputs : [emptyRawRow(defaultCode('kg'))]);
+      setNote(recipe.name);
+      setPreview(null);
+    },
+    [products, defaultCode],
+  );
+
+  React.useEffect(() => {
+    if (!guideRecipe || !guideNonce) return;
+    if (!products.length) return;
+    if (appliedGuideNonce.current === guideNonce) return;
+    appliedGuideNonce.current = guideNonce;
+
+    const matchedOutput =
+      products.find((p) => p.id === guideRecipe.outputProductId) ??
+      products.find((p) => p.sku === guideRecipe.outputSku);
+
+    pendingGuideUnits.current = guideRecipe.outputQty;
+    setOutputProductId(matchedOutput?.id ?? guideRecipe.outputProductId);
+    applyRecipeMaterials(guideRecipe, 1);
+  }, [guideRecipe, guideNonce, products, applyRecipeMaterials]);
 
   React.useEffect(() => {
     if (!outputProductId) {
@@ -103,32 +193,102 @@ export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps)
     }
     void inventoryApi.getProduct(outputProductId).then((p) => {
       setOutputDetail(p);
-      setVariantPlans(p?.variants?.length ? plansFromVariants(p.variants) : []);
+      const plans = p?.variants?.length ? plansFromVariants(p.variants) : [];
+      const guideUnits = pendingGuideUnits.current;
+      if (guideUnits != null && plans.length) {
+        plans[0] = { ...plans[0], units: String(guideUnits) };
+        pendingGuideUnits.current = null;
+      }
+      setVariantPlans(plans);
     });
   }, [outputProductId]);
 
+  // Scale recipe materials when finished units change.
+  const totalUnits = variantPlans.reduce((sum, p) => sum + (Number(p.units) || 0), 0);
+  React.useEffect(() => {
+    const base = recipeBase.current;
+    if (!base || !recipeId || totalUnits <= 0) return;
+    const scale = totalUnits / base.outputQty;
+    setRawRows((rows) => {
+      if (!rows.every((r) => r.locked)) return rows;
+      return base.inputs.map((input) => {
+        const qty = Math.round(input.quantity * scale * 1000) / 1000;
+        const totalCost =
+          input.costPerKg && qty > 0
+            ? String(Math.round(Number(input.costPerKg) * qty))
+            : '';
+        return {
+          key: `raw-${input.productId}-scaled`,
+          productId: input.productId,
+          name: input.name,
+          quantity: String(qty),
+          unit: input.unit,
+          totalCost,
+          costPerKg: input.costPerKg,
+          locked: true,
+        };
+      });
+    });
+  }, [totalUnits, recipeId]);
+
   const productOptions = products.map((p) => ({
     value: p.id,
-    label: `${p.sku} — ${p.name} (stock ${p.stock})`,
+    label: `${p.sku} — ${p.name}`,
   }));
+
+  const warehouseOptions = warehouses.map((w) => ({
+    value: w.id,
+    label: `${w.code} — ${w.name}${w.isDefault ? ' (default)' : ''}`,
+  }));
+
+  const recipeOptions = [
+    { value: '', label: 'Custom mix (no recipe)' },
+    ...recipes
+      .filter((r) => r.status === 'active' || r.id === recipeId)
+      .map((r) => ({
+        value: r.id,
+        label: `${r.name} → ${r.outputProductName}`,
+      })),
+  ];
+
+  function onPickRecipe(id: string) {
+    setRecipeId(id);
+    if (!id) {
+      recipeBase.current = null;
+      setRawRows([emptyRawRow(defaultCode('kg'))]);
+      setNote('');
+      return;
+    }
+    const recipe = recipes.find((r) => r.id === id);
+    if (!recipe) return;
+    pendingGuideUnits.current = recipe.outputQty;
+    setOutputProductId(recipe.outputProductId);
+    applyRecipeMaterials(recipe, 1);
+  }
 
   function patchRaw(key: string, patch: Partial<RawRow>, recalc: 'fromTotal' | 'fromRate' | 'none' = 'none') {
     setRawRows((rows) =>
       rows.map((row) => {
         if (row.key !== key) return row;
-        const next = { ...row, ...patch };
-        const qty = Number(next.quantity);
-        const qtyKg = qtyToKg(qty, next.unit);
-        if (recalc === 'fromTotal' && qtyKg > 0 && next.totalCost !== '') {
-          const total = Number(next.totalCost);
-          if (Number.isFinite(total)) {
-            next.costPerKg = String(Math.round((total / qtyKg) * 100) / 100);
+        if (row.locked && (patch.productId !== undefined || patch.quantity !== undefined)) {
+          // Allow cost edits on locked recipe rows; block material/qty drift.
+          if (patch.productId !== undefined || patch.quantity !== undefined || patch.unit !== undefined) {
+            const { totalCost, costPerKg, name } = patch;
+            patch = { totalCost, costPerKg, name };
           }
         }
-        if (recalc === 'fromRate' && qtyKg > 0 && next.costPerKg !== '') {
+        const next = { ...row, ...patch };
+        const qty = Number(next.quantity);
+        if (recalc === 'fromTotal' && qty > 0 && next.totalCost !== '') {
+          const total = Number(next.totalCost);
+          if (Number.isFinite(total)) {
+            next.costPerKg = String(Math.round((total / qty) * 100) / 100);
+          }
+        }
+        if (recalc === 'fromRate' && qty > 0 && next.costPerKg !== '') {
           const rate = Number(next.costPerKg);
           if (Number.isFinite(rate)) {
-            next.totalCost = String(Math.round(rate * qtyKg));
+            next.totalCost = String(Math.round(rate * qty));
           }
         }
         return next;
@@ -138,25 +298,31 @@ export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps)
 
   function onPickMaterial(key: string, productId: string) {
     const product = products.find((p) => p.id === productId);
-    patchRaw(key, {
-      productId,
-      name: product?.name ?? '',
-      costPerKg: product?.costPrice != null ? String(product.costPrice) : '',
-    }, 'fromRate');
+    const unit = defaultCode(product?.primaryBaseUomCode ?? 'kg');
+    patchRaw(
+      key,
+      {
+        productId,
+        name: product?.name ?? '',
+        unit,
+        costPerKg: product?.costPrice != null ? String(product.costPrice) : '',
+      },
+      'fromRate',
+    );
   }
 
   const payload = React.useMemo(() => {
     if (!outputProductId) return null;
     const rawMaterials = rawRows
       .map((r) => ({
-        productId: r.productId || undefined,
+        productId: r.productId,
         name: r.name.trim() || products.find((p) => p.id === r.productId)?.name || '',
         quantity: Number(r.quantity),
         unit: r.unit,
         totalCost: Number(r.totalCost) || 0,
         costPerKg: Number(r.costPerKg) || 0,
       }))
-      .filter((r) => r.name && r.quantity > 0);
+      .filter((r) => r.productId && r.name && r.quantity > 0);
     const outputs = variantPlans
       .map((v) => ({
         variantId: v.variantId,
@@ -166,8 +332,15 @@ export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps)
       }))
       .filter((o) => o.units > 0 && o.gramsPerUnit > 0);
     if (!rawMaterials.length || !outputs.length) return null;
-    return { outputProductId, rawMaterials, outputs, note: note || undefined };
-  }, [outputProductId, rawRows, variantPlans, note, products]);
+    return {
+      outputProductId,
+      recipeId: recipeId || undefined,
+      warehouseId: warehouseId || undefined,
+      rawMaterials,
+      outputs,
+      note: note || undefined,
+    };
+  }, [outputProductId, rawRows, variantPlans, note, products, recipeId, warehouseId]);
 
   React.useEffect(() => {
     if (!payload) {
@@ -175,27 +348,29 @@ export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps)
       return;
     }
     const t = setTimeout(() => {
-      void inventoryApi.previewProduction(payload).then(setPreview);
-    }, 120);
+      void inventoryApi.previewProduction(payload).then(setPreview).catch(() => setPreview(null));
+    }, 150);
     return () => clearTimeout(t);
   }, [payload]);
 
   async function handleRun() {
     if (!payload || !preview?.ok) {
-      toast.error(preview?.limitedBy || 'Fill raw materials and variant units');
+      toast.error(preview?.limitedBy || 'Fill materials, warehouse, and pack quantities');
       return;
     }
     setRunning(true);
     try {
       const result = await inventoryApi.runProduction(payload);
       toast.success(
-        `Saved ${result.batchNumber}: ${result.unitsProduced} units · total ${formatCurrency(result.materialCost)} · ${formatCurrency(result.costPerUnit)}/unit`,
+        `${result.batchNumber}: ${result.unitsProduced} units · ${formatCurrency(result.materialCost)}`,
       );
       onCompleted?.(result);
-      setRawRows([emptyRawRow(), emptyRawRow()]);
+      recipeBase.current = null;
+      setRecipeId('');
+      setRawRows([emptyRawRow(defaultCode('kg'))]);
       setVariantPlans((plans) => plans.map((p) => ({ ...p, units: '' })));
       setNote('');
-      const refreshed = await inventoryApi.listProducts({ page: 1, pageSize: 100, filter: 'active' });
+      const refreshed = await inventoryApi.listProducts({ page: 1, pageSize: 200, filter: 'active' });
       setProducts(refreshed.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Production failed');
@@ -206,338 +381,243 @@ export function ProductionBatchPanel({ onCompleted }: ProductionBatchPanelProps)
 
   return (
     <Card className={cn(ORDER_CARD_CLASS, 'min-w-0')}>
-      <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-        <div className="flex items-start gap-2">
-          <Calculator className="mt-0.5 size-4 shrink-0 text-primary" />
+      <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'py-3')}>
+        <div className="flex items-center gap-2">
+          <Calculator className="size-4 shrink-0 text-primary" />
           <div className="min-w-0">
-            <CardTitle className="text-sm">Production hisab</CardTitle>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Multiple raw materials (each with own qty, unit, cost) → variants made → cost per
-              product and per-raw usage.
+            <CardTitle className="text-sm">Run production</CardTitle>
+            <p className="text-[11px] text-muted-foreground">
+              Recipe → warehouse → packs. Materials scale automatically.
             </p>
           </div>
         </div>
       </CardHeader>
-      <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-5')}>
-        <FormField label="Finished product" required>
-          <FormSearchSelect
-            value={outputProductId}
-            onChange={setOutputProductId}
-            options={productOptions}
-            placeholder="e.g. Honey + Kalojira Mix…"
-          />
-        </FormField>
+      <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <FormField label="Recipe" className="sm:col-span-2">
+            <FormSearchSelect
+              value={recipeId}
+              onChange={onPickRecipe}
+              options={recipeOptions}
+              placeholder="Pick recipe or custom…"
+            />
+          </FormField>
+          <FormField label="Warehouse" required>
+            <FormSearchSelect
+              value={warehouseId}
+              onChange={setWarehouseId}
+              options={warehouseOptions}
+              placeholder="Warehouse…"
+              searchable={warehouseOptions.length > 6}
+            />
+          </FormField>
+          <FormField label="Finished product" required>
+            <FormSearchSelect
+              value={outputProductId}
+              onChange={(id) => {
+                setOutputProductId(id);
+                if (recipeId) {
+                  const r = recipes.find((x) => x.id === recipeId);
+                  if (r && r.outputProductId !== id) {
+                    setRecipeId('');
+                    recipeBase.current = null;
+                    setRawRows((rows) => rows.map((row) => ({ ...row, locked: false })));
+                  }
+                }
+              }}
+              options={productOptions}
+              placeholder="Finished product…"
+              disabled={Boolean(recipeId)}
+            />
+          </FormField>
+        </div>
 
-        {/* Raw materials */}
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Raw materials (each line separate)
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Materials
             </p>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7"
-              onClick={() => setRawRows((rows) => [...rows, emptyRawRow()])}
-            >
-              <Plus className="size-3.5" />
-              Add material
-            </Button>
+            {!recipeId ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7"
+                onClick={() => setRawRows((rows) => [...rows, emptyRawRow(defaultCode('kg'))])}
+              >
+                <Plus className="size-3.5" />
+                Add
+              </Button>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">Scaled from recipe</span>
+            )}
           </div>
 
-          <div className="space-y-3">
-            {rawRows.map((row, index) => (
-              <div
-                key={row.key}
-                className="space-y-2 rounded-xl border bg-muted/10 p-3"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-muted-foreground">Material {index + 1}</p>
-                  {rawRows.length > 1 ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="size-7 text-destructive"
-                      onClick={() => setRawRows((rows) => rows.filter((r) => r.key !== row.key))}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  ) : null}
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <FormField label="Material">
-                    <FormSearchSelect
-                      value={row.productId}
-                      onChange={(v) => onPickMaterial(row.key, v)}
-                      options={productOptions}
-                      placeholder="Select or type below…"
-                    />
-                  </FormField>
-                  <FormField label="Name (if not in list)">
-                    <FormInput
-                      value={row.name}
-                      onChange={(e) => patchRaw(row.key, { name: e.target.value })}
-                      placeholder="Kalojira / Honey / Jafran"
-                    />
-                  </FormField>
-                  <FormField label="Quantity">
-                    <div className="flex gap-1">
+          <div className="overflow-x-auto rounded-lg border border-border/70">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="bg-muted/40 text-[11px] text-muted-foreground">
+                <tr>
+                  <th className="px-2 py-1.5 font-medium">Product</th>
+                  <th className="w-24 px-2 py-1.5 font-medium">Qty</th>
+                  <th className="w-20 px-2 py-1.5 font-medium">Unit</th>
+                  <th className="w-24 px-2 py-1.5 font-medium">Rate</th>
+                  <th className="w-28 px-2 py-1.5 font-medium">Cost</th>
+                  <th className="w-10 px-2 py-1.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {rawRows.map((row) => (
+                  <tr key={row.key} className="border-t border-border/50">
+                    <td className="px-2 py-1.5">
+                      <FormSearchSelect
+                        value={row.productId}
+                        onChange={(v) => onPickMaterial(row.key, v)}
+                        options={productOptions}
+                        placeholder="Material…"
+                        disabled={row.locked}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
                       <FormInput
                         type="number"
                         min={0}
                         step="any"
+                        className="h-8"
                         value={row.quantity}
+                        disabled={row.locked}
                         onChange={(e) =>
                           patchRaw(row.key, { quantity: e.target.value }, 'fromRate')
                         }
-                        className="min-w-0 flex-1"
                       />
-                      <div className="flex shrink-0 rounded-md border">
-                        {(['kg', 'g'] as const).map((u) => (
-                          <button
-                            key={u}
-                            type="button"
-                            className={cn(
-                              'px-2 text-xs font-medium',
-                              row.unit === u
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-muted-foreground hover:bg-muted',
-                            )}
-                            onClick={() => patchRaw(row.key, { unit: u }, 'fromRate')}
-                          >
-                            {u}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </FormField>
-                  <FormField label="Total cost (৳)">
-                    <FormInput
-                      type="number"
-                      min={0}
-                      value={row.totalCost}
-                      onChange={(e) =>
-                        patchRaw(row.key, { totalCost: e.target.value }, 'fromTotal')
-                      }
-                      placeholder="50000"
-                    />
-                  </FormField>
-                </div>
-                <FormField label="Cost per kg (৳)">
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <FormSearchSelect
+                        value={row.unit}
+                        onChange={(v) => patchRaw(row.key, { unit: v }, 'fromRate')}
+                        options={unitOptions}
+                        searchable={false}
+                        disabled={row.locked}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <FormInput
+                        type="number"
+                        min={0}
+                        step="any"
+                        className="h-8"
+                        value={row.costPerKg}
+                        onChange={(e) =>
+                          patchRaw(row.key, { costPerKg: e.target.value }, 'fromRate')
+                        }
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <FormInput
+                        type="number"
+                        min={0}
+                        step="any"
+                        className="h-8"
+                        value={row.totalCost}
+                        onChange={(e) =>
+                          patchRaw(row.key, { totalCost: e.target.value }, 'fromTotal')
+                        }
+                      />
+                    </td>
+                    <td className="px-1 py-1.5">
+                      {!row.locked && rawRows.length > 1 ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 text-destructive"
+                          onClick={() => setRawRows((rows) => rows.filter((r) => r.key !== row.key))}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {outputDetail?.variants?.length ? (
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Packs produced
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {variantPlans.map((plan) => (
+                <div
+                  key={plan.variantId}
+                  className="flex items-center gap-2 rounded-lg border border-border/70 px-2.5 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{plan.variantLabel}</p>
+                    <p className="text-[10px] text-muted-foreground">{plan.gramsPerUnit}g / unit</p>
+                  </div>
                   <FormInput
                     type="number"
                     min={0}
-                    value={row.costPerKg}
+                    className="h-8 w-20"
+                    placeholder="0"
+                    value={plan.units}
                     onChange={(e) =>
-                      patchRaw(row.key, { costPerKg: e.target.value }, 'fromRate')
+                      setVariantPlans((plans) =>
+                        plans.map((p) =>
+                          p.variantId === plan.variantId ? { ...p, units: e.target.value } : p,
+                        ),
+                      )
                     }
-                    placeholder="500"
-                    className="max-w-xs"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Auto from total ÷ kg; edit either field.
-                  </p>
-                </FormField>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Variants */}
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Variants made
-          </p>
-          {!outputProductId ? (
-            <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-              Select finished product to load variants (500g, 1kg, …).
-            </p>
-          ) : (
-            <div className="space-y-2 rounded-xl border p-3">
-              {variantPlans.map((plan) => (
-                <div key={plan.variantId} className="grid gap-2 sm:grid-cols-[1fr_6rem_7rem]">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{plan.variantLabel}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Stock{' '}
-                      {outputDetail?.variants.find((v) => v.id === plan.variantId)?.stock ?? '—'}
-                    </p>
-                  </div>
-                  <FormField label="g / unit">
-                    <FormInput
-                      type="number"
-                      min={1}
-                      value={plan.gramsPerUnit}
-                      onChange={(e) =>
-                        setVariantPlans((rows) =>
-                          rows.map((r) =>
-                            r.variantId === plan.variantId
-                              ? { ...r, gramsPerUnit: e.target.value }
-                              : r,
-                          ),
-                        )
-                      }
-                    />
-                  </FormField>
-                  <FormField label="Units made">
-                    <FormInput
-                      type="number"
-                      min={0}
-                      value={plan.units}
-                      onChange={(e) =>
-                        setVariantPlans((rows) =>
-                          rows.map((r) =>
-                            r.variantId === plan.variantId ? { ...r, units: e.target.value } : r,
-                          ),
-                        )
-                      }
-                      placeholder="0"
-                    />
-                  </FormField>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-
-        <FormField label="Note">
-          <FormInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
-        </FormField>
-
-        {/* Preview breakdowns */}
-        {preview && preview.unitsProduced > 0 ? (
-          <div className="space-y-4 rounded-xl border bg-muted/20 p-3 sm:p-4">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Each raw material (separate)
-              </p>
-              <div className="overflow-x-auto rounded-lg border bg-background">
-                <table className="w-full min-w-[480px] text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
-                      <th className="px-3 py-2 font-medium">Material</th>
-                      <th className="px-3 py-2 font-medium">Qty</th>
-                      <th className="px-3 py-2 font-medium">৳ / kg</th>
-                      <th className="px-3 py-2 text-right font-medium">Line cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.inputs.map((input, i) => (
-                      <tr key={`${input.name}-${i}`} className="border-b border-border/50">
-                        <td className="px-3 py-2 font-medium">{input.name}</td>
-                        <td className="px-3 py-2 tabular-nums">
-                          {input.quantity} {input.unit}
-                        </td>
-                        <td className="px-3 py-2 tabular-nums">{formatCurrency(input.costPerKg)}</td>
-                        <td className="px-3 py-2 text-right font-medium tabular-nums">
-                          {formatCurrency(input.totalCost)}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-muted/30 font-semibold">
-                      <td className="px-3 py-2" colSpan={3}>
-                        Total production cost
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {formatCurrency(preview.materialCost)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-[11px] text-muted-foreground">Units made</p>
-                <p className="text-xl font-bold tabular-nums text-primary">{preview.unitsProduced}</p>
-              </div>
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-[11px] text-muted-foreground">Cost per product (avg)</p>
-                <p className="text-xl font-bold tabular-nums">
-                  {formatCurrency(preview.costPerUnit)}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Per product — each raw how much
-              </p>
-              <div className="overflow-x-auto rounded-lg border bg-background">
-                <table className="w-full min-w-[400px] text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground">
-                      <th className="px-3 py-2 font-medium">Raw material</th>
-                      <th className="px-3 py-2 font-medium">Qty / product</th>
-                      <th className="px-3 py-2 text-right font-medium">৳ / product</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.perUnitRawUsage.map((u, i) => (
-                      <tr key={`${u.name}-${i}`} className="border-b border-border/50">
-                        <td className="px-3 py-2 font-medium">{u.name}</td>
-                        <td className="px-3 py-2 tabular-nums">
-                          {u.quantityPerUnit} {u.unit}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {formatCurrency(u.costPerUnit)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Per variant (weight-based share)
-              </p>
-              <div className="space-y-2">
-                {preview.outputs.map((o) => (
-                  <div key={o.variantId} className="rounded-lg border bg-background p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium">
-                        {o.units}× {o.variantLabel}{' '}
-                        <span className="text-xs text-muted-foreground">({o.gramsPerUnit}g)</span>
-                      </p>
-                      <Badge variant="outline">
-                        {formatCurrency(o.costPerUnit)}/unit · batch {formatCurrency(o.cost)}
-                      </Badge>
-                    </div>
-                    <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-                      {o.rawUsage.map((u, i) => (
-                        <li key={`${o.variantId}-${u.name}-${i}`}>
-                          {u.name}: {u.quantityPerUnit} {u.unit} · {formatCurrency(u.costPerUnit)}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {!preview.ok ? (
-              <Badge variant="destructive">{preview.limitedBy}</Badge>
-            ) : null}
           </div>
-        ) : payload ? (
-          <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-            {preview?.limitedBy || 'Fill materials and variant units.'}
-          </p>
+        ) : outputProductId ? (
+          <p className="text-xs text-muted-foreground">This product has no variants yet.</p>
         ) : null}
 
-        <Button
-          type="button"
-          className="w-full sm:w-auto"
-          disabled={running || !preview?.ok}
-          onClick={() => void handleRun()}
-        >
-          {running ? 'Saving…' : 'Save production hisab'}
-        </Button>
+        <div className="space-y-2">
+          <FormField label="Note">
+            <FormInput
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional batch note"
+            />
+          </FormField>
+
+          {preview ? (
+            <ProductionHisabPreview
+              preview={preview}
+              finishedProductName={
+                products.find((p) => p.id === outputProductId)?.name ??
+                outputDetail?.name
+              }
+              warehouseName={warehouses.find((w) => w.id === warehouseId)?.name}
+              recipeName={
+                recipeId ? recipes.find((r) => r.id === recipeId)?.name : undefined
+              }
+            />
+          ) : payload ? (
+            <p className="text-xs text-muted-foreground">Calculating cost summary…</p>
+          ) : null}
+
+          <Can permission="inventory.mixer">
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/60 pt-3">
+              <Button
+                type="button"
+                className="h-9 min-w-[9rem]"
+                disabled={running || !preview?.ok}
+                onClick={() => void handleRun()}
+              >
+                {running ? 'Saving…' : 'Save production'}
+              </Button>
+            </div>
+          </Can>
+        </div>
       </CardContent>
     </Card>
   );

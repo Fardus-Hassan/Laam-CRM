@@ -18,8 +18,9 @@ export const orgProfileSchema = z.object({
 export type OrgProfile = z.infer<typeof orgProfileSchema>;
 
 export const integrationProviderSchema = z.enum([
-  'steadfast',
   'pathao',
+  'carrybee',
+  'steadfast',
   'redx',
   'facebook',
   'bkash',

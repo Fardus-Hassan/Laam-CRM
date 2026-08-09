@@ -11,16 +11,16 @@ import { DashboardDateProvider } from '@/features/dashboard/providers/dashboard-
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <BrandProvider>
-        <DashboardDateProvider>
-          <AuthProvider>
+      <AuthProvider>
+        <BrandProvider>
+          <DashboardDateProvider>
             <CommandPaletteProvider>
               {children}
             </CommandPaletteProvider>
             <Toaster richColors position="top-right" closeButton />
-          </AuthProvider>
-        </DashboardDateProvider>
-      </BrandProvider>
+          </DashboardDateProvider>
+        </BrandProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

@@ -1,5 +1,6 @@
 export { CrmDataTable } from '@/components/data-table/crm-data-table';
 export { CrmDataTableToolbar } from '@/components/data-table/crm-data-table-toolbar';
+export { CrmDataTableMeta } from '@/components/data-table/crm-data-table-meta';
 export type {
   CrmColumnDef,
   CrmColumnMeta,

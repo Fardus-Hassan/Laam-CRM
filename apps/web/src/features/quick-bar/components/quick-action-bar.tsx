@@ -24,28 +24,82 @@ import {
   listEventsForDate,
   listStuckNotes,
 } from '@/features/quick-bar/data/quick-bar-store';
-import { getTodayFollowupCount } from '@/features/followups/data/mock-followups';
-import { getTodayTaskCount } from '@/features/tasks/data/mock-tasks';
-import { getLowStockCount } from '@/features/inventory/data/mock-inventory';
+import { followupsApi } from '@/features/followups/api/followups-api';
+import { tasksApi } from '@/features/tasks/api/tasks-api';
+import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { cn } from '@/lib/utils';
 
 const QUICK_LINKS = [
-  { id: 'order', label: 'New order', href: '/dashboard/orders/new', icon: ShoppingCart },
+  { id: 'order', label: 'Order', href: '/dashboard/orders/new', icon: ShoppingCart },
   { id: 'followups', label: 'Follow-ups', href: '/dashboard/followups', icon: Phone },
   { id: 'tasks', label: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
   { id: 'customers', label: 'Customers', href: '/dashboard/customers', icon: Users },
   { id: 'knowledge', label: 'Knowledge', href: '/dashboard/knowledge', icon: BookOpen },
 ] as const;
 
+const ITEM_CLASS =
+  'relative flex h-11 w-[4.25rem] shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-medium leading-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95';
+
+/**
+ * Right-edge docked quick launcher — vertically centered on desktop.
+ */
 export function QuickActionBar() {
   const [open, setOpen] = React.useState(false);
   const [notesVersion, setNotesVersion] = React.useState(0);
+  const [followups, setFollowups] = React.useState(0);
+  const [tasks, setTasks] = React.useState(0);
+  const [lowStock, setLowStock] = React.useState(0);
+  const rootRef = React.useRef<HTMLDivElement>(null);
 
   const stuckCount = listStuckNotes().length;
   const todayEvents = listEventsForDate(getTodayIsoDate()).length;
-  const followups = getTodayFollowupCount();
-  const tasks = getTodayTaskCount();
-  const lowStock = getLowStockCount();
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [taskRes, fuRes, invRes] = await Promise.all([
+          tasksApi.listTasks({ filter: 'today', page: 1, pageSize: 1 }),
+          followupsApi.listFollowups({ queue: 1, filter: 'today', page: 1, pageSize: 1 }),
+          inventoryApi.listProducts({ page: 1, pageSize: 1, filter: 'low_stock' }).catch(() => null),
+        ]);
+        if (cancelled) return;
+        setTasks(taskRes.summary?.todayCount ?? taskRes.total ?? 0);
+        setFollowups(fuRes.summary?.todayCount ?? fuRes.total ?? 0);
+        setLowStock(invRes?.summary?.lowStockCount ?? 0);
+      } catch {
+        if (!cancelled) {
+          setTasks(0);
+          setFollowups(0);
+          setLowStock(0);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (rootRef.current && target && !rootRef.current.contains(target)) {
+        setOpen(false);
+      }
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   function handleNewSticky() {
     createStickyNote('');
@@ -61,26 +115,42 @@ export function QuickActionBar() {
         onChange={() => setNotesVersion((v) => v + 1)}
       />
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:inset-x-auto sm:bottom-5 sm:right-5 sm:justify-end sm:p-0">
+      <div
+        ref={rootRef}
+        className={cn(
+          'pointer-events-none fixed z-40',
+          /* Mobile: bottom-center */
+          'inset-x-0 bottom-0 flex justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]',
+          /* Desktop: true vertical middle, right edge */
+          'sm:inset-x-auto sm:bottom-auto sm:left-auto sm:right-0 sm:top-1/2 sm:-translate-y-1/2 sm:justify-end sm:p-0',
+        )}
+      >
         <div
           className={cn(
-            'pointer-events-auto flex max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-2xl border bg-background/95 p-1 shadow-lg backdrop-blur transition-all duration-300 supports-[backdrop-filter]:bg-background/80 sm:max-w-none sm:gap-1 sm:p-1.5',
-            open && 'animate-in fade-in-0 zoom-in-95',
+            'pointer-events-auto flex items-center gap-0.5 border bg-background/95 shadow-lg backdrop-blur',
+            'supports-[backdrop-filter]:bg-background/85',
+            open
+              ? 'max-w-[calc(100vw-1rem)] rounded-2xl p-1 sm:max-w-none sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0 sm:p-1'
+              : 'rounded-2xl p-1 sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0 sm:p-0',
           )}
         >
           {!open ? (
             <Button
               type="button"
               size="icon"
-              className="size-12 rounded-xl shadow-md transition-transform hover:scale-105 active:scale-95"
+              className={cn(
+                'size-12 shrink-0 rounded-xl shadow-md transition-transform hover:scale-[1.03] active:scale-95',
+                'sm:h-12 sm:w-11 sm:rounded-l-2xl sm:rounded-r-none sm:shadow-md',
+              )}
               onClick={() => setOpen(true)}
               aria-label="Open quick actions"
+              aria-expanded={false}
             >
-              <Zap className="size-5" />
+              <Zap className="size-5 shrink-0" strokeWidth={2.25} />
             </Button>
           ) : (
             <>
-              <div className="flex items-center gap-0.5 overflow-x-auto px-0.5">
+              <div className="flex max-w-[calc(100vw-4rem)] items-center gap-0.5 overflow-x-auto sm:max-w-[min(32rem,72vw)]">
                 <QuickIconButton
                   label="Sticky"
                   icon={StickyNote}
@@ -94,7 +164,7 @@ export function QuickActionBar() {
                   badge={todayEvents || undefined}
                   onNavigate={() => setOpen(false)}
                 />
-                <div className="mx-1 hidden h-8 w-px bg-border sm:block" />
+                <div className="mx-0.5 hidden h-8 w-px shrink-0 bg-border sm:block" aria-hidden />
                 {QUICK_LINKS.map((link) => (
                   <QuickLinkButton
                     key={link.id}
@@ -126,17 +196,30 @@ export function QuickActionBar() {
                 type="button"
                 size="icon"
                 variant="ghost"
-                className="size-9 shrink-0 rounded-lg"
+                className="size-9 shrink-0 self-center rounded-lg"
                 onClick={() => setOpen(false)}
                 aria-label="Close quick actions"
+                aria-expanded={true}
               >
-                <X className="size-4" />
+                <X className="size-4 shrink-0" />
               </Button>
             </>
           )}
         </div>
       </div>
     </>
+  );
+}
+
+function QuickGlyph({
+  icon: Icon,
+}: {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+}) {
+  return (
+    <span className="flex size-4 shrink-0 items-center justify-center">
+      <Icon className="size-4" strokeWidth={2} />
+    </span>
   );
 }
 
@@ -147,24 +230,15 @@ function QuickIconButton({
   badge,
 }: {
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   onClick: () => void;
   badge?: number;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="relative flex h-10 min-w-10 flex-col items-center justify-center rounded-xl px-2.5 text-[10px] font-medium text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground active:scale-95"
-      title={label}
-    >
-      <Icon className="size-4" />
-      <span className="mt-0.5 hidden sm:block">{label}</span>
-      {badge ? (
-        <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-semibold text-amber-950">
-          {badge > 9 ? '9+' : badge}
-        </span>
-      ) : null}
+    <button type="button" onClick={onClick} className={ITEM_CLASS} title={label}>
+      <QuickGlyph icon={Icon} />
+      <span className="max-w-full truncate">{label}</span>
+      {badge ? <QuickBadge value={badge} /> : null}
     </button>
   );
 }
@@ -179,7 +253,7 @@ function QuickLinkButton({
 }: {
   href: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   badge?: number;
   onNavigate?: () => void;
   tone?: 'warn';
@@ -189,18 +263,22 @@ function QuickLinkButton({
       href={href}
       onClick={onNavigate}
       className={cn(
-        'relative flex h-10 min-w-10 flex-col items-center justify-center rounded-xl px-2.5 text-[10px] font-medium text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground active:scale-95',
+        ITEM_CLASS,
         tone === 'warn' && 'text-amber-700 hover:bg-amber-500/10 dark:text-amber-400',
       )}
       title={label}
     >
-      <Icon className="size-4" />
-      <span className="mt-0.5 hidden sm:block">{label}</span>
-      {badge ? (
-        <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-semibold text-amber-950">
-          {badge > 9 ? '9+' : badge}
-        </span>
-      ) : null}
+      <QuickGlyph icon={Icon} />
+      <span className="max-w-full truncate">{label}</span>
+      {badge ? <QuickBadge value={badge} /> : null}
     </Link>
+  );
+}
+
+function QuickBadge({ value }: { value: number }) {
+  return (
+    <span className="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-semibold leading-none text-amber-950">
+      {value > 9 ? '9+' : value}
+    </span>
   );
 }

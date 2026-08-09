@@ -89,6 +89,7 @@ export function ProductDataTable({
       mobileCard={mobileCard}
       selection={selectionState}
       density="compact"
+      entityLabel="products"
       page={page}
       pageSize={pageSize}
       total={total}

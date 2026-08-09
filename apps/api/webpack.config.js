@@ -16,12 +16,16 @@ module.exports = {
     },
   },
   externals: {
+    '@laam/types': 'commonjs @laam/types',
     '@nestjs/swagger': 'commonjs @nestjs/swagger',
     'swagger-ui-express': 'commonjs swagger-ui-express',
     'swagger-ui-dist': 'commonjs swagger-ui-dist',
     'class-transformer': 'commonjs class-transformer',
     'class-validator': 'commonjs class-validator',
     'express': 'commonjs express',
+    '@prisma/client': 'commonjs @prisma/client',
+    'bcryptjs': 'commonjs bcryptjs',
+    'nodemailer': 'commonjs nodemailer',
   },
   plugins: [
     new NxAppWebpackPlugin({
@@ -37,4 +41,3 @@ module.exports = {
     }),
   ],
 };
-

@@ -23,27 +23,45 @@ import { ProductSelectionBar } from '@/features/inventory/components/product-lis
 import { ProductWorkspaceHeader } from '@/features/inventory/components/product-list/product-workspace-header';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
 import { useProductsList } from '@/features/inventory/hooks/use-products-list';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
+import { productBrandsApi } from '@/features/settings/api/product-brands-api';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 export function ProductListShell() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { updateProduct } = useProductMutations();
+  const { updateProduct, adjustStock } = useProductMutations();
 
   const filter = searchParams.get('filter') ?? 'all';
+  const category = searchParams.get('category') ?? '';
+  const brandId = searchParams.get('brandId') ?? '';
   const [search, setSearch] = React.useState(searchParams.get('search') ?? '');
   const [page, setPage] = React.useState(Number(searchParams.get('page') ?? 1));
   const [pageSize, setPageSize] = React.useState(Number(searchParams.get('pageSize') ?? 10));
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [listVersion, setListVersion] = React.useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
+  const [brandOptions, setBrandOptions] = React.useState<{ value: string; label: string }[]>([]);
+  const categoryOptions = useOrgCategoryOptions('product');
 
   const debouncedSearch = useDebouncedValue(search, 300);
   const searchParamsKey = searchParams.toString();
+
+  React.useEffect(() => {
+    void productBrandsApi.list().then((brands) => {
+      setBrandOptions(
+        brands
+          .filter((b) => b.isActive)
+          .map((b) => ({ value: b.id, label: b.name })),
+      );
+    });
+  }, []);
 
   React.useEffect(() => {
     const params = new URLSearchParams(searchParamsKey);
@@ -53,15 +71,21 @@ export function ProductListShell() {
     params.set('pageSize', String(pageSize));
     if (filter && filter !== 'all') params.set('filter', filter);
     else params.delete('filter');
+    if (category) params.set('category', category);
+    else params.delete('category');
+    if (brandId) params.set('brandId', brandId);
+    else params.delete('brandId');
     const next = params.toString();
     if (next !== searchParamsKey) {
       router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
     }
-  }, [debouncedSearch, filter, page, pageSize, pathname, router, searchParamsKey]);
+  }, [brandId, category, debouncedSearch, filter, page, pageSize, pathname, router, searchParamsKey]);
 
   const { data, isLoading, error, refresh } = useProductsList(
     {
       filter: filter === 'all' ? undefined : (filter as 'low_stock' | 'out_of_stock' | 'active' | 'inactive'),
+      category: category || undefined,
+      brandId: brandId || undefined,
       search: debouncedSearch || undefined,
       page,
       pageSize,
@@ -97,6 +121,51 @@ export function ProductListShell() {
     router.replace('/dashboard/inventory/products');
   }
 
+  function setQueryParam(key: 'category' | 'brandId' | 'filter', value: string) {
+    const params = new URLSearchParams(searchParamsKey);
+    if (key === 'filter') {
+      if (value && value !== 'all') params.set('filter', value);
+      else params.delete('filter');
+    } else if (value) {
+      params.set(key, value);
+    } else {
+      params.delete(key);
+    }
+    params.set('page', '1');
+    setPage(1);
+    const next = params.toString();
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }
+
+  const activeChips = React.useMemo(() => {
+    const chips: { id: string; label: string }[] = [];
+    if (filter && filter !== 'all') {
+      const filterLabels: Record<string, string> = {
+        low_stock: 'Low stock',
+        out_of_stock: 'Out of stock',
+        active: 'Active',
+        inactive: 'Inactive',
+      };
+      chips.push({ id: 'filter', label: filterLabels[filter] ?? filter });
+    }
+    if (category) {
+      chips.push({
+        id: 'category',
+        label: categoryOptions.find((o) => o.value === category)?.label ?? category,
+      });
+    }
+    if (brandId) {
+      chips.push({
+        id: 'brandId',
+        label: brandOptions.find((o) => o.value === brandId)?.label ?? brandId,
+      });
+    }
+    if (debouncedSearch.trim()) {
+      chips.push({ id: 'search', label: `Search: ${debouncedSearch.trim()}` });
+    }
+    return chips;
+  }, [brandId, brandOptions, category, categoryOptions, debouncedSearch, filter]);
+
   async function patchRow(id: string, patch: Parameters<typeof inventoryApi.updateProduct>[1]) {
     await updateProduct(id, patch);
     handleRefresh();
@@ -123,6 +192,26 @@ export function ProductListShell() {
             setSearch(value);
             setPage(1);
           }}
+          category={category}
+          categoryOptions={categoryOptions}
+          onCategoryChange={(value) => setQueryParam('category', value)}
+          brandId={brandId}
+          brandOptions={brandOptions}
+          onBrandChange={(value) => setQueryParam('brandId', value)}
+        />
+        <ActiveFilterChips
+          chips={activeChips}
+          onRemove={(id) => {
+            if (id === 'search') {
+              setSearch('');
+              setPage(1);
+              return;
+            }
+            if (id === 'filter' || id === 'category' || id === 'brandId') {
+              setQueryParam(id, '');
+            }
+          }}
+          onClearAll={handleClearFilters}
         />
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <ProductSelectionBar
@@ -167,11 +256,17 @@ export function ProductListShell() {
                 showPagination={Boolean(data)}
                 rowOffset={(page - 1) * pageSize}
                 onStatusChange={(row, status: ProductStatus) => void patchRow(row.id, { status })}
-                onStockAdjust={(row, delta) =>
-                  void patchRow(row.id, {
-                    stockAdjustment: { delta, reason: 'Quick adjust from list' },
-                  })
-                }
+                onStockAdjust={(row, delta) => {
+                  if (row.variantCount !== 1 || !row.primaryVariantId) {
+                    router.push(`/dashboard/inventory/products/${row.id}`);
+                    return;
+                  }
+                  void adjustStock(row.id, {
+                    variantId: row.primaryVariantId,
+                    delta,
+                    reason: 'Quick adjust from list',
+                  }).then(handleRefresh);
+                }}
                 onDetailsClick={(row: InventoryProductListItem) => {
                   router.push(`/dashboard/inventory/products/${row.id}`);
                 }}

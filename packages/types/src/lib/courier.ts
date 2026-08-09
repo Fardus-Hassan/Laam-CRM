@@ -1,14 +1,35 @@
 import { z } from 'zod';
 
+import {
+  ACTIVE_COURIER_PROVIDERS,
+  COURIER_PROVIDER_META,
+  activeCourierProviderSchema,
+  isActiveCourierProvider,
+  listActiveCourierProviders,
+  type ActiveCourierProvider,
+  type CourierProviderMeta,
+} from './courier-providers.js';
+
+/** Includes legacy providers for stored data; UI should use ACTIVE_COURIER_PROVIDERS. */
 export const courierProviderSchema = z.enum([
-  'steadfast',
   'pathao',
+  'carrybee',
+  'steadfast',
   'redx',
   'paperfly',
   'ecourier',
-  'carrybee',
 ]);
 export type CourierProvider = z.infer<typeof courierProviderSchema>;
+
+export {
+  ACTIVE_COURIER_PROVIDERS,
+  COURIER_PROVIDER_META,
+  activeCourierProviderSchema,
+  isActiveCourierProvider,
+  listActiveCourierProviders,
+  type ActiveCourierProvider,
+  type CourierProviderMeta,
+};
 
 export const courierAccountStatusSchema = z.enum(['active', 'inactive', 'error']);
 export type CourierAccountStatus = z.infer<typeof courierAccountStatusSchema>;

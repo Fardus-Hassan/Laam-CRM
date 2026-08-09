@@ -6,8 +6,8 @@ import { toast } from 'sonner';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSelect } from '@/components/form/form-select';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { FailedOrderDataTable } from '@/features/orders/components/failed-orders/failed-order-data-table';
@@ -17,6 +17,7 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { failedOrdersApi } from '@/features/orders/api/failed-orders-api';
 import { FAILED_ORDER_WEBSITES } from '@/features/orders/data/mock-failed-orders';
+import { requestOrderNavCountsRefresh } from '@/features/orders/data/order-status-counts-store';
 import { cn } from '@/lib/utils';
 
 export function FailedOrdersListPage() {
@@ -25,7 +26,9 @@ export function FailedOrdersListPage() {
   const [website, setWebsite] = React.useState('all');
   const [noteStatus, setNoteStatus] = React.useState('all');
   const [page, setPage] = React.useState(1);
-  const [data, setData] = React.useState<Awaited<ReturnType<typeof failedOrdersApi.listFailedOrders>> | null>(null);
+  const [data, setData] = React.useState<Awaited<
+    ReturnType<typeof failedOrdersApi.listFailedOrders>
+  > | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
   const load = React.useCallback(async () => {
@@ -43,6 +46,8 @@ export function FailedOrdersListPage() {
         pageSize: 10,
       });
       setData(response);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load intake queue');
     } finally {
       setIsLoading(false);
     }
@@ -53,24 +58,74 @@ export function FailedOrdersListPage() {
   }, [load]);
 
   async function handleRetry(row: { id: string }) {
-    const result = await failedOrdersApi.retryFailedOrder(row.id);
-    toast.success(result.message);
-    void load();
+    try {
+      const result = await failedOrdersApi.retryFailedOrder(row.id);
+      if (!result.success) {
+        toast.error(result.message || 'Retry failed');
+        return;
+      }
+      toast.success(result.message);
+      requestOrderNavCountsRefresh();
+      void load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Retry failed');
+    }
   }
 
   async function handleDismiss(row: { id: string }) {
-    await failedOrdersApi.dismissFailedOrder(row.id);
-    toast.success('Failed order dismissed');
-    void load();
+    try {
+      await failedOrdersApi.dismissFailedOrder(row.id);
+      toast.success('Failed order dismissed');
+      requestOrderNavCountsRefresh();
+      void load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Dismiss failed');
+    }
   }
 
   const hasActiveFilters =
     search !== '' || failedType !== 'all' || website !== 'all' || noteStatus !== 'all';
 
+  const websiteOptions = data?.websites?.length ? data.websites : FAILED_ORDER_WEBSITES;
+
+  const chips = [
+    ...(failedType !== 'all'
+      ? [
+          {
+            id: 'failedType',
+            label:
+              failedType === 'duplicate'
+                ? 'Type: Duplicate'
+                : failedType === 'blocked'
+                  ? 'Type: Blocked'
+                  : 'Type: Other',
+          },
+        ]
+      : []),
+    ...(noteStatus !== 'all'
+      ? [
+          {
+            id: 'noteStatus',
+            label: noteStatus === 'has_note' ? 'Has note' : 'No note',
+          },
+        ]
+      : []),
+    ...(website !== 'all' ? [{ id: 'website', label: `Website: ${website}` }] : []),
+    ...(search.trim() ? [{ id: 'search', label: `Search: ${search.trim()}` }] : []),
+  ];
+
+  function clearAll() {
+    setSearch('');
+    setFailedType('all');
+    setWebsite('all');
+    setNoteStatus('all');
+    setPage(1);
+  }
+
   return (
     <PageShell
       title="Failed Orders"
-      description="Duplicate, blocked, or invalid orders for manual review. Auto-deleted after 90 days."
+      description="Duplicate, blocked, or invalid orders for manual review. Auto-hidden after 90 days."
     >
       <div className={ORDER_PAGE_GAP}>
         {data ? (
@@ -96,7 +151,7 @@ export function FailedOrdersListPage() {
                 id: 'queue',
                 label: 'In queue',
                 value: data.total.toLocaleString(),
-                hint: 'Auto-deleted after 90 days',
+                hint: 'Auto-hidden after 90 days',
               },
             ]}
           />
@@ -106,7 +161,10 @@ export function FailedOrdersListPage() {
           <FormField label="Type" className="min-w-[140px] flex-1">
             <FormSelect
               value={failedType}
-              onChange={setFailedType}
+              onChange={(v) => {
+                setFailedType(v);
+                setPage(1);
+              }}
               options={[
                 { value: 'all', label: 'All' },
                 { value: 'duplicate', label: 'Duplicate' },
@@ -119,7 +177,10 @@ export function FailedOrdersListPage() {
           <FormField label="Note status" className="min-w-[140px] flex-1">
             <FormSelect
               value={noteStatus}
-              onChange={setNoteStatus}
+              onChange={(v) => {
+                setNoteStatus(v);
+                setPage(1);
+              }}
               options={[
                 { value: 'all', label: 'All' },
                 { value: 'has_note', label: 'Has note' },
@@ -131,10 +192,13 @@ export function FailedOrdersListPage() {
           <FormField label="Website" className="min-w-[140px] flex-1">
             <FormSelect
               value={website}
-              onChange={setWebsite}
+              onChange={(v) => {
+                setWebsite(v);
+                setPage(1);
+              }}
               options={[
                 { value: 'all', label: 'All' },
-                ...FAILED_ORDER_WEBSITES.map((site) => ({ value: site, label: site })),
+                ...websiteOptions.map((site) => ({ value: site, label: site })),
               ]}
               searchable={false}
             />
@@ -142,27 +206,28 @@ export function FailedOrdersListPage() {
           <FormField label="Search" className="min-w-[200px] flex-[2]">
             <FormInput
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
               placeholder="Customer, phone, address…"
             />
           </FormField>
-          {hasActiveFilters ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setSearch('');
-                setFailedType('all');
-                setWebsite('all');
-                setNoteStatus('all');
-                setPage(1);
-              }}
-            >
-              Clear filters
-            </Button>
-          ) : null}
         </div>
+
+        {hasActiveFilters ? (
+          <ActiveFilterChips
+            chips={chips}
+            onRemove={(id) => {
+              if (id === 'failedType') setFailedType('all');
+              if (id === 'noteStatus') setNoteStatus('all');
+              if (id === 'website') setWebsite('all');
+              if (id === 'search') setSearch('');
+              setPage(1);
+            }}
+            onClearAll={clearAll}
+          />
+        ) : null}
 
         <Card className={cn(ORDER_CARD_CLASS, 'overflow-hidden')}>
           <CardContent className="p-0">

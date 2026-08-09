@@ -3,6 +3,7 @@ import type {
   LeadSourceRow,
   LoginHistoryRow,
   MarketingReport,
+  MarketingSpendRow,
   RankedProductRow,
   RepeatCustomerRow,
   ReportPeriod,
@@ -10,6 +11,8 @@ import type {
   ReportViewId,
   TeamTargetRow,
   UpsellRow,
+  UpsertMarketingSpendPayload,
+  UpsertPerformanceTargetPayload,
 } from '@laam/types';
 import type { ChartPoint } from '@laam/types';
 
@@ -39,7 +42,31 @@ export type ReportsApi = {
   getProductDaily: (period: ReportPeriod) => Promise<ChartPoint[]>;
   getEmployees: (type: ReportViewId, period: ReportPeriod) => Promise<EmployeeMetricRow[]>;
   getTeamTargets: (period: ReportPeriod) => Promise<TeamTargetRow[]>;
+  listTargets: (monthKey?: string) => Promise<
+    Array<{
+      id: string;
+      monthKey: string;
+      scope: 'agent' | 'team';
+      subjectKey: string;
+      subjectLabel: string;
+      targetOrders: number;
+      targetRevenueBdt: number;
+    }>
+  >;
+  upsertTarget: (payload: UpsertPerformanceTargetPayload) => Promise<{
+    id: string;
+    monthKey: string;
+    scope: 'agent' | 'team';
+    subjectKey: string;
+    subjectLabel: string;
+    targetOrders: number;
+    targetRevenueBdt: number;
+  }>;
+  deleteTarget: (id: string) => Promise<void>;
   getMarketing: (period: ReportPeriod) => Promise<MarketingReport>;
+  listMarketingSpend: (monthKey?: string) => Promise<MarketingSpendRow[]>;
+  upsertMarketingSpend: (payload: UpsertMarketingSpendPayload) => Promise<MarketingSpendRow>;
+  deleteMarketingSpend: (id: string) => Promise<void>;
   getLeadSources: (period: ReportPeriod) => Promise<LeadSourceRow[]>;
   getUpsales: (period: ReportPeriod) => Promise<UpsellRow[]>;
   getLoginHistory: () => Promise<LoginHistoryRow[]>;
@@ -88,9 +115,31 @@ export function createMockReportsApi(): ReportsApi {
       await delay(80);
       return getTeamTargets(period);
     },
+    async listTargets(monthKey) {
+      await delay(40);
+      return [];
+    },
+    async upsertTarget(payload) {
+      await delay(60);
+      return { id: `tgt_${Date.now()}`, ...payload };
+    },
+    async deleteTarget() {
+      await delay(40);
+    },
     async getMarketing(period) {
       await delay(100);
       return getMarketingReport(period);
+    },
+    async listMarketingSpend() {
+      await delay(40);
+      return [];
+    },
+    async upsertMarketingSpend(payload) {
+      await delay(60);
+      return { id: `sp_${Date.now()}`, ...payload };
+    },
+    async deleteMarketingSpend() {
+      await delay(40);
     },
     async getLeadSources(period) {
       await delay(80);
@@ -122,7 +171,22 @@ export function createHttpReportsApi(): ReportsApi {
     getProductDaily: (period) => apiRequest(`${base}/product-daily${qs(period)}`),
     getEmployees: (type, period) => apiRequest(`${base}/employees/${type}${qs(period)}`),
     getTeamTargets: (period) => apiRequest(`${base}/team-targets${qs(period)}`),
+    listTargets: (monthKey) =>
+      apiRequest(`${base}/targets${monthKey ? `?monthKey=${monthKey}` : ''}`),
+    upsertTarget: (payload) =>
+      apiRequest(`${base}/targets`, { method: 'POST', body: JSON.stringify(payload) }),
+    deleteTarget: (id) =>
+      apiRequest(`${base}/targets/${id}`, { method: 'DELETE' }),
     getMarketing: (period) => apiRequest(`${base}/marketing${qs(period)}`),
+    listMarketingSpend: (monthKey) =>
+      apiRequest(`${base}/marketing/spend${monthKey ? `?monthKey=${monthKey}` : ''}`),
+    upsertMarketingSpend: (payload) =>
+      apiRequest(`${base}/marketing/spend`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    deleteMarketingSpend: (id) =>
+      apiRequest(`${base}/marketing/spend/${id}`, { method: 'DELETE' }),
     getLeadSources: (period) => apiRequest(`${base}/sources${qs(period)}`),
     getUpsales: (period) => apiRequest(`${base}/upsales${qs(period)}`),
     getLoginHistory: () => apiRequest(`${base}/login-history`),

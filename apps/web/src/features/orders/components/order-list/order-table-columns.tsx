@@ -7,7 +7,6 @@ import type { CrmColumnDef } from '@/components/data-table';
 import {
   DataTableCourierStats,
   DataTableCopyableText,
-  DataTableDateTime,
   DataTableEmptyValue,
   DataTableMoneySummary,
   DataTablePersonCell,
@@ -17,20 +16,16 @@ import {
 import { StatusBadge } from '@/components/dashboard/status-badge';
 import { FormPhoneInput } from '@/components/form/form-phone-input';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
+import { OrderDateStack } from '@/features/orders/components/order-list/order-date-stack';
 
-export function formatOrderDateTime(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
-    .format(new Date(value))
-    .replace(',', ' -');
-}
+export { formatOrderDateTime } from '@/features/orders/components/order-list/order-date-stack';
 
 export function buildOrderTableColumns(options?: {
   onNoteClick?: (row: OrderListRow) => void;
@@ -75,22 +70,35 @@ export function buildOrderTableColumns(options?: {
       align: 'middle',
     },
     cell: ({ row }) => (
-      <Button
-        type="button"
-        size="icon"
-        variant="ghost"
-        className={
-          row.original.hasNote ? 'size-8 text-primary' : 'size-8 text-muted-foreground'
-        }
-        aria-label={row.original.hasNote ? 'View note' : 'Add note'}
-        onClick={() => onNoteClick?.(row.original)}
-      >
-        {row.original.hasNote ? (
-          <MessageSquare className="size-4" />
-        ) : (
-          <MessageSquarePlus className="size-4" />
-        )}
-      </Button>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={
+                row.original.hasNote ? 'size-8 text-primary' : 'size-8 text-muted-foreground'
+              }
+              aria-label={row.original.hasNote ? 'View note' : 'Add note'}
+              onClick={() => onNoteClick?.(row.original)}
+            >
+              {row.original.hasNote ? (
+                <MessageSquare className="size-4" />
+              ) : (
+                <MessageSquarePlus className="size-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-[220px]">
+            {row.original.lastNotePreview?.trim()
+              ? row.original.lastNotePreview
+              : row.original.hasNote
+                ? 'Open to view note history'
+                : 'Add note'}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     ),
   },
   {
@@ -148,27 +156,16 @@ export function buildOrderTableColumns(options?: {
     id: 'date',
     header: 'Date',
     enableSorting: true,
-    size: 148,
-    minSize: 130,
+    size: 168,
+    minSize: 150,
     meta: {
-      label: 'Created',
+      label: 'Dates',
       priority: 'secondary',
-      headerClassName: 'min-w-[150px]',
-      cellClassName: 'min-w-[150px]',
+      headerClassName: 'min-w-[160px]',
+      cellClassName: 'min-w-[160px]',
       align: 'top',
     },
-    cell: ({ row }) => {
-      const formatted = formatOrderDateTime(row.original.createdAt);
-      return (
-        <DataTableCopyableText copyValue={`C: ${formatted}`} copyToastMessage="Date copied">
-          <DataTableDateTime
-            prefix="C:"
-            value={row.original.createdAt}
-            formatter={formatOrderDateTime}
-          />
-        </DataTableCopyableText>
-      );
-    },
+    cell: ({ row }) => <OrderDateStack row={row.original} />,
   },
   {
     id: 'address',
@@ -242,23 +239,59 @@ export function buildOrderTableColumns(options?: {
   },
   {
     id: 'courier',
-    header: 'Courier',
-    size: 168,
-    minSize: 160,
-    maxSize: 180,
+    header: 'Success Rate',
+    size: 180,
+    minSize: 168,
+    maxSize: 210,
     meta: {
-      label: 'Courier',
+      label: 'Success Rate',
       priority: 'primary',
-      headerClassName: 'w-[168px]',
-      cellClassName: 'w-[168px]',
-      align: 'top',
+      headerClassName: 'w-[180px] text-center',
+      cellClassName: 'w-[180px]',
+      align: 'middle',
     },
-    cell: ({ row }) =>
-      row.original.courier ? (
-        <DataTableCourierStats courier={row.original.courier} compact />
-      ) : (
-        <DataTableEmptyValue />
-      ),
+    cell: ({ row }) => {
+      const stats = row.original.courier;
+      const provider = row.original.courierProvider;
+      const status = row.original.courierStatus;
+      const consignment = row.original.courierConsignmentId;
+
+      if (stats) {
+        return (
+          <div className="flex h-full flex-col items-center justify-center gap-1 py-0.5">
+            <DataTableCourierStats
+              shop={row.original.courierShop}
+              network={stats}
+              compact
+            />
+            {provider || status || consignment ? (
+              <div className="max-w-full truncate text-center text-[10px] leading-snug text-muted-foreground">
+                {provider === 'pathao' ? 'Pathao' : provider}
+                {status ? ` · ${status}` : ''}
+                {consignment ? ` · ${consignment}` : ''}
+              </div>
+            ) : null}
+          </div>
+        );
+      }
+
+      if (provider || status || consignment) {
+        return (
+          <div className="space-y-0.5 text-[11px] leading-snug">
+            <p className="font-semibold capitalize text-foreground">
+              {provider === 'pathao' ? 'Pathao' : provider || 'Courier'}
+            </p>
+            {status ? (
+              <p className="line-clamp-2 text-muted-foreground">{status}</p>
+            ) : null}
+            {consignment ? (
+              <p className="truncate font-mono text-[10px] text-muted-foreground">{consignment}</p>
+            ) : null}
+          </div>
+        );
+      }
+      return <DataTableEmptyValue />;
+    },
   },
 ];
 }

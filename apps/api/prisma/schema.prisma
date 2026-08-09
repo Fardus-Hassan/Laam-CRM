@@ -7,9 +7,328 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Organization {
+  id                 String             @id @default(uuid())
+  name               String
+  slug               String             @unique
+  plan               String
+  status             String             @default("active") // active | suspended | onboarding
+  phone              String?
+  // Tenant brand colors + light/dark logo URLs
+  branding           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  users              User[]
+  teams              Team[]
+  customRoles        CustomRole[]
+  permissionPresets  PermissionPreset[]
+  notifications      Notification[]
+  productBrands      ProductBrand[]
+  orgCategories      OrgCategory[]
+  orgCustomerStatuses OrgCustomerStatus[]
+  products           Product[]
+  productVariants    ProductVariant[]
+  stockMovements     InventoryStockMovement[]
+  catalogActivities  CatalogActivity[]
+  inventorySuppliers       InventorySupplier[]
+  inventoryPurchases       InventoryPurchase[]
+  inventoryPurchaseReturns InventoryPurchaseReturn[]
+  mixerRecipes             MixerRecipe[]
+  productionBatches        ProductionBatch[]
+  warehouses               Warehouse[]
+  inventoryLots            InventoryLot[]
+  accountingJournalEntries AccountingJournalEntry[]
+  accountingAccounts       AccountingAccount[]
+  unitsOfMeasure           UnitOfMeasure[]
+  orders                   Order[]
+  orderFormOptions         OrderFormOption[]
+  coupons                  Coupon[]
+  leads                    Lead[]
+  customers                Customer[]
+  contacts                 Contact[]
+  followups                Followup[]
+  tasks                    Task[]
+  courierIntegrations      CourierIntegration[]
+  courierStatusMaps        CourierStatusMap[]
+  courierPhoneHistories    CourierPhoneHistory[]
+  smsIntegration           SmsIntegration?
+  smsTemplates             SmsTemplate[]
+  smsLogs                  SmsLog[]
+  orderPayments            OrderPayment[]
+  failedOrders             FailedOrder[]
+  orgOrderStatuses          OrgOrderStatus[]
+  orgOrderQueues           OrgOrderQueue[]
+  marketingSpends          MarketingSpend[]
+  performanceTargets       PerformanceTarget[]
+  loginAudits              LoginAudit[]
+  campaigns                Campaign[]
+  automationSettings       OrgAutomationSettings?
+  supportTickets           SupportTicket[]
+  billingSubscription      OrgBillingSubscription?
+  billingInvoices          BillingInvoice[]
+  billingPaymentMethods    BillingPaymentMethod[]
+  websiteStores            WebsiteStore[]
+  incentiveTeams           IncentiveTeam[]
+  incentivePlans           IncentivePlan[]
+  incentiveAssignments     IncentiveAssignment[]
+  incentiveOrgSettings     IncentiveOrgSettings?
+  incentiveManualActuals   IncentiveManualActual[]
+  incentivePeriodRuns      IncentivePeriodRun[]
+  incentiveAttendances     IncentiveAttendance[]
+  incentiveSurveyLogs      IncentiveSurveyLog[]
+  incentiveChannelLogs     IncentiveChannelLog[]
+  incentiveSpecialBonuses  IncentiveSpecialBonus[]
+}
+
+/// Per-tenant courier credentials (Pathao, etc.). Secrets stored encrypted.
+model CourierIntegration {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider         String // pathao | steadfast | carrybee
+  enabled          Boolean      @default(false)
+  environment      String       @default("sandbox") // sandbox | live
+  storeId          String?
+  /// AES-GCM payload: clientId, clientSecret, username, password, baseUrl?
+  credentialsEnc   String?
+  lastSyncAt       DateTime?
+  lastError        String?
+  syncIntervalSec  Int          @default(180)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, enabled])
+}
+
+/// Per-tenant SMS gateway (custom HTTP API — Gennet, SSL, etc.). Secrets encrypted.
+model SmsIntegration {
+  id               String       @id @default(cuid())
+  organizationId   String       @unique
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider         String       @default("custom")
+  enabled          Boolean      @default(false)
+  /// AES-GCM JSON: apiUrl, httpMethod, paramsTemplate, headersJson?
+  credentialsEnc   String?
+  /// When true, status changes may auto-send mapped templates.
+  autoSmsOnStatusChange Boolean  @default(false)
+  /// Map of order status slug → SMS template slug, e.g. { "confirmed": "confirm" }
+  statusSmsMap     Json?
+  lastSentAt       DateTime?
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, enabled])
+}
+
+/// Org SMS message templates (manual send + future status automations).
+model SmsTemplate {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug           String
+  label          String
+  message        String       @db.Text
+  enabled        Boolean      @default(true)
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, sortOrder])
+}
+
+/// Audit log for outbound SMS.
+model SmsLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId        String?
+  toPhone        String
+  message        String       @db.Text
+  status         String
+  providerRef    String?
+  error          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, orderId])
+}
+
+/// Cached phone → courier network delivery history (Pathao / Carrybee APIs).
+model CourierPhoneHistory {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNormalized  String
+  /// Aggregate To/Su/Fa/percent JSON (OrderCourierStats shape).
+  aggregateJson    Json
+  /// Per-provider payloads [{ provider, stats, rating, error, fetchedAt }].
+  providersJson    Json
+  fetchedAt        DateTime     @default(now())
+  expiresAt        DateTime
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, phoneNormalized])
+  @@index([organizationId, expiresAt])
+}
+
+/// Configurable courier → CRM status catalog (filter labels + auto-map).
+model CourierStatusMap {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       String
+  slug           String
+  label          String
+  crmStatus      String?
+  isTerminal     Boolean      @default(false)
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, provider, slug])
+  @@index([organizationId, provider, isActive])
+}
+
+model User {
+  id                  String         @id @default(uuid())
+  email               String         @unique
+  passwordHash        String
+  inviteTempPassword  String?
+  name                String
+  systemRole          String
+  status              String         @default("active") // active | invited | suspended
+  organizationId      String?
+  organization        Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customRoleId        String?
+  customRole          CustomRole?    @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  permissionGrants    String[]       @default([])
+  permissionDenies    String[]       @default([])
+  teamId              String?
+  team                Team?          @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
+  ledTeams            Team[]         @relation("TeamLeader")
+  invitedByUserId     String?
+  invitedBy           User?          @relation("UserInvites", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+  invitedUsers        User[]         @relation("UserInvites")
+  lastSeenAt          DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  otpChallenges       OtpChallenge[]
+  trustedDevices      TrustedDevice[]
+  notifications       Notification[]
+  loginAudits         LoginAudit[]
+
+  @@index([organizationId])
+  @@index([teamId])
+  @@index([customRoleId])
+  @@index([invitedByUserId])
+}
+
+model CustomRole {
+  id                String       @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  permissions       String[]     @default([])
+  dashboardTemplate String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  users             User[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model PermissionPreset {
+  id                String       @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  permissions       String[]     @default([])
+  dashboardTemplate String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model Team {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  leaderUserId   String
+  leader         User         @relation("TeamLeader", fields: [leaderUserId], references: [id], onDelete: Restrict)
+  members        User[]       @relation("TeamMembers")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([leaderUserId])
+}
+
+model OtpChallenge {
+  id             String    @id @default(uuid())
+  purpose        String
+  email          String
+  userId         String?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String?
+  codeHash       String
+  relayCode      String?
+  expiresAt      DateTime
+  resendAfter    DateTime
+  attempts       Int       @default(0)
+  consumedAt     DateTime?
+  delivery       String    // email | admin_inbox
+  createdAt      DateTime  @default(now())
+
+  @@index([email, purpose])
+  @@index([organizationId, delivery])
+}
+
+model TrustedDevice {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String
+  label     String?
+  trustedAt DateTime @default(now())
+
+  @@unique([userId, deviceId])
+}
+
+model Notification {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String
+  title          String
+  body           String
+  href           String?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
+  @@index([organizationId, createdAt])
+  @@index([createdAt])
+}
+
 model Lead {
-  id                String   @id @default(cuid())
-  leadNumber        String   @unique
+  id                String    @id @default(cuid())
+  organizationId    String?
+  organization      Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadNumber        String
   name              String
   phone             String
   email             String?
@@ -17,32 +336,104 @@ model Lead {
   status            String
   assignedAgentName String?
   area              String?
+  address           String?
   estimatedValue    Float?
   campaignName      String?
   notes             String?
-  tags              String[] @default([])
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  tags              String[]  @default([])
+  productSummary    String?
+  itemCount         Int?
+  followUpDue       DateTime?
+  /// Stores converted order number (UI links to /dashboard/orders/:orderId).
+  orderId           String?
+  convertedAt       DateTime?
+  lastActivityAt    DateTime?
+  lineItems         Json      @default("[]")
+  activities        Json      @default("[]")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([organizationId, leadNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, phone])
+}
+
+/// Phone-unique buyer profile (BD COD ecommerce). Orders keep denormalized name/phone for courier labels.
+model Customer {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerNumber    String
+  /// Digits-only BD mobile for uniqueness (e.g. 01XXXXXXXXX).
+  phoneNormalized   String
+  phone             String
+  name              String
+  email             String?
+  altMobile         String?
+  district          String?
+  area              String?
+  address           String?
+  notes             String?
+  tags              String[]     @default([])
+  /// Timeline events (note updates, etc.) — same shape as Followup.activities.
+  activities        Json         @default("[]")
+  /// Admin OrgCustomerStatus.slug (or legacy loyalty label).
+  status            String       @default("none")
+  source            String?
+  assignedAgentName String?
+  hasFollowUp       Boolean      @default(false)
+  followUpDue       DateTime?
+  firstOrderAt      DateTime?
+  lastOrderAt       DateTime?
+  orderCount        Int          @default(0)
+  deliveredCount    Int          @default(0)
+  failedCount       Int          @default(0)
+  totalSpent        Float        @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  orders            Order[]
+
+  @@unique([organizationId, phoneNormalized])
+  @@unique([organizationId, customerNumber])
+  @@index([organizationId, lastOrderAt])
+  @@index([organizationId, name])
+  @@index([organizationId, status])
 }
 
 model Contact {
-  id                String   @id @default(cuid())
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactNumber     String?
   name              String
   phone             String
+  phoneNormalized   String?
   email             String?
+  /// customer | supplier | partner | other — buyers should prefer Customer entity
+  contactType       String       @default("other")
   companyName       String?
   jobTitle          String?
-  source            String
+  source            String       @default("manual")
   assignedAgentName String?
+  district          String?
+  area              String?
   address           String?
   notes             String?
-  tags              String[] @default([])
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  tags              String[]     @default([])
+  inventorySupplierId String?
+  inventorySupplier   InventorySupplier? @relation(fields: [inventorySupplierId], references: [id], onDelete: SetNull)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([organizationId, contactType])
+  @@index([organizationId, phoneNormalized])
+  @@index([organizationId, name])
+  @@index([organizationId, inventorySupplierId])
 }
 
 model Company {
   id                String   @id @default(cuid())
+  organizationId    String?
   name              String
   industry          String?
   status            String
@@ -62,6 +453,7 @@ model Company {
 
 model Deal {
   id                String    @id @default(cuid())
+  organizationId    String?
   dealNumber        String    @unique
   title             String
   companyName       String
@@ -77,18 +469,1335 @@ model Deal {
 }
 
 model Order {
-  id                String   @id @default(cuid())
-  orderNumber       String   @unique
-  status            String
-  customerName      String
-  customerPhone     String
-  source            String
-  itemsCount        Int
-  amount            Float
-  paymentStatus     String
+  id                 String   @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderNumber        String
+  status             String
+  customerName       String
+  customerPhone      String
+  customerEmail      String?
+  altMobile          String?
+  customerNote       String?
+  customerTag        String?
+  customerId         String?
+  customer           Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  orderTag           String?
+  source             String
+  itemsCount         Int
+  subtotal           Float    @default(0)
+  discount           Float    @default(0)
+  deliveryCharge     Float    @default(0)
+  amount             Float
+  paidAmount         Float    @default(0)
+  paymentStatus      String
+  paymentMethod      String?
+  assignedAgentName  String?
+  shippingArea       String
+  shippingAddress    String?
+  district           String?
+  pathaoCity         String?
+  pathaoZone         String?
+  pathaoArea         String?
+  pathaoCityId       Int?
+  pathaoZoneId       Int?
+  pathaoAreaId       Int?
+  carrybeeCity       String?
+  carrybeeZone       String?
+  carrybeeArea       String?
+  carrybeeCityId     Int?
+  carrybeeZoneId     Int?
+  carrybeeAreaId     Int?
+  notes              String?
+  courierNote        String?
+  packingNote        String?
+  referenceNo        String?
+  orderDate          DateTime @default(now())
+  skipFollowup       Boolean  @default(false)
+  couponCode         String?
+  courierChargedToMe Float    @default(0)
+  courierProvider    String?
+  courierConsignmentId String?
+  courierTrackingCode  String?
+  courierCollectAmount Float?
+  courierBookedAt    DateTime?
+  courierStatus      String?
+  courierStatusSlug  String?
+  courierStatusSyncedAt DateTime?
+  leadId             String?
+  utmSource          String?
+  utmId              String?
+  utmContent         String?
+  utmCampaign        String?
+  /// Optional package weight override (kg) for courier booking.
+  courierWeightKg    Float?
+  /// normal | express — mapped per courier provider on book.
+  courierDeliveryType String?
+  attachmentNames    String[] @default([])
+  attachmentUrls     String[] @default([])
+  stockDeductedAt    DateTime?
+  /// Warehouse used to cut/hold stock on confirm / courier book.
+  fulfillmentWarehouseId String?
+  fulfillmentWarehouse   Warehouse? @relation(fields: [fulfillmentWarehouseId], references: [id], onDelete: SetNull)
+  deletedAt          DateTime?
+  /// Website / e-commerce connection that created this order (ingest).
+  websiteStoreId     String?
+  websiteStore       WebsiteStore? @relation(fields: [websiteStoreId], references: [id], onDelete: SetNull)
+  /// Idempotency key from source shop (Woo order id, custom order id).
+  externalOrderId    String?
+  createdByUserId    String?
+  createdByName      String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  lineItems          OrderItem[]
+  activities         OrderActivity[]
+  payments           OrderPayment[]
+
+  @@unique([organizationId, orderNumber])
+  @@unique([organizationId, websiteStoreId, externalOrderId])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, customerPhone])
+  @@index([organizationId, customerId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, deletedAt])
+  @@index([organizationId, courierStatusSlug])
+  @@index([organizationId, courierProvider, courierConsignmentId])
+  @@index([courierProvider, courierStatusSyncedAt])
+  @@index([organizationId, websiteStoreId])
+}
+
+/// Connected website / e-commerce store (WooCommerce or custom) for order ingest.
+model WebsiteStore {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  slug             String
+  /// woocommerce | custom
+  platform         String
+  enabled          Boolean      @default(true)
+  storeUrl         String?
+  /// SHA-256 hex of ingest token (plaintext shown once on create/rotate).
+  ingestTokenHash  String
+  /// Optional Woo REST keys + extras (AES-GCM JSON).
+  credentialsEnc   String?
+  lastIngestAt     DateTime?
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  orders           Order[]
+
+  @@unique([organizationId, slug])
+  @@unique([ingestTokenHash])
+  @@index([organizationId, enabled])
+}
+
+/// Website / sync intake that failed (duplicate, blocked, invalid) — org-scoped queue.
+model FailedOrder {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerName     String
+  customerPhone    String
+  address          String
+  /// Product name previews for list UI
+  products         String[]     @default([])
+  /// pending | recovered | dismissed
+  queueStatus      String       @default("pending")
+  /// duplicate | blocked | other
+  failedType       String
+  website          String?
+  lastUpdateNote   String?
+  /// Full CreateOrderPayload JSON for retry → create
+  payload          Json
+  recoveredOrderId String?
+  recoveredAt      DateTime?
+  dismissedAt      DateTime?
+  createdByUserId  String?
+  createdByName    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, queueStatus, createdAt])
+  @@index([organizationId, failedType])
+  @@index([organizationId, website])
+  @@index([organizationId, createdAt])
+}
+
+/// COD / advance collection ledger — one tracking row per order (org-scoped).
+model OrderPayment {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId          String
+  order            Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// cod | bkash | nagad | bank | cash
+  method           String       @default("cod")
+  /// pending | collected | reconciled
+  status           String       @default("pending")
+  collectedAmount  Float        @default(0)
+  note             String?
+  collectedAt      DateTime?
+  reconciledAt     DateTime?
+  createdByUserId  String?
+  createdByName    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, orderId])
+  @@index([organizationId, status])
+  @@index([organizationId, method])
+  @@index([organizationId, createdAt])
+}
+
+model Followup {
+  id                String    @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  queue             Int       @default(1)
+  orderId           String?
+  orderNumber       String?
+  customerId        String
+  customerNumber    String
+  scheduleDate      DateTime? @db.Date
+  skipped           Boolean   @default(false)
+  name              String
+  phone             String
+  address           String?
+  area              String?
+  district          String?
+  followupNotes     String?
+  customerNotes     String?
+  followupStatus    String    @default("no_status")
+  type              String    @default("listed")
+  recentProducts    Json      @default("[]")
+  tags              String[]  @default([])
+  smsStatus         String    @default("not_sent")
   assignedAgentName String?
-  shippingArea      String
-  shippingAddress   String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  source            String
+  activities        Json      @default("[]")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([organizationId, orderId])
+  @@index([organizationId, queue])
+  @@index([organizationId, phone])
+  @@index([organizationId, scheduleDate])
+  @@index([organizationId, followupStatus])
+}
+
+/// Agent / ops to-do items (calls, confirms, courier, etc.).
+model Task {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title             String
+  description       String?
+  /// call_customer | confirm_order | courier_followup | payment_followup | lead_followup | delivery_issue | general
+  taskType          String       @default("general")
+  /// pending | in_progress | done | cancelled
+  status            String       @default("pending")
+  /// low | medium | high | urgent
+  priority          String       @default("medium")
+  dueDate           DateTime?    @db.Date
+  dueTime           String?
+  assignedAgentName String?
+  createdByUserId   String?
+  createdByName     String?
+  /// order | lead | customer | followup | none
+  relatedType       String       @default("none")
+  relatedId         String?
+  relatedLabel      String?
+  customerName      String?
+  customerPhone     String?
+  notes             String?
+  tags              String[]     @default([])
+  activities        Json         @default("[]")
+  completedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, assignedAgentName])
+  @@index([organizationId, priority])
+  @@index([organizationId, taskType])
+  @@index([organizationId, createdAt])
+}
+
+model Coupon {
+  id              String    @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code            String
+  type            String // percent | fixed
+  value           Float
+  minOrderBdt     Float?
+  maxDiscountBdt  Float?
+  usageCount      Int       @default(0)
+  usageLimit      Int?
+  expiresAt       DateTime?
+  isActive        Boolean   @default(true)
+  description     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organizationId  String
+  productId       String?
+  variantId       String?
+  productName     String
+  variationLabel  String?
+  sku             String?
+  quantity        Int
+  returnedQuantity Int     @default(0)
+  unitPrice       Float
+  discount        Float    @default(0)
+  lineTotal       Float
+  createdAt       DateTime @default(now())
+
+  @@index([orderId])
+  @@index([organizationId])
+}
+
+model OrderActivity {
+  id             String   @id @default(cuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organizationId String
+  type           String
+  label          String
+  description    String?
+  actorUserId    String?
+  actorName      String?
+  createdAt      DateTime @default(now())
+
+  @@index([orderId])
+  @@index([organizationId])
+}
+
+/// Per-user read state for derived Courier Hub inbox events (`${orderId}:${type}`).
+model CourierInboxRead {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  eventId        String
+  readAt         DateTime @default(now())
+
+  @@unique([organizationId, userId, eventId])
+  @@index([organizationId, userId])
+}
+
+/// Org-configurable create-order dropdowns / defaults (not hardcoded in UI).
+model OrderFormOption {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind           String // status | payment_method | source | district | order_tag | customer_tag | default_courier_note | default_shipping
+  value          String
+  label          String
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, kind, value])
+  @@index([organizationId, kind, isActive])
+}
+
+/// Org-scoped order status definitions (nav, tabs, workflow) — source of truth for CRM statuses.
+model OrgOrderStatus {
+  id                  String       @id @default(uuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug                String
+  label               String
+  labelBn             String?
+  color               String       @default("hsl(174 58% 42%)")
+  /// intake | confirm | fulfillment | delivery | returns | terminal | special
+  group               String       @default("intake")
+  /// Queue folder (pendings, followups) or another status slug
+  parentSlug          String?
+  /// sidebar | nested_tab | filter_only | sidebar_and_tab
+  displayMode         String       @default("filter_only")
+  showInSidebar       Boolean?
+  showInNestedTabs    Boolean?
+  sidebarOrder        Int?
+  isTerminal          Boolean      @default(false)
+  isDefault           Boolean      @default(false)
+  isSystem            Boolean      @default(false)
+  isActive            Boolean      @default(true)
+  allowedTransitions  String[]     @default([])
+  bulkActions         String[]     @default([])
+  showInGroupByStatus Boolean      @default(true)
+  sortOrder           Int          @default(0)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, parentSlug])
+}
+
+/// Org-configurable Orders sidebar queue folders (Call confirm, Follow-ups, custom…).
+model OrgOrderQueue {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug             String
+  label            String
+  description      String       @default("")
+  /// list | form | failed | tool | payments
+  kind             String       @default("list")
+  href             String
+  sidebarOrder     Int          @default(10)
+  showInNav        Boolean      @default(true)
+  defaultChildSlug String?
+  /// When true, list applies follow-up-due age filter
+  followUpDue      Boolean      @default(false)
+  isSystem         Boolean      @default(false)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, showInNav])
+}
+
+/// Product manufacturer / label brand (not tenant CRM theming).
+model ProductBrand {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  description    String?
+  isActive       Boolean      @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  products       Product[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([organizationId, isActive])
+  @@index([organizationId, deletedAt])
+}
+
+model OrgCategory {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind           String // product | income | expense | knowledge
+  slug           String
+  label          String
+  description    String?
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  isSystem       Boolean      @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  products       Product[]
+
+  @@unique([organizationId, kind, slug])
+  @@index([organizationId, kind])
+  @@index([organizationId, kind, isActive])
+  @@index([organizationId, kind, deletedAt])
+}
+
+/// Tenant-defined customer status / tag pills (Premium, SMS Hub, etc.).
+model OrgCustomerStatus {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug           String
+  label          String
+  color          String?
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  isSystem       Boolean      @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, deletedAt])
+}
+
+model Product {
+  id             String                   @id @default(uuid())
+  organizationId String
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  brandId        String?
+  brand          ProductBrand?            @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  categoryId     String?
+  category       OrgCategory?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  name           String
+  sku            String
+  description    String?
+  imageUrl       String?
+  imageKey       String?
+  status         String                   @default("active") // active | inactive | discontinued
+  reorderLevel   Int                      @default(5)
+  supplierName   String?
+  notes          String?
+  tags           String[]                 @default([])
+  deletedAt      DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  variants       ProductVariant[]
+  stockMovements   InventoryStockMovement[]
+  activities       CatalogActivity[]
+  purchaseLines    InventoryPurchaseLine[]
+  returnLines      InventoryPurchaseReturnLine[]
+  mixerRecipes     MixerRecipe[]
+  productionBatches ProductionBatch[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@index([brandId])
+  @@index([categoryId])
+  @@index([organizationId, status])
+  @@index([organizationId, deletedAt])
+  @@index([organizationId, name])
+}
+
+model ProductVariant {
+  id             String                   @id @default(uuid())
+  organizationId String
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  label          String
+  sku            String
+  barcode        String?
+  baseUomId      String?
+  baseUom        UnitOfMeasure?           @relation(fields: [baseUomId], references: [id], onDelete: SetNull)
+  salePrice      Decimal                  @db.Decimal(12, 2)
+  costPrice      Decimal?                 @db.Decimal(12, 2)
+  /// Shipping weight per unit in kilograms (used for Pathao/Carrybee booking).
+  weightKg       Float                   @default(0.5)
+  stock          Int                      @default(0)
+  reorderLevel   Int                      @default(5)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  stockMovements InventoryStockMovement[]
+  purchaseLines  InventoryPurchaseLine[]
+  returnLines    InventoryPurchaseReturnLine[]
+  stockLevels    InventoryStockLevel[]
+  lots           InventoryLot[]
+  uomConversions VariantUomConversion[]
+
+  @@unique([organizationId, sku])
+  @@unique([productId, sku])
+  @@unique([organizationId, barcode])
+  @@index([productId])
+  @@index([organizationId])
+  @@index([baseUomId])
+}
+
+/// Tenant-scoped units of measure (pcs, kg, L, box, etc.).
+model UnitOfMeasure {
+  id                   String                 @id @default(uuid())
+  organizationId       String
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code                 String
+  name                 String
+  /// count | mass | volume | length | area | other
+  dimension            String                 @default("count")
+  /// Multiply qty in this unit by factor to get dimension base (g=1, kg=1000, ml=1, L=1000, pcs=1).
+  factorToDimensionBase Decimal               @default(1) @db.Decimal(18, 6)
+  isSystem             Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  variants             ProductVariant[]
+  variantConversions   VariantUomConversion[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, dimension])
+}
+
+/// Alternate purchase/sell units for a variant (e.g. 1 box = 12 pcs).
+model VariantUomConversion {
+  id              String         @id @default(uuid())
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  uomId           String
+  uom             UnitOfMeasure  @relation(fields: [uomId], references: [id], onDelete: Cascade)
+  /// qtyInUom * factorToVariantBase = qty in variant base UoM
+  factorToVariantBase Decimal    @db.Decimal(18, 6)
+
+  @@unique([variantId, uomId])
+  @@index([uomId])
+}
+
+/// Immutable stock ledger for catalog variants.
+model InventoryStockMovement {
+  id              String          @id @default(uuid())
+  organizationId  String
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId       String
+  variant         ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouseId     String?
+  warehouse       Warehouse?      @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  lotId           String?
+  lot             InventoryLot?   @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  delta           Int
+  previousStock   Int
+  newStock        Int
+  unitCost        Decimal?        @db.Decimal(12, 2)
+  valueDelta      Decimal?        @db.Decimal(14, 2)
+  reason          String
+  note            String?
+  sourceType      String?
+  sourceId        String?
+  transferGroupId String?
+  actorUserId     String?
+  actorName       String?
+  createdAt       DateTime        @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([productId, createdAt])
+  @@index([variantId, createdAt])
+  @@index([organizationId, reason, createdAt])
+  @@index([organizationId, warehouseId, createdAt])
+  @@index([organizationId, sourceType, sourceId])
+}
+
+model Warehouse {
+  id             String                  @id @default(uuid())
+  organizationId String
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String
+  name           String
+  address        String?
+  isDefault      Boolean                 @default(false)
+  isActive       Boolean                 @default(true)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  stockLevels    InventoryStockLevel[]
+  lots           InventoryLot[]
+  stockMovements InventoryStockMovement[]
+  fulfillmentOrders Order[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+}
+
+model InventoryStockLevel {
+  id             String         @id @default(uuid())
+  organizationId String
+  warehouseId    String
+  warehouse      Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity       Int            @default(0)
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([warehouseId, variantId])
+  @@index([organizationId, variantId])
+}
+
+model InventoryLot {
+  id              String                   @id @default(uuid())
+  organizationId  String
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variantId       String
+  variant         ProductVariant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  warehouseId     String?
+  warehouse       Warehouse?               @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  lotNumber       String
+  barcode         String?
+  manufacturedAt  DateTime?
+  expiresAt       DateTime?
+  receivedAt      DateTime                 @default(now())
+  quantity        Int                      @default(0)
+  unitCost        Decimal?                 @db.Decimal(12, 2)
+  status          String                   @default("active")
+  createdAt       DateTime                 @default(now())
+  stockMovements  InventoryStockMovement[]
+
+  @@unique([organizationId, variantId, lotNumber])
+  @@index([organizationId, expiresAt])
+  @@index([variantId, expiresAt])
+  @@index([warehouseId])
+}
+
+model AccountingAccount {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String
+  name           String
+  /// asset | liability | equity | income | expense
+  type           String
+  isActive       Boolean      @default(true)
+  isSystem       Boolean      @default(false)
+  /// cash | bkash | nagad | bank — cash-book accounts only
+  cashKind       String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, type])
+  @@index([organizationId, isActive])
+}
+
+model AccountingJournalEntry {
+  id             String                  @id @default(uuid())
+  organizationId String
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entryDate      DateTime                @default(now())
+  description    String
+  reference      String?
+  sourceType     String
+  sourceId       String
+  eventKey       String
+  status         String                  @default("posted")
+  /// income/expense/inventory category for filtering
+  category       String?
+  paymentMethod  String?
+  postedAt       DateTime                @default(now())
+  lines          AccountingJournalLine[]
+
+  @@unique([organizationId, eventKey])
+  @@index([organizationId, entryDate])
+  @@index([organizationId, sourceType, sourceId])
+  @@index([organizationId, category])
+}
+
+model AccountingJournalLine {
+  id             String                 @id @default(uuid())
+  journalEntryId String
+  journalEntry   AccountingJournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountCode    String
+  accountName    String
+  debit          Decimal                @default(0) @db.Decimal(14, 2)
+  credit         Decimal                @default(0) @db.Decimal(14, 2)
+
+  @@index([journalEntryId])
+  @@index([accountCode])
+}
+
+model InventorySupplier {
+  id             String              @id @default(uuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  contactPerson  String?
+  phone          String
+  email          String?
+  address        String?
+  status         String              @default("active")
+  tags           String[]            @default([])
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  purchases      InventoryPurchase[]
+  contacts       Contact[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model InventoryPurchase {
+  id             String                  @id @default(uuid())
+  organizationId String
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierId     String
+  supplier       InventorySupplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseNumber String
+  paymentStatus  String                  @default("unpaid")
+  stockStatus    String                  @default("pending")
+  purchaseDate   DateTime                @default(now())
+  dueDate        DateTime?
+  notes          String?
+  receivedAt     DateTime?
+  receivedById   String?
+  receivedByName String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  lines          InventoryPurchaseLine[]
+  returns        InventoryPurchaseReturn[]
+
+  @@unique([organizationId, purchaseNumber])
+  @@index([organizationId, purchaseDate])
+  @@index([organizationId, stockStatus])
+  @@index([supplierId])
+}
+
+model InventoryPurchaseLine {
+  id               String             @id @default(uuid())
+  purchaseId       String
+  purchase         InventoryPurchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variantId        String
+  variant          ProductVariant     @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantity         Int
+  /// Qty already received into stock (base UoM). Partial receive increments this.
+  receivedQuantity Int                @default(0)
+  unitCost         Decimal            @db.Decimal(12, 2)
+  createdAt        DateTime           @default(now())
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model InventoryPurchaseReturn {
+  id             String                       @id @default(uuid())
+  organizationId String
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseId     String?
+  purchase       InventoryPurchase?           @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  returnNumber   String
+  purchaseNumber String
+  supplierName   String
+  status         String                       @default("pending") // pending | approved | completed
+  returnDate     DateTime                     @default(now())
+  reason         String?
+  completedAt    DateTime?
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+  lines          InventoryPurchaseReturnLine[]
+
+  @@unique([organizationId, returnNumber])
+  @@index([organizationId, returnDate])
+  @@index([organizationId, status])
+  @@index([purchaseId])
+}
+
+model InventoryPurchaseReturnLine {
+  id         String                  @id @default(uuid())
+  returnId   String
+  return     InventoryPurchaseReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variantId  String
+  variant    ProductVariant          @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantity   Int
+  unitCost   Decimal                 @db.Decimal(12, 2)
+  createdAt  DateTime                @default(now())
+
+  @@index([returnId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model MixerRecipe {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  outputProductId  String
+  outputProduct    Product      @relation(fields: [outputProductId], references: [id], onDelete: Restrict)
+  outputQty        Int          @default(1)
+  status           String       @default("active") // active | draft
+  inputs           Json
+  lastMixedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([outputProductId])
+}
+
+model ProductionBatch {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batchNumber     String
+  outputProductId String
+  outputProduct   Product      @relation(fields: [outputProductId], references: [id], onDelete: Restrict)
+  result          Json
+  actorUserId     String?
+  actorName       String?
+  createdAt       DateTime     @default(now())
+
+  @@unique([organizationId, batchNumber])
+  @@index([organizationId, createdAt])
+  @@index([outputProductId])
+}
+
+model CatalogActivity {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entityType     String // brand | category | product | variant
+  entityId       String
+  productId      String?
+  product        Product?     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  action         String
+  label          String
+  description    String?
+  actorUserId    String?
+  actorName      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([productId, createdAt])
+}
+
+/// Manual Meta/ad campaign spend (Meta API later). monthKey = YYYY-MM.
+/// Org automation toggles for follow-up reminders (SMS map lives on SmsIntegration).
+model OrgAutomationSettings {
+  id                         String       @id @default(cuid())
+  organizationId             String       @unique
+  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  autoFollowupOnStatusChange Boolean      @default(false)
+  /// status slug → { queue, delayDays, note? }
+  statusFollowupMap          Json?
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+
+  @@map("AutomationSettings")
+}
+
+/// Manual ad campaign registry (name + budget). Meta sync later.
+model Campaign {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  /// active | paused | ended
+  status          String       @default("active")
+  /// facebook | instagram | google
+  platform        String       @default("facebook")
+  budgetBdt       Float        @default(0)
+  startDate       DateTime     @db.Date
+  endDate         DateTime?    @db.Date
+  notes           String?
+  landingPageName String?
+  landingPageUrl  String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@index([organizationId, platform])
+  @@index([organizationId, startDate])
+}
+
+/// Internal staff support tickets about customers / orders (no public portal).
+model SupportTicket {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subject        String
+  /// open | pending | resolved | closed
+  status         String       @default("open")
+  /// low | medium | high | urgent
+  priority       String       @default("medium")
+  customerName   String
+  customerMobile String
+  orderId        String?
+  orderNumber    String?
+  assigneeName   String?
+  createdByUserId String?
+  createdByName  String?
+  /// TicketMessage[] JSON
+  messages       Json         @default("[]")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, priority])
+  @@index([organizationId, customerMobile])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, orderNumber])
+}
+
+/// Tenant SaaS subscription (what the org pays Laam) — record only, no gateway.
+model OrgBillingSubscription {
+  id                 String       @id @default(cuid())
+  organizationId     String       @unique
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Starter | Pro | Enterprise
+  plan               String       @default("Starter")
+  /// active | trial | past_due | cancelled
+  status             String       @default("active")
+  /// monthly | yearly
+  billingCycle       String       @default("monthly")
+  currentPeriodStart DateTime     @db.Date
+  currentPeriodEnd   DateTime     @db.Date
+  nextBillingDate    DateTime     @db.Date
+  amountBdt          Float        @default(0)
+  smsCredits         Int          @default(2000)
+  smsCreditsUsed     Int          @default(0)
+  orderQuota         Int          @default(3000)
+  userSeats          Int          @default(5)
+  autoRenew          Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model BillingInvoice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  number         String
+  date           DateTime     @db.Date
+  dueDate        DateTime     @db.Date
+  amountBdt      Float
+  /// paid | pending | overdue | cancelled
+  status         String       @default("pending")
+  /// Starter | Pro | Enterprise
+  plan           String
+  periodLabel    String
+  pdfUrl         String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, date])
+}
+
+/// Manual payment method labels (no tokens / gateway).
+model BillingPaymentMethod {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// bkash | nagad | bank | card
+  type           String
+  label          String
+  lastFour       String?
+  isDefault      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model MarketingSpend {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  monthKey       String
+  campaignName   String
+  spendBdt       Float
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, monthKey, campaignName])
+  @@index([organizationId, monthKey])
+}
+
+/// Monthly targets for agents (by name) or teams (by teamId).
+model PerformanceTarget {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  monthKey         String
+  /// agent | team
+  scope            String
+  /// agent display name OR team id
+  subjectKey       String
+  subjectLabel     String
+  targetOrders     Int          @default(0)
+  targetRevenueBdt Float        @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, monthKey, scope, subjectKey])
+  @@index([organizationId, monthKey])
+  @@index([organizationId, scope])
+}
+
+/// Tenant-configurable incentive / KPI teams (SaaS — not hardcoded PDF).
+model IncentiveTeam {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  description    String?
+  sortOrder      Int             @default(0)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  plans          IncentivePlan[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@map("IncentiveTeams")
+}
+
+/// Incentive plan with metric rules + slabs. Fully custom per tenant.
+model IncentivePlan {
+  id                String                @id @default(cuid())
+  organizationId    String
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teamId            String?
+  team              IncentiveTeam?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  name              String
+  slug              String
+  description       String?
+  /// order_count | cross_sell_count | return_ratio | recovery_count | manual
+  metricType        String
+  /// Status filters, minItems, direction, delivered/returned statuses
+  metricConfig      Json?
+  /// Optional team-wide monthly target (e.g. Confirmation 2350)
+  teamMonthlyTarget Float?
+  periodType        String                @default("monthly")
+  isActive          Boolean               @default(true)
+  /// When actual exceeds top slab target, pay prorata (e.g. Telesales 21+)
+  prorataAboveTop   Boolean               @default(false)
+  sortOrder         Int                   @default(0)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  slabs             IncentiveSlab[]
+  assignments       IncentiveAssignment[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, teamId])
+  @@map("IncentivePlans")
+}
+
+model IncentiveSlab {
+  id             String        @id @default(cuid())
+  planId         String
+  plan           IncentivePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  label          String?
+  dailyTarget    Float?
+  monthlyTarget  Float
+  incentiveBdt   Float
+  sortOrder      Int           @default(0)
+
+  @@index([planId, sortOrder])
+  @@map("IncentiveSlabs")
+}
+
+/// Agent ↔ plan assignment (agentName matches Order.assignedAgentName).
+model IncentiveAssignment {
+  id                     String                 @id @default(cuid())
+  organizationId         String
+  organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId                 String
+  plan                   IncentivePlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  agentName              String
+  userId                 String?
+  /// morning | evening | night
+  shift                  String?
+  startsOn               DateTime               @db.Date
+  endsOn                 DateTime?              @db.Date
+  isActive               Boolean                @default(true)
+  /// active | warning | final_warning | terminated (PDF ops)
+  hrStatus               String                 @default("active")
+  consecutiveMissMonths  Int                    @default(0)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  manualActuals          IncentiveManualActual[]
+  surveyLogs             IncentiveSurveyLog[]
+  channelLogs            IncentiveChannelLog[]
+  specialBonuses         IncentiveSpecialBonus[]
+
+  @@index([organizationId, agentName])
+  @@index([organizationId, planId])
+  @@index([organizationId, isActive])
+  @@index([organizationId, hrStatus])
+  @@map("IncentiveAssignments")
+}
+
+/// Manual KPI entry for survey / relationship / night soft metrics.
+model IncentiveManualActual {
+  id               String              @id @default(cuid())
+  organizationId   String
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignmentId     String
+  assignment       IncentiveAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  yearMonth        String
+  actualValue      Float
+  note             String?
+  updatedByUserId  String?
+  updatedByName    String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([assignmentId, yearMonth])
+  @@index([organizationId, yearMonth])
+  @@map("IncentiveManualActuals")
+}
+
+/// Locked monthly incentive period (draft → approved → paid).
+model IncentivePeriodRun {
+  id                      String               @id @default(cuid())
+  organizationId          String
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  yearMonth               String
+  /// draft | approved | paid
+  status                  String               @default("draft")
+  totalIncentiveBdt       Float                @default(0)
+  totalSpecialBonusBdt    Float                @default(0)
+  totalAttendanceBonusBdt Float                @default(0)
+  totalPayBdt             Float                @default(0)
+  calculatedAt            DateTime             @default(now())
+  approvedAt              DateTime?
+  approvedByUserId        String?
+  approvedByName          String?
+  paidAt                  DateTime?
+  paidByUserId            String?
+  paidByName              String?
+  notes                   String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  lines                   IncentivePayoutLine[]
+
+  @@unique([organizationId, yearMonth])
+  @@index([organizationId, status])
+  @@map("IncentivePeriodRuns")
+}
+
+model IncentivePayoutLine {
+  id                 String             @id @default(cuid())
+  runId              String
+  run                IncentivePeriodRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  assignmentId       String?
+  agentName          String
+  planId             String
+  planName           String
+  teamName           String?
+  metricType         String
+  actualValue        Float
+  incentiveBdt       Float
+  specialBonusBdt    Float              @default(0)
+  attendanceBonusBdt Float              @default(0)
+  totalPayBdt        Float              @default(0)
+  matchedSlabLabel   String?
+  warning            String?
+  hrStatus           String?
+  notes              String?
+
+  @@index([runId])
+  @@map("IncentivePayoutLines")
+}
+
+/// Monthly attendance for attendance-bonus eligibility (PDF salary rules).
+model IncentiveAttendance {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentName         String
+  userId            String?
+  yearMonth         String
+  presentDays       Float
+  workingDays       Float
+  lateCount         Int          @default(0)
+  earlyLeaveCount   Int          @default(0)
+  unapprovedAbsence Int          @default(0)
+  note              String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([organizationId, agentName, yearMonth])
+  @@index([organizationId, yearMonth])
+  @@map("IncentiveAttendances")
+}
+
+/// Relationship team verified survey completions.
+model IncentiveSurveyLog {
+  id             String               @id @default(cuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignmentId   String?
+  assignment     IncentiveAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  agentName      String
+  yearMonth      String
+  surveyCount    Float
+  note           String?
+  recordedAt     DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([organizationId, agentName, yearMonth])
+  @@index([organizationId, yearMonth])
+  @@map("IncentiveSurveyLogs")
+}
+
+/// Night-shift / multi-channel activity (call, FB comment, messenger, WhatsApp).
+model IncentiveChannelLog {
+  id             String               @id @default(cuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignmentId   String?
+  assignment     IncentiveAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  agentName      String
+  yearMonth      String
+  /// call | facebook_comment | messenger | whatsapp
+  channel        String
+  activityCount  Float
+  note           String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([organizationId, agentName, yearMonth, channel])
+  @@index([organizationId, yearMonth])
+  @@map("IncentiveChannelLogs")
+}
+
+/// Management appreciation / special performance bonus (PDF).
+model IncentiveSpecialBonus {
+  id              String               @id @default(cuid())
+  organizationId  String
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignmentId    String?
+  assignment      IncentiveAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  yearMonth       String
+  agentName       String
+  amountBdt       Float
+  reason          String
+  createdByUserId String?
+  createdByName   String?
+  createdAt       DateTime             @default(now())
+
+  @@index([organizationId, yearMonth])
+  @@index([organizationId, agentName])
+  @@map("IncentiveSpecialBonuses")
+}
+
+/// Optional org-wide salary + shift templates (reference; payroll later).
+model IncentiveOrgSettings {
+  id               String       @id @default(cuid())
+  organizationId   String       @unique
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salaryTemplate   Json?
+  shiftTemplates   Json?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@map("IncentiveOrgSettings")
+}
+
+/// Login success/failure audit for security reports.
+model LoginAudit {
+  id             String        @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userName       String
+  email          String
+  ip             String        @default("unknown")
+  device         String        @default("unknown")
+  /// success | failed
+  status         String
+  loggedInAt     DateTime      @default(now())
+
+  @@index([organizationId, loggedInAt])
+  @@index([email, loggedInAt])
+  @@index([userId, loggedInAt])
 }

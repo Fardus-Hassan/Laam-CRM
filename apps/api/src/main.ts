@@ -1,16 +1,70 @@
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import * as classTransformer from 'class-transformer';
+import * as classValidator from 'class-validator';
 import { AppModule } from './app/app.module';
 
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return true;
+    }
+    if (host.endsWith('.localhost')) {
+      return true;
+    }
+    if (host === 'laamcrm.com' || host.endsWith('.laamcrm.com')) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      // Force the pipe to use the exact same class-transformer/class-validator
+      // instances the DTO decorators registered metadata in. Without this, the
+      // webpack bundle and node_modules copies diverge and nested DTOs (e.g.
+      // product variants) get stripped to empty objects by whitelist.
+      transformerPackage: classTransformer,
+      validatorPackage: classValidator,
+    }),
+  );
   app.enableCors({
-    origin: process.env['WEB_URL'] ?? 'http://localhost:3000',
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
   });
+
+  const uploadsDir = join(process.cwd(), 'uploads');
+  if (!existsSync(uploadsDir)) {
+    mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.useStaticAssets(uploadsDir, { prefix: '/api/uploads' });
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Laam CRM API')

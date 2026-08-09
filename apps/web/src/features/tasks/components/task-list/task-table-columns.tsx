@@ -26,6 +26,7 @@ import {
   TASK_TYPE_LABELS,
 } from '@/features/tasks/config/task-filters';
 import { TaskStatusBadge } from '@/features/tasks/components/shared/task-badges';
+import { formatDate } from '@/lib/format';
 
 export const TASK_TABLE_PINNED = {
   left: ['select', 'sl'],
@@ -33,11 +34,7 @@ export const TASK_TABLE_PINNED = {
 };
 
 export function formatTaskDate(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(value));
+  return formatDate(value);
 }
 
 function relatedHref(row: TaskListItem): string | null {

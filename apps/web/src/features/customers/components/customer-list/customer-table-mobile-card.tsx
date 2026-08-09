@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { CustomerListItem } from '@laam/types';
+import type { CustomerListItem, CustomerSegmentCount, CustomerStatus } from '@laam/types';
 import {
   CalendarClock,
   MessageCircle,
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { CourierScoreCell } from '@/features/customers/components/shared/courier-score-cell';
-import { CustomerStatusBadge } from '@/features/customers/components/shared/customer-status-badge';
+import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
 import { formatCustomerDate } from '@/features/customers/components/customer-list/customer-table-columns';
 import { formatCurrency } from '@/lib/format';
 
@@ -26,6 +26,8 @@ type CustomerTableMobileCardProps = {
   ctx: CrmRowContext<CustomerListItem>;
   onNoteClick?: (row: CustomerListItem) => void;
   onFollowUpClick?: (row: CustomerListItem) => void;
+  statusOptions?: CustomerSegmentCount[];
+  onStatusChange?: (row: CustomerListItem, status: CustomerStatus) => void | Promise<void>;
 };
 
 export function CustomerTableMobileCard({
@@ -33,6 +35,8 @@ export function CustomerTableMobileCard({
   ctx,
   onNoteClick,
   onFollowUpClick,
+  statusOptions = [],
+  onStatusChange,
 }: CustomerTableMobileCardProps) {
   const phoneDigits = row.phone.replace(/\D/g, '');
 
@@ -47,26 +51,20 @@ export function CustomerTableMobileCard({
         />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <CustomerStatusBadge status={row.status} />
+            {onStatusChange ? (
+              <CustomerStatusSelect
+                row={row}
+                options={statusOptions}
+                onChange={onStatusChange}
+                compact
+              />
+            ) : null}
             <Link
-              href={`/dashboard/companies/${row.id}`}
+              href={`/dashboard/customers/${row.id}`}
               className="text-base font-semibold text-primary hover:underline"
             >
               #{row.customerNumber}
             </Link>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="size-7"
-              onClick={() => onNoteClick?.(row)}
-            >
-              {row.hasNotes ? (
-                <MessageSquare className="size-3.5 text-primary" />
-              ) : (
-                <MessageSquarePlus className="size-3.5 text-muted-foreground" />
-              )}
-            </Button>
           </div>
           <DataTablePersonCell
             name={row.name}
@@ -86,6 +84,23 @@ export function CustomerTableMobileCard({
               onClick={() => window.open(`https://wa.me/${phoneDigits}`, '_blank', 'noopener,noreferrer')}
             >
               <MessageCircle className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={
+                row.hasNotes ? 'h-7 px-2 text-primary' : 'h-7 px-2 text-muted-foreground'
+              }
+              onClick={() => onNoteClick?.(row)}
+              aria-label={row.hasNotes ? 'View note' : 'Add note'}
+            >
+              {row.hasNotes ? (
+                <MessageSquare className="size-3.5" />
+              ) : (
+                <MessageSquarePlus className="size-3.5" />
+              )}
+              Note
             </Button>
             <Button type="button" size="sm" className="h-7 px-2" asChild>
               <Link href={`/dashboard/orders/new?phone=${encodeURIComponent(row.phone)}`}>
@@ -112,9 +127,11 @@ export function CustomerTableMobileCard({
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Orders</p>
-          <p className="font-medium tabular-nums">
-            {row.orderCount} · {row.deliveredCount} delivered
-          </p>
+          <p className="font-medium tabular-nums">{row.orderCount}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Delivered completed</p>
+          <p className="font-medium tabular-nums">{row.deliveredCount}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Total spent</p>
@@ -122,7 +139,13 @@ export function CustomerTableMobileCard({
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Courier score</p>
-          <CourierScoreCell score={row.courierScore} compact />
+          <CourierScoreCell
+            score={row.courierScore}
+            shop={row.courierShop}
+            orderCount={row.orderCount}
+            deliveredCount={row.deliveredCount}
+            compact
+          />
         </div>
         {row.recentProducts[0] ? (
           <div className="sm:col-span-2">

@@ -9,7 +9,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 
 export function CompanyDetailView({ company }: { company: CompanyDetail }) {
   const areaLabel = [company.industry, company.city].filter(Boolean).join(', ');
@@ -75,7 +75,7 @@ export function CompanyDetailView({ company }: { company: CompanyDetail }) {
               <div>
                 <p className="text-xs text-muted-foreground">Member since</p>
                 <p className="mt-1 font-medium">
-                  {new Date(company.createdAt).toLocaleDateString('en-GB')}
+                  {formatDate(company.createdAt)}
                 </p>
               </div>
               <div className="sm:col-span-2">

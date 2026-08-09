@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { ProductCategory, ProductStatus, ProductVariant } from '@laam/types';
+import type { ProductStatus, ProductVariant } from '@laam/types';
 import {
   ArrowLeft,
   ImagePlus,
@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
+import { Can } from '@/components/auth/can';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { FormTextarea } from '@/components/form/form-textarea';
@@ -24,19 +25,22 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
+import { MerchandisingFlagsField } from '@/features/inventory/components/merchandising-flags-field';
 import {
-  PRODUCT_CATEGORY_LABELS,
   PRODUCT_STATUS_LABELS,
 } from '@/features/inventory/config/product-filters';
-import { MOCK_SUPPLIERS } from '@/features/inventory/data/mock-inventory';
+import {
+  mergeMerchandisingTags,
+  type MerchandisingFlags,
+} from '@/features/inventory/lib/product-merchandising';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
+import { productBrandsApi } from '@/features/settings/api/product-brands-api';
+import { inventoryApi } from '@/features/inventory/api/inventory-api';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
+import { useInventoryUnits } from '@/features/inventory/hooks/use-inventory-units';
 import { ORDER_CARD_CLASS } from '@/features/orders/components/create-order/section-layout';
 import { cn } from '@/lib/utils';
-
-const CATEGORY_OPTIONS = (Object.keys(PRODUCT_CATEGORY_LABELS) as ProductCategory[]).map((v) => ({
-  value: v,
-  label: PRODUCT_CATEGORY_LABELS[v],
-}));
+import { ApiError } from '@/lib/api/errors';
 
 const STATUS_OPTIONS = (Object.keys(PRODUCT_STATUS_LABELS) as ProductStatus[]).map((v) => ({
   value: v,
@@ -50,19 +54,23 @@ function emptyVariant(sku: string): ProductVariant {
     id: `new-${Date.now()}`,
     label: 'Standard',
     sku: `${sku}-STD`,
+    baseUomCode: 'pcs',
     salePrice: 0,
     costPrice: 0,
     stock: 0,
     reorderLevel: 5,
+    weightKg: 0.5,
   };
 }
 
-function ProductImageField({
+export function ProductImageField({
   imageUrl,
   onChange,
+  onFileChange,
 }: {
   imageUrl: string;
   onChange: (url: string) => void;
+  onFileChange?: (file: File | null) => void;
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [mode, setMode] = React.useState<'upload' | 'url'>('upload');
@@ -88,6 +96,7 @@ function ProductImageField({
     reader.onload = () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
       if (result) {
+        onFileChange?.(file);
         onChange(result);
         setMode('upload');
         toast.success('Image ready');
@@ -100,6 +109,7 @@ function ProductImageField({
   function applyUrl() {
     const next = urlDraft.trim();
     if (!next) {
+      onFileChange?.(null);
       onChange('');
       return;
     }
@@ -107,6 +117,7 @@ function ProductImageField({
       toast.error('Enter a valid http(s) image URL');
       return;
     }
+    onFileChange?.(null);
     onChange(next);
     toast.success('Image URL applied');
   }
@@ -156,6 +167,7 @@ function ProductImageField({
               variant="secondary"
               className="absolute right-2 top-2 size-7 shadow-sm"
               onClick={() => {
+                onFileChange?.(null);
                 onChange('');
                 setUrlDraft('');
                 if (inputRef.current) inputRef.current.value = '';
@@ -250,19 +262,64 @@ function ProductImageField({
 
 export function CreateProductPage() {
   const router = useRouter();
-  const { createProduct, isLoading } = useProductMutations();
+  const { createProduct, uploadProductImage, isLoading } = useProductMutations();
+  const { unitOptions, defaultCode } = useInventoryUnits();
+  const categoryOptions = useOrgCategoryOptions('product');
+  const [brandOptions, setBrandOptions] = React.useState<{ value: string; label: string }[]>([]);
+  const [supplierOptions, setSupplierOptions] = React.useState<{ value: string; label: string }[]>(
+    [],
+  );
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const [skuError, setSkuError] = React.useState<string | undefined>();
   const [draft, setDraft] = React.useState({
     name: '',
     sku: '',
-    category: 'honey' as ProductCategory,
+    category: '',
+    brandId: '',
     status: 'active' as ProductStatus,
     description: '',
     imageUrl: '',
     supplierName: '',
     reorderLevel: 5,
     notes: '',
+    merchandising: {
+      isHero: false,
+      isUpsell: false,
+      isCrossSell: false,
+    } as MerchandisingFlags,
     variants: [emptyVariant('SKU')],
   });
+
+  React.useEffect(() => {
+    void productBrandsApi.list().then((brands) => {
+      setBrandOptions(
+        brands
+          .filter((b) => b.isActive)
+          .map((b) => ({ value: b.id, label: b.name })),
+      );
+    });
+  }, []);
+
+  React.useEffect(() => {
+    void inventoryApi
+      .listSuppliers()
+      .then((res) => {
+        setSupplierOptions(
+          res.items
+            .filter((s) => s.status === 'active')
+            .map((s) => ({ value: s.name, label: s.name })),
+        );
+      })
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : 'Could not load suppliers');
+      });
+  }, []);
+
+  React.useEffect(() => {
+    if (!draft.category && categoryOptions[0]) {
+      setDraft((c) => ({ ...c, category: categoryOptions[0]!.value }));
+    }
+  }, [categoryOptions, draft.category]);
 
   function patch(values: Partial<typeof draft>) {
     setDraft((c) => ({ ...c, ...values }));
@@ -279,26 +336,59 @@ export function CreateProductPage() {
     draft.name.trim() && draft.sku.trim() && draft.variants.every((v) => v.salePrice > 0);
 
   async function handleSubmit() {
+    setSkuError(undefined);
     if (!canSubmit) {
       toast.error('Name, SKU, and sale price are required');
       return;
     }
-    await createProduct({
-      name: draft.name.trim(),
-      sku: draft.sku.trim().toUpperCase(),
-      category: draft.category,
-      status: draft.status,
-      description: draft.description.trim() || undefined,
-      imageUrl: draft.imageUrl.trim() || undefined,
-      supplierName: draft.supplierName || undefined,
-      reorderLevel: draft.reorderLevel,
-      notes: draft.notes.trim() || undefined,
-      variants: draft.variants.map((v) => ({
-        ...v,
-        sku: v.sku || `${draft.sku.trim()}-${v.label.slice(0, 3).toUpperCase()}`,
-      })),
-    });
-    router.push('/dashboard/inventory/products');
+    const normalizedSkus = draft.variants.map((variant) => variant.sku.trim().toUpperCase());
+    if (normalizedSkus.some((sku) => !sku)) {
+      setSkuError('Every variant needs a SKU');
+      toast.error('Every variant needs a SKU');
+      return;
+    }
+    if (new Set(normalizedSkus).size !== normalizedSkus.length) {
+      setSkuError('Variant SKUs must be unique');
+      toast.error('Variant SKUs must be unique');
+      return;
+    }
+    const selectedCategory = categoryOptions.find((c) => c.value === draft.category);
+    try {
+      const product = await createProduct({
+        name: draft.name.trim(),
+        sku: draft.sku.trim().toUpperCase(),
+        category: draft.category || undefined,
+        categoryId: selectedCategory?.id,
+        brandId: draft.brandId || undefined,
+        status: draft.status,
+        description: draft.description.trim() || undefined,
+        imageUrl: draft.imageUrl.startsWith('data:') ? undefined : draft.imageUrl.trim() || undefined,
+        supplierName: draft.supplierName || undefined,
+        reorderLevel: draft.reorderLevel,
+        notes: draft.notes.trim() || undefined,
+        tags: mergeMerchandisingTags([], draft.merchandising),
+        variants: draft.variants.map((v) => ({
+          id: v.id,
+          label: v.label.trim() || 'Standard',
+          sku: v.sku.trim().toUpperCase(),
+          barcode: v.barcode,
+          baseUomCode: v.baseUomCode || defaultCode('pcs'),
+          salePrice: v.salePrice,
+          costPrice: v.costPrice,
+          stock: v.stock,
+          reorderLevel: v.reorderLevel,
+          weightKg: v.weightKg ?? 0.5,
+        })),
+      });
+      if (pendingFile) {
+        await uploadProductImage(product.id, pendingFile);
+      }
+      router.push('/dashboard/inventory/products');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setSkuError('A product or variant with this SKU already exists');
+      }
+    }
   }
 
   return (
@@ -350,20 +440,39 @@ export function CreateProductPage() {
               </FormField>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="SKU" required>
+                <FormField label="SKU" required error={skuError}>
                   <FormInput
                     value={draft.sku}
                     onChange={(e) => patch({ sku: e.target.value.toUpperCase() })}
                     placeholder="MDH-500"
                   />
                 </FormField>
+                <FormField label="Brand">
+                  <FormSearchSelect
+                    value={draft.brandId}
+                    onChange={(v) => patch({ brandId: v })}
+                    options={brandOptions}
+                    placeholder="Select brand…"
+                    searchable={false}
+                  />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    <Link href="/dashboard/inventory/brands" className="font-medium text-primary hover:underline">
+                      Manage brands
+                    </Link>
+                  </p>
+                </FormField>
                 <FormField label="Category">
                   <FormSearchSelect
                     value={draft.category}
-                    onChange={(v) => patch({ category: v as ProductCategory })}
-                    options={CATEGORY_OPTIONS}
+                    onChange={(v) => patch({ category: v })}
+                    options={categoryOptions}
                     searchable={false}
                   />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    <Link href="/dashboard/settings/categories" className="font-medium text-primary hover:underline">
+                      Manage categories
+                    </Link>
+                  </p>
                 </FormField>
                 <FormField label="Status">
                   <FormSearchSelect
@@ -377,9 +486,19 @@ export function CreateProductPage() {
                   <FormSearchSelect
                     value={draft.supplierName}
                     onChange={(v) => patch({ supplierName: v })}
-                    options={MOCK_SUPPLIERS.map((s) => ({ value: s.name, label: s.name }))}
-                    placeholder="Select supplier…"
+                    options={supplierOptions}
+                    placeholder={
+                      supplierOptions.length ? 'Select supplier…' : 'No active suppliers yet'
+                    }
                   />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    <Link
+                      href="/dashboard/inventory/suppliers"
+                      className="font-medium text-primary hover:underline"
+                    >
+                      Manage suppliers
+                    </Link>
+                  </p>
                 </FormField>
               </div>
 
@@ -400,6 +519,11 @@ export function CreateProductPage() {
                   placeholder="Shelf life, storage, packing tips…"
                 />
               </FormField>
+
+              <MerchandisingFlagsField
+                value={draft.merchandising}
+                onChange={(merchandising) => patch({ merchandising })}
+              />
             </CardContent>
           </Card>
 
@@ -414,6 +538,7 @@ export function CreateProductPage() {
               <ProductImageField
                 imageUrl={draft.imageUrl}
                 onChange={(imageUrl) => patch({ imageUrl })}
+                onFileChange={setPendingFile}
               />
             </CardContent>
           </Card>
@@ -479,10 +604,28 @@ export function CreateProductPage() {
                         placeholder="Standard / 500g"
                       />
                     </FormField>
-                    <FormField label="Variant SKU">
+                    <FormField label="Variant SKU" error={skuError}>
                       <FormInput
                         value={variant.sku}
                         onChange={(e) => updateVariant(index, { sku: e.target.value })}
+                      />
+                    </FormField>
+                    <FormField label="Barcode">
+                      <FormInput
+                        value={variant.barcode ?? ''}
+                        onChange={(e) =>
+                          updateVariant(index, { barcode: e.target.value || undefined })
+                        }
+                        placeholder="EAN / UPC (optional)"
+                      />
+                    </FormField>
+                    <FormField label="Base unit">
+                      <FormSearchSelect
+                        value={variant.baseUomCode ?? defaultCode('pcs')}
+                        onChange={(code) => updateVariant(index, { baseUomCode: code })}
+                        options={unitOptions}
+                        placeholder="pcs, kg, L…"
+                        searchable
                       />
                     </FormField>
                     <FormField label="Sale price (৳)" required>
@@ -505,7 +648,10 @@ export function CreateProductPage() {
                         }
                       />
                     </FormField>
-                    <FormField label="Stock">
+                    <FormField
+                      label="On hand"
+                      hint="Stored in default warehouse for orders/courier"
+                    >
                       <FormInput
                         type="number"
                         min={0}
@@ -523,6 +669,19 @@ export function CreateProductPage() {
                         }
                       />
                     </FormField>
+                    <FormField label="Weight (kg)">
+                      <FormInput
+                        type="number"
+                        min={0.01}
+                        step={0.01}
+                        value={variant.weightKg ?? 0.5}
+                        onChange={(e) =>
+                          updateVariant(index, {
+                            weightKg: Math.max(0.01, Number(e.target.value) || 0.5),
+                          })
+                        }
+                      />
+                    </FormField>
                   </div>
                 </div>
               ))}
@@ -534,9 +693,11 @@ export function CreateProductPage() {
             <Button type="button" variant="outline" asChild>
               <Link href="/dashboard/inventory/products">Cancel</Link>
             </Button>
-            <Button type="submit" disabled={!canSubmit || isLoading}>
-              {isLoading ? 'Creating…' : 'Create product'}
-            </Button>
+            <Can permission="inventory.create">
+              <Button type="submit" disabled={!canSubmit || isLoading}>
+                {isLoading ? 'Creating…' : 'Create product'}
+              </Button>
+            </Can>
           </div>
 
           {/* Mobile sticky actions — sits above quick-action FAB */}
@@ -545,9 +706,11 @@ export function CreateProductPage() {
               <Button type="button" variant="outline" className="flex-1" asChild>
                 <Link href="/dashboard/inventory/products">Cancel</Link>
               </Button>
-              <Button type="submit" className="flex-1" disabled={!canSubmit || isLoading}>
-                {isLoading ? 'Creating…' : 'Create product'}
-              </Button>
+              <Can permission="inventory.create">
+                <Button type="submit" className="flex-1" disabled={!canSubmit || isLoading}>
+                  {isLoading ? 'Creating…' : 'Create product'}
+                </Button>
+              </Can>
             </div>
           </div>
         </form>

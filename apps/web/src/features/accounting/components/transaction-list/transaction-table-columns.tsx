@@ -6,9 +6,8 @@ import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import type { CrmColumnDef } from '@/components/data-table';
 import { DataTableEmptyValue } from '@/components/data-table/cells';
 import { Badge } from '@/components/ui/badge';
+import { getOrgCategoryLabel } from '@/features/settings/data/org-categories-store';
 import {
-  EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
   PAYMENT_METHOD_LABELS,
 } from '@/features/accounting/config/accounting-filters';
 import { formatCurrency } from '@/lib/format';
@@ -23,10 +22,10 @@ const JOURNAL_CATEGORY_LABELS: Record<string, string> = {
 
 function categoryLabel(category: string, type: string) {
   if (type === 'income') {
-    return INCOME_CATEGORIES.find((c) => c.id === category)?.label ?? category;
+    return getOrgCategoryLabel('income', category);
   }
   if (type === 'expense') {
-    return EXPENSE_CATEGORIES.find((c) => c.id === category)?.label ?? category;
+    return getOrgCategoryLabel('expense', category);
   }
   return JOURNAL_CATEGORY_LABELS[category] ?? category.replace(/_/g, ' ');
 }

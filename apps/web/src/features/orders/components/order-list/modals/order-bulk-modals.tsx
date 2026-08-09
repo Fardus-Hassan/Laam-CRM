@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { BulkActionId, OrderListRow } from '@laam/types';
+import type { BulkActionId, OrderListRow, TenantUser } from '@laam/types';
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
@@ -16,12 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { getOrderStatuses } from '@/features/orders/data/order-status-store';
-import { loadSmsTemplates } from '@/features/orders/data/mock-sms-templates';
+import { FulfillmentWarehouseSelect } from '@/features/orders/components/shared/fulfillment-warehouse-select';
 import { exportOrdersToCsv } from '@/features/orders/lib/export-orders-csv';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
-
-const EMPLOYEES = ['Sakib Ahmed', 'Mitu Rahman', 'Imran Hossain', 'Tania Sultana', 'Arif Mahmud'];
+import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
+import { orderSmsApi, smsSettingsApi } from '@/features/settings/api/sms-settings-api';
+import { rbacApi } from '@/features/rbac/api/rbac-api';
 
 type BulkModalState =
   | { type: 'sms'; orderIds: string[] }
@@ -41,17 +41,64 @@ type OrderBulkModalsProps = {
 
 export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }: OrderBulkModalsProps) {
   const { bulkAction, bulkSetFollowUp, isLoading } = useOrderMutations();
-  const smsTemplates = React.useMemo(() => loadSmsTemplates(), [state?.type]);
-  const [smsTemplate, setSmsTemplate] = React.useState('confirm');
+  const [smsTemplates, setSmsTemplates] = React.useState<
+    Array<{ id: string; label: string; message: string }>
+  >([]);
+  const [smsTemplate, setSmsTemplate] = React.useState('');
   const [smsMessage, setSmsMessage] = React.useState('');
-  const [status, setStatus] = React.useState('confirmed');
+  const [smsSending, setSmsSending] = React.useState(false);
   const [employee, setEmployee] = React.useState('');
+  const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
   const [followUpDate, setFollowUpDate] = React.useState('');
+  const [courierWarehouseId, setCourierWarehouseId] = React.useState('');
+
+  React.useEffect(() => {
+    if (state?.type === 'courier') setCourierWarehouseId('');
+  }, [state]);
+
+  React.useEffect(() => {
+    if (state?.type !== 'transfer') return;
+    let cancelled = false;
+    void rbacApi
+      .listUsers('')
+      .then((list) => {
+        if (!cancelled) setTeamUsers(list.filter((u) => u.status === 'active'));
+      })
+      .catch(() => {
+        if (!cancelled) setTeamUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state?.type]);
+
+  React.useEffect(() => {
+    if (state?.type !== 'sms') return;
+    let cancelled = false;
+    void smsSettingsApi
+      .listTemplates()
+      .then((list) => {
+        if (cancelled) return;
+        const enabled = list.filter((t) => t.enabled);
+        setSmsTemplates(enabled.map((t) => ({ id: t.id, label: t.label, message: t.message })));
+        const first = enabled[0];
+        if (first) {
+          setSmsTemplate(first.id);
+          setSmsMessage(first.message);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSmsTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state?.type]);
 
   React.useEffect(() => {
     if (state?.type === 'sms') {
       const template = smsTemplates.find((t) => t.id === smsTemplate);
-      setSmsMessage(template?.message ?? '');
+      if (template) setSmsMessage(template.message ?? '');
     }
   }, [smsTemplate, smsTemplates, state?.type]);
 
@@ -69,23 +116,48 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleSmsSubmit() {
     if (state?.type !== 'sms') return;
-    await bulkAction({
-      action: 'sms',
-      orderIds: state.orderIds,
-      smsTemplateId: smsTemplate,
-      smsMessage,
-    });
-    toast.success(`SMS queued for ${state.orderIds.length} order(s)`);
-    onSuccess?.();
-    onClose();
+    if (!smsMessage.trim()) {
+      toast.error('Enter SMS message');
+      return;
+    }
+    setSmsSending(true);
+    try {
+      const result = await orderSmsApi.bulk({
+        orderIds: state.orderIds,
+        message: smsMessage.trim(),
+      });
+      if (result.failedCount > 0) {
+        toast.warning(
+          `SMS: ${result.successCount} sent, ${result.failedCount} failed. Check Settings → SMS if all failed.`,
+        );
+      } else {
+        toast.success(result.message || `SMS sent to ${result.successCount} order(s)`);
+      }
+      onSuccess?.();
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Bulk SMS failed');
+    } finally {
+      setSmsSending(false);
+    }
   }
 
-  async function handleStatusSubmit() {
+  async function handleStatusSubmit(
+    nextStatus: string,
+    meta?: { fulfillmentWarehouseId?: string },
+  ) {
     if (state?.type !== 'status') return;
+    if (!nextStatus.trim()) {
+      toast.error('Select a status');
+      return;
+    }
     await bulkAction({
       action: 'status_change',
       orderIds: state.orderIds,
-      status: status as 'confirmed',
+      status: nextStatus.trim(),
+      ...(meta?.fulfillmentWarehouseId
+        ? { fulfillmentWarehouseId: meta.fulfillmentWarehouseId }
+        : {}),
     });
     onSuccess?.();
     onClose();
@@ -93,13 +165,27 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleCourierSubmit() {
     if (state?.type !== 'courier') return;
-    await bulkAction({
-      action: 'courier_submit',
-      orderIds: state.orderIds,
-      courier: state.courier,
-    });
-    onSuccess?.();
-    onClose();
+    const courier = state.courier.toLowerCase();
+    if (courier !== 'pathao' && courier !== 'carrybee') {
+      toast.error('Bulk submit supports Pathao and Carrybee only');
+      return;
+    }
+    if (!courierWarehouseId.trim()) {
+      toast.error('Select a fulfillment warehouse before booking courier');
+      return;
+    }
+    try {
+      await bulkAction({
+        action: 'courier_submit',
+        orderIds: state.orderIds,
+        courier,
+        fulfillmentWarehouseId: courierWarehouseId.trim(),
+      });
+      onSuccess?.();
+      onClose();
+    } catch {
+      // toast already shown by mutation hook
+    }
   }
 
   async function handleTransferSubmit() {
@@ -167,51 +253,54 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleSmsSubmit()} disabled={isLoading}>
-              Send SMS
+            <Button type="button" onClick={() => void handleSmsSubmit()} disabled={isLoading || smsSending}>
+              {smsSending ? 'Sending…' : 'Send SMS'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={state.type === 'status'} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change status</DialogTitle>
-          </DialogHeader>
-          <FormField label="New status">
-            <FormSearchSelect
-              value={status}
-              onChange={setStatus}
-              options={getOrderStatuses().map((s) => ({ value: s.slug, label: s.label }))}
-            />
-          </FormField>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={() => void handleStatusSubmit()} disabled={isLoading}>
-              Update status
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <OrderStatusDialog
+        open={state.type === 'status'}
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+        currentStatus=""
+        allowSameStatus
+        title={
+          state.type === 'status'
+            ? `Change status for ${state.orderIds.length} order${state.orderIds.length === 1 ? '' : 's'}`
+            : 'Change status'
+        }
+        onSelect={handleStatusSubmit}
+      />
 
       <Dialog open={state.type === 'courier'} onOpenChange={(open) => !open && onClose()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Submit to {state.type === 'courier' ? state.courier : 'courier'}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {state.type === 'courier'
-              ? `${state.orderIds.length} order(s) will be submitted to ${state.courier} API.`
-              : null}
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {state.type === 'courier'
+                ? `${state.orderIds.length} order(s) will be submitted to ${state.courier} API.`
+                : null}
+            </p>
+            <FulfillmentWarehouseSelect
+              value={courierWarehouseId}
+              onChange={setCourierWarehouseId}
+              disabled={isLoading}
+            />
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleCourierSubmit()} disabled={isLoading}>
+            <Button
+              type="button"
+              onClick={() => void handleCourierSubmit()}
+              disabled={isLoading || !courierWarehouseId.trim()}
+            >
               Confirm submit
             </Button>
           </DialogFooter>
@@ -227,8 +316,11 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <FormSearchSelect
               value={employee}
               onChange={setEmployee}
-              options={EMPLOYEES.map((name) => ({ value: name, label: name }))}
-              placeholder="Search employee"
+              options={teamUsers.map((u) => ({
+                value: u.name,
+                label: u.email ? `${u.name} · ${u.email}` : u.name,
+              }))}
+              placeholder={teamUsers.length ? 'Search employee' : 'No team members'}
             />
           </FormField>
           <DialogFooter>
@@ -301,7 +393,6 @@ export function bulkActionToModal(
   if (actionId === 'export') return { type: 'export', orderIds };
   if (actionId === 'set_followup') return { type: 'followup', orderIds };
   if (actionId === 'submit_pathao') return { type: 'courier', orderIds, courier: 'Pathao' };
-  if (actionId === 'submit_steadfast') return { type: 'courier', orderIds, courier: 'Steadfast' };
   if (actionId === 'submit_carrybee') return { type: 'courier', orderIds, courier: 'Carrybee' };
   return null;
 }

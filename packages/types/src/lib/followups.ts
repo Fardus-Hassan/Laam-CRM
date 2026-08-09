@@ -29,6 +29,8 @@ export const followupListItemSchema = z.object({
   queue: followupQueueSchema,
   customerId: z.string(),
   customerNumber: z.string(),
+  orderId: z.string().optional(),
+  orderNumber: z.string().optional(),
   scheduleDate: z.string().optional(),
   skipped: z.boolean().default(false),
   name: z.string(),
@@ -95,6 +97,13 @@ export const followupListSummarySchema = z.object({
   todayCount: z.number(),
   noStatusCount: z.number(),
   queueCount: z.number(),
+  queueCounts: z
+    .object({
+      1: z.number(),
+      2: z.number(),
+      3: z.number(),
+    })
+    .optional(),
 });
 
 export type FollowupListSummary = z.infer<typeof followupListSummarySchema>;
@@ -109,6 +118,16 @@ export const followupListResponseSchema = z.object({
 });
 
 export type FollowupListResponse = z.infer<typeof followupListResponseSchema>;
+
+export const createFollowupPayloadSchema = z.object({
+  customerId: z.string().min(1),
+  scheduleDate: z.string().optional(),
+  note: z.string().max(2000).optional(),
+  assignedAgentName: z.string().max(120).optional(),
+  queue: followupQueueSchema.optional(),
+});
+
+export type CreateFollowupPayload = z.infer<typeof createFollowupPayloadSchema>;
 
 export const updateFollowupPayloadSchema = z.object({
   scheduleDate: z.string().optional(),

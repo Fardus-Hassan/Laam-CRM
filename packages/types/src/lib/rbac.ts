@@ -18,10 +18,14 @@ export type CustomRole = z.infer<typeof customRoleSchema>;
 
 export const permissionPresetSchema = z.object({
   id: z.string(),
+  organizationId: z.string().uuid().optional(),
   name: z.string().min(1),
   description: z.string().optional(),
   permissions: z.array(permissionSchema),
   dashboardTemplate: dashboardTemplateSchema.optional(),
+  isSystem: z.boolean().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
 });
 
 export type PermissionPreset = z.infer<typeof permissionPresetSchema>;

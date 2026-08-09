@@ -1,10 +1,12 @@
 import type { UserRole } from './roles.js';
 import {
   isValidPermission,
+  isPlatformOnlyPermission,
   PERMISSIONS,
   permissionSchema,
   type Permission,
   TENANT_PERMISSIONS,
+  TENANT_PERMISSION_GROUPS,
   PERMISSION_CATALOG,
   PERMISSION_GROUPS,
   PERMISSION_LABELS,
@@ -17,7 +19,9 @@ export {
   PERMISSION_GROUPS,
   PERMISSION_LABELS,
   TENANT_PERMISSIONS,
+  TENANT_PERMISSION_GROUPS,
   isValidPermission,
+  isPlatformOnlyPermission,
   type Permission,
 };
 
@@ -70,14 +74,19 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'orders.view',
     'orders.export',
     'campaigns.view',
+    'incentive.view',
+    'incentive.manage',
     'tasks.view',
     'activities.view',
     'inventory.view',
     'inventory.create',
     'inventory.edit',
     'inventory.adjust',
+    'inventory.delete',
     'inventory.purchase',
     'inventory.export',
+    'inventory.warehouses',
+    'inventory.mixer',
     'accounting.view',
     'accounting.create',
     'accounting.edit',
@@ -87,9 +96,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'reports.export',
     'users.view',
     'users.manage',
+    'users.invite',
     'roles.view',
     'settings.view',
     'settings.manage',
+    'brand.view',
+    'brand.manage',
     'billing.view',
     'billing.manage',
     'security.view',
@@ -119,10 +131,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'orders.view',
     'orders.assign',
     'orders.confirm',
+    'incentive.view',
     'tasks.view',
     'tasks.assign',
     'activities.view',
     'activities.create',
+    'activities.edit',
     'inventory.view',
     'inventory.adjust',
     'reports.view',
@@ -150,16 +164,22 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'orders.cancel',
     'orders.assign',
     'orders.export',
+    'incentive.view',
+    'incentive.manage',
     'tasks.view',
     'tasks.create',
     'activities.view',
     'activities.create',
+    'activities.edit',
     'inventory.view',
     'inventory.create',
     'inventory.edit',
     'inventory.adjust',
+    'inventory.delete',
     'inventory.purchase',
     'inventory.export',
+    'inventory.warehouses',
+    'inventory.mixer',
     'accounting.view',
     'accounting.create',
     'accounting.edit',
@@ -190,6 +210,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'tasks.create',
     'activities.view',
     'activities.create',
+    'activities.edit',
     'inventory.view',
     'courier.view',
     'support.view',
@@ -212,6 +233,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'campaigns.manage_budget',
     'activities.view',
     'activities.create',
+    'activities.edit',
     'reports.view',
     'reports.export',
     'tasks.view',
@@ -228,7 +250,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'tasks.create',
     'activities.view',
     'activities.create',
+    'activities.edit',
     'inventory.view',
+    'support.view',
+    'support.create',
+    'support.manage',
   ],
   finance: [
     'dashboard.view',
@@ -244,6 +270,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'accounting.manage',
     'reports.view',
     'reports.export',
+    'incentive.view',
     'tasks.view',
   ],
   viewer: ['dashboard.view', 'reports.view'],
@@ -261,19 +288,41 @@ function normalizePermissionList(values: readonly string[] | undefined): Permiss
   return values.filter(isValidPermission);
 }
 
+function stripPlatformOnly(permissions: readonly Permission[], role: UserRole): Permission[] {
+  if (role === 'super_admin') {
+    return [...permissions];
+  }
+  return permissions.filter((p) => !isPlatformOnlyPermission(p));
+}
+
 /**
  * Effective permissions: (customRole | presetRole) ∪ grants − denies
+ * Platform access is never granted via tenant roles/grants — only super_admin.
+ * org_admin always keeps the full tenant catalog so a stale custom-role
+ * snapshot cannot drop new permissions (e.g. brand.*).
  */
 export function resolveUserPermissions(user: UserPermissionInput): Permission[] {
-  const base =
-    user.customRolePermissions?.length
-      ? [...user.customRolePermissions]
-      : getPermissionsForRole(user.role);
+  const roleBase = getPermissionsForRole(user.role);
+  const customBase = user.customRolePermissions?.length
+    ? [...user.customRolePermissions]
+    : [];
 
-  const grants = normalizePermissionList([
-    ...(user.permissionGrants ?? []),
-    ...(user.permissions ?? []),
-  ]);
+  const mergedBase =
+    user.role === 'org_admin'
+      ? [...new Set<Permission>([...roleBase, ...customBase])]
+      : customBase.length
+        ? customBase
+        : roleBase;
+
+  const base = stripPlatformOnly(mergedBase, user.role);
+
+  const grants = stripPlatformOnly(
+    normalizePermissionList([
+      ...(user.permissionGrants ?? []),
+      ...(user.permissions ?? []),
+    ]),
+    user.role,
+  );
   const denies = new Set(normalizePermissionList(user.permissionDenies));
 
   const effective = new Set<Permission>(base);

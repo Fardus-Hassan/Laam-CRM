@@ -14,11 +14,11 @@ import { LEAD_PIPELINE_TABS } from '@/features/leads/config/lead-status-config';
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
 
 export const LEAD_AGENTS = [
-  'Sakib Ahmed',
-  'Mitu Rahman',
-  'Imran Hossain',
-  'Tania Sultana',
-  'Arif Mahmud',
+  'Sakib Ahmed (sakib@laamcrm.com)',
+  'Mitu Rahman (mitu@laamcrm.com)',
+  'Imran Hossain (imran@laamcrm.com)',
+  'Tania Sultana (tania@laamcrm.com)',
+  'Arif Mahmud (arif@laamcrm.com)',
 ];
 
 const AREAS = ['Gulshan', 'Banani', 'Dhanmondi', 'Mirpur', 'Uttara', 'Mohammadpur', 'Bashundhara'];
@@ -31,23 +31,7 @@ const CAMPAIGNS = [
   'Walk-in Stall',
 ];
 
-export type LeadConvertPrefill = {
-  leadId: string;
-  leadNumber: string;
-  customerName: string;
-  customerPhone: string;
-  customerEmail?: string;
-  shippingAddress?: string;
-  shippingArea?: string;
-  source: LeadListItem['source'];
-  orderSource: LeadListItem['source'];
-  lineItems?: Array<{
-    productName: string;
-    quantity: number;
-    unitPrice: number;
-    sku?: string;
-  }>;
-};
+export type LeadConvertPrefill = import('@laam/types').LeadConvertPrefill;
 
 export type LeadBulkActionResult = {
   successCount: number;

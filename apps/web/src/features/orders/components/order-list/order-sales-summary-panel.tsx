@@ -40,6 +40,10 @@ export function OrderSalesSummaryPanel({ summary }: OrderSalesSummaryPanelProps)
 
   return (
     <CollapsibleSection title="Sales Summary" defaultOpen={false}>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Totals for the current filtered view. Courier charge uses booked API cost; purchase/COGS is
+        0 until inventory costing is linked.
+      </p>
       <div className="overflow-x-auto rounded-lg border border-border/70">
         <table className="w-full min-w-[480px] text-sm">
           <thead className="border-b bg-muted/30 text-left text-xs text-muted-foreground">

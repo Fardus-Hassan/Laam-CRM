@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main, fardus]
+  pull_request:
+    branches: [main, fardus]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: laam
+          POSTGRES_PASSWORD: laam
+          POSTGRES_DB: laam
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U laam"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://laam:laam@localhost:5432/laam
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-secret
+      NEXT_PUBLIC_API_URL: http://localhost:3333/api
+      NEXT_PUBLIC_USE_API: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U laam; then
+              echo "Postgres is ready"
+              exit 0
+            fi
+            echo "Waiting for Postgres... ($i/30)"
+            sleep 2
+          done
+          echo "Postgres did not become ready in time"
+          exit 1
+
+      - name: Prisma generate
+        run: pnpm db:generate
+
+      - name: Prisma migrate deploy
+        run: pnpm db:migrate:deploy
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Catalog unit tests
+        run: pnpm test:catalog
+
+      - name: Nested variant DTO smoke test
+        run: node apps/api/scripts/smoke-nested-variants.mjs
+
+      - name: Seed demo tenant for E2E
+        run: pnpm db:seed
+
+      - name: Catalog E2E
+        run: pnpm test:e2e
+        env:
+          E2E_API_URL: http://localhost:3333/api
+          CI: 'true'

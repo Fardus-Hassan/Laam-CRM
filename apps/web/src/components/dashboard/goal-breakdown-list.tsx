@@ -1,5 +1,6 @@
 import type { GoalBreakdown } from '@laam/types';
 
+import { CHART_COLORS } from '@/components/charts/chart-theme';
 import { cn } from '@/lib/utils';
 
 type GoalBreakdownListProps = {
@@ -8,10 +9,10 @@ type GoalBreakdownListProps = {
 };
 
 const ITEMS = [
-  { key: 'total', label: 'Total Goals', color: '#94A3B8' },
-  { key: 'achieved', label: 'Achieved', color: '#22C55E' },
-  { key: 'inProgress', label: 'In Progress', color: '#3B82F6' },
-  { key: 'pending', label: 'Pending', color: '#F59E0B' },
+  { key: 'total', label: 'Total Goals', color: CHART_COLORS.slate },
+  { key: 'achieved', label: 'Achieved', color: CHART_COLORS.secondary },
+  { key: 'inProgress', label: 'In Progress', color: CHART_COLORS.blue },
+  { key: 'pending', label: 'Pending', color: CHART_COLORS.accent },
 ] as const;
 
 export function GoalBreakdownList({ breakdown, className }: GoalBreakdownListProps) {

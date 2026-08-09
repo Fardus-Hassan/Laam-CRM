@@ -16,8 +16,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { CustomerBulkActionId } from '@/features/customers/config/customer-bulk-actions';
-import { CUSTOMER_AGENTS } from '@/features/customers/data/mock-customers';
 import { useCustomerMutations } from '@/features/customers/hooks/use-customer-mutations';
+import { followupsApi } from '@/features/followups/api/followups-api';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 
 type CustomerBulkModalState =
   | { type: 'note'; customerIds: string[] }
@@ -45,6 +46,7 @@ type CustomerBulkModalsProps = {
 
 export function CustomerBulkModals({ state, onClose, onSuccess }: CustomerBulkModalsProps) {
   const { bulkAction, isLoading } = useCustomerMutations();
+  const { agents } = useAgentOptions();
   const [note, setNote] = React.useState('');
   const [followUpDate, setFollowUpDate] = React.useState('');
   const [employee, setEmployee] = React.useState('');
@@ -67,11 +69,22 @@ export function CustomerBulkModals({ state, onClose, onSuccess }: CustomerBulkMo
       toast.error('Select a follow-up date');
       return;
     }
-    await bulkAction({
-      customerIds: state.customerIds,
-      followUpDue: followUpDate,
-      note: `Follow-up due: ${followUpDate}`,
-    });
+    let ok = 0;
+    let failed = 0;
+    for (const customerId of state.customerIds) {
+      try {
+        await followupsApi.createFollowup({
+          customerId,
+          scheduleDate: followUpDate,
+          note: `Bulk follow-up due: ${followUpDate}`,
+        });
+        ok += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    if (ok) toast.success(`Created ${ok} follow-up(s)`);
+    if (failed) toast.error(`${failed} follow-up(s) failed`);
     onSuccess?.();
     onClose();
   }
@@ -88,7 +101,7 @@ export function CustomerBulkModals({ state, onClose, onSuccess }: CustomerBulkMo
 
   function handleSms() {
     if (state?.type !== 'sms') return;
-    toast.success(`SMS queued for ${state.customerIds.length} customer(s) (mock)`);
+    toast.message('Open SMS from customer detail or Marketing campaigns to send live messages.');
     onClose();
   }
 
@@ -146,7 +159,7 @@ export function CustomerBulkModals({ state, onClose, onSuccess }: CustomerBulkMo
             <FormSearchSelect
               value={employee}
               onChange={setEmployee}
-              options={CUSTOMER_AGENTS.map((name) => ({ value: name, label: name }))}
+              options={agents.map((name) => ({ value: name, label: name }))}
               placeholder="Select agent…"
             />
           </FormField>

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { CustomerListItem } from '@laam/types';
+import type { CustomerListItem, CustomerSegmentCount, CustomerStatus } from '@laam/types';
 import {
   CalendarClock,
   MessageCircle,
@@ -22,8 +22,15 @@ import {
 } from '@/components/data-table/cells';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CourierScoreCell } from '@/features/customers/components/shared/courier-score-cell';
-import { CustomerStatusBadge } from '@/features/customers/components/shared/customer-status-badge';
+import { DataTableCourierStats } from '@/components/data-table/cells';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
+import { formatDate, formatDateTime } from '@/lib/format';
 
 export const CUSTOMER_TABLE_PINNED = {
   left: ['select', 'customerNumber'],
@@ -31,21 +38,23 @@ export const CUSTOMER_TABLE_PINNED = {
 };
 
 export function formatCustomerDate(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(value));
+  return formatDate(value);
+}
+
+export function formatCustomerDateTime(value: string) {
+  return formatDateTime(value);
 }
 
 export function buildCustomerTableColumns(options?: {
   onNoteClick?: (row: CustomerListItem) => void;
   onFollowUpClick?: (row: CustomerListItem) => void;
-  onStatusClick?: (row: CustomerListItem) => void;
+  statusOptions?: CustomerSegmentCount[];
+  onStatusChange?: (row: CustomerListItem, status: CustomerStatus) => void | Promise<void>;
 }): CrmColumnDef<CustomerListItem>[] {
   const onNoteClick = options?.onNoteClick;
   const onFollowUpClick = options?.onFollowUpClick;
-  const onStatusClick = options?.onStatusClick;
+  const statusOptions = options?.statusOptions ?? [];
+  const onStatusChange = options?.onStatusChange;
 
   return [
     {
@@ -55,7 +64,7 @@ export function buildCustomerTableColumns(options?: {
       meta: { label: 'ID', priority: 'primary', align: 'top' },
       cell: ({ row }) => (
         <Link
-          href={`/dashboard/companies/${row.original.id}`}
+          href={`/dashboard/customers/${row.original.id}`}
           className="font-semibold tabular-nums text-primary hover:underline"
         >
           {row.original.customerNumber}
@@ -65,29 +74,48 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'notes',
       header: 'Notes',
-      size: 48,
+      size: 68,
+      minSize: 60,
+      maxSize: 80,
       meta: {
         label: 'Notes',
         priority: 'secondary',
-        headerClassName: 'text-center',
-        cellClassName: 'text-center',
+        headerClassName: 'px-2 text-center',
+        cellClassName: 'px-2 text-center',
         align: 'middle',
       },
       cell: ({ row }) => (
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-7"
-          onClick={() => onNoteClick?.(row.original)}
-          aria-label="Customer notes"
-        >
-          {row.original.hasNotes ? (
-            <MessageSquare className="size-3.5 text-primary" />
-          ) : (
-            <MessageSquarePlus className="size-3.5 text-muted-foreground" />
-          )}
-        </Button>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={
+                  row.original.hasNotes
+                    ? 'size-8 text-primary'
+                    : 'size-8 text-muted-foreground'
+                }
+                aria-label={row.original.hasNotes ? 'View note' : 'Add note'}
+                onClick={() => onNoteClick?.(row.original)}
+              >
+                {row.original.hasNotes ? (
+                  <MessageSquare className="size-4" />
+                ) : (
+                  <MessageSquarePlus className="size-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-[220px]">
+              {row.original.lastNotePreview?.trim()
+                ? row.original.lastNotePreview
+                : row.original.hasNotes
+                  ? 'Open to view note'
+                  : 'Add note'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ),
     },
     {
@@ -129,23 +157,67 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'orders',
       header: 'Orders',
-      size: 96,
+      size: 72,
       meta: { label: 'Orders', priority: 'primary', align: 'middle' },
       cell: ({ row }) => (
+        <p className="font-semibold tabular-nums">{row.original.orderCount}</p>
+      ),
+    },
+    {
+      id: 'delivered',
+      header: 'Delivered',
+      size: 88,
+      meta: {
+        label: 'Delivered completed',
+        priority: 'primary',
+        align: 'middle',
+      },
+      cell: ({ row }) => (
         <div className="tabular-nums">
-          <p className="font-semibold">{row.original.orderCount}</p>
-          <p className="text-xs text-muted-foreground">
-            {row.original.deliveredCount} delivered
-          </p>
+          <p className="font-semibold">{row.original.deliveredCount}</p>
+          <p className="text-[10px] text-muted-foreground">completed</p>
         </div>
       ),
     },
     {
       id: 'courier',
-      header: 'Courier',
-      size: 112,
-      meta: { label: 'Courier score', priority: 'primary', align: 'middle' },
-      cell: ({ row }) => <CourierScoreCell score={row.original.courierScore} compact />,
+      header: 'Success Rate',
+      size: 168,
+      meta: {
+        label: 'Success Rate',
+        priority: 'primary',
+        align: 'middle',
+        headerClassName: 'text-center',
+      },
+      cell: ({ row }) => {
+        const score = row.original.courierScore;
+        return (
+          <DataTableCourierStats
+            shop={
+              row.original.courierShop ?? {
+                to: row.original.orderCount,
+                co: row.original.deliveredCount,
+              }
+            }
+            network={{
+              to: score.total,
+              co: Math.max(0, score.total - score.success - score.failed),
+              su: score.success,
+              fa: score.failed,
+              percent: score.rate,
+              label:
+                score.total >= 10
+                  ? 'Frequent'
+                  : score.total >= 2
+                    ? 'Regular'
+                    : score.total > 0
+                      ? 'New'
+                      : '—',
+            }}
+            compact
+          />
+        );
+      },
     },
     {
       id: 'products',
@@ -204,13 +276,21 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'status',
       header: 'Status',
-      size: 120,
+      size: 160,
       meta: { label: 'Status', priority: 'secondary', align: 'middle' },
-      cell: ({ row }) => (
-        <button type="button" onClick={() => onStatusClick?.(row.original)} className="text-left">
-          <CustomerStatusBadge status={row.original.status} />
-        </button>
-      ),
+      cell: ({ row }) =>
+        onStatusChange ? (
+          <CustomerStatusSelect
+            row={row.original}
+            options={statusOptions}
+            onChange={onStatusChange}
+            compact
+          />
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {row.original.statusLabel || row.original.status}
+          </span>
+        ),
     },
     {
       id: 'followup',
@@ -264,7 +344,7 @@ export function buildCustomerTableColumns(options?: {
             </Link>
           </Button>
           <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" asChild>
-            <Link href={`/dashboard/companies/${row.original.id}`}>View</Link>
+            <Link href={`/dashboard/customers/${row.original.id}`}>View</Link>
           </Button>
         </div>
       ),

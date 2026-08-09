@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { CustomerStatus } from '@laam/types';
+import type { CustomerStatus, OrgCustomerStatus } from '@laam/types';
 
 import { FormField } from '@/components/form/form-field';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -13,9 +13,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CUSTOMER_STATUS_LABELS } from '@/features/customers/config/customer-segments';
-
-const STATUSES = Object.keys(CUSTOMER_STATUS_LABELS) as CustomerStatus[];
+import { orgCustomerStatusesApi } from '@/features/settings/api/org-customer-statuses-api';
+import { customerStatusLabel } from '@/features/customers/config/customer-segments';
 
 type CustomerStatusDialogProps = {
   open: boolean;
@@ -33,11 +32,23 @@ export function CustomerStatusDialog({
   onSelect,
 }: CustomerStatusDialogProps) {
   const [status, setStatus] = React.useState<CustomerStatus>(currentStatus);
+  const [options, setOptions] = React.useState<OrgCustomerStatus[]>([]);
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (open) setStatus(currentStatus);
   }, [open, currentStatus]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void orgCustomerStatusesApi.list().then((rows) => {
+      if (!cancelled) setOptions(rows.filter((r) => r.isActive));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   async function handleSave() {
     setSaving(true);
@@ -49,6 +60,11 @@ export function CustomerStatusDialog({
     }
   }
 
+  const selectOptions =
+    options.length > 0
+      ? options.map((item) => ({ value: item.slug, label: item.label }))
+      : [{ value: currentStatus, label: customerStatusLabel(currentStatus) }];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -58,12 +74,9 @@ export function CustomerStatusDialog({
         <FormField label="Status">
           <FormSearchSelect
             value={status}
-            onChange={(value) => setStatus(value as CustomerStatus)}
-            options={STATUSES.map((item) => ({
-              value: item,
-              label: CUSTOMER_STATUS_LABELS[item],
-            }))}
-            searchable={false}
+            onChange={(value) => setStatus(value)}
+            options={selectOptions}
+            searchable
           />
         </FormField>
         <DialogFooter>

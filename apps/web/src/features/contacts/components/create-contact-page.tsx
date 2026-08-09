@@ -18,9 +18,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreateContactSummaryPanel } from '@/features/contacts/components/create-contact/create-contact-summary-panel';
 import { CreateContactTypePicker } from '@/features/contacts/components/create-contact/create-contact-type-picker';
 import { CONTACT_SOURCE_LABELS } from '@/features/contacts/config/contact-filters';
-import { CONTACT_AGENTS } from '@/features/contacts/data/mock-contacts';
 import { useContactMutations } from '@/features/contacts/hooks/use-contact-mutations';
 import { createContactsListBreadcrumbs } from '@/features/contacts/lib/contact-breadcrumbs';
+import { useAgentOptions } from '@/features/rbac/hooks/use-agent-options';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -41,11 +41,12 @@ const SOURCE_OPTIONS = (Object.keys(CONTACT_SOURCE_LABELS) as OrderSource[]).map
 export function CreateContactPage() {
   const router = useRouter();
   const { createContact, isLoading } = useContactMutations();
+  const { agents } = useAgentOptions();
   const [draft, setDraft] = React.useState({
     name: '',
     phone: '',
     email: '',
-    contactType: 'customer' as ContactType,
+    contactType: 'supplier' as ContactType,
     organizationName: '',
     roleLabel: '',
     source: 'call' as OrderSource,
@@ -83,6 +84,7 @@ export function CreateContactPage() {
       address: draft.address.trim() || undefined,
       assignedAgentName: draft.assignedAgentName || undefined,
       notes: draft.notes.trim() || undefined,
+      syncInventorySupplier: draft.contactType === 'supplier',
     });
 
     router.push(`/dashboard/contacts/${contact.id}`);
@@ -127,6 +129,15 @@ export function CreateContactPage() {
                   value={draft.contactType}
                   onChange={(contactType) => patch({ contactType })}
                 />
+                {isCustomer ? (
+                  <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                    Buyers with orders belong in Customers.{' '}
+                    <Link href="/dashboard/customers/new" className="font-medium underline">
+                      Create a customer instead
+                    </Link>{' '}
+                    so phone, courier score, and order history stay linked.
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
 
@@ -197,7 +208,7 @@ export function CreateContactPage() {
                     onChange={(value) => patch({ assignedAgentName: value })}
                     options={[
                       { value: '', label: 'Unassigned' },
-                      ...CONTACT_AGENTS.map((name) => ({ value: name, label: name })),
+                      ...agents.map((name) => ({ value: name, label: name })),
                     ]}
                     placeholder="Optional"
                   />

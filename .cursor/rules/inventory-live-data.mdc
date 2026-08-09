@@ -1,0 +1,25 @@
+---
+description: Prefer live inventory APIs over hardcoded mock lists in UI
+globs: apps/web/src/features/inventory/**/*
+alwaysApply: false
+---
+
+# Inventory UI — live data, not hardcoded mocks
+
+When building inventory forms, dropdowns, and pickers:
+
+- Load options via `inventoryApi` (e.g. `listSuppliers()`, `listProducts()`, `listWarehouses()`).
+- Do **not** import `MOCK_*` arrays from `mock-inventory.ts` into page/components for UI options.
+- Mock data belongs only inside the mock API implementation (`createMockInventoryApi` / `mock-inventory.ts` helpers).
+- Filter to `status === 'active'` (or equivalent) for selectable lists unless the screen is admin/history.
+- Follow the pattern in `create-purchase-page.tsx`: `useEffect` → API → map to `{ value, label }` options.
+
+```tsx
+// BAD — UI hardcodes mock suppliers
+import { MOCK_SUPPLIERS } from '@/features/inventory/data/mock-inventory';
+options={MOCK_SUPPLIERS.map((s) => ({ value: s.name, label: s.name }))}
+
+// GOOD — UI uses inventoryApi (works for both mock and HTTP modes)
+const res = await inventoryApi.listSuppliers();
+options={res.items.filter((s) => s.status === 'active').map((s) => ({ value: s.name, label: s.name }))}
+```

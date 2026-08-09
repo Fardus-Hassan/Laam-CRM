@@ -2,9 +2,12 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import type { FollowupListItem, TaskListItem } from '@laam/types';
 import {
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
+  Phone,
   Plus,
   StickyNote,
   Trash2,
@@ -15,6 +18,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { followupsApi } from '@/features/followups/api/followups-api';
 import {
   datesWithContent,
   deleteQuickEvent,
@@ -26,6 +30,7 @@ import {
   saveQuickEvent,
   type QuickEvent,
 } from '@/features/quick-bar/data/quick-bar-store';
+import { tasksApi } from '@/features/tasks/api/tasks-api';
 import {
   ORDER_CARD_CLASS,
   ORDER_SECTION_BODY_CLASS,
@@ -35,6 +40,10 @@ import { cn } from '@/lib/utils';
 
 const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+type CrmDayItem =
+  | { kind: 'task'; id: string; title: string; time?: string; href: string; status?: string }
+  | { kind: 'followup'; id: string; title: string; time?: string; href: string; status?: string };
 
 function toIso(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -58,6 +67,13 @@ function formatSelectedDate(iso: string, today: string): string {
   });
 }
 
+function dateInMonth(iso: string | undefined, year: number, month: number): boolean {
+  if (!iso || iso.length < 10) return false;
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7)) - 1;
+  return y === year && m === month;
+}
+
 export function FullCalendarPage() {
   const today = getTodayIsoDate();
   const initial = new Date();
@@ -69,14 +85,88 @@ export function FullCalendarPage() {
   const [eventTitle, setEventTitle] = React.useState('');
   const [eventTime, setEventTime] = React.useState('');
   const [animKey, setAnimKey] = React.useState(0);
+  const [tasks, setTasks] = React.useState<TaskListItem[]>([]);
+  const [followups, setFollowups] = React.useState<FollowupListItem[]>([]);
+  const [crmLoading, setCrmLoading] = React.useState(true);
   const detailRef = React.useRef<HTMLDivElement>(null);
-
-  const marked = React.useMemo(() => datesWithContent(year, month), [year, month, events, dayNote]);
 
   React.useEffect(() => {
     setEvents(listQuickEvents());
     setDayNote(getDayNote(selected)?.text ?? '');
   }, [selected]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setCrmLoading(true);
+    void (async () => {
+      try {
+        const [taskRes, fu1, fu2, fu3] = await Promise.all([
+          tasksApi.listTasks({ page: 1, pageSize: 200 }),
+          followupsApi.listFollowups({ queue: 1, page: 1, pageSize: 200 }),
+          followupsApi.listFollowups({ queue: 2, page: 1, pageSize: 200 }),
+          followupsApi.listFollowups({ queue: 3, page: 1, pageSize: 200 }),
+        ]);
+        if (cancelled) return;
+        setTasks(taskRes.items ?? []);
+        setFollowups([...(fu1.items ?? []), ...(fu2.items ?? []), ...(fu3.items ?? [])]);
+      } catch {
+        if (!cancelled) {
+          setTasks([]);
+          setFollowups([]);
+        }
+      } finally {
+        if (!cancelled) setCrmLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [year, month]);
+
+  const crmByDate = React.useMemo(() => {
+    const map = new Map<string, CrmDayItem[]>();
+    const push = (iso: string, item: CrmDayItem) => {
+      const list = map.get(iso) ?? [];
+      list.push(item);
+      map.set(iso, list);
+    };
+
+    for (const task of tasks) {
+      if (!dateInMonth(task.dueDate, year, month)) continue;
+      if (task.status === 'done' || task.status === 'cancelled') continue;
+      push(task.dueDate!, {
+        kind: 'task',
+        id: task.id,
+        title: task.title,
+        time: task.dueTime,
+        href: `/dashboard/tasks?search=${encodeURIComponent(task.title)}`,
+        status: task.status,
+      });
+    }
+
+    for (const fu of followups) {
+      if (!dateInMonth(fu.scheduleDate, year, month)) continue;
+      if (fu.followupStatus === 'done' || fu.followupStatus === 'converted') continue;
+      const iso = fu.scheduleDate!;
+      push(iso, {
+        kind: 'followup',
+        id: fu.id,
+        title: fu.name || fu.phone || 'Follow-up',
+        href: `/dashboard/followups?queue=${fu.queue ?? 1}`,
+        status: fu.followupStatus,
+      });
+    }
+
+    return map;
+  }, [tasks, followups, year, month]);
+
+  const marked = React.useMemo(() => {
+    const set = datesWithContent(year, month);
+    for (const iso of crmByDate.keys()) set.add(iso);
+    return set;
+  }, [year, month, events, dayNote, crmByDate]);
+
+  const selectedCrm = crmByDate.get(selected) ?? [];
 
   function shiftMonth(delta: number) {
     const d = new Date(year, month + delta, 1);
@@ -87,7 +177,6 @@ export function FullCalendarPage() {
 
   function selectDay(day: number) {
     setSelected(toIso(year, month, day));
-    // On small screens, bring the day panel into view after selecting
     if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
       window.setTimeout(() => {
         detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -126,7 +215,7 @@ export function FullCalendarPage() {
   return (
     <PageShell
       title="Calendar"
-      description="Month view — events and personal notes by date."
+      description="Tasks, follow-ups, and personal notes by date."
     >
       <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
@@ -162,21 +251,34 @@ export function FullCalendarPage() {
                 <ChevronRight className="size-4" />
               </Button>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="w-full shrink-0 sm:w-auto"
-              onClick={() => {
-                const d = new Date();
-                setYear(d.getFullYear());
-                setMonth(d.getMonth());
-                setSelected(today);
-                setAnimKey((k) => k + 1);
-              }}
-            >
-              Today
-            </Button>
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5">
+                  <span className="size-1.5 rounded-full bg-sky-500" /> Task
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5">
+                  <span className="size-1.5 rounded-full bg-amber-500" /> Follow-up
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5">
+                  <span className="size-1.5 rounded-full bg-primary" /> Note
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="ml-auto shrink-0 sm:ml-0"
+                onClick={() => {
+                  const d = new Date();
+                  setYear(d.getFullYear());
+                  setMonth(d.getMonth());
+                  setSelected(today);
+                  setAnimKey((k) => k + 1);
+                }}
+              >
+                Today
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'px-2 sm:px-4')}>
             <div
@@ -205,6 +307,9 @@ export function FullCalendarPage() {
                   const isToday = iso === today;
                   const isSelected = iso === selected;
                   const hasContent = marked.has(iso);
+                  const dayCrm = crmByDate.get(iso) ?? [];
+                  const hasTask = dayCrm.some((c) => c.kind === 'task');
+                  const hasFollowup = dayCrm.some((c) => c.kind === 'followup');
                   return (
                     <button
                       key={iso}
@@ -214,25 +319,47 @@ export function FullCalendarPage() {
                         'relative flex min-h-9 flex-col items-center justify-center rounded-md text-xs transition-colors duration-200 sm:aspect-square sm:min-h-0 sm:rounded-xl sm:text-sm sm:transition-all',
                         'hover:bg-muted active:bg-muted',
                         'sm:hover:scale-[1.03]',
-                        isSelected && 'bg-primary text-primary-foreground shadow-md hover:bg-primary active:bg-primary',
+                        isSelected &&
+                          'bg-primary text-primary-foreground shadow-md hover:bg-primary active:bg-primary',
                         !isSelected && isToday && 'ring-2 ring-primary/40',
                       )}
                     >
                       <span className="font-medium tabular-nums">{day}</span>
-                      {hasContent ? (
-                        <span
-                          className={cn(
-                            'mt-0.5 size-1 rounded-full sm:size-1.5',
-                            isSelected ? 'bg-primary-foreground' : 'bg-primary',
-                          )}
-                        />
-                      ) : (
-                        <span className="mt-0.5 size-1 sm:size-1.5" aria-hidden />
-                      )}
+                      <span className="mt-0.5 flex h-1.5 items-center justify-center gap-0.5">
+                        {hasTask ? (
+                          <span
+                            className={cn(
+                              'size-1 rounded-full sm:size-1.5',
+                              isSelected ? 'bg-sky-200' : 'bg-sky-500',
+                            )}
+                          />
+                        ) : null}
+                        {hasFollowup ? (
+                          <span
+                            className={cn(
+                              'size-1 rounded-full sm:size-1.5',
+                              isSelected ? 'bg-amber-200' : 'bg-amber-500',
+                            )}
+                          />
+                        ) : null}
+                        {hasContent && !hasTask && !hasFollowup ? (
+                          <span
+                            className={cn(
+                              'size-1 rounded-full sm:size-1.5',
+                              isSelected ? 'bg-primary-foreground' : 'bg-primary',
+                            )}
+                          />
+                        ) : null}
+                      </span>
                     </button>
                   );
                 })}
               </div>
+              {crmLoading ? (
+                <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                  Loading tasks & follow-ups…
+                </p>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -247,6 +374,49 @@ export function FullCalendarPage() {
               <CardTitle className="truncate text-sm">
                 {formatSelectedDate(selected, today)}
               </CardTitle>
+            </CardHeader>
+            <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+              {selectedCrm.length ? (
+                <ul className="space-y-2">
+                  {selectedCrm.map((item) => (
+                    <li key={`${item.kind}-${item.id}`}>
+                      <Link
+                        href={item.href}
+                        className="flex min-w-0 items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-muted/40"
+                      >
+                        {item.kind === 'task' ? (
+                          <CheckSquare className="mt-0.5 size-3.5 shrink-0 text-sky-600" />
+                        ) : (
+                          <Phone className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words font-medium">{item.title}</p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <Badge variant="outline" className="text-[10px]">
+                              {item.kind === 'task' ? 'Task' : 'Follow-up'}
+                            </Badge>
+                            {item.time ? (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {item.time}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No tasks or follow-ups on this day.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className={cn(ORDER_CARD_CLASS, 'min-w-0')}>
+            <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+              <CardTitle className="truncate text-sm">Personal events</CardTitle>
             </CardHeader>
             <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
@@ -278,7 +448,7 @@ export function FullCalendarPage() {
 
               {!dayEvents.length ? (
                 <p className="text-sm text-muted-foreground">
-                  No events — add meetings or reminders.
+                  No personal events — add meetings or reminders.
                 </p>
               ) : (
                 <ul className="space-y-2">

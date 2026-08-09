@@ -15,12 +15,12 @@ import {
 } from '@/components/ui/dialog';
 import type { ProductBulkActionId } from '@/features/inventory/config/product-bulk-actions';
 import {
-  PRODUCT_CATEGORY_LABELS,
   PRODUCT_STATUS_LABELS,
 } from '@/features/inventory/config/product-filters';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import type { InventoryApi } from '@/features/inventory/api/inventory-api';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
-import type { ProductCategory, ProductStatus } from '@laam/types';
+import type { ProductStatus } from '@laam/types';
 
 type ProductBulkModalState =
   | { type: 'set_status'; productIds: string[] }
@@ -43,10 +43,6 @@ const STATUS_OPTIONS = (Object.keys(PRODUCT_STATUS_LABELS) as ProductStatus[]).m
   label: PRODUCT_STATUS_LABELS[value],
 }));
 
-const CATEGORY_OPTIONS = (Object.keys(PRODUCT_CATEGORY_LABELS) as ProductCategory[]).map(
-  (value) => ({ value, label: PRODUCT_CATEGORY_LABELS[value] }),
-);
-
 export function ProductBulkModals({
   state,
   onClose,
@@ -57,8 +53,9 @@ export function ProductBulkModals({
   onSuccess?: () => void;
 }) {
   const { bulkAction, isLoading } = useProductMutations();
+  const categoryOptions = useOrgCategoryOptions('product');
   const [status, setStatus] = React.useState<ProductStatus>('active');
-  const [category, setCategory] = React.useState<ProductCategory>('other');
+  const [category, setCategory] = React.useState('other');
   const [stockDelta, setStockDelta] = React.useState('5');
 
   if (!state) return null;
@@ -123,8 +120,8 @@ export function ProductBulkModals({
           <FormField label="Category">
             <FormSearchSelect
               value={category}
-              onChange={(v) => setCategory(v as ProductCategory)}
-              options={CATEGORY_OPTIONS}
+              onChange={(v) => setCategory(v)}
+              options={categoryOptions}
               searchable={false}
             />
           </FormField>

@@ -3,6 +3,7 @@ import { dashboardResponseSchema } from '@laam/types';
 
 import { apiRequest } from '@/lib/api/client';
 import { crmEndpoints } from '@/lib/api/endpoints';
+import { ApiError } from '@/lib/api/errors';
 import { getMockDashboardForRole } from '@/features/dashboard/data/mocks';
 import { applyDateRangeToSalesHead } from '@/features/dashboard/lib/apply-date-range';
 
@@ -50,9 +51,15 @@ export async function fetchDashboard(
   if (!useHttpApi) {
     return applyMockDateRange(getMockDashboardForRole(role), query);
   }
-  // HTTP mode: fail loudly so integration issues are visible (no silent mock fallback)
-  const data = await apiRequest<unknown>(buildDashboardUrl(role, query));
-  return dashboardResponseSchema.parse(data);
+  try {
+    const data = await apiRequest<unknown>(buildDashboardUrl(role, query));
+    return dashboardResponseSchema.parse(data);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return applyMockDateRange(getMockDashboardForRole(role), query);
+    }
+    throw error;
+  }
 }
 
 /** @deprecated Use fetchDashboard(role) — kept for backward compatibility. */

@@ -47,6 +47,7 @@ export function TransactionDataTable({
       isLoading={isLoading}
       minTableWidth={900}
       density="compact"
+      entityLabel="transactions"
       page={page}
       pageSize={pageSize}
       total={total}

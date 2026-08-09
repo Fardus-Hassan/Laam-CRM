@@ -21,9 +21,11 @@ import { cn } from '@/lib/utils';
 
 type OrderRelatedLinksProps = {
   order: OrderDetail;
+  className?: string;
+  bodyClassName?: string;
 };
 
-export function OrderRelatedLinks({ order }: OrderRelatedLinksProps) {
+export function OrderRelatedLinks({ order, className, bodyClassName }: OrderRelatedLinksProps) {
   const links = [
     {
       href: `/dashboard/customers?search=${encodeURIComponent(order.customerPhone)}`,
@@ -64,11 +66,11 @@ export function OrderRelatedLinks({ order }: OrderRelatedLinksProps) {
   ];
 
   return (
-    <Card className={ORDER_CARD_CLASS}>
+    <Card className={cn(ORDER_CARD_CLASS, className)}>
       <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
         <CardTitle className="text-sm">Related</CardTitle>
       </CardHeader>
-      <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-1')}>
+      <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-0.5', bodyClassName)}>
         {links.map((link) => (
           <Link
             key={link.href + link.label}
@@ -77,7 +79,7 @@ export function OrderRelatedLinks({ order }: OrderRelatedLinksProps) {
           >
             <link.icon className="size-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0">
-              <p className="font-medium">{link.label}</p>
+              <p className="font-medium leading-tight">{link.label}</p>
               <p className="truncate text-xs text-muted-foreground">{link.hint}</p>
             </div>
           </Link>

@@ -98,7 +98,7 @@ export const CRM_MODULES = {
     id: 'users',
     title: 'Team',
     description: 'Invite teammates and manage role-based access.',
-    permissions: ['users.view', 'users.manage'],
+    permissions: ['users.view', 'users.manage', 'users.invite'],
     apiPath: '/crm/users',
   },
   settings: {
@@ -149,6 +149,13 @@ export const CRM_MODULES = {
     description: 'Restore soft-deleted records.',
     permissions: ['recycle.view', 'recycle.manage'],
     apiPath: '/crm/recycle-bin',
+  },
+  incentive: {
+    id: 'incentive',
+    title: 'Incentive & KPI',
+    description: 'Configurable team incentive plans, slabs, and monthly calc.',
+    permissions: ['incentive.view', 'incentive.manage'],
+    apiPath: '/crm/incentive',
   },
   knowledge: {
     id: 'knowledge',

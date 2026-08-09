@@ -5,6 +5,7 @@ import { getOpenTicketCount } from '@/features/support/data/mock-support';
 import { getTodayFollowupCount } from '@/features/followups/data/mock-followups';
 import { getLowStockCount } from '@/features/inventory/data/mock-inventory';
 import { getTodayTaskCount } from '@/features/tasks/data/mock-tasks';
+import { getLiveNavBadges } from '@/features/navigation/data/nav-badges-store';
 import { apiRequest } from '@/lib/api/client';
 
 export type NavBadges = {
@@ -24,14 +25,15 @@ export type NavBadgesApi = {
 };
 
 function readBadgesSync(): NavBadges {
+  const live = getLiveNavBadges();
   return {
-    followups: getTodayFollowupCount(),
-    tasks: getTodayTaskCount(),
-    receivables: getPendingReceivablesCount(),
-    blocked: getBlockedCount(),
-    courier: getUnreadCourierCount(),
-    support: getOpenTicketCount(),
-    lowStock: getLowStockCount(),
+    followups: live.followups ?? getTodayFollowupCount(),
+    tasks: live.tasks ?? getTodayTaskCount(),
+    receivables: live.receivables ?? getPendingReceivablesCount(),
+    blocked: live.blocked ?? getBlockedCount(),
+    courier: live.courier ?? getUnreadCourierCount(),
+    support: live.support ?? getOpenTicketCount(),
+    lowStock: live.lowStock ?? getLowStockCount(),
   };
 }
 

@@ -3,11 +3,17 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { INVENTORY_SUB_NAV } from '@/features/inventory/config/inventory-nav';
 import { cn } from '@/lib/utils';
 
 export function InventorySubNav({ className }: { className?: string }) {
   const pathname = usePathname();
+  const { can } = usePermissions();
+
+  const items = INVENTORY_SUB_NAV.filter((item) =>
+    can(item.permissions ?? ['inventory.view'], 'any'),
+  );
 
   return (
     <nav
@@ -17,7 +23,7 @@ export function InventorySubNav({ className }: { className?: string }) {
       )}
       aria-label="Inventory sections"
     >
-      {INVENTORY_SUB_NAV.map((item) => {
+      {items.map((item) => {
         const isProducts =
           item.href === '/dashboard/inventory/products' &&
           (pathname === item.href ||

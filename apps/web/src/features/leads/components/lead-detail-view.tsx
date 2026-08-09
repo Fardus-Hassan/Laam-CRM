@@ -40,7 +40,7 @@ import { LEAD_SOURCE_LABELS } from '@/features/leads/config/lead-filters';
 import { useLeadDetailMutations } from '@/features/leads/hooks/use-lead-mutations';
 import { navigateToConvertLead } from '@/features/leads/lib/lead-convert';
 import { createLeadDetailBreadcrumbs } from '@/features/leads/lib/lead-breadcrumbs';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 type LeadDetailViewProps = {
@@ -275,7 +275,7 @@ export function LeadDetailView({ lead: initialLead, onLeadUpdated }: LeadDetailV
                           <p className="text-muted-foreground">{activity.description}</p>
                         ) : null}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {new Date(activity.timestamp).toLocaleString('en-GB')}
+                          {formatDateTime(activity.timestamp)}
                           {activity.actorName ? ` · ${activity.actorName}` : ''}
                         </p>
                       </div>

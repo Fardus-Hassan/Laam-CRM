@@ -6,6 +6,7 @@ import type { CreateTicketPayload, SupportTicket, TicketListResponse } from '@la
 import { MessageSquare, Plus, RefreshCw, Search } from 'lucide-react';
 
 import { Can } from '@/components/auth/can';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormTextarea } from '@/components/form/form-textarea';
@@ -28,6 +29,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'secondary'> = {
@@ -92,7 +94,7 @@ export function SupportTicketsPage() {
   return (
     <PageShell
       title="Support Tickets"
-      description="Customer complaints linked to orders — assign, reply, resolve."
+      description="Internal staff tickets about customers and orders — assign, reply, resolve."
     >
       <div className={ORDER_PAGE_GAP}>
         <CrmSummaryStrip
@@ -137,6 +139,24 @@ export function SupportTicketsPage() {
                   </Button>
                 ))}
               </div>
+              <ActiveFilterChips
+                chips={[
+                  ...(status !== 'all'
+                    ? [{ id: 'status', label: `Status: ${status}` }]
+                    : []),
+                  ...(search.trim()
+                    ? [{ id: 'search', label: `Search: ${search.trim()}` }]
+                    : []),
+                ]}
+                onRemove={(id) => {
+                  if (id === 'status') setStatus('all');
+                  if (id === 'search') setSearch('');
+                }}
+                onClearAll={() => {
+                  setStatus('all');
+                  setSearch('');
+                }}
+              />
               <div className="space-y-2">
                 {data?.items.map((ticket) => (
                   <button
@@ -193,7 +213,7 @@ export function SupportTicketsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">{msg.authorName}</span>
                           <span className="text-xs text-muted-foreground">
-                            {new Date(msg.createdAt).toLocaleString()}
+                            {formatDateTime(msg.createdAt)}
                           </span>
                         </div>
                         <p className="mt-1 text-muted-foreground">{msg.body}</p>

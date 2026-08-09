@@ -13,9 +13,12 @@ import { PeriodFilter } from '@/components/dashboard/period-filter';
 import { MultiLineChart } from '@/components/charts/multi-line-chart';
 import { SimpleBarChart } from '@/components/charts/simple-bar-chart';
 import { DonutChart } from '@/components/charts/donut-chart';
+import { CHART_COLORS } from '@/components/charts/chart-theme';
 import { useChartTheme } from '@/components/charts/use-chart-theme';
 import { DateRangePicker } from '@/components/date-range/date-range-picker';
 import { useDashboardDate } from '@/features/dashboard/providers/dashboard-date-provider';
+import { useAuth } from '@/features/auth/hooks/use-auth';
+import { getDashboardChromeForUser } from '@/features/dashboard/config/dashboard-templates';
 import { useViewMore } from '@/features/dashboard/hooks/use-view-more';
 import {
   transformAgentRows,
@@ -45,7 +48,9 @@ const TABLE_SCROLL_CLASS =
   'custom-scrollbar -mx-3 overflow-x-auto px-3 sm:-mx-5 sm:px-5';
 
 export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
+  const { user } = useAuth();
   const { range, setRange } = useDashboardDate();
+  const chrome = user ? getDashboardChromeForUser(user) : null;
   const chartTheme = useChartTheme();
   const summary = data.revenueTarget.summary;
 
@@ -125,10 +130,16 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-foreground sm:text-lg">
-            {data.title}
+            {chrome?.title ?? data.title}
           </h2>
-          {data.subtitle ? (
-            <p className="mt-0.5 text-sm text-muted-foreground">{data.subtitle}</p>
+          {chrome?.welcomeMessage || data.subtitle ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {chrome?.welcomeMessage ?? null}
+              {chrome?.welcomeMessage && (chrome.subtitle || data.subtitle) ? ' · ' : null}
+              <span className={chrome?.welcomeMessage ? 'text-foreground' : undefined}>
+                {chrome?.subtitle ?? data.subtitle}
+              </span>
+            </p>
           ) : null}
         </div>
         <DateRangePicker
@@ -173,7 +184,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
                       label: 'Achieved',
                       value: summary.achieved,
                       percent: summary.achievementPercent,
-                      color: '#127A3B',
+                      color: CHART_COLORS.primary,
                     },
                     {
                       id: 'remaining',
@@ -233,7 +244,7 @@ export function SalesHeadDashboardView({ data }: SalesHeadDashboardViewProps) {
                 data={achievementData}
                 size="sm"
                 valueFormatter={(value) => `${value}%`}
-                color="#8CC63F"
+                color={CHART_COLORS.secondary}
               />
             </div>
           </div>

@@ -51,3 +51,10 @@ out
 .env
 .env.local
 .env.*.local
+
+# Tenant logo uploads (served from API /api/uploads)
+uploads
+
+# Local Prisma engine copies (never commit)
+**/query_engine-*.dll.node
+**/libquery_engine-*

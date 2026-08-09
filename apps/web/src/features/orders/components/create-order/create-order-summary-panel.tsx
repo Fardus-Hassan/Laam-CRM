@@ -9,7 +9,6 @@ import { FormInput } from '@/components/form/form-input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { VALID_COUPON_CODES } from '@/features/orders/data/mock-create-order';
 import type { CreateOrderFormApi } from '@/features/orders/hooks/use-create-order-form';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -28,6 +27,15 @@ type CreateOrderSummaryPanelProps = {
   onSubmit: () => void;
   className?: string;
   showActions?: boolean;
+  /** Primary action label (default: Submit). */
+  submitLabel?: string;
+  /** Hide cancel link when null. */
+  cancelHref?: string | null;
+  footerExtra?: React.ReactNode;
+  /** Shown under money totals (e.g. payment snapshot on order detail). */
+  moneyFooter?: React.ReactNode;
+  /** Put primary actions above money fields (detail sticky sidebar). */
+  actionsPlacement?: 'top' | 'bottom';
 };
 
 function ReadOnlyAmount({ label, value }: { label: string; value: number }) {
@@ -44,16 +52,59 @@ export function CreateOrderSummaryPanel({
   onSubmit,
   className,
   showActions = true,
+  submitLabel = 'Submit',
+  cancelHref = '/dashboard/orders',
+  footerExtra,
+  moneyFooter,
+  actionsPlacement = 'bottom',
 }: CreateOrderSummaryPanelProps) {
   const { state, totals, errors, patch, applyCoupon } = form;
   const [couponOpen, setCouponOpen] = React.useState(false);
+  const [couponBusy, setCouponBusy] = React.useState(false);
+
+  const skipFollowupRow = (
+    <div className="flex items-center gap-2">
+      <input
+        id="skipFollowup"
+        type="checkbox"
+        checked={state.skipFollowup}
+        onChange={(event) => patch({ skipFollowup: event.target.checked })}
+        className="size-4 rounded border border-input"
+      />
+      <Label htmlFor="skipFollowup">Skip Followup</Label>
+    </div>
+  );
+
+  const actionsBlock =
+    showActions || actionsPlacement === 'top' ? (
+      <div className="flex flex-col gap-2">
+        {skipFollowupRow}
+        {showActions ? (
+          <>
+            <Button type="button" className="w-full" onClick={onSubmit}>
+              {submitLabel}
+            </Button>
+            {footerExtra}
+            {cancelHref ? (
+              <Button type="button" variant="outline" className="w-full" asChild>
+                <Link href={cancelHref}>Cancel</Link>
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    ) : (
+      skipFollowupRow
+    );
 
   return (
-    <Card className={cn('gap-0 py-0 shadow-none', className)}>
+    <Card className={cn('w-full gap-0 py-0 shadow-none', className)}>
       <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
         <CardTitle className="text-sm">Summary</CardTitle>
       </CardHeader>
-      <CardContent className={cn('space-y-3', ORDER_SECTION_BODY_CLASS)}>
+      <CardContent className={cn('space-y-2.5', ORDER_SECTION_BODY_CLASS)}>
+        {actionsPlacement === 'top' ? actionsBlock : null}
+
         <OrderDatePicker
           value={state.orderDate}
           onChange={(orderDate) => patch({ orderDate })}
@@ -69,7 +120,7 @@ export function CreateOrderSummaryPanel({
           />
         </FormField>
 
-        <div className="space-y-3 rounded-lg bg-muted/30 p-3">
+        <div className="space-y-2.5 rounded-lg bg-muted/30 p-2.5">
           <ReadOnlyAmount label="Subtotal (Tk)" value={totals.subtotal} />
 
           <FormField label="Discount/Less" required>
@@ -128,6 +179,8 @@ export function CreateOrderSummaryPanel({
               <FieldTooltip content="Courier fee absorbed by the merchant (internal tracking)." />
             </div>
           </FormField>
+
+          {moneyFooter}
         </div>
 
         <div className="space-y-2">
@@ -140,28 +193,42 @@ export function CreateOrderSummaryPanel({
               Apply Coupon
             </button>
           ) : (
-            <div className="space-y-2 rounded-md border border-border/70 p-3">
+            <div className="space-y-2 rounded-md border border-border/70 p-2.5">
               <FormField label="Coupon code" htmlFor="couponCode">
                 <div className="flex gap-2">
                   <FormInput
                     id="couponCode"
                     value={state.couponCode}
                     onChange={(event) =>
-                      patch({ couponCode: event.target.value, couponApplied: false })
+                      patch({
+                        couponCode: event.target.value,
+                        couponApplied: false,
+                        couponDiscountAmount: 0,
+                      })
                     }
-                    placeholder={`Try ${VALID_COUPON_CODES[0]} or ${VALID_COUPON_CODES[1]}`}
+                    placeholder="Enter coupon code"
                   />
                   <Button
                     type="button"
                     size="sm"
                     className="shrink-0"
+                    disabled={couponBusy}
                     onClick={() => {
-                      const applied = applyCoupon();
-                      if (applied) {
-                        toast.success('Coupon applied — 10% off');
-                      } else {
-                        toast.error(`Invalid coupon. Try ${VALID_COUPON_CODES.join(', ')}`);
-                      }
+                      void (async () => {
+                        setCouponBusy(true);
+                        try {
+                          const result = await applyCoupon();
+                          if (result.ok) {
+                            toast.success(
+                              `Coupon applied — ৳${Math.round(result.discount)} off`,
+                            );
+                          } else {
+                            toast.error(result.message);
+                          }
+                        } finally {
+                          setCouponBusy(false);
+                        }
+                      })();
                     }}
                   >
                     Apply
@@ -169,33 +236,16 @@ export function CreateOrderSummaryPanel({
                 </div>
               </FormField>
               {state.couponApplied ? (
-                <p className="text-xs text-primary">Coupon applied — 10% off</p>
+                <p className="text-xs text-primary">
+                  Coupon {state.couponCode} applied — ৳
+                  {Math.round(totals.couponDiscount)} off
+                </p>
               ) : null}
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2 pt-1">
-          <input
-            id="skipFollowup"
-            type="checkbox"
-            checked={state.skipFollowup}
-            onChange={(event) => patch({ skipFollowup: event.target.checked })}
-            className="size-4 rounded border border-input"
-          />
-          <Label htmlFor="skipFollowup">Skip Followup</Label>
-        </div>
-
-        {showActions ? (
-          <div className="flex flex-col gap-2">
-            <Button type="button" onClick={onSubmit}>
-              Submit
-            </Button>
-            <Button type="button" variant="outline" asChild>
-              <Link href="/dashboard/orders">Cancel</Link>
-            </Button>
-          </div>
-        ) : null}
+        {actionsPlacement === 'bottom' ? actionsBlock : null}
 
         <p className="text-xs text-muted-foreground">NB: * marked are required field.</p>
       </CardContent>

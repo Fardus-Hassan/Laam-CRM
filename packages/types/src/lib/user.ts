@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { permissionSchema } from './permission-catalog.js';
 import { dashboardTemplateSchema } from './dashboard-template.js';
+import { organizationBrandingSchema } from './branding.js';
 import { userRoleSchema } from './roles.js';
 
 export const organizationSchema = z.object({
@@ -8,6 +9,7 @@ export const organizationSchema = z.object({
   name: z.string().min(1),
   plan: z.string().min(1),
   slug: z.string().min(1),
+  branding: organizationBrandingSchema.optional(),
 });
 
 export type Organization = z.infer<typeof organizationSchema>;
@@ -20,6 +22,8 @@ export const sessionUserSchema = z.object({
   organizationId: z.string().uuid(),
   avatarUrl: z.string().url().optional(),
   customRoleId: z.string().min(1).optional(),
+  /** Display name of assigned custom/preset role (e.g. "Sales Head"). */
+  customRoleName: z.string().min(1).optional(),
   dashboardTemplate: dashboardTemplateSchema.optional(),
   permissionGrants: z.array(permissionSchema).optional(),
   permissionDenies: z.array(permissionSchema).optional(),

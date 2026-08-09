@@ -6,12 +6,13 @@ import { MessageSquarePlus, Minus, Package, Plus } from 'lucide-react';
 import Image from 'next/image';
 
 import type { CrmColumnDef } from '@/components/data-table';
+import { Can } from '@/components/auth/can';
 import { DataTableEmptyValue, TruncatedText } from '@/components/data-table/cells';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FormSelect } from '@/components/form/form-select';
 import {
-  PRODUCT_CATEGORY_LABELS,
+  resolveProductCategoryLabel,
   PRODUCT_STATUS_LABELS,
 } from '@/features/inventory/config/product-filters';
 import { StockStatusBadge } from '@/features/inventory/components/shared/stock-status-badge';
@@ -60,6 +61,11 @@ export function buildProductTableColumns(options?: {
                 fill
                 className="object-cover"
                 sizes="40px"
+                unoptimized={
+                  row.original.imageUrl.startsWith('data:') ||
+                  row.original.imageUrl.startsWith('/api/') ||
+                  row.original.imageUrl.includes('localhost')
+                }
               />
             ) : (
               <div className="flex size-full items-center justify-center">
@@ -76,9 +82,16 @@ export function buildProductTableColumns(options?: {
               {row.original.name}
             </button>
             <p className="font-mono text-[10px] text-muted-foreground">{row.original.sku}</p>
-            <Badge variant="outline" className="text-[10px]">
-              {PRODUCT_CATEGORY_LABELS[row.original.category]}
-            </Badge>
+            <div className="flex flex-wrap gap-1">
+              {row.original.brandName ? (
+                <Badge variant="secondary" className="text-[10px]">
+                  {row.original.brandName}
+                </Badge>
+              ) : null}
+              <Badge variant="outline" className="text-[10px]">
+                {row.original.categoryLabel ?? resolveProductCategoryLabel(row.original.category)}
+              </Badge>
+            </div>
           </div>
         </div>
       ),
@@ -91,27 +104,43 @@ export function buildProductTableColumns(options?: {
       cell: ({ row }) => (
         <div className="space-y-1">
           <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              className="size-6"
-              onClick={() => options?.onStockAdjust?.(row.original, -1)}
-            >
-              <Minus className="size-3" />
-            </Button>
+            <Can permission="inventory.adjust">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="size-6"
+                disabled={row.original.variantCount !== 1 || !row.original.primaryVariantId}
+                title={
+                  row.original.variantCount !== 1
+                    ? 'Open product to adjust multi-variant stock'
+                    : undefined
+                }
+                onClick={() => options?.onStockAdjust?.(row.original, -1)}
+              >
+                <Minus className="size-3" />
+              </Button>
+            </Can>
             <span className="min-w-[2rem] text-center text-sm font-semibold tabular-nums">
               {row.original.stock}
             </span>
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              className="size-6"
-              onClick={() => options?.onStockAdjust?.(row.original, 1)}
-            >
-              <Plus className="size-3" />
-            </Button>
+            <Can permission="inventory.adjust">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="size-6"
+                disabled={row.original.variantCount !== 1 || !row.original.primaryVariantId}
+                title={
+                  row.original.variantCount !== 1
+                    ? 'Open product to adjust multi-variant stock'
+                    : undefined
+                }
+                onClick={() => options?.onStockAdjust?.(row.original, 1)}
+              >
+                <Plus className="size-3" />
+              </Button>
+            </Can>
           </div>
           <StockStatusBadge status={row.original.stockStatus} />
           <p className="text-[10px] text-muted-foreground">Reorder: {row.original.reorderLevel}</p>

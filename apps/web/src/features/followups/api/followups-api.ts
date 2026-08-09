@@ -1,4 +1,5 @@
 import type {
+  CreateFollowupPayload,
   FollowupDetail,
   FollowupListQuery,
   FollowupListResponse,
@@ -6,8 +7,10 @@ import type {
   UpdateFollowupPayload,
 } from '@laam/types';
 
+import { getMockCustomerById } from '@/features/customers/data/mock-customers';
 import {
   bulkUpdateMockFollowups,
+  createMockFollowupForCustomer,
   filterMockFollowups,
   getMockFollowupById,
   updateMockFollowup,
@@ -16,6 +19,7 @@ import {
 export type FollowupsApi = {
   listFollowups: (query: FollowupListQuery) => Promise<FollowupListResponse>;
   getFollowup: (id: string) => Promise<FollowupDetail | null>;
+  createFollowup: (payload: CreateFollowupPayload) => Promise<FollowupDetail>;
   updateFollowup: (id: string, patch: UpdateFollowupPayload) => Promise<FollowupDetail>;
   bulkAction: (payload: {
     followupIds: string[];
@@ -40,6 +44,21 @@ export function createMockFollowupsApi(): FollowupsApi {
     async getFollowup(id) {
       await delay(80);
       return getMockFollowupById(id) ?? null;
+    },
+    async createFollowup(payload) {
+      await delay(120);
+      const customer = getMockCustomerById(payload.customerId);
+      if (!customer) throw new Error('Customer not found');
+      return createMockFollowupForCustomer({
+        customerId: customer.id,
+        customerNumber: customer.customerNumber,
+        name: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        district: customer.district,
+        agentName: payload.assignedAgentName ?? customer.assignedAgentName,
+        note: payload.note,
+      });
     },
     async updateFollowup(id, patch) {
       await delay(100);
@@ -74,6 +93,13 @@ export function createHttpFollowupsApi(): FollowupsApi {
       } catch {
         return null;
       }
+    },
+    async createFollowup(payload) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<FollowupDetail>('/crm/followups', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
     },
     async updateFollowup(id, patch) {
       const { apiRequest } = await import('@/lib/api/client');

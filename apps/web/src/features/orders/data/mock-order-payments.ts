@@ -90,3 +90,28 @@ export function reconcileMockPayment(paymentId: string): OrderPaymentRecord | nu
   mockPaymentStore[index] = updated;
   return updated;
 }
+
+export function addMockOrderPayment(
+  orderId: string,
+  payload: { amount: number; method?: string; note?: string },
+): OrderPaymentRecord {
+  let row = mockPaymentStore.find((p) => p.orderId === orderId);
+  if (!row) {
+    const order = mockOrderStore.find((o) => o.id === orderId);
+    if (!order) throw new Error('Order not found');
+    row = buildPaymentRecord(order, mockPaymentStore.length);
+    mockPaymentStore.unshift(row);
+  }
+  const paid = Math.min(row.amount, row.paid + Math.max(0, payload.amount));
+  const updated: OrderPaymentRecord = {
+    ...row,
+    paid,
+    due: Math.max(0, row.amount - paid),
+    method: (payload.method as OrderPaymentRecord['method']) ?? row.method,
+    status: paid >= row.amount ? 'reconciled' : 'collected',
+    collectedAt: new Date().toISOString(),
+  };
+  const idx = mockPaymentStore.findIndex((p) => p.id === row!.id);
+  mockPaymentStore[idx] = updated;
+  return updated;
+}

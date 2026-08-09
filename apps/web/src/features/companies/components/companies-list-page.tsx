@@ -55,7 +55,25 @@ export function CompaniesListPage({ status }: CompaniesListPageProps) {
             { id: 'active', label: 'Repeat buyers', value: data ? String(data.summary.activeCount) : '—' },
           ]}
         />
-        <CrmListToolbar tabs={COMPANY_STATUS_FILTERS} searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search name, mobile, area, district…" />
+        <CrmListToolbar
+          tabs={COMPANY_STATUS_FILTERS}
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search name, mobile, area, district…"
+          onRemoveChip={(id) => {
+            if (id === 'tab') {
+              router.replace(
+                search.trim()
+                  ? `/dashboard/companies?search=${encodeURIComponent(search.trim())}`
+                  : '/dashboard/companies',
+              );
+            }
+          }}
+          onClearAllFilters={() => {
+            setSearch('');
+            router.replace('/dashboard/companies');
+          }}
+        />
         <Card className="gap-0 py-0 shadow-none">
           <CardHeader className="border-b px-4 py-3">
             <CardTitle className="text-sm">{pageCopy.title}</CardTitle>

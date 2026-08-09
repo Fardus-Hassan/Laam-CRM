@@ -1,11 +1,17 @@
-import type { BulkActionId, OrderStatusType } from '@laam/types';
+import type { BulkActionId } from '@laam/types';
 
 import {
+  DEFAULT_ORDER_BULK_ACTIONS,
+  resolveConfiguredBulkActions,
+} from '@/features/orders/config/bulk-actions-registry';
+import {
+  getQueueChildStatusSlugs,
   getQueuePageBySlug,
   getStatusConfigBySlug,
   MOCK_ORDER_QUEUE_PAGES,
-  MOCK_ORDER_STATUSES,
 } from '@/features/orders/data/mock-status-config';
+import { getOrderStatuses } from '@/features/orders/data/order-status-store';
+import { STATUS_QUEUE_FOLDER_SLUGS } from '@/features/orders/lib/order-status-hierarchy';
 
 export type OrderQueueContext = {
   queueSlug: string;
@@ -14,11 +20,11 @@ export type OrderQueueContext = {
   description: string;
   href: string;
   /** Active status filter (undefined = all orders). */
-  statusFilter?: OrderStatusType;
+  statusFilter?: string;
   /** Parent queue with nested tabs. */
   parentSlug?: string;
-  childStatusSlugs?: OrderStatusType[];
-  defaultChildSlug?: OrderStatusType;
+  childStatusSlugs?: string[];
+  defaultChildSlug?: string;
   bulkActions: BulkActionId[];
   showGroupByStatus: boolean;
   showFilterPanel: boolean;
@@ -32,17 +38,29 @@ const DEFAULT_LIST_CONTEXT: Pick<
 > = {
   showFilterPanel: true,
   showSalesSummary: true,
-  bulkActions: [
-    'print_selected',
-    'print_barcode',
-    'print_info',
-    'export',
-    'send_sms',
-    'set_followup',
-    'transfer',
-    'courier_unlink',
-  ],
+  bulkActions: [...DEFAULT_ORDER_BULK_ACTIONS],
 };
+
+function bulkActionsForStatusSlug(statusSlug: string | undefined): BulkActionId[] {
+  if (!statusSlug) return [...DEFAULT_ORDER_BULK_ACTIONS];
+  const statusConfig = getStatusConfigBySlug(statusSlug);
+  return resolveConfiguredBulkActions(statusConfig?.bulkActions);
+}
+
+/** Tab strip parent: own nested tabs, or sibling strip under a status/queue parent. */
+function resolveStatusTabParentSlug(
+  statusSlug: string,
+  parentSlug: string | undefined,
+): string | undefined {
+  if (parentSlug) {
+    const siblings = getQueueChildStatusSlugs(parentSlug);
+    if (siblings.includes(statusSlug) || siblings.length > 0) {
+      if (siblings.includes(statusSlug)) return parentSlug;
+    }
+  }
+  const ownChildren = getQueueChildStatusSlugs(statusSlug);
+  return ownChildren.length > 0 ? statusSlug : undefined;
+}
 
 export function resolveOrderQueueFromPath(
   pathname: string,
@@ -110,42 +128,29 @@ export function resolveOrderQueueFromPath(
   }
 
   if (pathname.includes('/orders/statuses')) {
-    const page = getQueuePageBySlug('more_statuses')!;
+    const allPage = getQueuePageBySlug('all')!;
     return {
-      queueSlug: 'more_statuses',
-      kind: 'more',
-      title: page.title,
-      description: page.description,
-      href: page.href,
-      bulkActions: [],
-      showGroupByStatus: false,
-      showFilterPanel: false,
-      showSalesSummary: false,
+      queueSlug: 'all',
+      kind: 'all',
+      title: allPage.title,
+      description: allPage.description,
+      href: allPage.href,
+      bulkActions: DEFAULT_LIST_CONTEXT.bulkActions,
+      showGroupByStatus: true,
+      showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
+      showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
     };
   }
 
   if (queueSlug) {
     const page = getQueuePageBySlug(queueSlug);
-    if (page?.slug === 'followups') {
-      return {
-        queueSlug: 'followups',
-        kind: 'parent',
-        title: page.title,
-        description: page.description,
-        href: page.href,
-        bulkActions: DEFAULT_LIST_CONTEXT.bulkActions,
-        showGroupByStatus: false,
-        showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
-        showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
-        followUpDue: true,
-      };
-    }
-    if (page?.childStatusSlugs?.length) {
+    if (page?.kind === 'list' && page.slug !== 'all' && page.slug !== 'more_statuses') {
+      const childStatusSlugs = getQueueChildStatusSlugs(page.slug);
       const activeChild =
-        (statusParam as OrderStatusType | undefined) ??
-        page.defaultChildSlug ??
-        page.childStatusSlugs[0];
-      const statusConfig = getStatusConfigBySlug(activeChild);
+        statusParam ??
+        (childStatusSlugs.length > 0
+          ? (page.defaultChildSlug ?? childStatusSlugs[0])
+          : page.defaultChildSlug);
 
       return {
         queueSlug: page.slug,
@@ -155,30 +160,53 @@ export function resolveOrderQueueFromPath(
         href: page.href,
         statusFilter: activeChild,
         parentSlug: page.slug,
-        childStatusSlugs: page.childStatusSlugs,
+        childStatusSlugs: childStatusSlugs.length > 0 ? childStatusSlugs : undefined,
         defaultChildSlug: page.defaultChildSlug,
-        bulkActions: statusConfig?.bulkActions ?? DEFAULT_LIST_CONTEXT.bulkActions,
+        bulkActions: bulkActionsForStatusSlug(activeChild),
         showGroupByStatus: false,
         showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
         showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
+        followUpDue: page.followUpDue || page.slug === 'followups' ? true : undefined,
       };
     }
   }
 
   if (statusParam) {
-    const statusConfig = getStatusConfigBySlug(statusParam as OrderStatusType);
+    const statusConfig = getStatusConfigBySlug(statusParam);
     if (statusConfig) {
+      const tabParentSlug = resolveStatusTabParentSlug(statusParam, statusConfig.parentSlug);
+      const childStatusSlugs = tabParentSlug
+        ? getQueueChildStatusSlugs(tabParentSlug)
+        : [];
+      const tabParentIsQueue =
+        tabParentSlug != null && STATUS_QUEUE_FOLDER_SLUGS.has(tabParentSlug);
+      const parentHref = tabParentIsQueue
+        ? `/dashboard/orders/queues/${tabParentSlug}`
+        : '/dashboard/orders';
+
       return {
         queueSlug: statusParam,
-        kind: 'status',
-        title: `${statusConfig.label} Orders`,
-        description: `Orders in ${statusConfig.label} status.`,
-        href: `/dashboard/orders?status=${statusParam}`,
+        kind: childStatusSlugs.length > 0 ? 'parent' : 'status',
+        title: tabParentIsQueue
+          ? (getQueuePageBySlug(tabParentSlug!)?.title ?? statusConfig.label)
+          : tabParentSlug && tabParentSlug !== statusParam
+            ? (getStatusConfigBySlug(tabParentSlug)?.label ?? statusConfig.label)
+            : childStatusSlugs.length > 0
+              ? statusConfig.label
+              : `${statusConfig.label} Orders`,
+        description: tabParentIsQueue
+          ? (getQueuePageBySlug(tabParentSlug!)?.description ??
+            `Orders in ${statusConfig.label} status.`)
+          : `Orders in ${statusConfig.label} status.`,
+        href: parentHref,
         statusFilter: statusConfig.slug,
-        bulkActions: statusConfig.bulkActions,
+        parentSlug: tabParentSlug,
+        childStatusSlugs: childStatusSlugs.length > 0 ? childStatusSlugs : undefined,
+        bulkActions: resolveConfiguredBulkActions(statusConfig.bulkActions),
         showGroupByStatus: false,
         showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
         showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
+        followUpDue: tabParentSlug === 'followups' ? true : undefined,
       };
     }
   }
@@ -198,7 +226,7 @@ export function resolveOrderQueueFromPath(
 }
 
 export function getAllStatusConfigs() {
-  return MOCK_ORDER_STATUSES;
+  return getOrderStatuses();
 }
 
 export function getAllQueuePages() {

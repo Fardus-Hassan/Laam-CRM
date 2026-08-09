@@ -18,7 +18,7 @@ import {
   ORDER_SIDEBAR_GRID_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { EditableSectionCard } from '@/features/orders/components/shared/editable-section-card';
-import { CourierScoreCell } from '@/features/customers/components/shared/courier-score-cell';
+import { CourierPhoneHistoryPanel } from '@/features/courier/components/courier-phone-history-panel';
 import { CustomerTimeline } from '@/features/customers/components/customer-timeline';
 import { CustomerStatusBadge } from '@/features/customers/components/shared/customer-status-badge';
 import { CustomerStatusDialog } from '@/features/customers/components/shared/customer-status-dialog';
@@ -168,7 +168,11 @@ export function CustomerDetailView({ customer: initial, onCustomerUpdated }: Cus
                 <CardTitle className="text-sm">Courier score</CardTitle>
               </CardHeader>
               <CardContent className={ORDER_SECTION_BODY_CLASS}>
-                <CourierScoreCell score={customer.courierScore} />
+                <CourierPhoneHistoryPanel
+                  phone={customer.phone}
+                  shopOrders={customer.orderCount}
+                  shopDelivered={customer.deliveredCount}
+                />
               </CardContent>
             </Card>
 

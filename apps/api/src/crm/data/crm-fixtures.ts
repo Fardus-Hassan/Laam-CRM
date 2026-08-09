@@ -54,6 +54,7 @@ function buildLeads(): LeadDetail[] {
       createdAt,
       lastActivityAt: createdAt,
       tags: [],
+      lineItems: [],
       activities: [{ id: `lead-${i}-a1`, type: 'created', label: 'Lead created', timestamp: createdAt }],
     };
   });
@@ -65,13 +66,15 @@ function buildContacts(): ContactDetail[] {
     name: lead.name,
     phone: lead.phone,
     email: lead.email,
-    companyName: index % 2 === 0 ? 'Akash Traders' : undefined,
-    jobTitle: 'Manager',
+    contactType: 'customer' as const,
+    organizationName: index % 2 === 0 ? 'Akash Traders' : undefined,
+    roleLabel: 'Manager',
     source: lead.source,
     assignedAgentName: lead.assignedAgentName,
     lastContactAt: lead.lastActivityAt,
     createdAt: lead.createdAt,
     tags: [],
+    recentProducts: [],
     activities: [],
     leadId: lead.id,
   }));
@@ -157,6 +160,9 @@ function buildOrders(): OrderDetail[] {
       lineItems: [
         { id: `line-${i}`, productName: 'Premium Dates', quantity: 1, unitPrice: amount - 120, lineTotal: amount - 120 },
       ],
+      products: [
+        { name: 'Premium Dates', quantity: 1, price: amount - 120 },
+      ],
       timeline: [{ id: `t-${i}`, type: 'created', label: 'Order created', timestamp: createdAt }],
     };
   });
@@ -197,13 +203,19 @@ export function listContacts(query: ContactListQuery): ContactListResponse {
     if (!search) return true;
     return c.name.toLowerCase().includes(search) || c.phone.includes(search);
   });
-  const listItems = items.map(({ activities: _a, notes: _n, tags: _t, address: _ad, ...rest }) => rest);
+  const listItems = items.map(({ activities: _a, notes: _n, ...rest }) => rest);
   return {
     items: listItems.slice((query.page - 1) * query.pageSize, query.page * query.pageSize),
     total: items.length,
     page: query.page,
     pageSize: query.pageSize,
-    summary: { count: items.length, withCompanyCount: items.filter((c) => c.companyName).length },
+    summary: {
+      count: items.length,
+      customerCount: items.filter((c) => c.contactType === 'customer').length,
+      supplierCount: items.filter((c) => c.contactType === 'supplier').length,
+      avgCourierRate: 88.5,
+    },
+    segments: [],
   };
 }
 

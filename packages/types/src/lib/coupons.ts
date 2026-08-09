@@ -29,3 +29,13 @@ export const createCouponPayloadSchema = z.object({
   description: z.string().optional(),
 });
 export type CreateCouponPayload = z.infer<typeof createCouponPayloadSchema>;
+
+export const updateCouponPayloadSchema = createCouponPayloadSchema.partial().extend({
+  isActive: z.boolean().optional(),
+  minOrderBdt: z.number().nullable().optional(),
+  maxDiscountBdt: z.number().nullable().optional(),
+  usageLimit: z.number().nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+});
+export type UpdateCouponPayload = z.infer<typeof updateCouponPayloadSchema>;

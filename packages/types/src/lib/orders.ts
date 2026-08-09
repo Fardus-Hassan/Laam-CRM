@@ -19,6 +19,37 @@ export const paymentStatusSchema = z.enum(['cod', 'paid', 'partial', 'refunded']
 
 export type PaymentStatus = z.infer<typeof paymentStatusSchema>;
 
+export const orderListProductPreviewSchema = z.object({
+  name: z.string(),
+  imageUrl: z.string().optional(),
+  price: z.number(),
+  sku: z.string().optional(),
+  quantity: z.number().int().positive().optional(),
+  variationLabel: z.string().optional(),
+});
+
+export type OrderListProductPreview = z.infer<typeof orderListProductPreviewSchema>;
+
+/** Phone-wise delivery trust score shown in the orders Courier column. */
+export const orderCourierStatsSchema = z.object({
+  to: z.number().int().nonnegative(),
+  co: z.number().int().nonnegative(),
+  su: z.number().int().nonnegative(),
+  fa: z.number().int().nonnegative(),
+  label: z.string(),
+  percent: z.number().min(0).max(100),
+});
+
+export type OrderCourierStats = z.infer<typeof orderCourierStatsSchema>;
+
+/** This-shop CRM counts for Bizmation-style top row (To / Co). */
+export const courierShopStatsSchema = z.object({
+  to: z.number().int().nonnegative(),
+  co: z.number().int().nonnegative(),
+});
+
+export type CourierShopStats = z.infer<typeof courierShopStatsSchema>;
+
 export const orderListItemSchema = z.object({
   id: z.string(),
   orderNumber: z.string(),
@@ -32,6 +63,36 @@ export const orderListItemSchema = z.object({
   assignedAgentName: z.string().optional(),
   shippingArea: z.string(),
   createdAt: z.string(),
+  /** Last order field update. */
+  updatedAt: z.string().optional(),
+  /** Follow-up callback due date (date-only ISO). */
+  followUpDueAt: z.string().optional(),
+  /** When follow-up was scheduled on the order. */
+  followUpSetAt: z.string().optional(),
+  /** When courier consignment was booked. */
+  courierBookedAt: z.string().optional(),
+  /** Present on live list responses for the orders table. */
+  products: z.array(orderListProductPreviewSchema).optional(),
+  shippingAddress: z.string().optional(),
+  subtotal: z.number().optional(),
+  discount: z.number().optional(),
+  paidAmount: z.number().optional(),
+  hasNote: z.boolean().optional(),
+  /** Latest internal note text for list tooltip / preview. */
+  lastNotePreview: z.string().optional(),
+  courierStatus: z.string().optional(),
+  courierStatusSlug: z.string().optional(),
+  courierConsignmentId: z.string().optional(),
+  courierProvider: z.string().optional(),
+  /** Warehouse stock is cut from on confirm / courier book. */
+  fulfillmentWarehouseId: z.string().optional(),
+  fulfillmentWarehouseName: z.string().optional(),
+  /** True after inventory was reserved/cut for this order. */
+  stockDeducted: z.boolean().optional(),
+  /** This shop (CRM): Total orders / Completed — top row. */
+  courierShop: courierShopStatsSchema.optional(),
+  /** Network lifetime To/Su/Fa + % — bottom row + bar. */
+  courier: orderCourierStatsSchema.optional(),
 });
 
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
@@ -41,11 +102,40 @@ export const orderLineItemSchema = z.object({
   productName: z.string(),
   sku: z.string().optional(),
   quantity: z.number().int().positive(),
+  returnedQuantity: z.number().int().nonnegative().optional(),
   unitPrice: z.number(),
   lineTotal: z.number(),
+  productId: z.string().optional(),
+  variantId: z.string().optional(),
+  variationLabel: z.string().optional(),
+  discount: z.number().optional(),
+  imageUrl: z.string().optional(),
 });
 
 export type OrderLineItem = z.infer<typeof orderLineItemSchema>;
+
+export const returnOrderLinesPayloadSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        lineItemId: z.string().min(1),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+});
+
+export type ReturnOrderLinesPayload = z.infer<typeof returnOrderLinesPayloadSchema>;
+
+export const orderAttachmentSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  name: z.string(),
+  mimeType: z.string().optional(),
+  size: z.number().optional(),
+});
+
+export type OrderAttachment = z.infer<typeof orderAttachmentSchema>;
 
 export const orderTimelineEventSchema = z.object({
   id: z.string(),
@@ -59,7 +149,7 @@ export const orderTimelineEventSchema = z.object({
 export type OrderTimelineEvent = z.infer<typeof orderTimelineEventSchema>;
 
 export const orderDetailSchema = orderListItemSchema.extend({
-  customerEmail: z.string().email().optional(),
+  customerEmail: z.string().email().optional().or(z.literal('')),
   shippingAddress: z.string(),
   deliveryCharge: z.number(),
   discount: z.number().default(0),
@@ -68,8 +158,52 @@ export const orderDetailSchema = orderListItemSchema.extend({
   timeline: z.array(orderTimelineEventSchema),
   notes: z.string().optional(),
   leadId: z.string().optional(),
+  leadNumber: z.string().optional(),
   confirmedAt: z.string().optional(),
   deliveredAt: z.string().optional(),
+  altMobile: z.string().optional(),
+  district: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  paidAmount: z.number().optional(),
+  couponCode: z.string().optional(),
+  referenceNo: z.string().optional(),
+  skipFollowup: z.boolean().optional(),
+  customerNote: z.string().optional(),
+  courierNote: z.string().optional(),
+  packingNote: z.string().optional(),
+  customerTag: z.string().optional(),
+  orderTag: z.string().optional(),
+  pathaoCity: z.string().optional(),
+  pathaoZone: z.string().optional(),
+  pathaoArea: z.string().optional(),
+  pathaoCityId: z.number().int().optional(),
+  pathaoZoneId: z.number().int().optional(),
+  pathaoAreaId: z.number().int().optional(),
+  carrybeeCity: z.string().optional(),
+  carrybeeZone: z.string().optional(),
+  carrybeeArea: z.string().optional(),
+  carrybeeCityId: z.number().int().optional(),
+  carrybeeZoneId: z.number().int().optional(),
+  carrybeeAreaId: z.number().int().optional(),
+  courierProvider: z.string().optional(),
+  courierConsignmentId: z.string().optional(),
+  courierTrackingCode: z.string().optional(),
+  courierCollectAmount: z.number().optional(),
+  courierBookedAt: z.string().optional(),
+  courierStatus: z.string().optional(),
+  courierStatusSlug: z.string().optional(),
+  courierStatusSyncedAt: z.string().optional(),
+  attachments: z.array(orderAttachmentSchema).optional(),
+  /** True when stock was already cut for this order (blocks line-item edits). */
+  stockDeducted: z.boolean().optional(),
+  utmSource: z.string().optional(),
+  utmId: z.string().optional(),
+  utmContent: z.string().optional(),
+  utmCampaign: z.string().optional(),
+  /** Override package weight for courier booking (kg). When omitted, sum of variant weights. */
+  courierWeightKg: z.number().positive().optional(),
+  /** Courier service level: normal | express */
+  courierDeliveryType: z.enum(['normal', 'express']).optional(),
 });
 
 export type OrderDetail = z.infer<typeof orderDetailSchema>;
@@ -80,10 +214,57 @@ export const orderListQuerySchema = z.object({
   source: orderSourceSchema.optional(),
   employee: z.string().optional(),
   district: z.string().optional(),
+  /** When true with district — exclude matching districts instead of include */
+  excludeDistrict: z.boolean().optional(),
+  excludeStatus: z.boolean().optional(),
+  excludeSource: z.boolean().optional(),
+  excludeCourier: z.boolean().optional(),
   paymentStatus: paymentStatusSchema.optional(),
   courier: z.string().optional(),
+  courierStatusSlug: z.string().optional(),
   product: z.string().optional(),
-  dateRange: z.enum(['last_30', 'this_month', 'custom', 'all_time']).optional(),
+  /** Catalog product id — preferred over free-text product name */
+  productId: z.string().optional(),
+  /** Order grand total range */
+  amountMin: z.number().nonnegative().optional(),
+  amountMax: z.number().nonnegative().optional(),
+  pathaoCity: z.string().optional(),
+  pathaoZone: z.string().optional(),
+  noteStatus: z.enum(['all', 'has_note', 'no_note']).optional(),
+  dateRange: z
+    .enum([
+      'today',
+      'yesterday',
+      'last_7',
+      'last_30',
+      'this_month',
+      'last_month',
+      'this_year',
+      'last_year',
+      'all_time',
+      'custom',
+    ])
+    .optional(),
+  /** ISO date (YYYY-MM-DD) — used with custom or to pin preset bounds */
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  /** Courier booked / submitted at — same presets as dateRange */
+  courierDateRange: z
+    .enum([
+      'today',
+      'yesterday',
+      'last_7',
+      'last_30',
+      'this_month',
+      'last_month',
+      'this_year',
+      'last_year',
+      'all_time',
+      'custom',
+    ])
+    .optional(),
+  courierDateFrom: z.string().optional(),
+  courierDateTo: z.string().optional(),
   followUpDue: z.boolean().optional(),
   page: z.number().int().positive().default(1),
   pageSize: z.number().int().positive().default(20),
@@ -95,7 +276,16 @@ export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
 
 export const orderListSummarySchema = z.object({
   count: z.number(),
+  /** Filtered view grand total (sum of order.amount). */
   totalAmount: z.number(),
+  /** Sum of line/product subtotals before shipping. */
+  productTotal: z.number().optional(),
+  /** Sum of deliveryCharge collected from customers. */
+  shippingCollected: z.number().optional(),
+  discountTotal: z.number().optional(),
+  paidTotal: z.number().optional(),
+  /** Sum of courierChargedToMe (API / booked courier cost). */
+  courierChargeTotal: z.number().optional(),
 });
 
 export type OrderListSummary = z.infer<typeof orderListSummarySchema>;
@@ -155,29 +345,11 @@ export const failedOrderListResponseSchema = z.object({
   page: z.number(),
   pageSize: z.number(),
   report: failedOrderReportSchema,
+  /** Distinct websites in queue (for filter dropdown). */
+  websites: z.array(z.string()).default([]),
 });
 
 export type FailedOrderListResponse = z.infer<typeof failedOrderListResponseSchema>;
-
-export const orderListProductPreviewSchema = z.object({
-  name: z.string(),
-  imageUrl: z.string().optional(),
-  price: z.number(),
-  sku: z.string().optional(),
-});
-
-export type OrderListProductPreview = z.infer<typeof orderListProductPreviewSchema>;
-
-export const orderCourierStatsSchema = z.object({
-  to: z.number().int().nonnegative(),
-  co: z.number().int().nonnegative(),
-  su: z.number().int().nonnegative(),
-  fa: z.number().int().nonnegative(),
-  label: z.string(),
-  percent: z.number().min(0).max(100),
-});
-
-export type OrderCourierStats = z.infer<typeof orderCourierStatsSchema>;
 
 /** Rich table row for order list (Batch 5b). */
 export const orderListRowSchema = orderListItemSchema.extend({
@@ -189,7 +361,6 @@ export const orderListRowSchema = orderListItemSchema.extend({
   discount: z.number(),
   paid: z.number(),
   due: z.number(),
-  courier: orderCourierStatsSchema.optional(),
 });
 
 export type OrderListRow = z.infer<typeof orderListRowSchema>;
@@ -217,11 +388,50 @@ export const orderSalesSummarySchema = z.object({
 
 export type OrderSalesSummary = z.infer<typeof orderSalesSummarySchema>;
 
+/**
+ * Operational sales summary from list aggregates (no fabricated %).
+ * Purchase/COGS stays 0 until inventory costing is linked to orders.
+ */
+export function buildOrderSalesSummaryFromListSummary(
+  summary: OrderListSummary,
+): OrderSalesSummary {
+  const productTotal = summary.productTotal ?? summary.totalAmount;
+  const shippingCollected = summary.shippingCollected ?? 0;
+  const orderTotalWithShipping = summary.totalAmount;
+  const courierChargeApi = summary.courierChargeTotal ?? 0;
+  const courierChargeOther = 0;
+  const totalCourierCharge = courierChargeApi + courierChargeOther;
+  const afterCourierCharge = orderTotalWithShipping - totalCourierCharge;
+  const purchaseAmount = 0;
+  const salesProfitLoss = afterCourierCharge - purchaseAmount;
+  const otherExpense = 0;
+  const netIncome = salesProfitLoss - otherExpense;
+
+  return {
+    productTotal,
+    shippingCollected,
+    orderTotalWithShipping,
+    courierChargeApi,
+    courierChargeOther,
+    totalCourierCharge,
+    afterCourierCharge,
+    purchaseAmount,
+    salesProfitLoss,
+    otherExpense,
+    netIncome,
+    orderCount: summary.count,
+  };
+}
+
 export const createOrderLinePayloadSchema = z.object({
   productName: z.string(),
   sku: z.string().optional(),
+  productId: z.string().optional(),
+  variantId: z.string().optional(),
+  variationLabel: z.string().optional(),
   quantity: z.number().int().positive(),
   unitPrice: z.number(),
+  discount: z.number().optional(),
 });
 
 export type CreateOrderLinePayload = z.infer<typeof createOrderLinePayloadSchema>;
@@ -229,40 +439,151 @@ export type CreateOrderLinePayload = z.infer<typeof createOrderLinePayloadSchema
 export const createOrderPayloadSchema = z.object({
   customerName: z.string(),
   customerPhone: z.string(),
-  customerEmail: z.string().email().optional(),
+  customerEmail: z.string().email().optional().or(z.literal('')),
+  altMobile: z.string().optional(),
   shippingAddress: z.string(),
   shippingArea: z.string(),
   district: z.string().optional(),
-  source: orderSourceSchema,
-  status: orderStatusTypeSchema.default('pending'),
-  paymentStatus: paymentStatusSchema.default('cod'),
+  source: z.string().min(1),
+  status: z.string().default('pending'),
+  paymentStatus: paymentStatusSchema.optional(),
+  paymentMethod: z.string().optional(),
   deliveryCharge: z.number().default(0),
   discount: z.number().default(0),
   lineItems: z.array(createOrderLinePayloadSchema).min(1),
   notes: z.string().optional(),
+  customerNote: z.string().optional(),
+  courierNote: z.string().optional(),
+  packingNote: z.string().optional(),
   assignedAgentName: z.string().optional(),
   skipFollowup: z.boolean().optional(),
   couponCode: z.string().optional(),
   paidAmount: z.number().nonnegative().optional(),
   leadId: z.string().optional(),
+  customerTag: z.string().optional(),
+  orderTag: z.string().optional(),
+  referenceNo: z.string().optional(),
+  orderDate: z.string().optional(),
+  courierChargedToMe: z.number().optional(),
+  pathaoCity: z.string().optional(),
+  pathaoZone: z.string().optional(),
+  pathaoArea: z.string().optional(),
+  pathaoCityId: z.number().int().optional(),
+  pathaoZoneId: z.number().int().optional(),
+  pathaoAreaId: z.number().int().optional(),
+  carrybeeCity: z.string().optional(),
+  carrybeeZone: z.string().optional(),
+  carrybeeArea: z.string().optional(),
+  carrybeeCityId: z.number().int().optional(),
+  carrybeeZoneId: z.number().int().optional(),
+  carrybeeAreaId: z.number().int().optional(),
+  utmSource: z.string().optional(),
+  utmId: z.string().optional(),
+  utmContent: z.string().optional(),
+  utmCampaign: z.string().optional(),
+  courierWeightKg: z.number().positive().optional(),
+  courierDeliveryType: z.enum(['normal', 'express']).optional(),
+  attachmentNames: z.array(z.string()).optional(),
+  attachmentUrls: z.array(z.string()).optional(),
 });
 
 export type CreateOrderPayload = z.infer<typeof createOrderPayloadSchema>;
 
+/** Enqueue a failed intake row (website webhook / manual divert). */
+export const enqueueFailedOrderPayloadSchema = createOrderPayloadSchema.extend({
+  failedType: failedOrderTypeSchema.optional(),
+  website: z.string().optional(),
+  lastUpdateNote: z.string().optional(),
+});
+
+export type EnqueueFailedOrderPayload = z.infer<typeof enqueueFailedOrderPayloadSchema>;
+
+export const orderFormOptionSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
+export type OrderFormOption = z.infer<typeof orderFormOptionSchema>;
+
+export const orderFormOptionsResponseSchema = z.object({
+  statuses: z.array(orderFormOptionSchema),
+  paymentMethods: z.array(orderFormOptionSchema),
+  sources: z.array(orderFormOptionSchema),
+  districts: z.array(orderFormOptionSchema),
+  orderTags: z.array(orderFormOptionSchema),
+  customerTags: z.array(orderFormOptionSchema),
+  /** Distinct Pathao cities from org orders (filter dropdown). */
+  pathaoCities: z.array(orderFormOptionSchema).default([]),
+  pathaoZones: z.array(orderFormOptionSchema).default([]),
+  defaultCourierNote: z.string(),
+  defaultShipping: z.number(),
+});
+
+export type OrderFormOptionsResponse = z.infer<typeof orderFormOptionsResponseSchema>;
+
+export const orderCustomerLookupSchema = z.object({
+  mobile: z.string(),
+  name: z.string(),
+  email: z.string(),
+  address: z.string(),
+  district: z.string(),
+  orderSource: z.string(),
+  customerTag: z.string(),
+  stats: z.object({
+    totalOrders: z.number(),
+    completedDelivered: z.number(),
+  }),
+});
+
+export type OrderCustomerLookup = z.infer<typeof orderCustomerLookupSchema>;
+
 export const updateOrderPayloadSchema = z.object({
   customerName: z.string().optional(),
   customerPhone: z.string().optional(),
-  customerEmail: z.string().email().optional(),
+  customerEmail: z.string().email().optional().or(z.literal('')),
+  altMobile: z.string().optional(),
   shippingAddress: z.string().optional(),
   shippingArea: z.string().optional(),
+  district: z.string().optional(),
   source: orderSourceSchema.optional(),
   status: orderStatusTypeSchema.optional(),
   paymentStatus: paymentStatusSchema.optional(),
+  paymentMethod: z.string().optional(),
   deliveryCharge: z.number().optional(),
   discount: z.number().optional(),
+  paidAmount: z.number().optional(),
   notes: z.string().optional(),
+  customerNote: z.string().optional(),
+  courierNote: z.string().optional(),
+  packingNote: z.string().optional(),
+  referenceNo: z.string().optional(),
+  skipFollowup: z.boolean().optional(),
+  couponCode: z.string().optional(),
+  customerTag: z.string().optional(),
+  orderTag: z.string().optional(),
   assignedAgentName: z.string().optional(),
+  pathaoCity: z.string().optional(),
+  pathaoZone: z.string().optional(),
+  pathaoArea: z.string().optional(),
+  pathaoCityId: z.number().int().optional().nullable(),
+  pathaoZoneId: z.number().int().optional().nullable(),
+  pathaoAreaId: z.number().int().optional().nullable(),
+  carrybeeCity: z.string().optional(),
+  carrybeeZone: z.string().optional(),
+  carrybeeArea: z.string().optional(),
+  carrybeeCityId: z.number().int().optional().nullable(),
+  carrybeeZoneId: z.number().int().optional().nullable(),
+  carrybeeAreaId: z.number().int().optional().nullable(),
   lineItems: z.array(createOrderLinePayloadSchema).optional(),
+  attachmentNames: z.array(z.string()).optional(),
+  attachmentUrls: z.array(z.string()).optional(),
+  utmSource: z.string().optional(),
+  utmId: z.string().optional(),
+  utmContent: z.string().optional(),
+  utmCampaign: z.string().optional(),
+  courierWeightKg: z.number().positive().nullable().optional(),
+  courierDeliveryType: z.enum(['normal', 'express']).nullable().optional(),
+  fulfillmentWarehouseId: z.string().nullable().optional(),
 });
 
 export type UpdateOrderPayload = z.infer<typeof updateOrderPayloadSchema>;
@@ -288,6 +609,9 @@ export const orderBulkActionTypeSchema = z.enum([
   'sms',
   'status_change',
   'courier_submit',
+  'courier_cancel',
+  'courier_unlink',
+  'update_courier_status',
   'transfer_employee',
   'export',
   'print',
@@ -304,6 +628,8 @@ export const orderBulkActionPayloadSchema = z.object({
   courier: z.string().optional(),
   smsTemplateId: z.string().optional(),
   smsMessage: z.string().optional(),
+  /** Required when confirming / booking courier (stock cut). */
+  fulfillmentWarehouseId: z.string().optional(),
 });
 
 export type OrderBulkActionPayload = z.infer<typeof orderBulkActionPayloadSchema>;
@@ -398,13 +724,19 @@ export {
   orderQueuePageSchema,
   orderStatusConfigSchema,
   orderStatusCountSchema,
+  orderNavStatusCountsSchema,
   orderStatusDisplayModeSchema,
   orderWorkflowGroupSchema,
+  upsertOrderStatusConfigSchema,
+  upsertOrderQueuePageSchema,
   type BulkActionId,
   type OrderPageKind,
   type OrderQueuePage,
   type OrderStatusConfig,
   type OrderStatusCount,
+  type OrderNavStatusCounts,
   type OrderStatusDisplayMode,
   type OrderWorkflowGroup,
+  type UpsertOrderStatusConfigPayload,
+  type UpsertOrderQueuePagePayload,
 } from './order-status-config.js';

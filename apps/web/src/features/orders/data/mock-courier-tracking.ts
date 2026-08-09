@@ -1,7 +1,7 @@
 import type { OrderCourierTracking } from '@laam/types';
 
 export function buildMockCourierTracking(orderId: string): OrderCourierTracking {
-  const couriers = ['Pathao', 'Steadfast', 'Carrybee'];
+  const couriers = ['Pathao', 'Carrybee'];
   const hash = orderId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
   const courierName = couriers[hash % couriers.length];
 

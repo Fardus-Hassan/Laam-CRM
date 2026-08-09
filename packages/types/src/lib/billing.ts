@@ -59,10 +59,32 @@ export type BillingOverview = z.infer<typeof billingOverviewSchema>;
 
 export const rechargeCreditsPayloadSchema = z.object({
   amountBdt: z.number().min(100),
-  paymentMethodId: z.string(),
+  /** Optional recorded payment method id (manual label — no gateway charge). */
+  paymentMethodId: z.string().optional(),
+  note: z.string().optional(),
 });
 
 export type RechargeCreditsPayload = z.infer<typeof rechargeCreditsPayloadSchema>;
+
+export const createBillingInvoicePayloadSchema = z.object({
+  amountBdt: z.number().positive(),
+  plan: tenantPlanSchema.optional(),
+  periodLabel: z.string().min(1),
+  date: z.string().optional(),
+  dueDate: z.string().optional(),
+  status: invoiceStatusSchema.optional(),
+});
+export type CreateBillingInvoicePayload = z.infer<typeof createBillingInvoicePayloadSchema>;
+
+export const upsertBillingPaymentMethodPayloadSchema = z.object({
+  type: z.enum(['bkash', 'nagad', 'bank', 'card']),
+  label: z.string().min(1),
+  lastFour: z.string().optional(),
+  isDefault: z.boolean().optional(),
+});
+export type UpsertBillingPaymentMethodPayload = z.infer<
+  typeof upsertBillingPaymentMethodPayloadSchema
+>;
 
 export const billingPlanOptionSchema = z.object({
   id: z.string(),

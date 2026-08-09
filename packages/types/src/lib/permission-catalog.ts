@@ -38,6 +38,8 @@ export const PERMISSION_CATALOG = [
   'campaigns.create',
   'campaigns.edit',
   'campaigns.manage_budget',
+  'incentive.view',
+  'incentive.manage',
   'tasks.view',
   'tasks.create',
   'tasks.edit',
@@ -49,8 +51,11 @@ export const PERMISSION_CATALOG = [
   'inventory.create',
   'inventory.edit',
   'inventory.adjust',
+  'inventory.delete',
   'inventory.purchase',
   'inventory.export',
+  'inventory.warehouses',
+  'inventory.mixer',
   'accounting.view',
   'accounting.create',
   'accounting.edit',
@@ -65,6 +70,8 @@ export const PERMISSION_CATALOG = [
   'roles.manage',
   'settings.view',
   'settings.manage',
+  'brand.view',
+  'brand.manage',
   'billing.view',
   'billing.manage',
   'security.view',
@@ -80,6 +87,14 @@ export const PERMISSION_CATALOG = [
   'recycle.manage',
   'knowledge.view',
   'knowledge.manage',
+  'notifications.view',
+  'notifications.failed_login',
+  'notifications.system',
+  'notifications.low_stock',
+  'notifications.overdue_followup',
+  'notifications.courier_update',
+  'notifications.ticket',
+  'notifications.payment_due',
   'platform.view',
   'platform.manage',
   'permissions.manage',
@@ -156,6 +171,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    id: 'incentive',
+    label: 'Incentive & KPI',
+    permissions: ['incentive.view', 'incentive.manage'],
+  },
+  {
     id: 'contacts',
     label: 'Contacts',
     permissions: [
@@ -196,8 +216,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       'inventory.create',
       'inventory.edit',
       'inventory.adjust',
+      'inventory.delete',
       'inventory.purchase',
       'inventory.export',
+      'inventory.warehouses',
+      'inventory.mixer',
     ],
   },
   {
@@ -234,6 +257,20 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    id: 'notifications',
+    label: 'Notifications',
+    permissions: [
+      'notifications.view',
+      'notifications.failed_login',
+      'notifications.system',
+      'notifications.low_stock',
+      'notifications.overdue_followup',
+      'notifications.courier_update',
+      'notifications.ticket',
+      'notifications.payment_due',
+    ],
+  },
+  {
     id: 'admin',
     label: 'Administration',
     permissions: [
@@ -244,6 +281,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       'roles.manage',
       'settings.view',
       'settings.manage',
+      'brand.view',
+      'brand.manage',
       'billing.view',
       'billing.manage',
       'security.view',
@@ -295,6 +334,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'campaigns.create': 'Create campaigns',
   'campaigns.edit': 'Edit campaigns',
   'campaigns.manage_budget': 'Manage ad budget',
+  'incentive.view': 'View incentive & KPI hub',
+  'incentive.manage': 'Manage incentive plans & assignments',
   'tasks.view': 'View tasks',
   'tasks.create': 'Create tasks',
   'tasks.edit': 'Edit tasks',
@@ -305,9 +346,12 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'inventory.view': 'View inventory',
   'inventory.create': 'Create products',
   'inventory.edit': 'Edit products',
-  'inventory.adjust': 'Adjust stock',
-  'inventory.purchase': 'Manage purchases',
+  'inventory.adjust': 'Stock adjust & warehouse transfer',
+  'inventory.delete': 'Delete products / brands',
+  'inventory.purchase': 'Suppliers, purchases & returns',
   'inventory.export': 'Export inventory',
+  'inventory.warehouses': 'Manage warehouses',
+  'inventory.mixer': 'Mixer recipes & production',
   'accounting.view': 'View accounting',
   'accounting.create': 'Record income & expenses',
   'accounting.edit': 'Edit transactions',
@@ -322,6 +366,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'roles.manage': 'Manage roles',
   'settings.view': 'View settings',
   'settings.manage': 'Manage settings',
+  'brand.view': 'View brand',
+  'brand.manage': 'Manage brand colors & logos',
   'billing.view': 'View billing',
   'billing.manage': 'Manage billing',
   'security.view': 'View security',
@@ -337,6 +383,14 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'recycle.manage': 'Restore or purge items',
   'knowledge.view': 'View knowledge base',
   'knowledge.manage': 'Manage knowledge articles',
+  'notifications.view': 'View notification inbox',
+  'notifications.failed_login': 'Receive failed-login alerts',
+  'notifications.system': 'Receive system alerts',
+  'notifications.low_stock': 'Receive low-stock alerts',
+  'notifications.overdue_followup': 'Receive overdue follow-up alerts',
+  'notifications.courier_update': 'Receive courier updates',
+  'notifications.ticket': 'Receive support ticket alerts',
+  'notifications.payment_due': 'Receive payment-due alerts',
   'platform.view': 'View platform',
   'platform.manage': 'Manage platform',
   'permissions.manage': 'Manage permissions',
@@ -346,7 +400,18 @@ export function isValidPermission(value: string): value is Permission {
   return PERMISSIONS.includes(value as Permission);
 }
 
+/** Super-admin / platform-host only — never assignable on tenant roles or grants. */
+export function isPlatformOnlyPermission(value: string): boolean {
+  return value.startsWith('platform.') || value === 'dashboard.widget.platform';
+}
+
 /** All tenant-scoped permissions (excludes platform-only). */
 export const TENANT_PERMISSIONS: Permission[] = PERMISSIONS.filter(
-  (p) => !p.startsWith('platform.'),
+  (p) => !isPlatformOnlyPermission(p),
 );
+
+/** Permission groups shown in tenant RBAC UIs (no Platform / super-admin access). */
+export const TENANT_PERMISSION_GROUPS: PermissionGroup[] = PERMISSION_GROUPS.map((group) => ({
+  ...group,
+  permissions: group.permissions.filter((p) => !isPlatformOnlyPermission(p)),
+})).filter((group) => group.permissions.length > 0);

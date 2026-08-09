@@ -1,12 +1,10 @@
 import { Suspense } from 'react';
 
-import { OrderListShell } from '@/features/orders/components/order-list/order-list-shell';
-import { resolveOrderQueueFromPath } from '@/features/orders/config/order-queue-resolver';
+import { OrderQueueListPage } from '@/features/orders/components/order-queue-list-page';
 import { Skeleton } from '@/components/ui/skeleton';
 
 type OrderQueuePageProps = {
   params: Promise<{ queueSlug: string }>;
-  searchParams?: Promise<{ status?: string }>;
 };
 
 function QueueFallback() {
@@ -18,18 +16,12 @@ function QueueFallback() {
   );
 }
 
-export default async function OrderQueuePage({ params, searchParams }: OrderQueuePageProps) {
+export default async function OrderQueuePage({ params }: OrderQueuePageProps) {
   const { queueSlug } = await params;
-  const query = searchParams ? await searchParams : undefined;
-  const queue = resolveOrderQueueFromPath(
-    `/dashboard/orders/queues/${queueSlug}`,
-    query?.status,
-    queueSlug,
-  );
 
   return (
     <Suspense fallback={<QueueFallback />}>
-      <OrderListShell queue={queue} />
+      <OrderQueueListPage queueSlug={queueSlug} />
     </Suspense>
   );
 }

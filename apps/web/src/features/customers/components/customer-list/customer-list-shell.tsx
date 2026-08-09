@@ -18,18 +18,27 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { customersApi } from '@/features/customers/api/customers-api';
 import { CustomerDataTable } from '@/features/customers/components/customer-list/customer-data-table';
+import {
+  emptyCustomerFilters,
+  filtersToQuery,
+  PURCHASE_COUNT_PILLS,
+  removeCustomerFilter,
+  type CustomerFilterValues,
+} from '@/features/customers/components/customer-list/customer-filter-panel';
 import { CustomerListToolbar } from '@/features/customers/components/customer-list/customer-list-toolbar';
 import { CustomerNoteModal } from '@/features/customers/components/customer-list/modals/customer-note-modal';
 import { CustomerSegmentChips } from '@/features/customers/components/customer-list/customer-segment-chips';
 import { CustomerSelectionBar } from '@/features/customers/components/customer-list/customer-selection-bar';
 import { CustomerWorkspaceHeader } from '@/features/customers/components/customer-list/customer-workspace-header';
-import { CustomerStatusDialog } from '@/features/customers/components/shared/customer-status-dialog';
 import { useCustomerMutations } from '@/features/customers/hooks/use-customer-mutations';
 import { useCustomersList } from '@/features/customers/hooks/use-customers-list';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
+import { Settings2 } from 'lucide-react';
+import Link from 'next/link';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 export function CustomerListShell() {
   const router = useRouter();
@@ -44,12 +53,13 @@ export function CustomerListShell() {
   const [listVersion, setListVersion] = React.useState(0);
   const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const [noteTarget, setNoteTarget] = React.useState<CustomerListItem | null>(null);
-  const [noteInitial, setNoteInitial] = React.useState('');
-  const [statusTarget, setStatusTarget] = React.useState<CustomerListItem | null>(null);
+  const [filters, setFilters] = React.useState<CustomerFilterValues>(() => emptyCustomerFilters());
 
   const segment = searchParams.get('segment') ?? 'all';
+  const statusFilter = searchParams.get('status') ?? '';
   const debouncedSearch = useDebouncedValue(search, 300);
   const searchParamsKey = searchParams.toString();
+  const filterQuery = filtersToQuery(filters);
 
   React.useEffect(() => {
     const params = new URLSearchParams(searchParamsKey);
@@ -68,9 +78,11 @@ export function CustomerListShell() {
   const { data, isLoading, error, refresh } = useCustomersList(
     {
       segment: segment === 'all' ? undefined : segment,
+      status: statusFilter || undefined,
       search: debouncedSearch || undefined,
       page,
       pageSize,
+      ...filterQuery,
     },
     listVersion,
   );
@@ -110,14 +122,29 @@ export function CustomerListShell() {
 
   function handleClearFilters() {
     setSearch('');
+    setFilters(emptyCustomerFilters());
     setPage(1);
-    router.replace('/dashboard/customers');
   }
 
-  async function handleNoteClick(row: CustomerListItem) {
-    const detail = await customersApi.getCustomer(row.id);
-    setNoteInitial(detail?.notes ?? '');
-    setNoteTarget(row);
+  function handleRemoveFilter(key: keyof CustomerFilterValues) {
+    setFilters((current) => removeCustomerFilter(current, key));
+    setPage(1);
+  }
+
+  async function handleExportView() {
+    try {
+      await customersApi.exportCustomers({
+        segment: segment === 'all' ? undefined : segment,
+        status: statusFilter || undefined,
+        search: debouncedSearch || undefined,
+        page: 1,
+        pageSize: 5000,
+        ...filterQuery,
+      });
+      toast.success('Export started');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Export failed');
+    }
   }
 
   async function handleNoteSave(note: string) {
@@ -126,27 +153,26 @@ export function CustomerListShell() {
     handleRefresh();
   }
 
-  async function handleStatusSave(status: CustomerStatus) {
-    if (!statusTarget) return;
-    await updateCustomer(statusTarget.id, { status });
+  async function handleStatusChange(row: CustomerListItem, status: CustomerStatus) {
+    await updateCustomer(row.id, { status });
     handleRefresh();
   }
 
   function handleFollowUpClick(row: CustomerListItem) {
-    void import('@/features/followups/data/mock-followups').then(({ createMockFollowupForCustomer }) => {
-      createMockFollowupForCustomer({
-        customerId: row.id,
-        customerNumber: row.customerNumber,
-        name: row.name,
-        phone: row.phone,
-        address: row.address,
-        district: row.district,
-        agentName: row.assignedAgentName,
-        note: 'Follow-up from customers list',
-      });
-      toast.success(`Follow-up created for ${row.name}`);
-      handleRefresh();
-    });
+    void (async () => {
+      try {
+        const { followupsApi } = await import('@/features/followups/api/followups-api');
+        await followupsApi.createFollowup({
+          customerId: row.id,
+          note: 'Follow-up from customers list',
+          assignedAgentName: row.assignedAgentName,
+        });
+        toast.success(`Follow-up created for ${row.name}`);
+        handleRefresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to create follow-up');
+      }
+    })();
   }
 
   return (
@@ -166,8 +192,71 @@ export function CustomerListShell() {
         <CrmSummaryStrip items={summaryItems} className="sm:grid-cols-2 xl:grid-cols-4" />
 
         {data?.segments ? (
-          <CustomerSegmentChips segments={data.segments} activeSegmentId={segment} />
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">System segments</p>
+            <CustomerSegmentChips segments={data.segments} activeId={segment} mode="segment" />
+          </div>
         ) : null}
+
+        {data?.statuses?.length ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Statuses</p>
+              <Button type="button" size="sm" variant="ghost" className="h-7 px-2" asChild>
+                <Link href="/dashboard/settings/customer-statuses">
+                  <Settings2 className="size-3.5" />
+                  Manage
+                </Link>
+              </Button>
+            </div>
+            <CustomerSegmentChips
+              segments={data.statuses}
+              activeId={statusFilter || '__none__'}
+              mode="status"
+            />
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Purchase count</p>
+          <div className="flex flex-wrap gap-1.5">
+            {PURCHASE_COUNT_PILLS.map((count) => {
+              const active =
+                filters.orderCount === String(count) && filters.orderCountOp === 'eq';
+              return (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => {
+                    setFilters((current) => {
+                      if (current.orderCount === String(count) && current.orderCountOp === 'eq') {
+                        return {
+                          ...current,
+                          orderCount: undefined,
+                          orderCountOp: 'gte',
+                        };
+                      }
+                      return {
+                        ...current,
+                        orderCount: String(count),
+                        orderCountOp: 'eq',
+                      };
+                    });
+                    setPage(1);
+                  }}
+                  className={cn(
+                    'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                    active
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                  )}
+                >
+                  {count}× Purchase
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <CustomerListToolbar
           search={search}
@@ -175,6 +264,14 @@ export function CustomerListShell() {
             setSearch(value);
             setPage(1);
           }}
+          filters={filters}
+          onClearFilters={handleClearFilters}
+          onRemoveFilter={handleRemoveFilter}
+          onFiltersChange={(next) => {
+            setFilters(next);
+            setPage(1);
+          }}
+          onExport={() => void handleExportView()}
         />
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
@@ -217,8 +314,9 @@ export function CustomerListShell() {
                   setPage(1);
                 }}
                 showPagination={Boolean(data)}
-                onNoteClick={(row) => void handleNoteClick(row)}
-                onStatusClick={setStatusTarget}
+                onNoteClick={setNoteTarget}
+                statusOptions={data?.statuses ?? []}
+                onStatusChange={handleStatusChange}
                 onFollowUpClick={handleFollowUpClick}
               />
             )}
@@ -227,19 +325,12 @@ export function CustomerListShell() {
       </div>
 
       <CustomerNoteModal
-        open={noteTarget !== null}
+        open={Boolean(noteTarget)}
         onOpenChange={(open) => !open && setNoteTarget(null)}
+        customerId={noteTarget?.id ?? ''}
         customerName={noteTarget?.name ?? ''}
-        initialNote={noteInitial}
+        customerNumber={noteTarget?.customerNumber}
         onSave={handleNoteSave}
-      />
-
-      <CustomerStatusDialog
-        open={statusTarget !== null}
-        onOpenChange={(open) => !open && setStatusTarget(null)}
-        customerName={statusTarget?.name ?? ''}
-        currentStatus={statusTarget?.status ?? 'none'}
-        onSelect={handleStatusSave}
       />
     </PageShell>
   );

@@ -4,6 +4,8 @@ export const recycleEntityTypeSchema = z.enum([
   'order',
   'customer',
   'product',
+  'brand',
+  'category',
   'lead',
   'contact',
 ]);

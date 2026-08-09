@@ -1,18 +1,19 @@
-import type {
-  BulkActionResult,
-  CreateOrderPayload,
-  DuplicateCheckQuery,
-  DuplicateCheckResult,
-  OrderBulkActionPayload,
-  OrderDetail,
-  OrderListItem,
-  OrderListQuery,
-  OrderListResponse,
-  OrderListRow,
-  OrderListRowResponse,
-  OrderSalesSummary,
-  OrderTimelineEvent,
-  UpdateOrderPayload,
+import {
+  buildOrderSalesSummaryFromListSummary,
+  type BulkActionResult,
+  type CreateOrderPayload,
+  type DuplicateCheckQuery,
+  type DuplicateCheckResult,
+  type OrderBulkActionPayload,
+  type OrderDetail,
+  type OrderListItem,
+  type OrderListQuery,
+  type OrderListResponse,
+  type OrderListRow,
+  type OrderListRowResponse,
+  type OrderSalesSummary,
+  type OrderTimelineEvent,
+  type UpdateOrderPayload,
 } from '@laam/types';
 
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
@@ -60,7 +61,7 @@ function orderMatchesSearch(order: OrderDetail, rawSearch: string): boolean {
   return haystack.includes(search);
 }
 
-const AGENTS = ['Sakib Ahmed', 'Mitu Rahman', 'Imran Hossain', 'Tania Sultana', 'Arif Mahmud'];
+const AGENTS = ['Sakib Ahmed (sakib@laamcrm.com)', 'Mitu Rahman (mitu@laamcrm.com)', 'Imran Hossain (imran@laamcrm.com)', 'Tania Sultana (tania@laamcrm.com)', 'Arif Mahmud (arif@laamcrm.com)'];
 const AREAS = ['Gulshan', 'Banani', 'Dhanmondi', 'Mirpur', 'Uttara', 'Mohammadpur', 'Bashundhara'];
 
 function buildOrder(
@@ -302,10 +303,10 @@ export function createMockOrder(payload: CreateOrderPayload): OrderDetail {
   const amount = subtotal + payload.deliveryCharge - payload.discount;
 
   const order = buildOrder(index, {
-    status: payload.status,
+    status: payload.status as OrderDetail['status'],
     customerName: payload.customerName,
     customerPhone: payload.customerPhone,
-    source: payload.source,
+    source: payload.source as OrderDetail['source'],
     paymentStatus: payload.paymentStatus,
     assignedAgentName: payload.assignedAgentName,
     shippingArea: payload.shippingArea,
@@ -388,24 +389,49 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
     customerName: patch.customerName ?? current.customerName,
     customerPhone: patch.customerPhone ?? current.customerPhone,
     customerEmail: patch.customerEmail ?? current.customerEmail,
+    altMobile: patch.altMobile ?? current.altMobile,
     shippingAddress: patch.shippingAddress ?? current.shippingAddress,
-    shippingArea: patch.shippingAddress ? current.shippingArea : current.shippingArea,
+    shippingArea: patch.shippingArea ?? patch.district ?? current.shippingArea,
+    district: patch.district ?? current.district,
     source: patch.source ?? current.source,
     status: patch.status ?? current.status,
     paymentStatus: patch.paymentStatus ?? current.paymentStatus,
+    paymentMethod: patch.paymentMethod ?? current.paymentMethod,
     deliveryCharge,
     discount,
     subtotal,
     amount,
+    paidAmount: patch.paidAmount ?? current.paidAmount,
     lineItems,
     itemsCount: lineItems.length,
     notes: patch.notes ?? current.notes,
+    customerNote: patch.customerNote ?? current.customerNote,
+    courierNote: patch.courierNote ?? current.courierNote,
+    packingNote: patch.packingNote ?? current.packingNote,
+    referenceNo: patch.referenceNo ?? current.referenceNo,
+    skipFollowup: patch.skipFollowup ?? current.skipFollowup,
+    couponCode: patch.couponCode ?? current.couponCode,
+    customerTag: patch.customerTag ?? current.customerTag,
+    orderTag: patch.orderTag ?? current.orderTag,
+    pathaoCity: patch.pathaoCity ?? current.pathaoCity,
+    pathaoZone: patch.pathaoZone ?? current.pathaoZone,
+    pathaoArea: patch.pathaoArea ?? current.pathaoArea,
     assignedAgentName: patch.assignedAgentName ?? current.assignedAgentName,
+    attachments:
+      patch.attachmentUrls !== undefined
+        ? (patch.attachmentUrls ?? []).map((url, index) => ({
+            id: `${current.id}-att-${index}`,
+            url,
+            name: patch.attachmentNames?.[index] || url.split('/').pop() || `File ${index + 1}`,
+          }))
+        : current.attachments,
     timeline,
   };
 
   mockOrderStore[index] = updated;
-  if (patch.paymentStatus) {
+  if (patch.paidAmount !== undefined) {
+    registerOrderPaidAmount(updated.id, patch.paidAmount);
+  } else if (patch.paymentStatus) {
     seedOrderPaidAmount(updated.id, updated.amount, updated.paymentStatus, index);
   }
 
@@ -427,12 +453,34 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
 
 export function checkMockDuplicate(query: DuplicateCheckQuery): DuplicateCheckResult {
   const phone = query.phone.replace(/\D/g, '');
-  const existing = getOrderStore().find(
-    (order) =>
-      order.customerPhone.replace(/\D/g, '') === phone &&
-      order.status !== 'cancelled' &&
-      order.status !== 'delivered',
-  );
+  const windowHours = query.windowHours && query.windowHours > 0 ? query.windowHours : 72;
+  const sinceMs = Date.now() - windowHours * 60 * 60 * 1000;
+  const productIds = new Set(query.productIds ?? []);
+
+  const existing = getOrderStore().find((order) => {
+    if (order.customerPhone.replace(/\D/g, '') !== phone) return false;
+    if (order.status === 'cancelled' || order.status === 'delivered' || order.status === 'completed') {
+      return false;
+    }
+    const createdMs = new Date(order.createdAt).getTime();
+    if (!Number.isFinite(createdMs) || createdMs < sinceMs) return false;
+    if (productIds.size) {
+      const orderProductIds = new Set(
+        (order.lineItems ?? []).flatMap((line) =>
+          [line.productId, line.variantId].filter((id): id is string => Boolean(id)),
+        ),
+      );
+      let overlap = false;
+      for (const id of productIds) {
+        if (orderProductIds.has(id)) {
+          overlap = true;
+          break;
+        }
+      }
+      if (!overlap) return false;
+    }
+    return true;
+  });
 
   if (!existing) {
     return { isDuplicate: false };
@@ -442,7 +490,9 @@ export function checkMockDuplicate(query: DuplicateCheckQuery): DuplicateCheckRe
     isDuplicate: true,
     existingOrderId: existing.id,
     existingOrderNumber: existing.orderNumber,
-    message: `Similar order ${existing.orderNumber} exists for this phone within the last 72 hours.`,
+    message: productIds.size
+      ? `Similar order ${existing.orderNumber} exists for this phone + product(s) within the last ${windowHours} hours.`
+      : `Similar order ${existing.orderNumber} exists for this phone within the last ${windowHours} hours.`,
   };
 }
 
@@ -486,6 +536,46 @@ export function bulkUpdateMockOrders(payload: OrderBulkActionPayload): BulkActio
   for (const orderId of payload.orderIds) {
     const order = getMockOrderById(orderId);
     if (!order) {
+      continue;
+    }
+
+    if (payload.action === 'courier_unlink') {
+      const hadLink = Boolean(
+        order.courierProvider || order.courierConsignmentId || order.courierTrackingCode,
+      );
+      if (!hadLink) continue;
+      const index = mockOrderStore.findIndex((o) => o.id === order.id);
+      if (index < 0) continue;
+      mockOrderStore[index] = {
+        ...order,
+        courierProvider: undefined,
+        courierConsignmentId: undefined,
+        courierTrackingCode: undefined,
+        courierStatus: undefined,
+        courierStatusSlug: undefined,
+      };
+      successCount += 1;
+      continue;
+    }
+
+    if (payload.action === 'courier_cancel') {
+      const hadLink = Boolean(order.courierConsignmentId);
+      if (!hadLink) continue;
+      updateMockOrder(order.id, {
+        status: order.status === 'in_courier' ? 'confirmed' : order.status,
+      });
+      const index = mockOrderStore.findIndex((o) => o.id === order.id);
+      if (index >= 0) {
+        mockOrderStore[index] = {
+          ...mockOrderStore[index],
+          courierProvider: undefined,
+          courierConsignmentId: undefined,
+          courierTrackingCode: undefined,
+          courierStatus: undefined,
+          courierStatusSlug: undefined,
+        };
+      }
+      successCount += 1;
       continue;
     }
 
@@ -538,11 +628,13 @@ export function quickSearchMockOrders(query: string, limit = 8): OrderDetail[] {
 }
 
 function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean {
-  if (query.status && order.status !== query.status) {
-    return false;
+  if (query.status) {
+    const match = order.status === query.status;
+    if (query.excludeStatus ? match : !match) return false;
   }
-  if (query.source && order.source !== query.source) {
-    return false;
+  if (query.source) {
+    const match = order.source === query.source;
+    if (query.excludeSource ? match : !match) return false;
   }
   if (query.paymentStatus && order.paymentStatus !== query.paymentStatus) {
     return false;
@@ -550,9 +642,23 @@ function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean
   if (query.employee && order.assignedAgentName !== query.employee) {
     return false;
   }
-  if (query.district && !order.shippingArea.toLowerCase().includes(query.district.toLowerCase())) {
-    return false;
+  if (query.district) {
+    const d = query.district.toLowerCase();
+    const match =
+      order.shippingArea.toLowerCase().includes(d) ||
+      (order.district?.toLowerCase().includes(d) ?? false);
+    if (query.excludeDistrict ? match : !match) return false;
   }
+  if (query.pathaoCity) {
+    const city = order.pathaoCity?.toLowerCase() ?? '';
+    if (!city.includes(query.pathaoCity.toLowerCase())) return false;
+  }
+  if (query.pathaoZone) {
+    const zone = order.pathaoZone?.toLowerCase() ?? '';
+    if (!zone.includes(query.pathaoZone.toLowerCase())) return false;
+  }
+  if (query.noteStatus === 'has_note' && !order.notes?.trim()) return false;
+  if (query.noteStatus === 'no_note' && order.notes?.trim()) return false;
   if (query.product) {
     const productMatch = order.lineItems.some((line) =>
       line.productName.toLowerCase().includes(query.product!.toLowerCase()),
@@ -564,6 +670,52 @@ function orderMatchesFilters(order: OrderDetail, query: OrderListQuery): boolean
   if (query.search?.trim()) {
     if (!orderMatchesSearch(order, query.search)) {
       return false;
+    }
+  }
+  if (query.dateFrom || query.dateTo) {
+    const t = new Date(order.createdAt).getTime();
+    if (query.dateFrom) {
+      const from = new Date(query.dateFrom);
+      from.setHours(0, 0, 0, 0);
+      if (t < from.getTime()) return false;
+    }
+    if (query.dateTo) {
+      const to = new Date(query.dateTo);
+      to.setHours(23, 59, 59, 999);
+      if (t > to.getTime()) return false;
+    }
+  } else if (query.dateRange && query.dateRange !== 'all_time' && query.dateRange !== 'custom') {
+    // fallback for presets without ISO (legacy)
+    if (query.dateRange === 'last_30') {
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      if (new Date(order.createdAt).getTime() < cutoff) return false;
+    }
+    if (query.dateRange === 'this_month') {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      if (new Date(order.createdAt).getTime() < start) return false;
+    }
+  }
+  if (query.courierDateFrom || query.courierDateTo) {
+    if (!order.courierBookedAt) return false;
+    const t = new Date(order.courierBookedAt).getTime();
+    if (query.courierDateFrom) {
+      const from = new Date(query.courierDateFrom);
+      from.setHours(0, 0, 0, 0);
+      if (t < from.getTime()) return false;
+    }
+    if (query.courierDateTo) {
+      const to = new Date(query.courierDateTo);
+      to.setHours(23, 59, 59, 999);
+      if (t > to.getTime()) return false;
+    }
+  }
+  if (query.courier === 'pathao' || query.courier === 'carrybee') {
+    const provider = order.courierProvider?.toLowerCase();
+    const match = provider === query.courier;
+    if (query.excludeCourier ? match : provider && !match) {
+      if (!query.excludeCourier && provider && !match) return false;
+      if (query.excludeCourier && match) return false;
     }
   }
   if (query.followUpDue && !isFollowUpDue(order.createdAt, order.status)) {
@@ -592,6 +744,10 @@ export function orderDetailToListRow(order: OrderDetail, serialNumber?: number):
     assignedAgentName: order.assignedAgentName,
     shippingArea: order.shippingArea,
     createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    followUpDueAt: undefined,
+    followUpSetAt: undefined,
+    courierBookedAt: order.courierBookedAt,
     serialNumber,
     hasNote: Boolean(order.notes),
     products: order.lineItems.map((line, idx) => ({
@@ -692,28 +848,23 @@ export function filterMockOrderRows(query: OrderListQuery): OrderListRowResponse
     summary: {
       count: total,
       totalAmount: allRows.reduce((sum, order) => sum + order.amount, 0),
+      productTotal: allRows.reduce((sum, order) => sum + order.subtotal, 0),
+      shippingCollected: allRows.reduce((sum, order) => sum + order.deliveryCharge, 0),
+      discountTotal: allRows.reduce((sum, order) => sum + (order.discount ?? 0), 0),
+      paidTotal: allRows.reduce((sum, order) => sum + (order.paidAmount ?? 0), 0),
+      courierChargeTotal: 0,
     },
   };
 }
 
 export function buildMockSalesSummary(orderCount: number, totalAmount: number): OrderSalesSummary {
-  const courierCharge = Math.round(totalAmount * 0.055);
-  const afterCourier = totalAmount - courierCharge;
-
-  return {
+  return buildOrderSalesSummaryFromListSummary({
+    count: orderCount,
+    totalAmount,
     productTotal: totalAmount,
     shippingCollected: 0,
-    orderTotalWithShipping: totalAmount,
-    courierChargeApi: courierCharge,
-    courierChargeOther: 0,
-    totalCourierCharge: courierCharge,
-    afterCourierCharge: afterCourier,
-    purchaseAmount: 0,
-    salesProfitLoss: afterCourier,
-    otherExpense: 0,
-    netIncome: afterCourier,
-    orderCount,
-  };
+    courierChargeTotal: 0,
+  });
 }
 
 export function filterMockOrders(query: OrderListQuery): OrderListResponse {
@@ -721,6 +872,10 @@ export function filterMockOrders(query: OrderListQuery): OrderListResponse {
 
   const total = items.length;
   const totalAmount = items.reduce((sum, order) => sum + order.amount, 0);
+  const productTotal = items.reduce((sum, order) => sum + order.subtotal, 0);
+  const shippingCollected = items.reduce((sum, order) => sum + order.deliveryCharge, 0);
+  const discountTotal = items.reduce((sum, order) => sum + (order.discount ?? 0), 0);
+  const paidTotal = items.reduce((sum, order) => sum + (order.paidAmount ?? 0), 0);
   const start = (query.page - 1) * query.pageSize;
   items = items.slice(start, start + query.pageSize);
 
@@ -732,6 +887,11 @@ export function filterMockOrders(query: OrderListQuery): OrderListResponse {
     summary: {
       count: total,
       totalAmount,
+      productTotal,
+      shippingCollected,
+      discountTotal,
+      paidTotal,
+      courierChargeTotal: 0,
     },
   };
 }

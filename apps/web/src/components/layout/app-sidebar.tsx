@@ -17,9 +17,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       {isLoading ? (
         <NavMainSkeleton />
       ) : (
-        <React.Suspense fallback={<NavMainSkeleton />}>
-          <NavMain />
-        </React.Suspense>
+        <NavMain />
       )}
       <SidebarFooter className="border-t border-sidebar-border p-2">
         <NavUser />

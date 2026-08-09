@@ -1,19 +1,18 @@
 'use client';
 
 import * as React from 'react';
-import { Plus, Zap } from 'lucide-react';
+import Link from 'next/link';
+import type { AutomationSettings, FollowupAutomationRule } from '@laam/types';
+import { CalendarClock, MessageSquare, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { FormField } from '@/components/form/form-field';
+import { FormTextarea } from '@/components/form/form-textarea';
 import { PageShell } from '@/components/layout/page-shell';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  createAutomationRule,
-  listAutomationRules,
-  toggleAutomationRule,
-  type AutomationRule,
-} from '@/features/automations/data/mock-automations';
+import { Can } from '@/components/auth/can';
+import { automationsApi } from '@/features/automations/api/automations-api';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -22,73 +21,193 @@ import {
 } from '@/features/orders/components/create-order/section-layout';
 import { cn } from '@/lib/utils';
 
+function mapToSmsText(map: Record<string, string>): string {
+  return Object.entries(map)
+    .map(([status, template]) => `${status}=${template}`)
+    .join('\n');
+}
+
+function parseSmsText(text: string): Record<string, string> {
+  const statusSmsMap: Record<string, string> = {};
+  for (const line of text.split('\n')) {
+    const [status, template] = line.split('=').map((part) => part.trim());
+    if (status && template) statusSmsMap[status.toLowerCase()] = template;
+  }
+  return statusSmsMap;
+}
+
+function mapToFollowupText(map: Record<string, FollowupAutomationRule>): string {
+  return Object.entries(map)
+    .map(([status, rule]) => {
+      const note = rule.note?.trim() ? `|${rule.note.trim()}` : '';
+      return `${status}=${rule.queue},${rule.delayDays}${note}`;
+    })
+    .join('\n');
+}
+
+function parseFollowupText(text: string): Record<string, FollowupAutomationRule> {
+  const statusFollowupMap: Record<string, FollowupAutomationRule> = {};
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const [left, note] = trimmed.split('|').map((p) => p.trim());
+    const [statusPart, rest] = (left ?? '').split('=').map((p) => p.trim());
+    if (!statusPart || !rest) continue;
+    const [queueRaw, delayRaw] = rest.split(',').map((p) => p.trim());
+    const queue = Number(queueRaw ?? 1);
+    const delayDays = Number(delayRaw ?? 0);
+    statusFollowupMap[statusPart.toLowerCase()] = {
+      queue: Number.isFinite(queue) ? Math.min(3, Math.max(1, Math.floor(queue))) : 1,
+      delayDays: Number.isFinite(delayDays)
+        ? Math.min(90, Math.max(0, Math.floor(delayDays)))
+        : 0,
+      note: note || undefined,
+    };
+  }
+  return statusFollowupMap;
+}
+
 export function AutomationsPage() {
-  const [rules, setRules] = React.useState<AutomationRule[]>([]);
+  const [settings, setSettings] = React.useState<AutomationSettings | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [autoSms, setAutoSms] = React.useState(false);
+  const [smsMapText, setSmsMapText] = React.useState('');
+  const [autoFollowup, setAutoFollowup] = React.useState(false);
+  const [followupMapText, setFollowupMapText] = React.useState('');
 
   React.useEffect(() => {
-    setRules(listAutomationRules());
+    void automationsApi
+      .getSettings()
+      .then((s) => {
+        setSettings(s);
+        setAutoSms(s.autoSmsOnStatusChange);
+        setSmsMapText(mapToSmsText(s.statusSmsMap));
+        setAutoFollowup(s.autoFollowupOnStatusChange);
+        setFollowupMapText(mapToFollowupText(s.statusFollowupMap));
+      })
+      .catch((error) =>
+        toast.error(error instanceof Error ? error.message : 'Failed to load automations'),
+      )
+      .finally(() => setLoading(false));
   }, []);
 
-  function refresh() {
-    setRules(listAutomationRules());
-  }
-
-  function handleToggle(id: string) {
-    toggleAutomationRule(id);
-    refresh();
-    toast.success('Rule updated');
-  }
-
-  function handleAdd() {
-    createAutomationRule({
-      name: 'New rule',
-      enabled: true,
-      trigger: 'order_status',
-      triggerValue: 'delivered',
-      action: 'sms',
-      actionLabel: 'Send delivery SMS',
-    });
-    refresh();
-    toast.success('Rule created (mock — runs with order status changes in production)');
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const next = await automationsApi.saveSettings({
+        autoSmsOnStatusChange: autoSms,
+        statusSmsMap: parseSmsText(smsMapText),
+        autoFollowupOnStatusChange: autoFollowup,
+        statusFollowupMap: parseFollowupText(followupMapText),
+      });
+      setSettings(next);
+      toast.success('Automations saved');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <PageShell
       title="Automations"
-      description="When order status changes → SMS, follow-up, or courier. Mock rules define the production contract."
+      description="SMS and follow-up reminders that run when an order status changes."
     >
       <div className={ORDER_PAGE_GAP}>
-        <div className="flex justify-end">
-          <Button type="button" size="sm" onClick={handleAdd}>
-            <Plus className="size-4" />
-            New rule
-          </Button>
-        </div>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <>
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <MessageSquare className="size-4 text-primary" />
+                  Auto SMS on status change
+                </CardTitle>
+              </CardHeader>
+              <CardContent className={cn('space-y-3', ORDER_SECTION_BODY_CLASS)}>
+                {!settings?.smsEnabled ? (
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    SMS gateway is not enabled. Configure credentials first, or SMS automation
+                    will not send.
+                  </p>
+                ) : null}
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={autoSms}
+                    onChange={(e) => setAutoSms(e.target.checked)}
+                  />
+                  Enable automatic SMS when order status changes
+                </label>
+                <FormField
+                  label="Status → template map"
+                  hint="One per line: status_slug=template_slug (e.g. confirmed=confirm)"
+                >
+                  <FormTextarea
+                    rows={5}
+                    value={smsMapText}
+                    onChange={(e) => setSmsMapText(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                </FormField>
+                <Button type="button" size="sm" variant="outline" asChild>
+                  <Link href="/dashboard/settings/integrations/sms">
+                    <Settings2 className="size-4" />
+                    SMS gateway & templates
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
 
-        {rules.map((rule) => (
-          <Card key={rule.id} className={ORDER_CARD_CLASS}>
-            <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}>
-              <div className="flex items-center gap-2">
-                <Zap className="size-4 text-primary" />
-                <CardTitle className="text-sm">{rule.name}</CardTitle>
-                <Badge variant={rule.enabled ? 'success' : 'secondary'}>
-                  {rule.enabled ? 'On' : 'Off'}
-                </Badge>
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <CalendarClock className="size-4 text-primary" />
+                  Follow-up reminder on status change
+                </CardTitle>
+              </CardHeader>
+              <CardContent className={cn('space-y-3', ORDER_SECTION_BODY_CLASS)}>
+                <p className="text-sm text-muted-foreground">
+                  Creates a follow-up for the order when status matches (skips if one already
+                  exists). Use queue 1–3 and delay days from today.
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={autoFollowup}
+                    onChange={(e) => setAutoFollowup(e.target.checked)}
+                  />
+                  Enable automatic follow-up when order status changes
+                </label>
+                <FormField
+                  label="Status → follow-up map"
+                  hint="One per line: status=queue,delayDays|optional note (e.g. pending=1,0|Call to confirm)"
+                >
+                  <FormTextarea
+                    rows={5}
+                    value={followupMapText}
+                    onChange={(e) => setFollowupMapText(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                </FormField>
+                <Button type="button" size="sm" variant="outline" asChild>
+                  <Link href="/dashboard/followups">Open follow-ups</Link>
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Can permission="settings.manage">
+              <div className="flex justify-end">
+                <Button type="button" disabled={saving} onClick={() => void handleSave()}>
+                  {saving ? 'Saving…' : 'Save automations'}
+                </Button>
               </div>
-              <Button type="button" size="sm" variant="outline" onClick={() => handleToggle(rule.id)}>
-                {rule.enabled ? 'Disable' : 'Enable'}
-              </Button>
-            </CardHeader>
-            <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'text-sm text-muted-foreground')}>
-              <p>
-                When order status = <strong className="text-foreground">{rule.triggerValue}</strong>
-              </p>
-              <p className="mt-1">
-                Then: <strong className="text-foreground">{rule.actionLabel}</strong>
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+            </Can>
+          </>
+        )}
       </div>
     </PageShell>
   );

@@ -35,7 +35,13 @@ export function OrderStatusesPage() {
                 <span className="font-medium">{status.label}</span>
                 <span className="ml-2 text-xs text-muted-foreground">({status.displayMode})</span>
               </span>
-              <span className="rounded-full bg-amber-500/90 px-2 py-0.5 text-[10px] font-semibold text-amber-950 tabular-nums">
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums"
+                style={{
+                  backgroundColor: 'var(--brand-accent, #FFD700)',
+                  color: 'var(--brand-accent-fg, #1a1a1a)',
+                }}
+              >
                 {getStatusCount(status.slug)}
               </span>
             </Link>

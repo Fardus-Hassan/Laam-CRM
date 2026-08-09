@@ -69,6 +69,10 @@ export type CrmDataTableProps<T> = {
   onSearchChange?: (value: string) => void;
   searchPlaceholder?: string;
   headerSlot?: (table: Table<T>) => ReactNode;
+  /** Shown in “Showing X–Y of Z {entityLabel}”. Default: entries */
+  entityLabel?: string;
+  /** When false, hides the top range/selection meta bar. Default true. */
+  showMeta?: boolean;
 };
 
 export function sortingStateFromCrm(sort: CrmSortState | null | undefined): SortingState {

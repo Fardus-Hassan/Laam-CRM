@@ -162,6 +162,38 @@ export const upsellRowSchema = z.object({
 
 export type UpsellRow = z.infer<typeof upsellRowSchema>;
 
+export const marketingSpendRowSchema = z.object({
+  id: z.string(),
+  monthKey: z.string(),
+  campaignName: z.string(),
+  spendBdt: z.number(),
+  notes: z.string().optional(),
+});
+
+export type MarketingSpendRow = z.infer<typeof marketingSpendRowSchema>;
+
+export const upsertMarketingSpendPayloadSchema = z.object({
+  monthKey: z.string().regex(/^\d{4}-\d{2}$/),
+  campaignName: z.string().min(1),
+  spendBdt: z.number().nonnegative(),
+  notes: z.string().optional(),
+});
+
+export type UpsertMarketingSpendPayload = z.infer<typeof upsertMarketingSpendPayloadSchema>;
+
+export const upsertPerformanceTargetPayloadSchema = z.object({
+  monthKey: z.string().regex(/^\d{4}-\d{2}$/),
+  scope: z.enum(['agent', 'team']),
+  subjectKey: z.string().min(1),
+  subjectLabel: z.string().min(1),
+  targetOrders: z.number().int().nonnegative(),
+  targetRevenueBdt: z.number().nonnegative(),
+});
+
+export type UpsertPerformanceTargetPayload = z.infer<
+  typeof upsertPerformanceTargetPayloadSchema
+>;
+
 export const reportQuerySchema = z.object({
   view: reportViewIdSchema.optional(),
   period: reportPeriodSchema.optional(),

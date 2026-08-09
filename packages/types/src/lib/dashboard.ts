@@ -102,7 +102,8 @@ export const alertItemSchema = z.object({
 });
 export type AlertItem = z.infer<typeof alertItemSchema>;
 
-export const orderStatusTypeSchema = z.enum([
+/** Built-in demo / seed status slugs (orgs may add more via settings). */
+export const BUILTIN_ORDER_STATUS_SLUGS = [
   'pending',
   'pending_2',
   'pending_3',
@@ -132,8 +133,12 @@ export const orderStatusTypeSchema = z.enum([
   'courier_payment_validate',
   'follow_up',
   'in_progress',
-]);
+] as const;
+
+/** Org-configurable order status slug (string — not a closed enum). */
+export const orderStatusTypeSchema = z.string().min(1);
 export type OrderStatusType = z.infer<typeof orderStatusTypeSchema>;
+export type BuiltinOrderStatusSlug = (typeof BUILTIN_ORDER_STATUS_SLUGS)[number];
 
 export const agentOrderRowSchema = z.object({
   id: z.string(),

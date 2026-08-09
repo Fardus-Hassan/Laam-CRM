@@ -42,7 +42,7 @@ export function TeamTargetProgressCard({
         <Progress
           value={overall.achievementPercent}
           className="h-3 bg-muted"
-          indicatorClassName="bg-emerald-500"
+          indicatorClassName="bg-primary"
         />
       </div>
 

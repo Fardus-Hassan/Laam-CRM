@@ -1,13 +1,16 @@
 'use client';
 
 import * as React from 'react';
-import type { AccountingFilterCount, CreateExpensePayload, CreateIncomePayload } from '@laam/types';
+import Link from 'next/link';
+import type { AccountingFilterCount, CreateIncomePayload } from '@laam/types';
 import { Download, Plus, RefreshCw, Search } from 'lucide-react';
 
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { FormTextarea } from '@/components/form/form-textarea';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
+import { Can } from '@/components/auth/can';
 import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { EmptyState } from '@/components/layout/empty-state';
@@ -27,20 +30,18 @@ import {
   ORDER_SECTION_BODY_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { TransactionDataTable } from '@/features/accounting/components/transaction-list/transaction-data-table';
-import {
-  EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
-  PAYMENT_METHOD_LABELS,
-} from '@/features/accounting/config/accounting-filters';
+import { PAYMENT_METHOD_LABELS } from '@/features/accounting/config/accounting-filters';
 import { useAccountingMutations } from '@/features/accounting/hooks/use-accounting-mutations';
 import { useTransactionList } from '@/features/accounting/hooks/use-transaction-list';
+import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import type { TransactionListResponse } from '@laam/types';
 import type { TransactionListQuery } from '@laam/types';
 import { downloadCsv } from '@/lib/export-csv';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 const PAYMENT_OPTIONS = Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }));
 const ACCOUNT_OPTIONS = [
   { value: 'Cash Register', label: 'Cash Register' },
@@ -65,6 +66,9 @@ export function TransactionListShell({
   createLabel,
 }: TransactionListShellProps) {
   const { createIncome, createExpense, isLoading: saving } = useAccountingMutations();
+  const incomeCategoryOptions = useOrgCategoryOptions('income');
+  const expenseCategoryOptions = useOrgCategoryOptions('expense');
+  const categoryOptions = mode === 'income' ? incomeCategoryOptions : expenseCategoryOptions;
   const [search, setSearch] = React.useState('');
   const [filter, setFilter] = React.useState('all');
   const [page, setPage] = React.useState(1);
@@ -106,20 +110,15 @@ export function TransactionListShell({
       reference: draft.reference.trim() || undefined,
     };
     if (mode === 'income') {
-      await createIncome({ ...base, category: draft.category as CreateIncomePayload['category'], relatedOrderId: draft.reference.trim() || undefined });
+      await createIncome({ ...base, category: draft.category, relatedOrderId: draft.reference.trim() || undefined });
     } else if (mode === 'expense') {
-      await createExpense({ ...base, category: draft.category as CreateExpensePayload['category'], relatedSupplier: undefined });
+      await createExpense({ ...base, category: draft.category, relatedSupplier: undefined });
     }
     setCreateOpen(false);
     setDraft((d) => ({ ...d, description: '', amount: '', reference: '' }));
     setListVersion((v) => v + 1);
     void refresh();
   }
-
-  const categoryOptions =
-    mode === 'income'
-      ? INCOME_CATEGORIES.map((c) => ({ value: c.id, label: c.label }))
-      : EXPENSE_CATEGORIES.map((c) => ({ value: c.id, label: c.label }));
 
   return (
     <PageShell title="Accounting" description={description}>
@@ -135,31 +134,33 @@ export function TransactionListShell({
               <RefreshCw className={cn('size-3.5', isLoading && 'animate-spin')} />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8 shrink-0"
-              onClick={() => {
-                const rows = data?.items ?? [];
-                downloadCsv(
-                  `${mode}-export.csv`,
-                  ['Date', 'Description', 'Category', 'Amount', 'Method', 'Account'],
-                  rows.map((r) => [
-                    r.date,
-                    r.description,
-                    r.category,
-                    r.amount,
-                    r.paymentMethod,
-                    r.accountName,
-                  ]),
-                );
-              }}
-              disabled={!data?.items.length}
-            >
-              <Download className="size-3.5" />
-              <span className="hidden sm:inline">Export</span>
-            </Button>
+            <Can permission="accounting.export">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 shrink-0"
+                onClick={() => {
+                  const rows = data?.items ?? [];
+                  downloadCsv(
+                    `${mode}-export.csv`,
+                    ['Date', 'Description', 'Category', 'Amount', 'Method', 'Account'],
+                    rows.map((r) => [
+                      r.date,
+                      r.description,
+                      r.category,
+                      r.amount,
+                      r.paymentMethod,
+                      r.accountName,
+                    ]),
+                  );
+                }}
+                disabled={!data?.items.length}
+              >
+                <Download className="size-3.5" />
+                <span className="hidden sm:inline">Export</span>
+              </Button>
+            </Can>
             {mode !== 'ledger' && createLabel ? (
               <Button type="button" size="sm" className="h-8 shrink-0" onClick={() => setCreateOpen(true)}>
                 <Plus className="size-3.5" />
@@ -179,6 +180,39 @@ export function TransactionListShell({
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <FormInput value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search description, reference…" className="pl-9" />
         </div>
+
+        <ActiveFilterChips
+          chips={[
+            ...(filter && filter !== 'all'
+              ? [
+                  {
+                    id: 'filter',
+                    label:
+                      data?.filters?.find((f) => f.id === filter)?.label ?? filter,
+                  },
+                ]
+              : []),
+            ...(search.trim()
+              ? [{ id: 'search', label: `Search: ${search.trim()}` }]
+              : []),
+          ]}
+          onRemove={(id) => {
+            if (id === 'search') {
+              setSearch('');
+              setPage(1);
+              return;
+            }
+            if (id === 'filter') {
+              setFilter('all');
+              setPage(1);
+            }
+          }}
+          onClearAll={() => {
+            setSearch('');
+            setFilter('all');
+            setPage(1);
+          }}
+        />
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
           <CardContent className={cn('p-0', ORDER_SECTION_BODY_CLASS)}>
@@ -222,6 +256,11 @@ export function TransactionListShell({
             </FormField>
             <FormField label="Category">
               <FormSearchSelect value={draft.category} onChange={(v) => setDraft((d) => ({ ...d, category: v }))} options={categoryOptions} searchable={false} />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                <Link href="/dashboard/settings/categories" className="font-medium text-primary hover:underline">
+                  Manage categories
+                </Link>
+              </p>
             </FormField>
             <FormField label="Description" required>
               <FormTextarea rows={2} value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} placeholder="What was this for?" />

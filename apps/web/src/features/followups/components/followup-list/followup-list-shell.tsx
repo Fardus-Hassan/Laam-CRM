@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { FollowupDetail, FollowupListItem, FollowupQueue, FollowupStatus } from '@laam/types';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { EmptyState } from '@/components/layout/empty-state';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,12 +23,12 @@ import { FollowupNoteModal } from '@/features/followups/components/followup-list
 import { FollowupQueueTabs } from '@/features/followups/components/followup-list/followup-queue-tabs';
 import { FollowupSelectionBar } from '@/features/followups/components/followup-list/followup-selection-bar';
 import { FollowupWorkspaceHeader } from '@/features/followups/components/followup-list/followup-workspace-header';
-import { MOCK_FOLLOWUPS } from '@/features/followups/data/mock-followups';
 import { useFollowupMutations } from '@/features/followups/hooks/use-followup-mutations';
 import { useFollowupsList } from '@/features/followups/hooks/use-followups-list';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 function parseQueue(value: string | null): FollowupQueue {
   if (value === '2') return 2;
@@ -97,12 +98,16 @@ export function FollowupListShell() {
   );
 
   const queueCounts = React.useMemo(() => {
-    const counts: Partial<Record<FollowupQueue, number>> = {};
-    for (const q of [1, 2, 3] as FollowupQueue[]) {
-      counts[q] = MOCK_FOLLOWUPS.filter((f) => f.queue === q).length;
+    const fromApi = data?.summary.queueCounts;
+    if (fromApi) {
+      return {
+        1: fromApi[1],
+        2: fromApi[2],
+        3: fromApi[3],
+      } as Partial<Record<FollowupQueue, number>>;
     }
-    return counts;
-  }, []);
+    return {} as Partial<Record<FollowupQueue, number>>;
+  }, [data?.summary.queueCounts]);
 
   const summaryItems = [
     { id: 'count', label: 'In this view', value: data ? String(data.summary.count) : '—' },
@@ -183,6 +188,35 @@ export function FollowupListShell() {
             setSearch(value);
             setPage(1);
           }}
+        />
+
+        <ActiveFilterChips
+          chips={[
+            ...(filter !== 'all'
+              ? [
+                  {
+                    id: 'filter',
+                    label:
+                      data?.filters?.find((f) => f.id === filter)?.label ?? filter,
+                  },
+                ]
+              : []),
+            ...(debouncedSearch.trim()
+              ? [{ id: 'search', label: `Search: ${debouncedSearch.trim()}` }]
+              : []),
+          ]}
+          onRemove={(id) => {
+            if (id === 'search') {
+              setSearch('');
+              setPage(1);
+              return;
+            }
+            if (id === 'filter') {
+              setPage(1);
+              router.replace(`/dashboard/followups?queue=${queue}`);
+            }
+          }}
+          onClearAll={handleClearFilters}
         />
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>

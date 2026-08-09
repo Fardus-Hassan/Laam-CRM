@@ -8,7 +8,18 @@ import type {
 } from '@laam/types';
 
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
-import { CUSTOMER_SEGMENTS } from '@/features/customers/config/customer-segments';
+
+const MOCK_SEGMENTS: Array<{ id: string; label: string; match: (c: CustomerDetail) => boolean }> = [
+  { id: 'all', label: 'All', match: () => true },
+  { id: 'new', label: 'New', match: (c) => c.orderCount < 2 },
+  { id: 'repeat', label: 'Repeat', match: (c) => c.orderCount >= 2 },
+  { id: 'follow_up', label: 'Follow-up', match: (c) => Boolean(c.hasFollowUp) },
+  {
+    id: 'high_risk',
+    label: 'At risk',
+    match: (c) => c.courierScore.failed >= 2 && c.orderCount >= 2,
+  },
+];
 
 import { getAgentNames } from '@/features/rbac/data/agent-names';
 
@@ -113,6 +124,7 @@ function buildCustomer(index: number, overrides: Partial<CustomerListItem> = {})
     deliveredCount,
     totalSpent,
     courierScore: overrides.courierScore ?? courierScore(orderCount, failed),
+    courierShop: overrides.courierShop ?? { to: orderCount, co: deliveredCount },
     recentProducts: overrides.recentProducts ?? recentProducts(index),
     tags:
       overrides.tags ??
@@ -125,6 +137,8 @@ function buildCustomer(index: number, overrides: Partial<CustomerListItem> = {})
             : []),
     status: overrides.status ?? (index % 9 === 0 ? 'premium' : statusFromOrders(orderCount)),
     hasNotes: index % 4 === 0,
+    lastNotePreview:
+      index % 4 === 0 ? 'Prefers evening call. COD regular buyer.' : undefined,
     hasFollowUp: index % 6 === 0,
     followUpDue: index % 6 === 0 ? '2024-06-20' : undefined,
     assignedAgentName: overrides.assignedAgentName ?? CUSTOMER_AGENTS[index % CUSTOMER_AGENTS.length],
@@ -135,6 +149,17 @@ function buildCustomer(index: number, overrides: Partial<CustomerListItem> = {})
     ...base,
     notes: base.hasNotes ? 'Prefers evening call. COD regular buyer.' : undefined,
     activities: [
+      ...(base.hasNotes
+        ? [
+            {
+              id: `${base.id}-note`,
+              label: 'Note updated',
+              description: 'Prefers evening call. COD regular buyer.',
+              timestamp: base.createdAt,
+              actorName: base.assignedAgentName,
+            },
+          ]
+        : []),
       {
         id: `${base.id}-a1`,
         label: 'Customer joined',
@@ -187,22 +212,93 @@ export function getMockCustomerById(id: string): CustomerDetail | undefined {
 
 function matchesSegment(customer: CustomerDetail, segmentId?: string): boolean {
   if (!segmentId || segmentId === 'all') return true;
-  const segment = CUSTOMER_SEGMENTS.find((s) => s.id === segmentId);
+  const segment = MOCK_SEGMENTS.find((s) => s.id === segmentId);
   if (!segment) return true;
+  return segment.match(customer);
+}
 
-  if (segment.status && customer.status !== segment.status) return false;
-  if (segment.tag && !customer.tags.includes(segment.tag)) return false;
-  if (segment.minOrders !== undefined && customer.orderCount < segment.minOrders) return false;
-  if (segment.maxOrders !== undefined && customer.orderCount > segment.maxOrders) return false;
-  if (segment.id === 'no_status' && customer.status !== 'none') return false;
-  if (segment.id === 'has_followup' && !customer.hasFollowUp) return false;
+function compareOp(n: number, op: string | undefined, v: number): boolean {
+  const o = op ?? 'gte';
+  if (o === 'eq') return n === v;
+  if (o === 'gte') return n >= v;
+  if (o === 'lte') return n <= v;
+  if (o === 'gt') return n > v;
+  if (o === 'lt') return n < v;
   return true;
+}
+
+function dayStart(iso?: string): number | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
 
 function matchesQuery(customer: CustomerDetail, query: CustomerListQuery): boolean {
   if (!matchesSegment(customer, query.segment)) return false;
   if (query.status && customer.status !== query.status) return false;
-  if (query.district && customer.district !== query.district) return false;
+  if (query.district && !(customer.district ?? '').toLowerCase().includes(query.district.toLowerCase())) {
+    return false;
+  }
+  if (
+    query.employee &&
+    !(customer.assignedAgentName ?? '').toLowerCase().includes(query.employee.toLowerCase())
+  ) {
+    return false;
+  }
+  if (query.customerTag && !customer.tags.some((t) => t === query.customerTag)) {
+    return false;
+  }
+  if (query.orderCount !== undefined) {
+    if (!compareOp(customer.orderCount, query.orderCountOp, query.orderCount)) return false;
+  }
+  if (query.deliveredCount !== undefined) {
+    if (!compareOp(customer.deliveredCount, query.deliveredCountOp, query.deliveredCount)) {
+      return false;
+    }
+  }
+  if (query.courierScoreMin !== undefined && customer.courierScore.rate < query.courierScoreMin) {
+    return false;
+  }
+  if (query.amountMin !== undefined && customer.totalSpent < query.amountMin) return false;
+  if (query.amountMax !== undefined && customer.totalSpent > query.amountMax) return false;
+
+  const createdFrom = dayStart(query.createdFrom);
+  const createdTo = dayStart(query.createdTo);
+  const createdAt = new Date(customer.createdAt).getTime();
+  if (createdFrom !== null && createdAt < createdFrom) return false;
+  if (createdTo !== null && createdAt > createdTo) return false;
+
+  const lastFrom = dayStart(query.lastOrderFrom);
+  const lastTo = dayStart(query.lastOrderTo);
+  const lastAt = customer.lastOrderAt ? new Date(customer.lastOrderAt).getTime() : null;
+  if (lastFrom !== null || lastTo !== null) {
+    if (lastAt === null) return false;
+    if (lastFrom !== null && lastAt < lastFrom) return false;
+    if (lastTo !== null && lastAt > lastTo) return false;
+  }
+
+  if (query.followupStatus === 'pending' && !customer.hasFollowUp) return false;
+  if (query.followupStatus === 'none' && customer.hasFollowUp) return false;
+  if (query.followupStatus === 'overdue') {
+    if (!customer.hasFollowUp || !customer.followUpDue) return false;
+    if (new Date(customer.followUpDue).getTime() >= Date.now()) return false;
+  }
+
+  const fuFrom = dayStart(query.followupFrom);
+  const fuTo = dayStart(query.followupTo);
+  if (fuFrom !== null || fuTo !== null) {
+    if (!customer.followUpDue) return false;
+    const due = new Date(customer.followUpDue).getTime();
+    if (fuFrom !== null && due < fuFrom) return false;
+    if (fuTo !== null && due > fuTo) return false;
+  }
+
+  if (query.product) {
+    const hasProduct = customer.recentProducts.some((p) =>
+      p.productName.toLowerCase().includes(query.product!.toLowerCase()),
+    );
+    if (query.productExclude ? hasProduct : !hasProduct) return false;
+  }
 
   const search = query.search?.trim().toLowerCase() ?? '';
   if (!search) return true;
@@ -220,7 +316,7 @@ function matchesQuery(customer: CustomerDetail, query: CustomerListQuery): boole
 
 export function getCustomerSegmentCounts(): CustomerSegmentCount[] {
   const store = getStore();
-  return CUSTOMER_SEGMENTS.map((segment) => ({
+  return MOCK_SEGMENTS.map((segment) => ({
     id: segment.id,
     label: segment.label,
     count: store.filter((c) => matchesSegment(c, segment.id)).length,
@@ -239,6 +335,7 @@ export function filterMockCustomers(query: CustomerListQuery): CustomerListRespo
 
   const start = (query.page - 1) * query.pageSize;
   const pageItems = allMatching.slice(start, start + query.pageSize);
+  const store = getStore();
 
   return {
     items: pageItems.map(({ notes: _n, activities: _a, ...listItem }) => listItem),
@@ -252,6 +349,18 @@ export function filterMockCustomers(query: CustomerListQuery): CustomerListRespo
       withFollowUpCount,
     },
     segments: getCustomerSegmentCounts(),
+    statuses: [
+      {
+        id: 'none',
+        label: 'No status',
+        count: store.filter((c) => c.status === 'none').length,
+      },
+      {
+        id: 'premium',
+        label: 'Premium',
+        count: store.filter((c) => c.status === 'premium').length,
+      },
+    ],
   };
 }
 
@@ -363,6 +472,7 @@ export function upsertMockCustomerFromImport(input: {
       tags: [...new Set([...existing.tags, ...tags])],
       notes: input.notes ?? existing.notes,
       hasNotes: Boolean(input.notes ?? existing.notes),
+      lastNotePreview: (input.notes ?? existing.notes)?.trim() || undefined,
     };
     const index = mockCustomerStore.findIndex((c) => c.id === existing.id);
     if (index >= 0) mockCustomerStore[index] = updated;
@@ -433,6 +543,10 @@ export function mergeCustomers(primaryId: string, duplicateIds: string[]): Custo
       .filter(Boolean)
       .join('\n'),
     hasNotes: true,
+    lastNotePreview: [primary.notes, ...duplicates.map((d) => d.notes).filter(Boolean)]
+      .filter(Boolean)
+      .join('\n')
+      .trim() || undefined,
     activities: [
       {
         id: `${primary.id}-merge-${Date.now()}`,
@@ -463,10 +577,29 @@ export function updateMockCustomer(
   const index = mockCustomerStore.findIndex((c) => c.id === customerId || c.customerNumber === customerId);
   if (index < 0) return null;
 
+  const notes =
+    patch.notes !== undefined ? patch.notes : mockCustomerStore[index].notes;
+  const prev = mockCustomerStore[index];
+  const noteChanged =
+    patch.notes !== undefined && patch.notes !== (prev.notes ?? '');
+  const activities = noteChanged
+    ? [
+        {
+          id: `${prev.id}-note-${Date.now()}`,
+          label: 'Note updated',
+          description: notes?.trim() || undefined,
+          timestamp: new Date().toISOString(),
+        },
+        ...prev.activities,
+      ]
+    : prev.activities;
   const updated: CustomerDetail = {
-    ...mockCustomerStore[index],
+    ...prev,
     ...patch,
-    hasNotes: patch.notes !== undefined ? Boolean(patch.notes?.trim()) : mockCustomerStore[index].hasNotes,
+    notes,
+    hasNotes: Boolean(notes?.trim()),
+    lastNotePreview: notes?.trim() || undefined,
+    activities,
   };
   mockCustomerStore[index] = updated;
   return updated;

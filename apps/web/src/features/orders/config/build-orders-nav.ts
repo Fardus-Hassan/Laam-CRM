@@ -1,36 +1,91 @@
-import type { Permission } from '@laam/types';
+import type { OrderQueuePage, OrderStatusConfig, Permission } from '@laam/types';
 
 import type { NavChildDefinition } from '@/features/navigation/types/universal-nav';
-import { mockFailedOrderStore } from '@/features/orders/data/mock-failed-orders';
-import { getFollowUpDueCount } from '@/features/orders/data/mock-orders';
-import { getStatusCount } from '@/features/orders/data/mock-status-counts';
 import {
-  getSidebarStatuses,
-  MOCK_ORDER_QUEUE_PAGES,
-} from '@/features/orders/data/mock-status-config';
+  getFailedOrdersBadgeCount,
+  getFollowupsDueBadgeCount,
+  getStatusCount,
+} from '@/features/orders/data/order-status-counts-store';
+import { getOrderQueuePages, getOrderStatuses } from '@/features/orders/data/order-status-store';
+import {
+  getSidebarChildStatuses,
+  getStatusQueueFolderSlugs,
+} from '@/features/orders/lib/order-status-hierarchy';
+import { statusShowsInSidebar } from '@/features/orders/lib/order-status-visibility';
 
 export type OrdersNavChild = NavChildDefinition & {
   badge?: number;
 };
 
-const TOOL_SLUGS = new Set(['failed', 'bulk_print', 'send_courier_barcode', 'payments']);
-const QUEUE_SLUGS = new Set(['create_new', 'all', 'pendings', 'followups']);
+const TOOL_KINDS = new Set(['failed', 'tool', 'payments']);
 
-function pageToNavItem(page: (typeof MOCK_ORDER_QUEUE_PAGES)[number]): OrdersNavChild {
+function statusNavUrl(status: OrderStatusConfig): string {
+  const folders = getStatusQueueFolderSlugs();
+  if (status.parentSlug && folders.has(status.parentSlug)) {
+    return `/dashboard/orders/queues/${status.parentSlug}?status=${status.slug}`;
+  }
+  return `/dashboard/orders?status=${status.slug}`;
+}
+
+function sumStatusBadges(slugs: string[]): number | undefined {
+  const total = slugs.reduce((sum, slug) => sum + getStatusCount(slug), 0);
+  return total > 0 ? total : undefined;
+}
+
+function statusToNavItem(
+  status: OrderStatusConfig,
+  sidebarStatuses: OrderStatusConfig[],
+  visited: Set<string>,
+): OrdersNavChild {
+  if (visited.has(status.slug)) {
+    return {
+      id: `orders-status-${status.slug}`,
+      title: status.label,
+      url: statusNavUrl(status),
+      permissions: ['orders.view'] as Permission[],
+    };
+  }
+  visited.add(status.slug);
+
+  const nested = sidebarStatuses
+    .filter((child) => child.parentSlug === status.slug)
+    .map((child) => statusToNavItem(child, sidebarStatuses, visited));
+
+  const count = getStatusCount(status.slug);
+  const childBadge = sumStatusBadges(nested.map((item) => item.id.replace('orders-status-', '')));
+  const badge = count > 0 ? count : childBadge;
+
+  return {
+    id: `orders-status-${status.slug}`,
+    title: status.label,
+    url: statusNavUrl(status),
+    permissions: ['orders.view'] as Permission[],
+    badge,
+    children: nested.length > 0 ? nested : undefined,
+  };
+}
+
+function pageToNavItem(
+  page: OrderQueuePage,
+  sidebarStatuses: OrderStatusConfig[],
+  folders: Set<string>,
+): OrdersNavChild {
   let badge: number | undefined;
 
   if (page.slug === 'failed') {
-    badge = mockFailedOrderStore.length;
-  } else if (page.slug === 'pendings') {
-    badge =
-      getStatusCount('pending') +
-      getStatusCount('pending_2') +
-      getStatusCount('pending_3');
-  } else if (page.slug === 'followups') {
-    badge = getFollowUpDueCount();
-  } else if (page.childStatusSlugs?.length) {
-    badge = page.childStatusSlugs.reduce((sum, slug) => sum + getStatusCount(slug), 0);
+    const count = getFailedOrdersBadgeCount();
+    badge = count > 0 ? count : undefined;
+  } else if (page.followUpDue || page.slug === 'followups') {
+    const count = getFollowupsDueBadgeCount();
+    badge = count > 0 ? count : undefined;
+  } else if (folders.has(page.slug)) {
+    const childSlugs = getSidebarChildStatuses(page.slug).map((status) => status.slug);
+    badge = sumStatusBadges(childSlugs);
   }
+
+  const nestedStatuses = getSidebarChildStatuses(page.slug).map((status) =>
+    statusToNavItem(status, sidebarStatuses, new Set()),
+  );
 
   return {
     id: `orders-${page.slug}`,
@@ -41,36 +96,55 @@ function pageToNavItem(page: (typeof MOCK_ORDER_QUEUE_PAGES)[number]): OrdersNav
         ? (['orders.create'] as Permission[])
         : (['orders.view'] as Permission[]),
     badge,
+    children: nestedStatuses.length > 0 ? nestedStatuses : undefined,
   };
 }
 
+function isTopLevelSidebarStatus(
+  status: OrderStatusConfig,
+  sidebarSlugs: Set<string>,
+  folders: Set<string>,
+): boolean {
+  if (!status.parentSlug) return true;
+  if (folders.has(status.parentSlug)) return false;
+  if (sidebarSlugs.has(status.parentSlug)) return false;
+  return true;
+}
+
 export function buildOrdersNav(): OrdersNavChild[] {
-  const navPages = MOCK_ORDER_QUEUE_PAGES.filter(
+  const folders = getStatusQueueFolderSlugs();
+  const navPages = getOrderQueuePages().filter(
     (page) => page.showInNav && page.slug !== 'more_statuses',
   );
 
-  const queuePages = navPages.filter((p) => QUEUE_SLUGS.has(p.slug));
-  const toolPages = navPages.filter((p) => TOOL_SLUGS.has(p.slug));
+  const sidebarStatuses = getOrderStatuses()
+    .filter((status) => statusShowsInSidebar(status))
+    .sort((a, b) => (a.sidebarOrder ?? 99) - (b.sidebarOrder ?? 99));
 
-  const items: OrdersNavChild[] = [
-    ...queuePages.sort((a, b) => a.sidebarOrder - b.sidebarOrder).map(pageToNavItem),
-    ...getSidebarStatuses()
-      .filter((status) => status.parentSlug !== 'pendings')
-      .map((status) => ({
-        id: `orders-status-${status.slug}`,
-        title: status.label,
-        url: `/dashboard/orders?status=${status.slug}`,
-        permissions: ['orders.view'] as Permission[],
-        badge: getStatusCount(status.slug),
-      })),
-    ...toolPages.sort((a, b) => a.sidebarOrder - b.sidebarOrder).map(pageToNavItem),
-    {
-      id: 'orders-more-statuses',
-      title: 'More Statuses',
-      url: '/dashboard/orders/statuses',
-      permissions: ['orders.view'] as Permission[],
-    },
-  ];
+  const sidebarSlugs = new Set(sidebarStatuses.map((status) => status.slug));
 
-  return items;
+  const queuePages = navPages
+    .filter((page) => page.kind === 'form' || page.kind === 'list')
+    .filter((page) => !TOOL_KINDS.has(page.kind) || page.slug === 'all' || page.slug === 'create_new' || folders.has(page.slug) || page.slug === 'pendings' || page.slug === 'followups')
+    .sort((a, b) => a.sidebarOrder - b.sidebarOrder)
+    .map((page) => pageToNavItem(page, sidebarStatuses, folders));
+
+  // Deduplicate by slug — prefer earlier (form/list queue) entries
+  const seen = new Set<string>();
+  const uniqueQueues = queuePages.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+
+  const topLevelStatuses = sidebarStatuses
+    .filter((status) => isTopLevelSidebarStatus(status, sidebarSlugs, folders))
+    .map((status) => statusToNavItem(status, sidebarStatuses, new Set()));
+
+  const toolPages = navPages
+    .filter((page) => TOOL_KINDS.has(page.kind))
+    .sort((a, b) => a.sidebarOrder - b.sidebarOrder)
+    .map((page) => pageToNavItem(page, sidebarStatuses, folders));
+
+  return [...uniqueQueues, ...topLevelStatuses, ...toolPages];
 }

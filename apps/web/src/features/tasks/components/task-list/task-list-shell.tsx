@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { TaskDetail, TaskListItem, TaskPriority, TaskStatus } from '@laam/types';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { EmptyState } from '@/components/layout/empty-state';
+import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,8 +25,9 @@ import { TaskWorkspaceHeader } from '@/features/tasks/components/task-list/task-
 import { useTaskMutations } from '@/features/tasks/hooks/use-task-mutations';
 import { useTasksList } from '@/features/tasks/hooks/use-tasks-list';
 import { cn } from '@/lib/utils';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
 
 export function TaskListShell() {
   const router = useRouter();
@@ -146,6 +148,35 @@ export function TaskListShell() {
             setSearch(value);
             setPage(1);
           }}
+        />
+
+        <ActiveFilterChips
+          chips={[
+            ...(filter !== 'all'
+              ? [
+                  {
+                    id: 'filter',
+                    label:
+                      data?.filters?.find((f) => f.id === filter)?.label ?? filter,
+                  },
+                ]
+              : []),
+            ...(debouncedSearch.trim()
+              ? [{ id: 'search', label: `Search: ${debouncedSearch.trim()}` }]
+              : []),
+          ]}
+          onRemove={(id) => {
+            if (id === 'search') {
+              setSearch('');
+              setPage(1);
+              return;
+            }
+            if (id === 'filter') {
+              setPage(1);
+              router.replace('/dashboard/tasks');
+            }
+          }}
+          onClearAll={handleClearFilters}
         />
 
         <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>

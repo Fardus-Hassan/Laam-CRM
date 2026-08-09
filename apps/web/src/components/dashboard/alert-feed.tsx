@@ -17,10 +17,11 @@ const ALERT_ICONS: Record<AlertItem['type'], LucideIcon> = {
 };
 
 const ALERT_STYLES: Record<AlertItem['type'], string> = {
-  warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  warning:
+    'bg-[color-mix(in_oklab,var(--brand-accent,#FFD700)_18%,transparent)] text-foreground',
   error: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
-  info: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
-  success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+  info: 'bg-[color-mix(in_oklab,var(--brand-chart-blue,#3B82F6)_15%,transparent)] text-foreground',
+  success: 'bg-primary/10 text-primary',
 };
 
 type AlertFeedProps = {

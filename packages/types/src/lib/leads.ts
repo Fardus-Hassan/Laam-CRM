@@ -151,3 +151,30 @@ export const leadPipelineStatsSchema = z.object({
 });
 
 export type LeadPipelineStats = z.infer<typeof leadPipelineStatsSchema>;
+
+export const leadConvertPrefillSchema = z.object({
+  leadId: z.string(),
+  leadNumber: z.string(),
+  customerName: z.string(),
+  customerPhone: z.string(),
+  customerEmail: z.string().email().optional(),
+  shippingAddress: z.string().optional(),
+  shippingArea: z.string().optional(),
+  source: orderSourceSchema,
+  orderSource: orderSourceSchema,
+  lineItems: z
+    .array(
+      z.object({
+        productName: z.string(),
+        quantity: z.number(),
+        unitPrice: z.number(),
+        sku: z.string().optional(),
+        productId: z.string().optional(),
+        variantId: z.string().optional(),
+        variationLabel: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+export type LeadConvertPrefill = z.infer<typeof leadConvertPrefillSchema>;

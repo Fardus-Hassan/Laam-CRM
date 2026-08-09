@@ -1,16 +1,32 @@
 export const authEndpoints = {
   session: '/auth/session',
   login: '/auth/login',
+  loginVerifyDevice: '/auth/login/verify-device',
   logout: '/auth/logout',
+  forgotPassword: '/auth/forgot-password',
+  forgotPasswordResend: '/auth/forgot-password/resend',
+  forgotPasswordVerifyCode: '/auth/forgot-password/verify-code',
+  forgotPasswordReset: '/auth/forgot-password/reset',
+  forgotPasswordVerify: '/auth/forgot-password/verify',
+  otpResend: '/auth/otp/resend',
+  changePassword: '/auth/change-password',
+  changePasswordConfirm: '/auth/change-password/confirm',
+  otpInbox: '/auth/otp-inbox',
+  otpCopy: '/auth/otp-copy',
 } as const;
 
 export const crmEndpoints = {
   dashboard: '/crm/dashboard',
   dashboardStats: '/crm/dashboard/stats',
   contacts: '/crm/contacts',
+  customers: '/crm/customers',
   companies: '/crm/companies',
   leads: '/crm/leads',
   orders: '/crm/orders',
   deals: '/crm/deals',
   pipeline: '/crm/pipeline',
+  users: '/crm/users',
+  roles: '/crm/roles',
+  permissionPresets: '/crm/permission-presets',
+  teams: '/crm/teams',
 } as const;

@@ -16,13 +16,14 @@ export function OrderQueueTabs({ childStatusSlugs, parentHref }: OrderQueueTabsP
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeStatus = searchParams.get('status') ?? childStatusSlugs[0];
+  const pathMatches = pathname === parentHref;
 
   return (
     <div className="flex flex-wrap gap-1 border-b border-border/70 pb-2">
       {childStatusSlugs.map((slug) => {
         const config = getStatusConfigBySlug(slug);
         const href = `${parentHref}?status=${slug}`;
-        const isActive = pathname.includes(parentHref) && activeStatus === slug;
+        const isActive = pathMatches && activeStatus === slug;
 
         return (
           <Link

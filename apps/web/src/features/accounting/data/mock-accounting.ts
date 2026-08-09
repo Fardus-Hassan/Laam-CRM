@@ -35,7 +35,7 @@ const INCOME_DESCS: Record<IncomeCategory, string[]> = {
 };
 
 const EXPENSE_DESCS: Record<ExpenseCategory, string[]> = {
-  courier: ['Pathao delivery charge', 'Steadfast parcel fee', 'Return courier cost'],
+  courier: ['Pathao delivery charge', 'Carrybee parcel fee', 'Return courier cost'],
   packaging: ['Gift box purchase', 'Honey jar labels', 'Bubble wrap stock'],
   facebook_ads: ['Facebook ad spend — Ramadan', 'Lead gen campaign'],
   purchase_payment: ['Honey supplier payment', 'Dates wholesale purchase'],
@@ -65,7 +65,7 @@ function buildIncome(index: number): IncomeListItem {
     accountName: method === 'bkash' ? 'bKash Business' : method === 'bank' ? 'DBBL Current' : 'Cash Register',
     reference: category === 'order_sales' ? `ORD-${12000 + index}` : undefined,
     relatedOrderId: category === 'order_sales' ? `ORD-${12000 + index}` : undefined,
-    createdByName: 'Sakib Ahmed',
+    createdByName: 'Sakib Ahmed (sakib@laamcrm.com)',
     createdAt: `${date}T10:00:00.000Z`,
   };
 }
@@ -88,7 +88,7 @@ function buildExpense(index: number): ExpenseListItem {
     accountName: method === 'bkash' ? 'bKash Business' : method === 'bank' ? 'DBBL Current' : 'Cash Register',
     reference: category === 'purchase_payment' ? `PO-${2400 + index}` : undefined,
     relatedSupplier: category === 'purchase_payment' ? 'Sundarban Honey Co-op' : undefined,
-    createdByName: 'Fatema Akter',
+    createdByName: 'Fatema Akter (fatema@laamcrm.com)',
     createdAt: `${date}T14:00:00.000Z`,
   };
 }
@@ -349,7 +349,14 @@ export function createMockIncome(payload: CreateIncomePayload): IncomeListItem {
     id: `inc-${MOCK_INCOMES.length + 1}`,
     type: 'income',
     ...payload,
-    createdByName: 'Sakib Ahmed',
+    accountName:
+      payload.accountName ??
+      (payload.paymentMethod === 'bkash'
+        ? 'bKash Business'
+        : payload.paymentMethod === 'bank'
+          ? 'DBBL Current'
+          : 'Cash Register'),
+    createdByName: 'Sakib Ahmed (sakib@laamcrm.com)',
     createdAt: new Date().toISOString(),
   };
   MOCK_INCOMES.unshift(item);
@@ -362,7 +369,14 @@ export function createMockExpense(payload: CreateExpensePayload): ExpenseListIte
     id: `exp-${MOCK_EXPENSES.length + 1}`,
     type: 'expense',
     ...payload,
-    createdByName: 'Sakib Ahmed',
+    accountName:
+      payload.accountName ??
+      (payload.paymentMethod === 'bkash'
+        ? 'bKash Business'
+        : payload.paymentMethod === 'bank'
+          ? 'DBBL Current'
+          : 'Cash Register'),
+    createdByName: 'Sakib Ahmed (sakib@laamcrm.com)',
     createdAt: new Date().toISOString(),
   };
   MOCK_EXPENSES.unshift(item);
@@ -383,7 +397,7 @@ export function createMockJournal(payload: CreateJournalPayload): LedgerEntry {
     reference: payload.reference,
     relatedSupplier: payload.relatedSupplier,
     relatedOrderId: payload.relatedOrderId,
-    createdByName: 'Sakib Ahmed',
+    createdByName: 'Sakib Ahmed (sakib@laamcrm.com)',
     createdAt: new Date().toISOString(),
   };
   MOCK_LEDGER.unshift(item);
