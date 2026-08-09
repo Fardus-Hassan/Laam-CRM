@@ -26,6 +26,7 @@ import {
   type AuthUserPayload,
 } from '../common/decorators';
 import { CarrybeeCourierService } from './carrybee-courier.service';
+import { BdCourierService } from './bdcourier.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { PathaoCourierService } from './pathao-courier.service';
 
@@ -107,6 +108,16 @@ class UpsertCarrybeeDto {
   syncIntervalSec?: number;
 }
 
+class UpsertBdCourierDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  apiKey?: string;
+}
+
 class UpsertStatusMapDto {
   @IsOptional()
   @IsString()
@@ -147,6 +158,7 @@ export class CourierIntegrationsController {
     private readonly integrations: CourierIntegrationsService,
     private readonly pathao: PathaoCourierService,
     private readonly carrybee: CarrybeeCourierService,
+    private readonly bdcourier: BdCourierService,
   ) {}
 
   @Get('pathao')
@@ -271,5 +283,40 @@ export class CourierIntegrationsController {
       provider: 'carrybee',
       id,
     });
+  }
+
+  @Get('bdcourier')
+  @RequirePermissions('settings.view', 'settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Get BD Courier (phone history) settings for current org' })
+  getBdCourier(@CurrentUser() user: AuthUserPayload) {
+    return this.integrations.getBdCourierPublic(user.organizationId!);
+  }
+
+  @Put('bdcourier')
+  @RequirePermissions('settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Create/update BD Courier API key (org settings)' })
+  upsertBdCourier(@CurrentUser() user: AuthUserPayload, @Body() body: UpsertBdCourierDto) {
+    return this.integrations.upsertBdCourier(user.organizationId!, body);
+  }
+
+  @Delete('bdcourier')
+  @RequirePermissions('settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Disable BD Courier and clear API key' })
+  disconnectBdCourier(@CurrentUser() user: AuthUserPayload) {
+    return this.integrations.disconnectBdCourier(user.organizationId!);
+  }
+
+  @Post('bdcourier/test')
+  @RequirePermissions('settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Test BD Courier connection with saved API key' })
+  testBdCourier(@CurrentUser() user: AuthUserPayload) {
+    return this.bdcourier.testConnection(user.organizationId!);
+  }
+
+  @Get('bdcourier/plan')
+  @RequirePermissions('settings.view', 'settings.manage', 'courier.manage')
+  @ApiOperation({ summary: 'Fetch BD Courier subscription / API plan for current org' })
+  getBdCourierPlan(@CurrentUser() user: AuthUserPayload) {
+    return this.bdcourier.getMyPlan(user.organizationId!);
   }
 }

@@ -42,6 +42,7 @@ import { PathaoSyncService } from './pathao-sync.service';
 import { CarrybeeCourierController } from './carrybee-courier.controller';
 import { CarrybeeCourierService } from './carrybee-courier.service';
 import { CarrybeeSyncService } from './carrybee-sync.service';
+import { BdCourierService } from './bdcourier.service';
 import { CourierHubController } from './courier-hub.controller';
 import { CourierHubService } from './courier-hub.service';
 import { CourierIntegrationsController } from './courier-integrations.controller';
@@ -145,6 +146,7 @@ import { IncentiveService } from './incentive.service';
     CarrybeeCourierService,
     CarrybeeSyncService,
     CourierIntegrationsService,
+    BdCourierService,
     CourierHubService,
     CourierPhoneHistoryService,
     SmsService,

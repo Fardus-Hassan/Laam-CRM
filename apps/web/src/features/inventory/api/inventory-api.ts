@@ -17,6 +17,7 @@ import type {
   MixerRecipeListItem,
   MixerRecipeListResponse,
   PostReconciliationAdjustResponse,
+  ProductActivityListResponse,
   ProductListQuery,
   ProductListResponse,
   ProductStatus,
@@ -108,6 +109,10 @@ export type InventoryApi = {
     productId: string,
     query: { page: number; pageSize: number },
   ) => Promise<StockMovementListResponse>;
+  listProductActivities: (
+    productId: string,
+    query: { page: number; pageSize: number },
+  ) => Promise<ProductActivityListResponse>;
   uploadProductImage: (productId: string, file: File) => Promise<InventoryProductDetail>;
   restoreProduct: (id: string) => Promise<InventoryProductDetail>;
   bulkProductAction: (payload: {
@@ -158,13 +163,20 @@ export type InventoryApi = {
     pageSize?: number;
   }) => Promise<StockAdjustmentListResponse>;
   createAdjustment: (payload: CreateAdjustmentPayload) => Promise<void>;
-  listMixerRecipes: () => Promise<MixerRecipeListResponse>;
+  listMixerRecipes: (opts?: {
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => Promise<MixerRecipeListResponse>;
   createMixerRecipe: (payload: CreateMixerRecipePayload) => Promise<MixerRecipeListItem>;
   updateMixerRecipe: (id: string, payload: UpdateMixerRecipePayload) => Promise<MixerRecipeListItem>;
   deleteMixerRecipe: (id: string) => Promise<void>;
   previewProduction: (payload: RunProductionBatchPayload) => Promise<ReturnType<typeof previewProductionBatch>>;
   runProduction: (payload: RunProductionBatchPayload) => Promise<ProductionBatchResult>;
-  listProductionRuns: () => Promise<ProductionBatchListResponse>;
+  listProductionRuns: (opts?: {
+    page?: number;
+    pageSize?: number;
+  }) => Promise<ProductionBatchListResponse>;
   getReports: (query?: InventoryReportsQuery) => Promise<InventoryReportsResponse>;
   listOrgStockMovements: (query?: StockMovementListQuery) => Promise<StockMovementListResponse>;
   listWarehouses: () => Promise<WarehouseListResponse>;
@@ -244,6 +256,19 @@ export function createMockInventoryApi(): InventoryApi {
         actorName: item.adjustedBy,
         createdAt: item.adjustedAt,
       }));
+      const start = (query.page - 1) * query.pageSize;
+      return {
+        items: all.slice(start, start + query.pageSize),
+        total: all.length,
+        page: query.page,
+        pageSize: query.pageSize,
+      };
+    },
+    async listProductActivities(productId, query) {
+      await delay(40);
+      const product = getMockProductById(productId);
+      if (!product) throw new Error('Product not found');
+      const all = product.activities ?? [];
       const start = (query.page - 1) * query.pageSize;
       return {
         items: all.slice(start, start + query.pageSize),
@@ -383,9 +408,26 @@ export function createMockInventoryApi(): InventoryApi {
       await delay(100);
       createMockAdjustment(payload);
     },
-    async listMixerRecipes() {
+    async listMixerRecipes(opts) {
       await delay(80);
-      return { items: MOCK_MIXER_RECIPES, total: MOCK_MIXER_RECIPES.length };
+      const page = opts?.page ?? 1;
+      const pageSize = opts?.pageSize ?? 25;
+      const q = opts?.search?.trim().toLowerCase();
+      const filtered = q
+        ? MOCK_MIXER_RECIPES.filter(
+            (r) =>
+              r.name.toLowerCase().includes(q) ||
+              r.outputProductName.toLowerCase().includes(q) ||
+              r.outputSku.toLowerCase().includes(q),
+          )
+        : MOCK_MIXER_RECIPES;
+      const start = (page - 1) * pageSize;
+      return {
+        items: filtered.slice(start, start + pageSize),
+        total: filtered.length,
+        page,
+        pageSize,
+      };
     },
     async createMixerRecipe(payload) {
       await delay(100);
@@ -407,9 +449,17 @@ export function createMockInventoryApi(): InventoryApi {
       await delay(150);
       return runProductionBatch(payload);
     },
-    async listProductionRuns() {
+    async listProductionRuns(opts) {
       await delay(60);
-      return { items: MOCK_PRODUCTION_RUNS, total: MOCK_PRODUCTION_RUNS.length };
+      const page = opts?.page ?? 1;
+      const pageSize = opts?.pageSize ?? 25;
+      const start = (page - 1) * pageSize;
+      return {
+        items: MOCK_PRODUCTION_RUNS.slice(start, start + pageSize),
+        total: MOCK_PRODUCTION_RUNS.length,
+        page,
+        pageSize,
+      };
     },
     async getReports(query) {
       await delay(80);
@@ -559,6 +609,16 @@ export function createHttpInventoryApi(): InventoryApi {
       });
       return apiRequest<StockMovementListResponse>(
         `/crm/inventory/products/${productId}/stock-movements?${params.toString()}`,
+      );
+    },
+    async listProductActivities(productId, query) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const params = new URLSearchParams({
+        page: String(query.page),
+        pageSize: String(query.pageSize),
+      });
+      return apiRequest<ProductActivityListResponse>(
+        `/crm/inventory/products/${productId}/activities?${params.toString()}`,
       );
     },
     async uploadProductImage(productId, file) {
@@ -713,9 +773,13 @@ export function createHttpInventoryApi(): InventoryApi {
         body: JSON.stringify(payload),
       });
     },
-    async listMixerRecipes() {
+    async listMixerRecipes(opts) {
       const { apiRequest } = await import('@/lib/api/client');
-      return apiRequest<MixerRecipeListResponse>('/crm/inventory/mixer');
+      const params = new URLSearchParams();
+      if (opts?.search) params.set('search', opts.search);
+      params.set('page', String(opts?.page ?? 1));
+      params.set('pageSize', String(opts?.pageSize ?? 25));
+      return apiRequest<MixerRecipeListResponse>(`/crm/inventory/mixer?${params.toString()}`);
     },
     async createMixerRecipe(payload) {
       const { apiRequest } = await import('@/lib/api/client');
@@ -749,9 +813,14 @@ export function createHttpInventoryApi(): InventoryApi {
         body: JSON.stringify(payload),
       });
     },
-    async listProductionRuns() {
+    async listProductionRuns(opts) {
       const { apiRequest } = await import('@/lib/api/client');
-      return apiRequest<ProductionBatchListResponse>('/crm/inventory/mixer/runs');
+      const params = new URLSearchParams();
+      params.set('page', String(opts?.page ?? 1));
+      params.set('pageSize', String(opts?.pageSize ?? 25));
+      return apiRequest<ProductionBatchListResponse>(
+        `/crm/inventory/mixer/runs?${params.toString()}`,
+      );
     },
     async getReports(query) {
       const { apiRequest } = await import('@/lib/api/client');

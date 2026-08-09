@@ -45,10 +45,12 @@ function groupByDate(runs: ProductionBatchResult[]) {
 
 type ProductionLedgerProps = {
   runs: ProductionBatchResult[];
+  /** Full matching total when the ledger is paginated. */
+  total?: number;
   className?: string;
 };
 
-export function ProductionLedger({ runs, className }: ProductionLedgerProps) {
+export function ProductionLedger({ runs, total, className }: ProductionLedgerProps) {
   const [openId, setOpenId] = React.useState<string | null>(runs[0]?.id ?? null);
   const groups = React.useMemo(() => groupByDate(runs), [runs]);
 
@@ -71,6 +73,10 @@ export function ProductionLedger({ runs, className }: ProductionLedgerProps) {
 
   const totalCost = runs.reduce((s, r) => s + r.materialCost, 0);
   const totalUnits = runs.reduce((s, r) => s + r.unitsProduced, 0);
+  const batchLabel =
+    typeof total === 'number' && total > runs.length
+      ? `${runs.length}/${total}`
+      : String(runs.length);
 
   return (
     <div className={cn('space-y-4', className)}>
@@ -83,7 +89,7 @@ export function ProductionLedger({ runs, className }: ProductionLedgerProps) {
         </div>
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
           <span>
-            Batches: <strong className="text-foreground">{runs.length}</strong>
+            Batches: <strong className="text-foreground">{batchLabel}</strong>
           </span>
           <span>
             Units: <strong className="text-foreground">{totalUnits}</strong>

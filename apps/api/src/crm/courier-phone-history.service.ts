@@ -1,18 +1,28 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import type {
+  CourierFraudReport,
   CourierPhoneHistory,
   CourierProviderHistory,
+  CourierRiskVerdict,
   OrderCourierStats,
 } from '@laam/types';
 
+import { BdCourierService } from './bdcourier.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { PathaoCourierService } from './pathao-courier.service';
 import { normalizeBdPhone } from './phone.util';
 
-const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h success
-const ERROR_CACHE_TTL_MS = 15 * 60 * 1000; // 15m when no usable counts
-const WARM_CONCURRENCY = 3;
+const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h fresh window (production default)
+const ERROR_CACHE_TTL_MS = 30 * 60 * 1000; // 30m when no usable counts
+
+type LiveHistory = {
+  aggregate: OrderCourierStats;
+  providers: CourierProviderHistory[];
+  riskVerdict?: CourierRiskVerdict;
+  reports?: CourierFraudReport[];
+  fetchedAt: string;
+};
 
 function emptyStats(): OrderCourierStats {
   return { to: 0, co: 0, su: 0, fa: 0, label: 'New', percent: 0 };
@@ -64,12 +74,12 @@ function aggregateProviders(providers: CourierProviderHistory[]): OrderCourierSt
 @Injectable()
 export class CourierPhoneHistoryService {
   private readonly logger = new Logger(CourierPhoneHistoryService.name);
-  private readonly warming = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly integrations: CourierIntegrationsService,
     private readonly pathao: PathaoCourierService,
+    private readonly bdcourier: BdCourierService,
   ) {}
 
   async check(
@@ -82,13 +92,12 @@ export class CourierPhoneHistoryService {
       throw new BadRequestException('Valid Bangladesh mobile number required');
     }
 
+    // Fresh cache → reuse. Missing/expired → live fetch (detail/create/ensureFresh).
+    // List pages never call this — they use loadCachedStatsByPhones only.
     if (!options?.refresh) {
       const cached = await this.readCache(organizationId, phoneNormalized);
       if (cached && cached.expiresAt.getTime() > Date.now()) {
         return this.toResponse(phoneRaw, phoneNormalized, cached, 'cache', false);
-      }
-      if (cached) {
-        // Return stale while refreshing in background would be nicer; for now refresh sync.
       }
     }
 
@@ -99,9 +108,31 @@ export class CourierPhoneHistoryService {
       phoneNormalized,
       aggregate: live.aggregate,
       providers: live.providers,
+      riskVerdict: live.riskVerdict,
+      reports: live.reports,
       fetchedAt: live.fetchedAt,
       source: 'live',
     };
+  }
+
+  /**
+   * Ensure org cache exists and is within TTL. No-op when fresh.
+   * Safe to fire-and-forget after order create (manual + website ingest).
+   */
+  ensureFresh(organizationId: string, phoneRaw: string): void {
+    void (async () => {
+      try {
+        const phoneNormalized = normalizeBdPhone(phoneRaw);
+        if (!phoneNormalized || phoneNormalized.length < 10) return;
+        const cached = await this.readCache(organizationId, phoneNormalized);
+        if (cached && cached.expiresAt.getTime() > Date.now()) return;
+        await this.check(organizationId, phoneRaw, { refresh: true });
+      } catch (err) {
+        this.logger.warn(
+          `ensureFresh courier history failed: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    })();
   }
 
   /** Cache-only map for list enrichment (no upstream calls). */
@@ -136,7 +167,6 @@ export class CourierPhoneHistoryService {
         }
       }
     } catch (err) {
-      // Migration not applied yet — never break orders/customers list.
       this.logger.warn(
         `CourierPhoneHistory cache unavailable: ${err instanceof Error ? err.message : err}`,
       );
@@ -144,53 +174,29 @@ export class CourierPhoneHistoryService {
     return result;
   }
 
-  /** Fire-and-forget warm for phones missing/expired cache (list pages). */
-  warmMissing(organizationId: string, phones: string[]): void {
-    const unique = [
-      ...new Set(phones.map((p) => normalizeBdPhone(p)).filter((p) => p.length >= 10)),
-    ].slice(0, 8);
-
-    void (async () => {
-      let running = 0;
-      const queue = [...unique];
-      const runNext = async (): Promise<void> => {
-        if (queue.length === 0) return;
-        if (running >= WARM_CONCURRENCY) return;
-        const phone = queue.shift();
-        if (!phone) return;
-        const lock = `${organizationId}:${phone}`;
-        if (this.warming.has(lock)) {
-          await runNext();
-          return;
-        }
-        this.warming.add(lock);
-        running += 1;
-        try {
-          const existing = await this.readCache(organizationId, phone);
-          if (existing && existing.expiresAt.getTime() > Date.now()) return;
-          await this.check(organizationId, phone, { refresh: true });
-        } catch (err) {
-          this.logger.warn(
-            `Warm courier history failed ${phone}: ${err instanceof Error ? err.message : err}`,
-          );
-        } finally {
-          this.warming.delete(lock);
-          running -= 1;
-          await runNext();
-        }
-      };
-      await Promise.all(Array.from({ length: WARM_CONCURRENCY }, () => runNext()));
-    })();
-  }
-
   private async fetchLive(
     organizationId: string,
     phoneNormalized: string,
-  ): Promise<{
-    aggregate: OrderCourierStats;
-    providers: CourierProviderHistory[];
-    fetchedAt: string;
-  }> {
+  ): Promise<LiveHistory> {
+    const bdPublic = await this.integrations.getBdCourierPublic(organizationId);
+    if (bdPublic.enabled && bdPublic.hasCredentials) {
+      try {
+        return await this.bdcourier.checkPhone(organizationId, phoneNormalized);
+      } catch (err) {
+        this.logger.warn(
+          `BD Courier phone history fallback: ${err instanceof Error ? err.message : err}`,
+        );
+        // Fall through to Pathao-only if BD Courier fails.
+      }
+    }
+
+    return this.fetchLivePathaoFallback(organizationId, phoneNormalized);
+  }
+
+  private async fetchLivePathaoFallback(
+    organizationId: string,
+    phoneNormalized: string,
+  ): Promise<LiveHistory> {
     const fetchedAt = new Date().toISOString();
     const providers: CourierProviderHistory[] = [];
 
@@ -237,22 +243,22 @@ export class CourierPhoneHistoryService {
         available: false,
         status: 'soon',
         countsAvailable: false,
-        error: 'Connect Pathao in Settings to enable live lookup',
+        error: 'Connect BD Courier (or Pathao) in Settings for live lookup',
         fetchedAt,
       });
     }
 
-    // MVP catalog — wired later (Steadfast official, etc.)
     providers.push(
       soonProvider('steadfast', 'Steadfast', fetchedAt),
       soonProvider('redx', 'RedX', fetchedAt),
-      soonProvider('carrybee', 'Carrybee', fetchedAt),
+      soonProvider('carrybee', 'CarryBee', fetchedAt),
       soonProvider('paperfly', 'Paperfly', fetchedAt),
     );
 
     return {
       aggregate: aggregateProviders(providers),
       providers,
+      reports: [],
       fetchedAt,
     };
   }
@@ -272,15 +278,7 @@ export class CourierPhoneHistoryService {
     }
   }
 
-  private async writeCache(
-    organizationId: string,
-    phoneNormalized: string,
-    live: {
-      aggregate: OrderCourierStats;
-      providers: CourierProviderHistory[];
-      fetchedAt: string;
-    },
-  ) {
+  private async writeCache(organizationId: string, phoneNormalized: string, live: LiveHistory) {
     const hasCounts = live.providers.some((p) => p.countsAvailable && p.stats && p.stats.to > 0);
     const ttl = hasCounts ? CACHE_TTL_MS : ERROR_CACHE_TTL_MS;
     const expiresAt = new Date(Date.now() + ttl);
@@ -294,13 +292,21 @@ export class CourierPhoneHistoryService {
           organizationId,
           phoneNormalized,
           aggregateJson: live.aggregate,
-          providersJson: live.providers,
+          providersJson: {
+            providers: live.providers,
+            riskVerdict: live.riskVerdict,
+            reports: live.reports ?? [],
+          },
           fetchedAt,
           expiresAt,
         },
         update: {
           aggregateJson: live.aggregate,
-          providersJson: live.providers,
+          providersJson: {
+            providers: live.providers,
+            riskVerdict: live.riskVerdict,
+            reports: live.reports ?? [],
+          },
           fetchedAt,
           expiresAt,
         },
@@ -326,11 +332,25 @@ export class CourierPhoneHistoryService {
     source: 'cache' | 'live',
     stale: boolean,
   ): CourierPhoneHistory {
+    const raw = row.providersJson as
+      | CourierProviderHistory[]
+      | {
+          providers?: CourierProviderHistory[];
+          riskVerdict?: CourierRiskVerdict;
+          reports?: CourierFraudReport[];
+        };
+
+    const providers = Array.isArray(raw) ? raw : (raw?.providers ?? []);
+    const riskVerdict = Array.isArray(raw) ? undefined : raw?.riskVerdict;
+    const reports = Array.isArray(raw) ? undefined : raw?.reports;
+
     return {
       phone: phoneRaw,
       phoneNormalized,
       aggregate: row.aggregateJson as OrderCourierStats,
-      providers: row.providersJson as CourierProviderHistory[],
+      providers,
+      riskVerdict,
+      reports,
       fetchedAt: row.fetchedAt.toISOString(),
       source,
       stale,

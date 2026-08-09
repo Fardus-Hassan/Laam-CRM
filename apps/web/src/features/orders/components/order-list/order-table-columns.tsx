@@ -239,16 +239,16 @@ export function buildOrderTableColumns(options?: {
   },
   {
     id: 'courier',
-    header: 'Courier',
-    size: 168,
-    minSize: 160,
-    maxSize: 180,
+    header: 'Success Rate',
+    size: 180,
+    minSize: 168,
+    maxSize: 210,
     meta: {
-      label: 'Courier',
+      label: 'Success Rate',
       priority: 'primary',
-      headerClassName: 'w-[168px]',
-      cellClassName: 'w-[168px]',
-      align: 'top',
+      headerClassName: 'w-[180px] text-center',
+      cellClassName: 'w-[180px]',
+      align: 'middle',
     },
     cell: ({ row }) => {
       const stats = row.original.courier;
@@ -258,14 +258,14 @@ export function buildOrderTableColumns(options?: {
 
       if (stats) {
         return (
-          <div className="space-y-1">
+          <div className="flex h-full flex-col items-center justify-center gap-1 py-0.5">
             <DataTableCourierStats
               shop={row.original.courierShop}
               network={stats}
               compact
             />
             {provider || status || consignment ? (
-              <div className="truncate text-[10px] leading-snug text-muted-foreground">
+              <div className="max-w-full truncate text-center text-[10px] leading-snug text-muted-foreground">
                 {provider === 'pathao' ? 'Pathao' : provider}
                 {status ? ` · ${status}` : ''}
                 {consignment ? ` · ${consignment}` : ''}

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import type {
+  BdCourierIntegrationSettings,
   CarrybeeIntegrationSettings,
   PathaoIntegrationSettings,
   SmsIntegrationSettings,
@@ -15,6 +16,7 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { bdCourierSettingsApi } from '@/features/settings/api/bdcourier-settings-api';
 import { carrybeeSettingsApi } from '@/features/settings/api/carrybee-settings-api';
 import { pathaoSettingsApi } from '@/features/settings/api/pathao-settings-api';
 import { smsSettingsApi } from '@/features/settings/api/sms-settings-api';
@@ -70,6 +72,7 @@ function StatusBadge({ status }: { status: 'connected' | 'error' | 'disconnected
 export function IntegrationsSettingsPage() {
   const [pathao, setPathao] = React.useState<PathaoIntegrationSettings | null>(null);
   const [carrybee, setCarrybee] = React.useState<CarrybeeIntegrationSettings | null>(null);
+  const [bdcourier, setBdCourier] = React.useState<BdCourierIntegrationSettings | null>(null);
   const [sms, setSms] = React.useState<SmsIntegrationSettings | null>(null);
   const [websitesConnected, setWebsitesConnected] = React.useState(0);
   const [websiteStatus, setWebsiteStatus] = React.useState<
@@ -80,18 +83,20 @@ export function IntegrationsSettingsPage() {
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [p, c, s, websites] = await Promise.all([
+      const [p, c, b, s, websites] = await Promise.all([
         pathaoSettingsApi.get().catch(() => null),
         carrybeeSettingsApi.get().catch(() => null),
+        bdCourierSettingsApi.get().catch(() => null),
         smsSettingsApi.get().catch(() => null),
         websiteSettingsApi.list().catch(() => null),
       ]);
       setPathao(p);
       setCarrybee(c);
+      setBdCourier(b);
       setSms(s);
       setWebsitesConnected(websites?.filter((w) => w.enabled).length ?? 0);
       setWebsiteStatus(websiteHubStatus(websites));
-      if (!p && !c && !s && !websites) toast.error('Failed to load integrations');
+      if (!p && !c && !b && !s && !websites) toast.error('Failed to load integrations');
     } finally {
       setLoading(false);
     }
@@ -103,6 +108,7 @@ export function IntegrationsSettingsPage() {
 
   const pathaoStatus = statusOf(pathao);
   const carrybeeStatus = statusOf(carrybee);
+  const bdCourierStatus = statusOf(bdcourier);
   const smsStatus = statusOf(sms);
 
   return (
@@ -115,6 +121,37 @@ export function IntegrationsSettingsPage() {
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🛡️</span>
+                    <CardTitle className="text-sm">BD Courier (Fraud check)</CardTitle>
+                  </div>
+                  <StatusBadge status={bdCourierStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+                <p className="text-xs text-muted-foreground">
+                  Phone success rate across Pathao, Steadfast, RedX, CarryBee &amp; Paperfly —
+                  shown on create order, order table, and customer pages.
+                </p>
+                {bdcourier?.apiKeyMasked ? (
+                  <p className="text-xs text-muted-foreground">
+                    Key: <span className="font-medium">{bdcourier.apiKeyMasked}</span>
+                  </p>
+                ) : null}
+                <Can permission="settings.manage">
+                  <Button type="button" size="sm" asChild>
+                    <Link href="/dashboard/settings/integrations/bdcourier">
+                      <Plug className="size-3.5" />
+                      Configure BD Courier
+                    </Link>
+                  </Button>
+                </Can>
+              </CardContent>
+            </Card>
+
             <Card className={ORDER_CARD_CLASS}>
               <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
                 <div className="flex items-center justify-between gap-2">

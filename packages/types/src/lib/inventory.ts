@@ -117,6 +117,25 @@ export const inventoryProductDetailSchema = inventoryProductListItemSchema.exten
 
 export type InventoryProductDetail = z.infer<typeof inventoryProductDetailSchema>;
 
+export const productActivityItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  timestamp: z.string(),
+  actorName: z.string().optional(),
+});
+
+export type ProductActivityItem = z.infer<typeof productActivityItemSchema>;
+
+export const productActivityListResponseSchema = z.object({
+  items: z.array(productActivityItemSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+});
+
+export type ProductActivityListResponse = z.infer<typeof productActivityListResponseSchema>;
+
 export const productFilterSchema = z.enum([
   'all',
   'low_stock',
@@ -549,6 +568,8 @@ export type MixerRecipeListItem = z.infer<typeof mixerRecipeListItemSchema>;
 export const mixerRecipeListResponseSchema = z.object({
   items: z.array(mixerRecipeListItemSchema),
   total: z.number(),
+  page: z.number().int().positive().optional(),
+  pageSize: z.number().int().positive().optional(),
 });
 
 export type MixerRecipeListResponse = z.infer<typeof mixerRecipeListResponseSchema>;
@@ -674,6 +695,8 @@ export type ProductionBatchResult = z.infer<typeof productionBatchResultSchema>;
 export const productionBatchListResponseSchema = z.object({
   items: z.array(productionBatchResultSchema),
   total: z.number(),
+  page: z.number().int().positive().optional(),
+  pageSize: z.number().int().positive().optional(),
 });
 
 export type ProductionBatchListResponse = z.infer<typeof productionBatchListResponseSchema>;

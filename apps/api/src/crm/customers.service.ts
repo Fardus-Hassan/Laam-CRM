@@ -399,7 +399,7 @@ export class CustomersService {
       organizationId,
       phones,
     );
-    this.courierPhoneHistory.warmMissing(organizationId, phones);
+    // Cache-only on list — no background BD Courier warm (protects API quota).
 
     const items = await Promise.all(
       rows.map((row) =>

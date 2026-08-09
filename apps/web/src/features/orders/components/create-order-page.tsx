@@ -15,21 +15,26 @@ import {
 import { mapLeadPrefillToOrderLineItems } from '@/features/leads/lib/lead-order-prefill';
 import { CreateOrderOtherSection } from '@/features/orders/components/create-order/create-order-other-section';
 import { CreateOrderStepIndicator } from '@/features/orders/components/create-order/create-order-step-indicator';
-import { CustomerBlock } from '@/features/orders/components/shared/customer-block';
-import { MoneySummaryPanel } from '@/features/orders/components/shared/money-summary-panel';
-import { ProductPicker } from '@/features/orders/components/shared/product-picker';
 import {
   ORDER_PAGE_GAP,
   ORDER_SIDEBAR_GRID_CLASS,
   ORDER_STICKY_MAX_H_CLASS,
   ORDER_STICKY_TOP_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { CourierPhoneHistoryPanel } from '@/features/courier/components/courier-phone-history-panel';
+import { CustomerBlock } from '@/features/orders/components/shared/customer-block';
+import { MoneySummaryPanel } from '@/features/orders/components/shared/money-summary-panel';
+import { ProductPicker } from '@/features/orders/components/shared/product-picker';
 import { useCreateOrderForm } from '@/features/orders/hooks/use-create-order-form';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { createOrderCreateBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+
+function phoneDigits(phone?: string | null): string {
+  return (phone ?? '').replace(/\D/g, '');
+}
 
 export function CreateOrderPage() {
   const searchParams = useSearchParams();
@@ -201,6 +206,16 @@ export function CreateOrderPage() {
       breadcrumbs={createOrderCreateBreadcrumbs()}
     >
       <div className={cn(ORDER_PAGE_GAP)}>
+        {phoneDigits(form.state.mobile).length >= 10 ? (
+          <CourierPhoneHistoryPanel
+            phone={form.state.mobile}
+            compact
+            shopOrders={form.state.customerStats?.totalOrders ?? 0}
+            shopDelivered={form.state.customerStats?.completedDelivered ?? 0}
+            className="w-full"
+          />
+        ) : null}
+
         <CreateOrderStepIndicator />
 
         {duplicate ? (

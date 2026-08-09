@@ -168,7 +168,11 @@ export function CustomerDetailView({ customer: initial, onCustomerUpdated }: Cus
                 <CardTitle className="text-sm">Courier score</CardTitle>
               </CardHeader>
               <CardContent className={ORDER_SECTION_BODY_CLASS}>
-                <CourierPhoneHistoryPanel phone={customer.phone} />
+                <CourierPhoneHistoryPanel
+                  phone={customer.phone}
+                  shopOrders={customer.orderCount}
+                  shopDelivered={customer.deliveredCount}
+                />
               </CardContent>
             </Card>
 

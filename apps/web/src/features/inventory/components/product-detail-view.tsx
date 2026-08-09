@@ -8,12 +8,14 @@ import { ArrowLeft, Minus, Package, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type {
   InventoryProductDetail,
+  ProductActivityItem,
   ProductStatus,
   ProductVariant,
   StockMovement,
 } from '@laam/types';
 
 import { Can } from '@/components/auth/can';
+import { CrmDataTablePagination } from '@/components/data-table/crm-data-table-pagination';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -56,6 +58,8 @@ const STATUS_OPTIONS = (Object.keys(PRODUCT_STATUS_LABELS) as ProductStatus[]).m
   label: PRODUCT_STATUS_LABELS[value],
 }));
 
+const DETAIL_LIST_PAGE_SIZES = [5, 10, 25, 50];
+
 function emptyVariant(skuBase: string, baseUomCode = 'pcs'): ProductVariant {
   return {
     id: `new-${Date.now()}`,
@@ -88,7 +92,17 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [movements, setMovements] = React.useState<StockMovement[]>([]);
+  const [movementsTotal, setMovementsTotal] = React.useState(0);
+  const [movementsPage, setMovementsPage] = React.useState(1);
+  const [movementsPageSize, setMovementsPageSize] = React.useState(10);
+  const [movementsLoading, setMovementsLoading] = React.useState(false);
   const [movementsError, setMovementsError] = React.useState<string | null>(null);
+  const [activities, setActivities] = React.useState<ProductActivityItem[]>([]);
+  const [activitiesTotal, setActivitiesTotal] = React.useState(0);
+  const [activitiesPage, setActivitiesPage] = React.useState(1);
+  const [activitiesPageSize, setActivitiesPageSize] = React.useState(10);
+  const [activitiesLoading, setActivitiesLoading] = React.useState(false);
+  const [activitiesError, setActivitiesError] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [purgeOpen, setPurgeOpen] = React.useState(false);
@@ -112,26 +126,65 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
     variants: [] as ProductVariant[],
   });
 
+  const loadMovements = React.useCallback(
+    async (page: number, pageSize: number) => {
+      setMovementsLoading(true);
+      setMovementsError(null);
+      try {
+        const movementData = await inventoryApi.listStockMovements(productId, {
+          page,
+          pageSize,
+        });
+        setMovements(movementData.items);
+        setMovementsTotal(movementData.total);
+        setMovementsPage(movementData.page);
+        setMovementsPageSize(movementData.pageSize);
+      } catch (error) {
+        setMovements([]);
+        setMovementsTotal(0);
+        setMovementsError(
+          error instanceof Error ? error.message : 'Could not load stock movements',
+        );
+      } finally {
+        setMovementsLoading(false);
+      }
+    },
+    [productId],
+  );
+
+  const loadActivities = React.useCallback(
+    async (page: number, pageSize: number) => {
+      setActivitiesLoading(true);
+      setActivitiesError(null);
+      try {
+        const activityData = await inventoryApi.listProductActivities(productId, {
+          page,
+          pageSize,
+        });
+        setActivities(activityData.items);
+        setActivitiesTotal(activityData.total);
+        setActivitiesPage(activityData.page);
+        setActivitiesPageSize(activityData.pageSize);
+      } catch (error) {
+        setActivities([]);
+        setActivitiesTotal(0);
+        setActivitiesError(
+          error instanceof Error ? error.message : 'Could not load activity',
+        );
+      } finally {
+        setActivitiesLoading(false);
+      }
+    },
+    [productId],
+  );
+
   const load = React.useCallback(async () => {
     setLoading(true);
     setLoadError(null);
-    setMovementsError(null);
     try {
       const data = await inventoryApi.getProduct(productId, { includeDeleted: true });
       setProduct(data);
       if (data) {
-        try {
-          const movementData = await inventoryApi.listStockMovements(productId, {
-            page: 1,
-            pageSize: 20,
-          });
-          setMovements(movementData.items);
-        } catch (error) {
-          setMovements([]);
-          setMovementsError(
-            error instanceof Error ? error.message : 'Could not load stock movements',
-          );
-        }
         setSelectedVariantId((current) =>
           data.variants.some((v) => v.id === current) ? current : (data.variants[0]?.id ?? ''),
         );
@@ -149,6 +202,12 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
           variants: data.variants.map((v) => ({ ...v })),
         });
         setPendingFile(null);
+        await Promise.all([loadMovements(1, 10), loadActivities(1, 10)]);
+      } else {
+        setMovements([]);
+        setMovementsTotal(0);
+        setActivities([]);
+        setActivitiesTotal(0);
       }
     } catch (error) {
       setProduct(null);
@@ -156,7 +215,7 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
     } finally {
       setLoading(false);
     }
-  }, [productId]);
+  }, [productId, loadMovements, loadActivities]);
 
   React.useEffect(() => {
     void load();
@@ -820,74 +879,127 @@ export function ProductDetailView({ productId }: ProductDetailViewProps) {
           </CardContent>
         </Card>
 
-        <Card className={ORDER_CARD_CLASS}>
-          <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-            <CardTitle className="text-sm">Stock movements</CardTitle>
-          </CardHeader>
-          <CardContent className={ORDER_SECTION_BODY_CLASS}>
-            {movementsError ? (
-              <p className="text-sm text-destructive">{movementsError}</p>
-            ) : movements.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No stock movements yet.</p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {movements.map((movement) => (
-                  <li key={movement.id} className="flex flex-wrap justify-between gap-2 py-3 text-sm">
-                    <div>
-                      <p className="font-medium">
-                        {movement.variantLabel ?? movement.variantSku ?? 'Variant'} ·{' '}
-                        <span className={movement.delta > 0 ? 'text-emerald-600' : 'text-destructive'}>
-                          {movement.delta > 0 ? '+' : ''}
-                          {movement.delta}
-                        </span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {movement.previousStock} → {movement.newStock} · {movement.reason}
-                        {movement.note ? ` · ${movement.note}` : ''}
-                      </p>
-                    </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      <p>{new Date(movement.createdAt).toLocaleString()}</p>
-                      {movement.actorName ? (
-                        <p className="max-w-[220px] break-words">{movement.actorName}</p>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
+          <Card className={cn(ORDER_CARD_CLASS, 'min-w-0')}>
+            <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+              <CardTitle className="text-sm">Stock movements</CardTitle>
+            </CardHeader>
+            <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-0 p-0')}>
+              <div className="max-h-[28rem] overflow-y-auto px-3 pt-2 sm:px-4">
+                {movementsError ? (
+                  <p className="pb-2 text-sm text-destructive">{movementsError}</p>
+                ) : movementsLoading && movements.length === 0 ? (
+                  <p className="pb-2 text-sm text-muted-foreground">Loading…</p>
+                ) : movements.length === 0 ? (
+                  <p className="pb-2 text-sm text-muted-foreground">No stock movements yet.</p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {movements.map((movement) => (
+                      <li
+                        key={movement.id}
+                        className="flex flex-wrap justify-between gap-x-2 gap-y-0.5 py-2 text-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium leading-snug">
+                            {movement.variantLabel ?? movement.variantSku ?? 'Variant'} ·{' '}
+                            <span
+                              className={
+                                movement.delta > 0 ? 'text-emerald-600' : 'text-destructive'
+                              }
+                            >
+                              {movement.delta > 0 ? '+' : ''}
+                              {movement.delta}
+                            </span>
+                          </p>
+                          <p className="truncate text-xs leading-snug text-muted-foreground">
+                            {movement.previousStock} → {movement.newStock} · {movement.reason}
+                            {movement.note ? ` · ${movement.note}` : ''}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right text-[11px] leading-snug text-muted-foreground">
+                          <p>{new Date(movement.createdAt).toLocaleString()}</p>
+                          {movement.actorName ? (
+                            <p className="max-w-[9rem] truncate">{movement.actorName}</p>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {movementsTotal > 0 ? (
+                <CrmDataTablePagination
+                  page={movementsPage}
+                  pageSize={movementsPageSize}
+                  total={movementsTotal}
+                  pageSizeOptions={DETAIL_LIST_PAGE_SIZES}
+                  onPageChange={(page) => {
+                    void loadMovements(page, movementsPageSize);
+                  }}
+                  onPageSizeChange={(size) => {
+                    void loadMovements(1, size);
+                  }}
+                />
+              ) : null}
+            </CardContent>
+          </Card>
 
-        {product.activities.length > 0 ? (
-          <Card className={ORDER_CARD_CLASS}>
+          <Card className={cn(ORDER_CARD_CLASS, 'min-w-0')}>
             <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
               <CardTitle className="text-sm">Activity</CardTitle>
             </CardHeader>
-            <CardContent className={ORDER_SECTION_BODY_CLASS}>
-              <ul className="divide-y divide-border">
-                {product.activities.map((activity) => (
-                  <li key={activity.id} className="py-3 text-sm">
-                    <div className="flex flex-wrap justify-between gap-2">
-                      <p className="font-medium">{activity.label}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(activity.timestamp).toLocaleString()}
-                      </p>
-                    </div>
-                    {activity.description ? (
-                      <p className="text-xs text-muted-foreground">{activity.description}</p>
-                    ) : null}
-                    {activity.actorName ? (
-                      <p className="max-w-full break-words text-xs text-muted-foreground">
-                        By {activity.actorName}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
+            <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-0 p-0')}>
+              <div className="max-h-[28rem] overflow-y-auto px-3 pt-2 sm:px-4">
+                {activitiesError ? (
+                  <p className="pb-2 text-sm text-destructive">{activitiesError}</p>
+                ) : activitiesLoading && activities.length === 0 ? (
+                  <p className="pb-2 text-sm text-muted-foreground">Loading…</p>
+                ) : activities.length === 0 ? (
+                  <p className="pb-2 text-sm text-muted-foreground">No activity yet.</p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {activities.map((activity) => (
+                      <li key={activity.id} className="py-2 text-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5">
+                          <p className="min-w-0 flex-1 truncate font-medium leading-snug">
+                            {activity.label}
+                          </p>
+                          <p className="shrink-0 text-[11px] leading-snug text-muted-foreground">
+                            {new Date(activity.timestamp).toLocaleString()}
+                          </p>
+                        </div>
+                        {activity.description ? (
+                          <p className="truncate text-xs leading-snug text-muted-foreground">
+                            {activity.description}
+                          </p>
+                        ) : null}
+                        {activity.actorName ? (
+                          <p className="truncate text-[11px] leading-snug text-muted-foreground">
+                            By {activity.actorName}
+                          </p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {activitiesTotal > 0 ? (
+                <CrmDataTablePagination
+                  page={activitiesPage}
+                  pageSize={activitiesPageSize}
+                  total={activitiesTotal}
+                  pageSizeOptions={DETAIL_LIST_PAGE_SIZES}
+                  onPageChange={(page) => {
+                    void loadActivities(page, activitiesPageSize);
+                  }}
+                  onPageSizeChange={(size) => {
+                    void loadActivities(1, size);
+                  }}
+                />
+              ) : null}
             </CardContent>
           </Card>
-        ) : null}
+        </div>
 
         {!editing && product.notes ? (
           <Card className={ORDER_CARD_CLASS}>

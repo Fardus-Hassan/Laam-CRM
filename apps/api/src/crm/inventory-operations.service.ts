@@ -1104,16 +1104,42 @@ export class InventoryOperationsService {
 
   // ─── Mixer / production ───────────────────────────────────────────────────
 
-  async listMixerRecipes(organizationId: string): Promise<MixerRecipeListResponse> {
-    const rows = await this.prisma.mixerRecipe.findMany({
-      where: { organizationId },
-      include: { outputProduct: { select: { name: true, sku: true } } },
-      orderBy: [{ status: 'asc' }, { name: 'asc' }],
-    });
+  async listMixerRecipes(
+    organizationId: string,
+    opts?: { page?: number; pageSize?: number; search?: string },
+  ): Promise<MixerRecipeListResponse> {
+    const page = Math.max(1, opts?.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 25));
+    const query = opts?.search?.trim();
+    const where = {
+      organizationId,
+      ...(query
+        ? {
+            OR: [
+              { name: { contains: query, mode: 'insensitive' as const } },
+              { outputProduct: { name: { contains: query, mode: 'insensitive' as const } } },
+              { outputProduct: { sku: { contains: query, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.mixerRecipe.count({ where }),
+      this.prisma.mixerRecipe.findMany({
+        where,
+        include: { outputProduct: { select: { name: true, sku: true } } },
+        orderBy: [{ status: 'asc' }, { name: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
 
     return {
       items: rows.map((row) => this.toMixerRecipe(row)),
-      total: rows.length,
+      total,
+      page,
+      pageSize,
     };
   }
 
@@ -1184,16 +1210,29 @@ export class InventoryOperationsService {
     await this.prisma.mixerRecipe.delete({ where: { id: recipeId } });
   }
 
-  async listProductionRuns(organizationId: string): Promise<ProductionBatchListResponse> {
-    const rows = await this.prisma.productionBatch.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+  async listProductionRuns(
+    organizationId: string,
+    opts?: { page?: number; pageSize?: number },
+  ): Promise<ProductionBatchListResponse> {
+    const page = Math.max(1, opts?.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 25));
+    const where = { organizationId };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.productionBatch.count({ where }),
+      this.prisma.productionBatch.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
 
     return {
       items: rows.map((row) => row.result as unknown as ProductionBatchResult),
-      total: rows.length,
+      total,
+      page,
+      pageSize,
     };
   }
 

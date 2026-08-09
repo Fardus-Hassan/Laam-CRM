@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
+import { CourierPhoneHistoryPanel } from '@/features/courier/components/courier-phone-history-panel';
 import { CreateOrderOtherSection } from '@/features/orders/components/create-order/create-order-other-section';
 import {
   ORDER_DETAIL_PAGE_GAP,
@@ -253,6 +254,16 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
       breadcrumbs={createOrderDetailBreadcrumbs(order.orderNumber, order.status)}
     >
       <div className={cn(ORDER_DETAIL_PAGE_GAP)}>
+        {(form.state.mobile || order.customerPhone).replace(/\D/g, '').length >= 10 ? (
+          <CourierPhoneHistoryPanel
+            phone={form.state.mobile || order.customerPhone}
+            compact
+            shopOrders={form.state.customerStats?.totalOrders ?? 0}
+            shopDelivered={form.state.customerStats?.completedDelivered ?? 0}
+            className="w-full"
+          />
+        ) : null}
+
         <OrderActionBar
           order={order}
           onConfirm={confirmOrder}

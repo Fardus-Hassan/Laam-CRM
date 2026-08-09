@@ -190,9 +190,14 @@ export function buildCustomerTableColumns(options?: {
     },
     {
       id: 'courier',
-      header: 'Courier',
-      size: 140,
-      meta: { label: 'Courier score', priority: 'primary', align: 'middle' },
+      header: 'Success Rate',
+      size: 168,
+      meta: {
+        label: 'Success Rate',
+        priority: 'primary',
+        align: 'middle',
+        headerClassName: 'text-center',
+      },
       cell: ({ row }) => {
         const score = row.original.courierScore;
         return (

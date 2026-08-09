@@ -16,6 +16,7 @@ import { Plus, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
+import { CrmDataTablePagination } from '@/components/data-table/crm-data-table-pagination';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
@@ -53,6 +54,9 @@ import { downloadCsv } from '@/lib/export-csv';
 import { formatCurrency } from '@/lib/format';
 import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { cn } from '@/lib/utils';
+
+const INV_LIST_PAGE_SIZES = [10, 25, 50, 100];
+const INV_LIST_DEFAULT_PAGE_SIZE = 25;
 
 function InventoryPageLayout({
   title,
@@ -121,6 +125,9 @@ export function SuppliersListShell() {
   const { confirm, confirmDialog } = useConfirmDialog();
   const [search, setSearch] = React.useState('');
   const [items, setItems] = React.useState<SupplierListItem[]>([]);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(INV_LIST_DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = React.useState(true);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<SupplierListItem | null>(null);
@@ -132,17 +139,27 @@ export function SuppliersListShell() {
   const [address, setAddress] = React.useState('');
   const [status, setStatus] = React.useState<'active' | 'inactive'>('active');
 
+  React.useEffect(() => {
+    setPage(1);
+  }, [search]);
+
   const load = React.useCallback(() => {
     setLoading(true);
     void inventoryApi
-      .listSuppliers({ search })
-      .then((r) => setItems(r.items))
+      .listSuppliers({ search, page, pageSize })
+      .then((r) => {
+        setItems(r.items);
+        setTotal(r.total);
+        if (r.page) setPage(r.page);
+        if (r.pageSize) setPageSize(r.pageSize);
+      })
       .catch((error) => {
         setItems([]);
+        setTotal(0);
         toast.error(error instanceof Error ? error.message : 'Could not load suppliers');
       })
       .finally(() => setLoading(false));
-  }, [search]);
+  }, [search, page, pageSize]);
 
   React.useEffect(() => {
     load();
@@ -325,6 +342,20 @@ export function SuppliersListShell() {
         }))}
       />
 
+      {total > 0 ? (
+        <CrmDataTablePagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          pageSizeOptions={INV_LIST_PAGE_SIZES}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      ) : null}
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -377,7 +408,7 @@ export function PurchaseListShell() {
   const { confirm, confirmDialog } = useConfirmDialog();
   const [search, setSearch] = React.useState('');
   const [page, setPage] = React.useState(1);
-  const pageSize = 50;
+  const [pageSize, setPageSize] = React.useState(INV_LIST_DEFAULT_PAGE_SIZE);
   const [data, setData] = React.useState<{
     items: PurchaseListItem[];
     total: number;
@@ -405,7 +436,7 @@ export function PurchaseListShell() {
         toast.error(error instanceof Error ? error.message : 'Could not load purchases');
       })
       .finally(() => setLoading(false));
-  }, [search, page]);
+  }, [search, page, pageSize]);
 
   async function cancelPurchase(p: PurchaseListItem) {
     const ok = await confirm({
@@ -558,32 +589,18 @@ export function PurchaseListShell() {
           ),
         }))}
       />
-      {data && data.total > pageSize ? (
-        <div className="flex items-center justify-between gap-2 text-sm">
-          <span className="text-muted-foreground">
-            Page {page} of {Math.max(1, Math.ceil(data.total / pageSize))} · {data.total} orders
-          </span>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Previous
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={page * pageSize >= data.total}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
+      {data && data.total > 0 ? (
+        <CrmDataTablePagination
+          page={page}
+          pageSize={pageSize}
+          total={data.total}
+          pageSizeOptions={INV_LIST_PAGE_SIZES}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
       ) : null}
       {confirmDialog}
     </InventoryPageLayout>
@@ -612,6 +629,9 @@ function emptyReturnLine(): ReturnLineDraft {
 
 export function PurchaseReturnsListShell() {
   const [items, setItems] = React.useState<PurchaseReturnListItem[]>([]);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(INV_LIST_DEFAULT_PAGE_SIZE);
   const [purchases, setPurchases] = React.useState<PurchaseListItem[]>([]);
   const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -624,28 +644,46 @@ export function PurchaseReturnsListShell() {
   const [reason, setReason] = React.useState('');
   const [lines, setLines] = React.useState<ReturnLineDraft[]>([emptyReturnLine()]);
 
-  const load = React.useCallback(() => {
+  const loadList = React.useCallback(() => {
     setLoading(true);
-    void Promise.all([
-      inventoryApi.listPurchaseReturns(),
-      inventoryApi.listPurchases(),
-      inventoryApi.listProducts({ page: 1, pageSize: 100, filter: 'active' }),
-    ])
-      .then(([returns, purchaseRes, productRes]) => {
+    void inventoryApi
+      .listPurchaseReturns({ page, pageSize })
+      .then((returns) => {
         setItems(returns.items);
-        setPurchases(purchaseRes.items);
-        setProducts(productRes.items);
+        setTotal(returns.total);
+        if (returns.page) setPage(returns.page);
+        if (returns.pageSize) setPageSize(returns.pageSize);
       })
       .catch((error) => {
         setItems([]);
+        setTotal(0);
         toast.error(error instanceof Error ? error.message : 'Could not load purchase returns');
       })
       .finally(() => setLoading(false));
+  }, [page, pageSize]);
+
+  const loadFormOptions = React.useCallback(() => {
+    void Promise.all([
+      inventoryApi.listPurchases({ page: 1, pageSize: 100 }),
+      inventoryApi.listProducts({ page: 1, pageSize: 100, filter: 'active' }),
+    ])
+      .then(([purchaseRes, productRes]) => {
+        setPurchases(purchaseRes.items);
+        setProducts(productRes.items);
+      })
+      .catch(() => {
+        setPurchases([]);
+        setProducts([]);
+      });
   }, []);
 
   React.useEffect(() => {
-    load();
-  }, [load]);
+    loadList();
+  }, [loadList]);
+
+  React.useEffect(() => {
+    loadFormOptions();
+  }, [loadFormOptions]);
 
   const purchaseOptions = purchases.map((p) => ({
     value: p.id,
@@ -726,7 +764,7 @@ export function PurchaseReturnsListShell() {
       setSupplierName('');
       setReason('');
       setLines([emptyReturnLine()]);
-      load();
+      loadList();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not create return');
     } finally {
@@ -738,7 +776,7 @@ export function PurchaseReturnsListShell() {
     try {
       await inventoryApi.approvePurchaseReturn(item.id);
       toast.success(`${item.returnNumber} approved`);
-      load();
+      loadList();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not approve return');
     }
@@ -748,7 +786,7 @@ export function PurchaseReturnsListShell() {
     try {
       await inventoryApi.completePurchaseReturn(item.id);
       toast.success(`${item.returnNumber} completed — stock deducted`);
-      load();
+      loadList();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not complete return');
     }
@@ -955,6 +993,19 @@ export function PurchaseReturnsListShell() {
           ),
         }))}
       />
+      {total > 0 ? (
+        <CrmDataTablePagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          pageSizeOptions={INV_LIST_PAGE_SIZES}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      ) : null}
     </InventoryPageLayout>
   );
 }
@@ -962,6 +1013,9 @@ export function PurchaseReturnsListShell() {
 export function AdjustmentListShell() {
   const { createAdjustment, isLoading } = useProductMutations();
   const [items, setItems] = React.useState<StockAdjustmentListItem[]>([]);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(INV_LIST_DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = React.useState(true);
   const [productId, setProductId] = React.useState('');
   const [delta, setDelta] = React.useState('1');
@@ -971,14 +1025,32 @@ export function AdjustmentListShell() {
     { value: string; label: string }[]
   >([]);
 
-  const load = React.useCallback(() => {
+  const loadHistory = React.useCallback(() => {
     setLoading(true);
-    void Promise.all([
-      inventoryApi.listAdjustments(),
-      inventoryApi.listProducts({ page: 1, pageSize: 100 }),
-    ])
-      .then(([adjustments, products]) => {
+    void inventoryApi
+      .listAdjustments({ page, pageSize })
+      .then((adjustments) => {
         setItems(adjustments.items);
+        setTotal(adjustments.total);
+        if (adjustments.page) setPage(adjustments.page);
+        if (adjustments.pageSize) setPageSize(adjustments.pageSize);
+      })
+      .catch((error) => {
+        setItems([]);
+        setTotal(0);
+        toast.error(error instanceof Error ? error.message : 'Could not load adjustments');
+      })
+      .finally(() => setLoading(false));
+  }, [page, pageSize]);
+
+  React.useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  React.useEffect(() => {
+    void inventoryApi
+      .listProducts({ page: 1, pageSize: 100 })
+      .then((products) => {
         setProductOptions(
           products.items.map((product) => ({
             value: product.id,
@@ -986,23 +1058,15 @@ export function AdjustmentListShell() {
           })),
         );
       })
-      .catch((error) => {
-        setItems([]);
-        toast.error(error instanceof Error ? error.message : 'Could not load adjustments');
-      })
-      .finally(() => setLoading(false));
+      .catch(() => setProductOptions([]));
   }, []);
-
-  React.useEffect(() => {
-    load();
-  }, [load]);
 
   async function handleAdjust() {
     const d = Number(delta);
     if (!productId || !Number.isFinite(d) || d === 0) return;
     await createAdjustment({ productId, delta: d, reason, note: note || undefined });
     setNote('');
-    load();
+    loadHistory();
   }
 
   const reasonOptions = (Object.keys(ADJUSTMENT_REASON_LABELS) as (keyof typeof ADJUSTMENT_REASON_LABELS)[]).map(
@@ -1041,7 +1105,7 @@ export function AdjustmentListShell() {
 
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">Adjustment history</h3>
-        <Button type="button" size="sm" variant="outline" onClick={load}>
+        <Button type="button" size="sm" variant="outline" onClick={loadHistory}>
           <RefreshCw className="size-3.5" />
           Refresh
         </Button>
@@ -1089,6 +1153,19 @@ export function AdjustmentListShell() {
           ),
         }))}
       />
+      {total > 0 ? (
+        <CrmDataTablePagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          pageSizeOptions={INV_LIST_PAGE_SIZES}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      ) : null}
     </InventoryPageLayout>
   );
 }
@@ -1097,7 +1174,13 @@ export function MixerListShell() {
   const { confirm, confirmDialog } = useConfirmDialog();
   const { unitOptions, defaultCode } = useInventoryUnits();
   const [items, setItems] = React.useState<MixerRecipeListItem[]>([]);
+  const [recipesTotal, setRecipesTotal] = React.useState(0);
+  const [recipesPage, setRecipesPage] = React.useState(1);
+  const [recipesPageSize, setRecipesPageSize] = React.useState(INV_LIST_DEFAULT_PAGE_SIZE);
   const [runs, setRuns] = React.useState<ProductionBatchResult[]>([]);
+  const [runsTotal, setRunsTotal] = React.useState(0);
+  const [runsPage, setRunsPage] = React.useState(1);
+  const [runsPageSize, setRunsPageSize] = React.useState(INV_LIST_DEFAULT_PAGE_SIZE);
   const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [guideRecipe, setGuideRecipe] = React.useState<MixerRecipeListItem | null>(null);
@@ -1116,29 +1199,61 @@ export function MixerListShell() {
     { productId: string; quantity: number; unit: string }[]
   >([]);
 
-  const load = React.useCallback(() => {
+  const loadRecipes = React.useCallback(() => {
     setLoading(true);
-    void Promise.all([
-      inventoryApi.listMixerRecipes(),
-      inventoryApi.listProductionRuns(),
-      inventoryApi.listProducts({ page: 1, pageSize: 100, filter: 'active' }),
-    ])
-      .then(([recipes, production, productRes]) => {
+    void inventoryApi
+      .listMixerRecipes({ page: recipesPage, pageSize: recipesPageSize })
+      .then((recipes) => {
         setItems(recipes.items);
-        setRuns(production.items);
-        setProducts(productRes.items);
+        setRecipesTotal(recipes.total);
+        if (recipes.page) setRecipesPage(recipes.page);
+        if (recipes.pageSize) setRecipesPageSize(recipes.pageSize);
       })
       .catch((error) => {
         setItems([]);
-        setRuns([]);
-        toast.error(error instanceof Error ? error.message : 'Could not load mixer data');
+        setRecipesTotal(0);
+        toast.error(error instanceof Error ? error.message : 'Could not load mixer recipes');
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [recipesPage, recipesPageSize]);
+
+  const loadRuns = React.useCallback(
+    (page = runsPage, pageSize = runsPageSize) => {
+      void inventoryApi
+        .listProductionRuns({ page, pageSize })
+        .then((production) => {
+          setRuns(production.items);
+          setRunsTotal(production.total);
+          setRunsPage(production.page ?? page);
+          setRunsPageSize(production.pageSize ?? pageSize);
+        })
+        .catch(() => {
+          setRuns([]);
+          setRunsTotal(0);
+        });
+    },
+    [runsPage, runsPageSize],
+  );
 
   React.useEffect(() => {
-    load();
-  }, [load]);
+    loadRecipes();
+  }, [loadRecipes]);
+
+  React.useEffect(() => {
+    loadRuns();
+  }, [loadRuns]);
+
+  React.useEffect(() => {
+    void inventoryApi
+      .listProducts({ page: 1, pageSize: 100, filter: 'active' })
+      .then((productRes) => setProducts(productRes.items))
+      .catch(() => setProducts([]));
+  }, []);
+
+  function reloadAll() {
+    loadRecipes();
+    loadRuns();
+  }
 
   const productOptions = products.map((p) => ({
     value: p.id,
@@ -1211,7 +1326,7 @@ export function MixerListShell() {
         toast.success('Recipe created');
       }
       setDialogOpen(false);
-      load();
+      reloadAll();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not save recipe');
     } finally {
@@ -1230,7 +1345,7 @@ export function MixerListShell() {
     try {
       await inventoryApi.deleteMixerRecipe(recipe.id);
       toast.success('Recipe deleted');
-      load();
+      reloadAll();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not delete recipe');
     }
@@ -1263,10 +1378,27 @@ export function MixerListShell() {
       <ProductionBatchPanel
         guideRecipe={guideRecipe}
         guideNonce={guideNonce}
-        onCompleted={() => load()}
+        onCompleted={() => {
+          loadRuns(1, runsPageSize);
+        }}
       />
 
-      <ProductionLedger runs={runs} />
+      <div className="space-y-2">
+        <ProductionLedger runs={runs} total={runsTotal} />
+        {runsTotal > 0 ? (
+          <CrmDataTablePagination
+            page={runsPage}
+            pageSize={runsPageSize}
+            total={runsTotal}
+            pageSizeOptions={INV_LIST_PAGE_SIZES}
+            onPageChange={setRunsPage}
+            onPageSizeChange={(size) => {
+              setRunsPageSize(size);
+              setRunsPage(1);
+            }}
+          />
+        ) : null}
+      </div>
 
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Saved recipes</h3>
@@ -1333,6 +1465,19 @@ export function MixerListShell() {
             ))}
           </div>
         )}
+        {recipesTotal > 0 ? (
+          <CrmDataTablePagination
+            page={recipesPage}
+            pageSize={recipesPageSize}
+            total={recipesTotal}
+            pageSizeOptions={INV_LIST_PAGE_SIZES}
+            onPageChange={setRecipesPage}
+            onPageSizeChange={(size) => {
+              setRecipesPageSize(size);
+              setRecipesPage(1);
+            }}
+          />
+        ) : null}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

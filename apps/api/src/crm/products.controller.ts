@@ -377,6 +377,20 @@ export class ProductsController {
     return this.catalog.listStockMovements(user.organizationId!, id, { page, pageSize });
   }
 
+  @Get(':id/activities')
+  @RequirePermissions('inventory.view')
+  listActivities(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ) {
+    this.catalog.requireOrg(user.organizationId);
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(pageSizeRaw) || 10));
+    return this.catalog.listProductActivities(user.organizationId!, id, { page, pageSize });
+  }
+
   @Post(':id/stock-adjust')
   @RequirePermissions('inventory.adjust')
   adjustStock(

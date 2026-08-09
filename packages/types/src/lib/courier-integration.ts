@@ -98,3 +98,52 @@ export const upsertCarrybeeIntegrationPayloadSchema = z.object({
 export type UpsertCarrybeeIntegrationPayload = z.infer<
   typeof upsertCarrybeeIntegrationPayloadSchema
 >;
+
+/** Phone-history aggregator (api.bdcourier.com) — not a booking courier. */
+export const bdCourierIntegrationSettingsSchema = z.object({
+  provider: z.literal('bdcourier'),
+  enabled: z.boolean(),
+  hasCredentials: z.boolean(),
+  apiKeyMasked: z.string().nullable(),
+  lastSyncAt: z.string().nullable(),
+  lastError: z.string().nullable(),
+  updatedAt: z.string(),
+});
+
+export type BdCourierIntegrationSettings = z.infer<
+  typeof bdCourierIntegrationSettingsSchema
+>;
+
+export const upsertBdCourierIntegrationPayloadSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** Omit or leave blank to keep the previously saved key. */
+  apiKey: z.string().optional(),
+});
+
+export type UpsertBdCourierIntegrationPayload = z.infer<
+  typeof upsertBdCourierIntegrationPayloadSchema
+>;
+
+/** Response from BD Courier GET /my-plan (org API key). */
+export const bdCourierPlanSchema = z.object({
+  hasSubscription: z.boolean(),
+  planId: z.number().nullable(),
+  planName: z.string().nullable(),
+  planType: z.string().nullable(),
+  isFree: z.boolean().nullable(),
+  status: z.string(),
+  nextDueDate: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+  daysRemaining: z.number().nullable(),
+  frequency: z.string().nullable(),
+  price: z.number().nullable(),
+  apiCalls: z.number(),
+  paidCalls: z.number(),
+  callLimit: z.number().nullable(),
+  paidLimit: z.number().nullable(),
+  remainingFreeCalls: z.number().nullable(),
+  remainingPaidCalls: z.number().nullable(),
+  fetchedAt: z.string(),
+});
+
+export type BdCourierPlan = z.infer<typeof bdCourierPlanSchema>;

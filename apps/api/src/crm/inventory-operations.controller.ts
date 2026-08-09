@@ -795,9 +795,18 @@ export class InventoryOperationsController {
 
   @Get('mixer')
   @RequirePermissions('inventory.view')
-  listMixerRecipes(@CurrentUser() user: AuthUserPayload) {
+  listMixerRecipes(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('search') search?: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ) {
     this.catalog.requireOrg(user.organizationId);
-    return this.operations.listMixerRecipes(user.organizationId!);
+    return this.operations.listMixerRecipes(user.organizationId!, {
+      search,
+      page: Math.max(1, Number(pageRaw) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 25)),
+    });
   }
 
   @Post('mixer')
@@ -845,9 +854,16 @@ export class InventoryOperationsController {
 
   @Get('mixer/runs')
   @RequirePermissions('inventory.view')
-  listProductionRuns(@CurrentUser() user: AuthUserPayload) {
+  listProductionRuns(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ) {
     this.catalog.requireOrg(user.organizationId);
-    return this.operations.listProductionRuns(user.organizationId!);
+    return this.operations.listProductionRuns(user.organizationId!, {
+      page: Math.max(1, Number(pageRaw) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 25)),
+    });
   }
 
   @Post('mixer/preview')

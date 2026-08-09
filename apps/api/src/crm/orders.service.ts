@@ -1199,7 +1199,7 @@ export class OrdersService {
       this.courierPhoneHistory.loadCachedStatsByPhones(organizationId, phones),
       this.loadShopCourierByPhones(organizationId, phones),
     ]);
-    this.courierPhoneHistory.warmMissing(organizationId, phones);
+    // Cache-only on list — no background BD Courier warm (protects API quota).
 
     const orderIds = rows.map((r) => r.id);
     const [followups, followUpActivities] = await Promise.all([
@@ -1853,6 +1853,10 @@ export class OrdersService {
       },
       actor,
     );
+
+    // Background: cache courier success for this phone (website + manual create).
+    // Table stays cache-only; this is the controlled API spend per new/expired phone.
+    this.courierPhoneHistory.ensureFresh(organizationId, created.customerPhone);
 
     return this.toDetailEnriched(organizationId, created);
   }

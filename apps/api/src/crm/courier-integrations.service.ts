@@ -119,6 +119,25 @@ type StoredCarrybeeSecrets = {
   baseUrl?: string;
 };
 
+export type BdCourierIntegrationPublic = {
+  provider: 'bdcourier';
+  enabled: boolean;
+  hasCredentials: boolean;
+  apiKeyMasked: string | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  updatedAt: string;
+};
+
+export type UpsertBdCourierIntegrationInput = {
+  enabled?: boolean;
+  apiKey?: string;
+};
+
+type StoredBdCourierSecrets = {
+  apiKey: string;
+};
+
 @Injectable()
 export class CourierIntegrationsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -245,6 +264,141 @@ export class CourierIntegrationsService {
 
     await this.ensurePathaoStatusMaps(organizationId);
     return this.getPathaoPublic(organizationId);
+  }
+
+  async getBdCourierPublic(organizationId: string): Promise<BdCourierIntegrationPublic> {
+    const row = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'bdcourier' },
+      },
+    });
+    if (!row) {
+      return {
+        provider: 'bdcourier',
+        enabled: false,
+        hasCredentials: false,
+        apiKeyMasked: null,
+        lastSyncAt: null,
+        lastError: null,
+        updatedAt: new Date(0).toISOString(),
+      };
+    }
+    let secrets: StoredBdCourierSecrets | null = null;
+    if (row.credentialsEnc) {
+      try {
+        secrets = JSON.parse(decryptSecret(row.credentialsEnc)) as StoredBdCourierSecrets;
+      } catch {
+        secrets = null;
+      }
+    }
+    return {
+      provider: 'bdcourier',
+      enabled: row.enabled,
+      hasCredentials: Boolean(secrets?.apiKey),
+      apiKeyMasked: secrets?.apiKey ? maskSecret(secrets.apiKey) : null,
+      lastSyncAt: row.lastSyncAt?.toISOString() ?? null,
+      lastError: row.lastError,
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  async upsertBdCourier(
+    organizationId: string,
+    input: UpsertBdCourierIntegrationInput,
+  ): Promise<BdCourierIntegrationPublic> {
+    const existing = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'bdcourier' },
+      },
+    });
+
+    let secrets: StoredBdCourierSecrets | null = null;
+    if (existing?.credentialsEnc) {
+      try {
+        secrets = JSON.parse(decryptSecret(existing.credentialsEnc)) as StoredBdCourierSecrets;
+      } catch {
+        secrets = null;
+      }
+    }
+
+    const nextKey = input.apiKey?.trim() || secrets?.apiKey || '';
+    if (input.enabled !== false && (input.apiKey || !existing) && !nextKey) {
+      throw new BadRequestException('BD Courier API key is required');
+    }
+
+    await this.prisma.courierIntegration.upsert({
+      where: {
+        organizationId_provider: { organizationId, provider: 'bdcourier' },
+      },
+      create: {
+        organizationId,
+        provider: 'bdcourier',
+        enabled: input.enabled ?? Boolean(nextKey),
+        environment: 'live',
+        credentialsEnc: nextKey ? encryptSecret(JSON.stringify({ apiKey: nextKey })) : null,
+        lastError: null,
+      },
+      update: {
+        ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        ...(nextKey
+          ? { credentialsEnc: encryptSecret(JSON.stringify({ apiKey: nextKey })) }
+          : {}),
+        lastError: null,
+      },
+    });
+
+    return this.getBdCourierPublic(organizationId);
+  }
+
+  async disconnectBdCourier(organizationId: string): Promise<BdCourierIntegrationPublic> {
+    const existing = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'bdcourier' },
+      },
+    });
+    if (!existing) {
+      return this.getBdCourierPublic(organizationId);
+    }
+    await this.prisma.courierIntegration.update({
+      where: { id: existing.id },
+      data: {
+        enabled: false,
+        credentialsEnc: null,
+        lastError: null,
+      },
+    });
+    return this.getBdCourierPublic(organizationId);
+  }
+
+  async resolveBdCourierApiKey(organizationId: string): Promise<string | null> {
+    const row = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'bdcourier' },
+      },
+    });
+    if (!row?.enabled || !row.credentialsEnc) return null;
+    try {
+      const secrets = JSON.parse(decryptSecret(row.credentialsEnc)) as StoredBdCourierSecrets;
+      return secrets.apiKey?.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async setBdCourierLastError(organizationId: string, lastError: string | null): Promise<void> {
+    const existing = await this.prisma.courierIntegration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: 'bdcourier' },
+      },
+    });
+    if (!existing) return;
+    await this.prisma.courierIntegration.update({
+      where: { id: existing.id },
+      data: {
+        lastError,
+        ...(lastError === null ? { lastSyncAt: new Date() } : {}),
+      },
+    });
   }
 
   async disconnectPathao(organizationId: string): Promise<PathaoIntegrationPublic> {

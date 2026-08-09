@@ -47,7 +47,6 @@ export const PRODUCT_CATEGORY_SEEDS: { slug: string; label: string }[] = [
 ];
 
 const MAX_BULK_IDS = 100;
-const DETAIL_ACTIVITY_LIMIT = 20;
 const RECYCLE_RETENTION_DAYS = 30;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -747,16 +746,10 @@ export class InventoryCatalogService {
         organizationId,
         ...(options?.includeDeleted ? {} : { deletedAt: null }),
       },
-      include: {
-        ...productInclude,
-        activities: {
-          orderBy: { createdAt: 'desc' as const },
-          take: DETAIL_ACTIVITY_LIMIT,
-        },
-      },
+      include: productInclude,
     });
     if (!row) throw new NotFoundException('Product not found');
-    return this.toDetailWithWarehouse(organizationId, row);
+    return this.toDetailWithWarehouse(organizationId, { ...row, activities: [] });
   }
 
   /**
@@ -1370,6 +1363,59 @@ export class InventoryCatalogService {
         note: row.note ?? undefined,
         actorName: row.actorName ?? undefined,
         createdAt: row.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  async listProductActivities(
+    organizationId: string,
+    productId: string,
+    query: { page?: number; pageSize?: number },
+  ): Promise<{
+    items: Array<{
+      id: string;
+      label: string;
+      description?: string;
+      timestamp: string;
+      actorName?: string;
+    }>;
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId },
+      select: { id: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(Math.max(1, query.pageSize ?? 10), 100);
+    const where = {
+      organizationId,
+      OR: [{ productId }, { entityType: 'product', entityId: productId }],
+    };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.catalogActivity.count({ where }),
+      this.prisma.catalogActivity.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    return {
+      items: rows.map((activity) => ({
+        id: activity.id,
+        label: activity.label,
+        description: activity.description ?? undefined,
+        timestamp: activity.createdAt.toISOString(),
+        actorName: activity.actorName ?? undefined,
       })),
       total,
       page,
