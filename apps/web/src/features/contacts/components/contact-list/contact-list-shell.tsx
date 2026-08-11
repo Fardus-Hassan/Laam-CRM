@@ -204,7 +204,7 @@ export function ContactListShell({ source }: ContactListShellProps) {
           onClearAllFilters={handleClearFilters}
         />
 
-        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-visible')}>
           <ContactSelectionBar
             selectedCount={selectedIds.size}
             selectedContactIds={[...selectedIds]}

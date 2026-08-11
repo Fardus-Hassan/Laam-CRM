@@ -331,7 +331,7 @@ export class FollowupsService implements OnModuleInit, OnModuleDestroy {
     query: FollowupListQuery,
   ): Promise<FollowupListResponse> {
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
+    const pageSize = Math.min(1000, Math.max(1, query.pageSize ?? 20));
     const queue = (query.queue ?? 1) as FollowupQueue;
 
     const where: Prisma.FollowupWhereInput = {

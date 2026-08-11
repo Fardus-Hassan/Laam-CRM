@@ -46,7 +46,7 @@ export class TasksService {
     actor?: ActorLabel & { email?: string; rawName?: string },
   ): Promise<TaskListResponse> {
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
+    const pageSize = Math.min(1000, Math.max(1, query.pageSize ?? 20));
     const filter = query.filter ?? 'all';
     const search = query.search?.trim();
 

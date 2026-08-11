@@ -72,7 +72,7 @@ export class InventoryOperationsService {
   ): Promise<SupplierListResponse> {
     const query = opts?.search?.trim();
     const page = Math.max(1, opts?.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const pageSize = Math.min(1000, Math.max(1, opts?.pageSize ?? 50));
     const where = {
       organizationId,
       ...(query
@@ -224,7 +224,7 @@ export class InventoryOperationsService {
   ): Promise<PurchaseListResponse> {
     const query = opts?.search?.trim();
     const page = Math.max(1, opts?.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const pageSize = Math.min(1000, Math.max(1, opts?.pageSize ?? 50));
     const where: Prisma.InventoryPurchaseWhereInput = {
       organizationId,
       ...(opts?.stockStatus ? { stockStatus: opts.stockStatus } : {}),
@@ -770,7 +770,7 @@ export class InventoryOperationsService {
     opts?: { page?: number; pageSize?: number; search?: string },
   ): Promise<StockAdjustmentListResponse> {
     const page = Math.max(1, opts?.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const pageSize = Math.min(1000, Math.max(1, opts?.pageSize ?? 50));
     const query = opts?.search?.trim();
     const where: Prisma.InventoryStockMovementWhereInput = {
       organizationId,
@@ -860,7 +860,7 @@ export class InventoryOperationsService {
     opts?: { page?: number; pageSize?: number; search?: string },
   ): Promise<PurchaseReturnListResponse> {
     const page = Math.max(1, opts?.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const pageSize = Math.min(1000, Math.max(1, opts?.pageSize ?? 50));
     const query = opts?.search?.trim();
     const where: Prisma.InventoryPurchaseReturnWhereInput = {
       organizationId,
@@ -1120,7 +1120,7 @@ export class InventoryOperationsService {
     opts?: { page?: number; pageSize?: number; search?: string },
   ): Promise<MixerRecipeListResponse> {
     const page = Math.max(1, opts?.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 25));
+    const pageSize = Math.min(1000, Math.max(1, opts?.pageSize ?? 25));
     const query = opts?.search?.trim();
     const where = {
       organizationId,
@@ -1226,7 +1226,7 @@ export class InventoryOperationsService {
     opts?: { page?: number; pageSize?: number },
   ): Promise<ProductionBatchListResponse> {
     const page = Math.max(1, opts?.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 25));
+    const pageSize = Math.min(1000, Math.max(1, opts?.pageSize ?? 25));
     const where = { organizationId };
 
     const [total, rows] = await Promise.all([

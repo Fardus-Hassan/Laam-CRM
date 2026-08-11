@@ -213,7 +213,7 @@ export function ProductListShell() {
           }}
           onClearAll={handleClearFilters}
         />
-        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-visible')}>
           <ProductSelectionBar
             selectedCount={selectedIds.size}
             selectedProductIds={[...selectedIds]}

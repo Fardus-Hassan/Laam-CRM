@@ -990,7 +990,7 @@ export class OrdersService {
     },
   ): Promise<OrderListResponse> {
     const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
+    const pageSize = Math.min(1000, Math.max(1, query.pageSize ?? 20));
     const where: Record<string, unknown> = { organizationId, deletedAt: null };
     const andFilters: Record<string, unknown>[] = [];
 

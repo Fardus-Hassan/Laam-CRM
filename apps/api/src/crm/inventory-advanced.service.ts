@@ -274,7 +274,7 @@ export class InventoryAdvancedService {
     query: StockMovementListQuery = {},
   ): Promise<StockMovementListResponse> {
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(Math.max(1, query.pageSize ?? 50), 100);
+    const pageSize = Math.min(Math.max(1, query.pageSize ?? 50), 1000);
     const where: Prisma.InventoryStockMovementWhereInput = { organizationId };
 
     if (query.productId) where.productId = query.productId;
@@ -363,7 +363,7 @@ export class InventoryAdvancedService {
     },
   ): Promise<InventoryLotListResponse> {
     const page = Math.max(1, opts?.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, opts?.pageSize ?? 50));
+    const pageSize = Math.min(1000, Math.max(1, opts?.pageSize ?? 50));
     const query = opts?.search?.trim();
     const where: Prisma.InventoryLotWhereInput = {
       organizationId,

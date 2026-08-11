@@ -179,7 +179,7 @@ export function TaskListShell() {
           onClearAll={handleClearFilters}
         />
 
-        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-visible')}>
           <TaskSelectionBar
             selectedCount={selectedIds.size}
             selectedTaskIds={[...selectedIds]}

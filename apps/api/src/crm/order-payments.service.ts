@@ -33,7 +33,7 @@ export class OrderPaymentsService {
     query: Partial<OrderPaymentListQuery> & { page?: number; pageSize?: number },
   ): Promise<OrderPaymentListResponse> {
     const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
+    const pageSize = Math.min(1000, Math.max(1, query.pageSize ?? 20));
     const where: Record<string, unknown> = { organizationId };
 
     if (query.status) where.status = query.status;

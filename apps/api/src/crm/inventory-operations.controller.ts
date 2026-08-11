@@ -548,7 +548,7 @@ export class InventoryOperationsController {
     return this.operations.listSuppliers(user.organizationId!, {
       search,
       page: Math.max(1, Number(pageRaw) || 1),
-      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+      pageSize: Math.min(1000, Math.max(1, Number(pageSizeRaw) || 50)),
     });
   }
 
@@ -610,7 +610,7 @@ export class InventoryOperationsController {
       search,
       stockStatus,
       page: Math.max(1, Number(pageRaw) || 1),
-      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+      pageSize: Math.min(1000, Math.max(1, Number(pageSizeRaw) || 50)),
     });
   }
 
@@ -711,7 +711,7 @@ export class InventoryOperationsController {
     return this.operations.listAdjustments(user.organizationId!, {
       search,
       page: Math.max(1, Number(pageRaw) || 1),
-      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+      pageSize: Math.min(1000, Math.max(1, Number(pageSizeRaw) || 50)),
     });
   }
 
@@ -738,7 +738,7 @@ export class InventoryOperationsController {
     return this.operations.listPurchaseReturns(user.organizationId!, {
       search,
       page: Math.max(1, Number(pageRaw) || 1),
-      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+      pageSize: Math.min(1000, Math.max(1, Number(pageSizeRaw) || 50)),
     });
   }
 
@@ -809,7 +809,7 @@ export class InventoryOperationsController {
     return this.operations.listMixerRecipes(user.organizationId!, {
       search,
       page: Math.max(1, Number(pageRaw) || 1),
-      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 25)),
+      pageSize: Math.min(1000, Math.max(1, Number(pageSizeRaw) || 25)),
     });
   }
 
@@ -866,7 +866,7 @@ export class InventoryOperationsController {
     this.catalog.requireOrg(user.organizationId);
     return this.operations.listProductionRuns(user.organizationId!, {
       page: Math.max(1, Number(pageRaw) || 1),
-      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 25)),
+      pageSize: Math.min(1000, Math.max(1, Number(pageSizeRaw) || 25)),
     });
   }
 

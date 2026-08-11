@@ -301,7 +301,7 @@ export function CustomerListShell() {
           onExport={() => void handleExportView()}
         />
 
-        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-visible')}>
           <CustomerSelectionBar
             selectedCount={selectedIds.size}
             selectedCustomerIds={[...selectedIds]}

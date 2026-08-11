@@ -335,7 +335,7 @@ export class ProductsController {
   ) {
     this.catalog.requireOrg(user.organizationId);
     const page = Math.max(1, Number(pageRaw) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(pageSizeRaw) || 20));
+    const pageSize = Math.min(1000, Math.max(1, Number(pageSizeRaw) || 20));
     return this.catalog.listProducts(user.organizationId!, {
       filter,
       category,
@@ -373,7 +373,7 @@ export class ProductsController {
   ) {
     this.catalog.requireOrg(user.organizationId);
     const page = Math.max(1, Number(pageRaw) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(pageSizeRaw) || 20));
+    const pageSize = Math.min(1000, Math.max(1, Number(pageSizeRaw) || 20));
     return this.catalog.listStockMovements(user.organizationId!, id, { page, pageSize });
   }
 
@@ -387,7 +387,7 @@ export class ProductsController {
   ) {
     this.catalog.requireOrg(user.organizationId);
     const page = Math.max(1, Number(pageRaw) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(pageSizeRaw) || 10));
+    const pageSize = Math.min(1000, Math.max(1, Number(pageSizeRaw) || 10));
     return this.catalog.listProductActivities(user.organizationId!, id, { page, pageSize });
   }
 

@@ -37,7 +37,7 @@ export class SupportService {
     query: TicketListQuery,
   ): Promise<TicketListResponse> {
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
+    const pageSize = Math.min(1000, Math.max(1, query.pageSize ?? 20));
     const search = query.search?.trim();
 
     const where: Prisma.SupportTicketWhereInput = { organizationId };
