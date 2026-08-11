@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import type { CustomerListItem, CustomerSegmentCount, CustomerStatus } from '@laam/types';
 import {
-  CalendarClock,
   MessageCircle,
   MessageSquare,
   MessageSquarePlus,
@@ -17,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { CourierScoreCell } from '@/features/customers/components/shared/courier-score-cell';
+import { CustomerFollowUpControl } from '@/features/customers/components/shared/customer-follow-up-control';
 import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
 import { formatCustomerDate } from '@/features/customers/components/customer-list/customer-table-columns';
 import { formatCurrency } from '@/lib/format';
@@ -25,7 +25,7 @@ type CustomerTableMobileCardProps = {
   row: CustomerListItem;
   ctx: CrmRowContext<CustomerListItem>;
   onNoteClick?: (row: CustomerListItem) => void;
-  onFollowUpClick?: (row: CustomerListItem) => void;
+  onFollowUpSaved?: (row: CustomerListItem, followUpDue: string) => void;
   statusOptions?: CustomerSegmentCount[];
   onStatusChange?: (row: CustomerListItem, status: CustomerStatus) => void | Promise<void>;
 };
@@ -34,7 +34,7 @@ export function CustomerTableMobileCard({
   row,
   ctx,
   onNoteClick,
-  onFollowUpClick,
+  onFollowUpSaved,
   statusOptions = [],
   onStatusChange,
 }: CustomerTableMobileCardProps) {
@@ -67,10 +67,12 @@ export function CustomerTableMobileCard({
             </Link>
           </div>
           <DataTablePersonCell
+            compact
             name={row.name}
-            phone={`Joined ${formatCustomerDate(row.createdAt)}`}
+            sourceLabel={`Joined ${formatCustomerDate(row.createdAt)}`}
+            phoneSlot={<DataTableCopyableText value={row.phone} className="text-sm" />}
           />
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Button type="button" size="sm" variant="outline" className="h-7 px-2" asChild>
               <a href={`tel:${phoneDigits}`}>
                 <Phone className="size-3.5" />
@@ -108,23 +110,18 @@ export function CustomerTableMobileCard({
                 Order
               </Link>
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7 px-2"
-              onClick={() => onFollowUpClick?.(row)}
-            >
-              <CalendarClock className="size-3.5" />
-            </Button>
+            <CustomerFollowUpControl
+              customerId={row.id}
+              customerName={row.name}
+              followUpDue={row.followUpDue}
+              hasFollowUp={row.hasFollowUp}
+              assignedAgentName={row.assignedAgentName}
+              onSaved={(due) => onFollowUpSaved?.(row, due)}
+            />
           </div>
         </div>
       </header>
       <div className="grid gap-3 p-4 text-sm sm:grid-cols-2">
-        <div>
-          <p className="text-xs text-muted-foreground">Mobile</p>
-          <DataTableCopyableText value={row.phone} />
-        </div>
         <div>
           <p className="text-xs text-muted-foreground">Orders</p>
           <p className="font-medium tabular-nums">{row.orderCount}</p>
@@ -136,6 +133,12 @@ export function CustomerTableMobileCard({
         <div>
           <p className="text-xs text-muted-foreground">Total spent</p>
           <p className="font-medium tabular-nums">{formatCurrency(row.totalSpent)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Follow-up</p>
+          <p className="font-medium tabular-nums">
+            {row.followUpDue ? formatCustomerDate(row.followUpDue) : 'Not set'}
+          </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Courier score</p>

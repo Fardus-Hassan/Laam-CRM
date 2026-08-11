@@ -21,6 +21,7 @@ import { CustomerDataTable } from '@/features/customers/components/customer-list
 import {
   emptyCustomerFilters,
   filtersToQuery,
+  PREMIUM_PURCHASE_MIN,
   PURCHASE_COUNT_PILLS,
   removeCustomerFilter,
   type CustomerFilterValues,
@@ -158,21 +159,8 @@ export function CustomerListShell() {
     handleRefresh();
   }
 
-  function handleFollowUpClick(row: CustomerListItem) {
-    void (async () => {
-      try {
-        const { followupsApi } = await import('@/features/followups/api/followups-api');
-        await followupsApi.createFollowup({
-          customerId: row.id,
-          note: 'Follow-up from customers list',
-          assignedAgentName: row.assignedAgentName,
-        });
-        toast.success(`Follow-up created for ${row.name}`);
-        handleRefresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to create follow-up');
-      }
-    })();
+  function handleFollowUpSaved(_row: CustomerListItem, _followUpDue: string) {
+    handleRefresh();
   }
 
   return (
@@ -255,6 +243,45 @@ export function CustomerListShell() {
                 </button>
               );
             })}
+            {(() => {
+              const premiumActive =
+                filters.orderCount === String(PREMIUM_PURCHASE_MIN) &&
+                filters.orderCountOp === 'gte';
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters((current) => {
+                      if (
+                        current.orderCount === String(PREMIUM_PURCHASE_MIN) &&
+                        current.orderCountOp === 'gte'
+                      ) {
+                        return {
+                          ...current,
+                          orderCount: undefined,
+                          orderCountOp: 'gte',
+                        };
+                      }
+                      return {
+                        ...current,
+                        orderCount: String(PREMIUM_PURCHASE_MIN),
+                        orderCountOp: 'gte',
+                      };
+                    });
+                    setPage(1);
+                  }}
+                  className={cn(
+                    'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                    premiumActive
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                  )}
+                  title="Customers with 10 or more orders"
+                >
+                  Premium Customer
+                </button>
+              );
+            })()}
           </div>
         </div>
 
@@ -317,7 +344,7 @@ export function CustomerListShell() {
                 onNoteClick={setNoteTarget}
                 statusOptions={data?.statuses ?? []}
                 onStatusChange={handleStatusChange}
-                onFollowUpClick={handleFollowUpClick}
+                onFollowUpSaved={handleFollowUpSaved}
               />
             )}
           </CardContent>

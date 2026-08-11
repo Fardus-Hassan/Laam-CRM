@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { CalendarClock, CalendarPlus, Check, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,25 +12,13 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { FormInput } from '@/components/form/form-input';
-import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
+import { followupsApi } from '@/features/followups/api/followups-api';
+import {
+  getFollowUpTone,
+  type FollowUpTone,
+} from '@/features/orders/components/shared/order-follow-up-control';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-
-export type FollowUpTone = 'none' | 'upcoming' | 'today' | 'overdue';
-
-function startOfLocalDay(value: Date): Date {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-}
-
-export function getFollowUpTone(followUpDueAt?: string | null): FollowUpTone {
-  if (!followUpDueAt) return 'none';
-  const due = startOfLocalDay(new Date(followUpDueAt));
-  if (Number.isNaN(due.getTime())) return 'none';
-  const today = startOfLocalDay(new Date());
-  if (due.getTime() < today.getTime()) return 'overdue';
-  if (due.getTime() === today.getTime()) return 'today';
-  return 'upcoming';
-}
 
 function toDateInputValue(value?: string | null): string {
   if (value) {
@@ -49,64 +38,66 @@ function addDaysLocal(days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function toneLabel(tone: FollowUpTone, followUpDueAt?: string | null): string {
+function toneLabel(tone: FollowUpTone, followUpDue?: string | null): string {
   if (tone === 'none') return 'No follow-up set';
-  if (tone === 'overdue') return `Overdue · ${formatDate(followUpDueAt!)}`;
-  if (tone === 'today') return `Due today · ${formatDate(followUpDueAt!)}`;
-  return `Scheduled · ${formatDate(followUpDueAt!)}`;
+  if (tone === 'overdue') return `Overdue · ${formatDate(followUpDue!)}`;
+  if (tone === 'today') return `Due today · ${formatDate(followUpDue!)}`;
+  return `Scheduled · ${formatDate(followUpDue!)}`;
 }
 
-type OrderFollowUpControlProps = {
-  orderId: string;
-  orderNumber?: string;
-  followUpDueAt?: string | null;
-  followUpSetAt?: string | null;
-  /** Called after successful save so lists/detail can refresh. */
-  onSaved?: (followUpDueAt: string) => void;
-  /**
-   * `icon` — dense table control.
-   * `panel` — order detail card with full schedule UI.
-   */
+type CustomerFollowUpControlProps = {
+  customerId: string;
+  customerName?: string;
+  followUpDue?: string | null;
+  hasFollowUp?: boolean;
+  assignedAgentName?: string | null;
+  onSaved?: (followUpDue: string) => void;
   variant?: 'icon' | 'panel';
   className?: string;
 };
 
 /**
- * View + set order follow-up schedule. Uses bulk follow-up API (single order).
+ * BizMation-style follow-up: see due state at a glance + set/reschedule in-place.
+ * Laam design tokens; creates a CRM Follow-up (+ customer hasFollowUp/followUpDue).
  */
-export function OrderFollowUpControl({
-  orderId,
-  orderNumber,
-  followUpDueAt,
-  followUpSetAt,
+export function CustomerFollowUpControl({
+  customerId,
+  customerName,
+  followUpDue,
+  hasFollowUp: hasFollowUpProp,
+  assignedAgentName,
   onSaved,
   variant = 'icon',
   className,
-}: OrderFollowUpControlProps) {
-  const { bulkSetFollowUp } = useOrderMutations();
+}: CustomerFollowUpControlProps) {
   const [open, setOpen] = React.useState(false);
-  const [date, setDate] = React.useState(() => toDateInputValue(followUpDueAt));
+  const [date, setDate] = React.useState(() => toDateInputValue(followUpDue));
   const [saving, setSaving] = React.useState(false);
 
-  const tone = getFollowUpTone(followUpDueAt);
-  const hasFollowUp = tone !== 'none';
+  const tone = getFollowUpTone(followUpDue);
+  const hasFollowUp = hasFollowUpProp || tone !== 'none';
 
   React.useEffect(() => {
-    if (open) {
-      setDate(toDateInputValue(followUpDueAt));
-    }
-  }, [open, followUpDueAt]);
+    if (open) setDate(toDateInputValue(followUpDue));
+  }, [open, followUpDue]);
 
   async function handleSave() {
     if (!date.trim()) return;
     setSaving(true);
     try {
-      await bulkSetFollowUp([orderId], date.trim());
-      const iso = new Date(`${date.trim()}T12:00:00`).toISOString();
-      onSaved?.(iso);
+      await followupsApi.createFollowup({
+        customerId,
+        scheduleDate: date.trim(),
+        note: customerName
+          ? `Follow-up for ${customerName}`
+          : 'Follow-up from customers workspace',
+        assignedAgentName: assignedAgentName ?? undefined,
+      });
+      toast.success('Follow-up scheduled');
+      onSaved?.(date.trim());
       setOpen(false);
-    } catch {
-      // toast from mutation
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to set follow-up');
     } finally {
       setSaving(false);
     }
@@ -132,8 +123,8 @@ export function OrderFollowUpControl({
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-sm font-semibold leading-none">Follow-up</p>
-            {orderNumber ? (
-              <p className="mt-1 text-[11px] text-muted-foreground">{orderNumber}</p>
+            {customerName ? (
+              <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{customerName}</p>
             ) : null}
           </div>
           {hasFollowUp ? (
@@ -151,19 +142,13 @@ export function OrderFollowUpControl({
             </Badge>
           )}
         </div>
-        {hasFollowUp ? (
+        {hasFollowUp && followUpDue ? (
           <p className="text-xs text-muted-foreground">
-            Due <span className="font-medium text-foreground">{formatDate(followUpDueAt!)}</span>
-            {followUpSetAt ? (
-              <>
-                {' '}
-                · set {formatDate(followUpSetAt)}
-              </>
-            ) : null}
+            Due <span className="font-medium text-foreground">{formatDate(followUpDue)}</span>
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Pick a callback date. Order moves to Hold (Follow-up) when saved.
+            Callback date for this buyer — shows in Follow-ups queue.
           </p>
         )}
       </div>
@@ -185,11 +170,11 @@ export function OrderFollowUpControl({
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor={`follow-up-${orderId}`} className="text-xs font-medium text-muted-foreground">
+        <label htmlFor={`cust-fu-${customerId}`} className="text-xs font-medium text-muted-foreground">
           Due date
         </label>
         <FormInput
-          id={`follow-up-${orderId}`}
+          id={`cust-fu-${customerId}`}
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
@@ -204,11 +189,7 @@ export function OrderFollowUpControl({
         disabled={saving || !date.trim()}
         onClick={() => void handleSave()}
       >
-        {saving ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : (
-          <Check className="size-3.5" />
-        )}
+        {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
         {hasFollowUp ? 'Update follow-up' : 'Set follow-up'}
       </Button>
     </div>
@@ -218,19 +199,19 @@ export function OrderFollowUpControl({
     return (
       <div
         className={cn(
-          'space-y-3 rounded-lg border border-border/70 bg-muted/20 p-2.5',
+          'space-y-3 rounded-lg border border-border/70 bg-muted/20 p-3',
           className,
         )}
       >
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 space-y-0.5">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Follow-up
             </p>
-            <p className="text-sm font-semibold leading-snug">
-              {hasFollowUp ? formatDate(followUpDueAt!) : 'Not scheduled'}
+            <p className="text-base font-semibold leading-snug">
+              {hasFollowUp && followUpDue ? formatDate(followUpDue) : 'Not scheduled'}
             </p>
-            <p className="text-[11px] text-muted-foreground">{toneLabel(tone, followUpDueAt)}</p>
+            <p className="text-xs text-muted-foreground">{toneLabel(tone, followUpDue)}</p>
           </div>
           <span
             className={cn(
@@ -250,7 +231,7 @@ export function OrderFollowUpControl({
         </div>
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <Button type="button" size="sm" variant="outline" className="h-8 w-full text-xs">
+            <Button type="button" size="sm" variant="outline" className="w-full">
               {hasFollowUp ? 'View / change' : 'Schedule follow-up'}
             </Button>
           </PopoverTrigger>
@@ -262,7 +243,6 @@ export function OrderFollowUpControl({
     );
   }
 
-  // Compact icon control for orders table
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -281,8 +261,8 @@ export function OrderFollowUpControl({
             tone === 'upcoming' && 'ring-primary/25',
             className,
           )}
-          aria-label={toneLabel(tone, followUpDueAt)}
-          title={`${toneLabel(tone, followUpDueAt)} · Click to set or change`}
+          aria-label={toneLabel(tone, followUpDue)}
+          title={`${toneLabel(tone, followUpDue)} · Click to set or change`}
           data-no-drag-scroll
         >
           {hasFollowUp ? (
