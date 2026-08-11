@@ -25,13 +25,16 @@ import {
 } from '@/components/ui/tooltip';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { OrderDateStack } from '@/features/orders/components/order-list/order-date-stack';
+import { OrderFollowUpControl } from '@/features/orders/components/shared/order-follow-up-control';
 
 export { formatOrderDateTime } from '@/features/orders/components/order-list/order-date-stack';
 
 export function buildOrderTableColumns(options?: {
   onNoteClick?: (row: OrderListRow) => void;
+  onFollowUpSaved?: (orderId: string, followUpDueAt: string) => void;
 }): CrmColumnDef<OrderListRow>[] {
   const onNoteClick = options?.onNoteClick;
+  const onFollowUpSaved = options?.onFollowUpSaved;
   return [
   {
     id: 'status',
@@ -129,15 +132,15 @@ export function buildOrderTableColumns(options?: {
     id: 'customer',
     header: 'Name & Number',
     enableSorting: true,
-    // Fixed to phone + 4 actions (does not stretch on large screens).
-    size: 268,
-    minSize: 268,
-    maxSize: 268,
+    // Phone + 4 contact actions + follow-up icon (fixed, no stretch).
+    size: 298,
+    minSize: 298,
+    maxSize: 298,
     meta: {
       label: 'Customer',
       priority: 'primary',
-      headerClassName: 'w-[268px]',
-      cellClassName: 'w-[268px] overflow-hidden',
+      headerClassName: 'w-[298px]',
+      cellClassName: 'w-[298px] overflow-hidden',
       align: 'top',
     },
     cell: ({ row }) => (
@@ -147,16 +150,27 @@ export function buildOrderTableColumns(options?: {
         name={row.original.customerName}
         sourceLabel={ORDER_SOURCE_LABELS[row.original.source]}
         phoneSlot={
-          <FormPhoneInput
-            value={row.original.customerPhone}
-            readOnly
-            layout="inline"
-            showCopy
-            showSms
-            showCall
-            showWhatsapp
-            className="pointer-events-auto h-8"
-          />
+          <div className="flex max-w-full items-center gap-0.5">
+            <FormPhoneInput
+              value={row.original.customerPhone}
+              readOnly
+              layout="inline"
+              showCopy
+              showSms
+              showCall
+              showWhatsapp
+              className="pointer-events-auto h-8"
+            />
+            <OrderFollowUpControl
+              orderId={row.original.id}
+              orderNumber={row.original.orderNumber}
+              followUpDueAt={row.original.followUpDueAt}
+              followUpSetAt={row.original.followUpSetAt}
+              onSaved={(followUpDueAt) =>
+                onFollowUpSaved?.(row.original.id, followUpDueAt)
+              }
+            />
+          </div>
         }
       />
     ),

@@ -28,6 +28,7 @@ type OrderDataTableProps = {
   search?: string;
   onSearchChange?: (value: string) => void;
   onNoteClick?: (row: OrderListRow) => void;
+  onFollowUpSaved?: (orderId: string, followUpDueAt: string) => void;
 };
 
 export function OrderDataTable({
@@ -48,17 +49,23 @@ export function OrderDataTable({
   search,
   onSearchChange,
   onNoteClick,
+  onFollowUpSaved,
 }: OrderDataTableProps) {
   const columns = React.useMemo(
-    () => buildOrderTableColumns({ onNoteClick }),
-    [onNoteClick],
+    () => buildOrderTableColumns({ onNoteClick, onFollowUpSaved }),
+    [onNoteClick, onFollowUpSaved],
   );
 
   const mobileCard = React.useCallback(
     (row: OrderListRow, ctx: Parameters<typeof OrderTableMobileCard>[0]['ctx']) => (
-      <OrderTableMobileCard row={row} ctx={ctx} onNoteClick={onNoteClick} />
+      <OrderTableMobileCard
+        row={row}
+        ctx={ctx}
+        onNoteClick={onNoteClick}
+        onFollowUpSaved={onFollowUpSaved}
+      />
     ),
-    [onNoteClick],
+    [onNoteClick, onFollowUpSaved],
   );
 
   const selectionState = React.useMemo(

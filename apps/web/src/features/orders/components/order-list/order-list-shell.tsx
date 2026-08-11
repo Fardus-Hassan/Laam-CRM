@@ -326,6 +326,9 @@ export function OrderListShell({ queue }: OrderListShellProps) {
                   setPage(1);
                 }}
                 onNoteClick={setNoteRow}
+                onFollowUpSaved={() => {
+                  handleRefresh();
+                }}
               />
             )}
           </CardContent>

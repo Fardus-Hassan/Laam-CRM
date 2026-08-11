@@ -25,6 +25,7 @@ import { MoneySummaryPanel } from '@/features/orders/components/shared/money-sum
 import { OrderActionBar } from '@/features/orders/components/shared/order-action-bar';
 import { OrderAssignSheet } from '@/features/orders/components/shared/order-assign-sheet';
 import { OrderDetailSidebarMeta } from '@/features/orders/components/shared/order-detail-header';
+import { OrderFollowUpControl } from '@/features/orders/components/shared/order-follow-up-control';
 import { FulfillmentWarehouseSelect } from '@/features/orders/components/shared/fulfillment-warehouse-select';
 import { OrderRelatedLinks } from '@/features/orders/components/shared/order-related-links';
 import { OrderReturnItemsButton } from '@/features/orders/components/shared/order-line-items-card';
@@ -357,6 +358,18 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
               )}
             >
               <OrderDetailSidebarMeta order={order} className="w-full" />
+
+              <OrderFollowUpControl
+                variant="panel"
+                orderId={order.id}
+                orderNumber={order.orderNumber}
+                followUpDueAt={order.followUpDueAt}
+                followUpSetAt={order.followUpSetAt}
+                className="w-full"
+                onSaved={() => {
+                  void refreshOrder();
+                }}
+              />
 
               <MoneySummaryPanel
                 mode="edit"

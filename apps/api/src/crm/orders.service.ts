@@ -4054,7 +4054,34 @@ export class OrdersService {
     const imageByProductId = new Map(
       productImages.map((p) => [p.id, p.imageUrl ?? undefined]),
     );
-    return this.toDetail(row, imageByProductId);
+
+    const [followup, followUpActivity] = await Promise.all([
+      this.prisma.followup.findFirst({
+        where: { organizationId, orderId: row.id },
+        select: { scheduleDate: true },
+        orderBy: { scheduleDate: 'desc' },
+      }),
+      this.prisma.orderActivity.findFirst({
+        where: {
+          organizationId,
+          orderId: row.id,
+          label: 'Follow-up scheduled',
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+    ]);
+
+    const detail = this.toDetail(row, imageByProductId);
+    return {
+      ...detail,
+      followUpDueAt: followup?.scheduleDate
+        ? followup.scheduleDate.toISOString()
+        : detail.followUpDueAt,
+      followUpSetAt: followUpActivity?.createdAt
+        ? followUpActivity.createdAt.toISOString()
+        : detail.followUpSetAt,
+    };
   }
 
   private mapTimelineType(

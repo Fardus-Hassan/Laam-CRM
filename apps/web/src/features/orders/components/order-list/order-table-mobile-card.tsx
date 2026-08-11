@@ -24,14 +24,21 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { OrderDateStack } from '@/features/orders/components/order-list/order-date-stack';
 import { OrderAgeBadge } from '@/features/orders/components/shared/order-age-badge';
+import { OrderFollowUpControl } from '@/features/orders/components/shared/order-follow-up-control';
 
 type OrderTableMobileCardProps = {
   row: OrderListRow;
   ctx: CrmRowContext<OrderListRow>;
   onNoteClick?: (row: OrderListRow) => void;
+  onFollowUpSaved?: (orderId: string, followUpDueAt: string) => void;
 };
 
-export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobileCardProps) {
+export function OrderTableMobileCard({
+  row,
+  ctx,
+  onNoteClick,
+  onFollowUpSaved,
+}: OrderTableMobileCardProps) {
   const displayId = row.orderNumber.replace(/^ORD-/, '');
   const phoneDigits = row.customerPhone.replace(/\D/g, '');
 
@@ -114,12 +121,21 @@ export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobile
             name={row.customerName}
             sourceLabel={ORDER_SOURCE_LABELS[row.source]}
             phoneSlot={
-              <FormPhoneInput
-                value={row.customerPhone}
-                readOnly
-                layout="inline"
-                className="pointer-events-auto h-8"
-              />
+              <div className="flex flex-wrap items-center gap-1">
+                <FormPhoneInput
+                  value={row.customerPhone}
+                  readOnly
+                  layout="inline"
+                  className="pointer-events-auto h-8"
+                />
+                <OrderFollowUpControl
+                  orderId={row.id}
+                  orderNumber={row.orderNumber}
+                  followUpDueAt={row.followUpDueAt}
+                  followUpSetAt={row.followUpSetAt}
+                  onSaved={(followUpDueAt) => onFollowUpSaved?.(row.id, followUpDueAt)}
+                />
+              </div>
             }
           />
         </LabeledSection>
