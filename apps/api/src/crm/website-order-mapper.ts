@@ -26,6 +26,8 @@ export const websiteIngestPayloadSchema = z.object({
   discount: z.number().nonnegative().optional(),
   notes: z.string().optional(),
   orderDate: z.string().optional(),
+  /** Shopper IP; prefer body over transport IP when your shop backend relays the request. */
+  clientIp: z.string().min(3).max(64).optional(),
   utmSource: z.string().optional(),
   utmId: z.string().optional(),
   utmContent: z.string().optional(),

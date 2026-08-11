@@ -8,9 +8,9 @@ import {
 } from '../common/decorators';
 import { AccountingService } from './accounting.service';
 import { CourierHubService } from './courier-hub.service';
-import { FailedOrdersService } from './failed-orders.service';
 import { FollowupsService } from './followups.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
+import { SecurityBlocksService } from './security-blocks.service';
 import { SupportService } from './support.service';
 import { TasksService } from './tasks.service';
 
@@ -24,7 +24,7 @@ export class NavBadgesController {
     private readonly accounting: AccountingService,
     private readonly inventory: InventoryCatalogService,
     private readonly support: SupportService,
-    private readonly failedOrders: FailedOrdersService,
+    private readonly securityBlocks: SecurityBlocksService,
   ) {}
 
   @Get('badges')
@@ -56,7 +56,7 @@ export class NavBadgesController {
       this.followups.todayDueCount(orgId).catch(() => 0),
       this.tasks.todayOpenCount(orgId).catch(() => 0),
       this.accounting.openReceivablesCount(orgId).catch(() => 0),
-      this.failedOrders.countPending(orgId).catch(() => 0),
+      this.securityBlocks.activeCount(orgId).catch(() => 0),
       this.courierHub.readyCount(orgId).catch(() => 0),
       this.support.openCount(orgId).catch(() => 0),
       this.inventory.lowStockCount(orgId).catch(() => 0),

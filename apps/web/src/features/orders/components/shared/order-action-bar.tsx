@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { OrderDetail } from '@laam/types';
 import {
   ArrowLeft,
-  MoreHorizontal,
+  Barcode,
   MessageSquare,
   Printer,
   Truck,
@@ -24,18 +24,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { OrderSmsDialog } from '@/features/orders/components/shared/order-sms-dialog';
 import { ORDER_STICKY_ACTION_CLASS } from '@/features/orders/components/create-order/section-layout';
 import { pathaoCourierApi } from '@/features/orders/api/pathao-courier-api';
 import { carrybeeCourierApi } from '@/features/orders/api/carrybee-courier-api';
 import { ordersApi } from '@/features/orders/api/orders-api';
+import type { OrderPrintType } from '@/features/orders/components/shared/order-print';
 import { useConnectedCouriers } from '@/features/courier/hooks/use-connected-couriers';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { cn } from '@/lib/utils';
@@ -47,7 +41,7 @@ type OrderActionBarProps = {
   onDelete?: () => void;
   onAssign?: () => void;
   onStatusClick?: () => void;
-  onPrint?: (type: 'invoice' | 'packing') => void;
+  onPrint?: (type: Extract<OrderPrintType, 'invoice' | 'packing' | 'barcode'>) => void;
   onCourierBooked?: (order: OrderDetail) => void;
   backHref?: string;
   className?: string;
@@ -385,59 +379,78 @@ export function OrderActionBar({
             ) : null}
           </Can>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" size="sm" variant="outline" className="h-8 px-2">
-                <MoreHorizontal className="size-4" />
-                <span className="sr-only">More actions</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8"
+            onClick={() => setSmsOpen(true)}
+          >
+            <MessageSquare className="size-3.5" />
+            Send SMS
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8"
+            onClick={() => onPrint?.('invoice')}
+          >
+            <Printer className="size-3.5" />
+            Print invoice
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8"
+            onClick={() => onPrint?.('packing')}
+          >
+            <Printer className="size-3.5" />
+            Print packing
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8"
+            onClick={() => onPrint?.('barcode')}
+          >
+            <Barcode className="size-3.5" />
+            Print barcode
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-8" asChild>
+            <Link href="/dashboard/courier">
+              <Truck className="size-3.5" />
+              Courier hub
+            </Link>
+          </Button>
+
+          {showCancel ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={!canCancel}
+                onClick={() => void handleCancelOrderClick()}
+              >
+                Cancel order
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => setSmsOpen(true)}>
-                <MessageSquare className="size-4" />
-                Send SMS
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onPrint?.('invoice')}>
-                <Printer className="size-4" />
-                Print invoice
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onPrint?.('packing')}>
-                <Printer className="size-4" />
-                Print packing slip
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/courier">Courier hub</Link>
-              </DropdownMenuItem>
-              {canManageCourier && alreadyBooked ? (
-                <DropdownMenuItem
-                  disabled={courierLoading || order.status === 'cancelled'}
-                  onClick={() => void handleUnlinkCourier()}
+              {onDelete ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => void handleDeleteClick()}
                 >
-                  Courier Unlink
-                </DropdownMenuItem>
+                  Recycle bin
+                </Button>
               ) : null}
-              {showCancel ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    disabled={!canCancel}
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => void handleCancelOrderClick()}
-                  >
-                    Cancel order
-                  </DropdownMenuItem>
-                  {onDelete ? (
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => void handleDeleteClick()}
-                    >
-                      Move to recycle bin
-                    </DropdownMenuItem>
-                  ) : null}
-                </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </>
+          ) : null}
         </div>
       </div>
 

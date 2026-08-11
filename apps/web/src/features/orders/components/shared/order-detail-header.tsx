@@ -1,19 +1,30 @@
 'use client';
 
 import type { OrderDetail } from '@laam/types';
-import { CalendarClock, Copy, MessageCircle, Phone, UserRound } from 'lucide-react';
+import {
+  Ban,
+  CalendarClock,
+  Copy,
+  Globe,
+  MessageCircle,
+  Phone,
+  UserRound,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Can } from '@/components/auth/can';
 import { StatusBadge } from '@/components/dashboard/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { OrderAgeBadge } from '@/features/orders/components/shared/order-age-badge';
 import {
   ORDER_SECTION_BODY_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { calcOrderPaymentTotals } from '@/features/orders/lib/order-payment-totals';
+import { securityApi } from '@/features/security/api/security-api';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +41,40 @@ type OrderPaymentStripProps = {
 /** Compact order identity for the detail sidebar (replaces the old full-width header). */
 export function OrderDetailSidebarMeta({ order, className }: OrderDetailSidebarMetaProps) {
   const phoneDigits = order.customerPhone.replace(/\D/g, '');
+  const clientIp = order.clientIp?.trim();
+  const { confirm, confirmDialog } = useConfirmDialog();
+
+  async function blockTarget(type: 'ip' | 'mobile', value: string) {
+    const label = type === 'ip' ? 'IP address' : 'mobile number';
+    const ok = await confirm({
+      title: `Block this ${label}?`,
+      description: `${value} will be blocked for 30 days. New orders (CRM + website) with this ${label} will be rejected.`,
+      confirmLabel: 'Block',
+      destructive: true,
+    });
+    if (!ok) return;
+
+    try {
+      await securityApi.createBlocked({
+        type,
+        value,
+        reason: 'manual',
+        note: `Blocked from order ${order.orderNumber}`,
+        expiresInDays: 30,
+        lastOrderId: order.id,
+      });
+      toast.success(`${label} blocked for 30 days`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `Failed to block ${label}`);
+    }
+  }
+
+  const utmBits = [
+    order.utmSource ? `src=${order.utmSource}` : null,
+    order.utmCampaign ? `camp=${order.utmCampaign}` : null,
+    order.utmId ? `id=${order.utmId}` : null,
+    order.utmContent ? `content=${order.utmContent}` : null,
+  ].filter(Boolean);
 
   return (
     <Card className={cn('w-full gap-0 overflow-hidden py-0 shadow-none', className)}>
@@ -52,13 +97,28 @@ export function OrderDetailSidebarMeta({ order, className }: OrderDetailSidebarM
               <span className="truncate">{order.customerName}</span>
             </p>
             <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-5">
-              <span>{ORDER_SOURCE_LABELS[order.source]}</span>
+              <span>{ORDER_SOURCE_LABELS[order.source] ?? order.source}</span>
               <span className="text-border">·</span>
               <span className="inline-flex items-center gap-1">
                 <CalendarClock className="size-3" />
                 {formatDateTime(order.createdAt)}
               </span>
             </p>
+            {clientIp ? (
+              <p className="flex flex-wrap items-center gap-1.5 pl-5 font-mono text-[11px]">
+                <Globe className="size-3 shrink-0" />
+                <span className="text-foreground">{clientIp}</span>
+              </p>
+            ) : (
+              <p className="pl-5 text-[11px] text-muted-foreground">
+                IP not captured (manual / older order)
+              </p>
+            )}
+            {utmBits.length ? (
+              <p className="truncate pl-5 text-[11px]" title={utmBits.join(' · ')}>
+                UTM · {utmBits.join(' · ')}
+              </p>
+            ) : null}
             {order.assignedAgentName ? (
               <p className="pl-5">Agent: {order.assignedAgentName}</p>
             ) : null}
@@ -98,7 +158,35 @@ export function OrderDetailSidebarMeta({ order, className }: OrderDetailSidebarM
             WhatsApp
           </Button>
         </div>
+
+        <Can permission="security.manage">
+          <div className="flex flex-wrap gap-1.5 border-t border-border/60 pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => void blockTarget('mobile', order.customerPhone)}
+            >
+              <Ban className="size-3" />
+              Block mobile
+            </Button>
+            {clientIp ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => void blockTarget('ip', clientIp)}
+              >
+                <Ban className="size-3" />
+                Block IP
+              </Button>
+            ) : null}
+          </div>
+        </Can>
       </CardContent>
+      {confirmDialog}
     </Card>
   );
 }

@@ -38,6 +38,13 @@ export const websiteSettingsApi = {
     );
   },
 
+  rotateWebhookSecret(id: string): Promise<WebsiteStore> {
+    return apiRequest<WebsiteStore>(
+      `/crm/settings/websites/${encodeURIComponent(id)}/rotate-webhook-secret`,
+      { method: 'POST' },
+    );
+  },
+
   disconnect(id: string): Promise<{ ok: true }> {
     return apiRequest<{ ok: true }>(`/crm/settings/websites/${encodeURIComponent(id)}`, {
       method: 'DELETE',

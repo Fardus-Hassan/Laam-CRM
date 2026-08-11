@@ -28,6 +28,8 @@ export const createBlockedEntryPayloadSchema = z.object({
   reason: blockReasonSchema,
   note: z.string().optional(),
   expiresInDays: z.number().min(1).max(365).optional(),
+  /** Optional CRM order id that triggered this block (order detail “Block” action). */
+  lastOrderId: z.string().optional(),
 });
 
 export type CreateBlockedEntryPayload = z.infer<typeof createBlockedEntryPayloadSchema>;

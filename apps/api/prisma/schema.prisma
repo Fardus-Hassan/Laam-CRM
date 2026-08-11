@@ -68,6 +68,7 @@ model Organization {
   billingInvoices          BillingInvoice[]
   billingPaymentMethods    BillingPaymentMethod[]
   websiteStores            WebsiteStore[]
+  securityBlocks           SecurityBlock[]
   incentiveTeams           IncentiveTeam[]
   incentivePlans           IncentivePlan[]
   incentiveAssignments     IncentiveAssignment[]
@@ -551,6 +552,8 @@ model Order {
   websiteStore       WebsiteStore? @relation(fields: [websiteStoreId], references: [id], onDelete: SetNull)
   /// Idempotency key from source shop (Woo order id, custom order id).
   externalOrderId    String?
+  /// Customer / shopper IP at order create (website ingest uses request IP).
+  clientIp           String?
   createdByUserId    String?
   createdByName      String?
   createdAt          DateTime @default(now())
@@ -572,6 +575,36 @@ model Order {
   @@index([organizationId, courierSubmitFailedAt])
   @@index([courierProvider, courierStatusSyncedAt])
   @@index([organizationId, websiteStoreId])
+  @@index([organizationId, clientIp])
+}
+
+/// Org-level blocklist: IP or mobile — blocked callers cannot place orders.
+model SecurityBlock {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// ip | mobile
+  type           String
+  /// Normalized value used for unique match (digits-only phone, lowercased IP).
+  value          String
+  /// Display / original form when different from normalized value.
+  valueDisplay   String?
+  /// fraud | duplicate | abuse | chargeback | manual | other
+  reason         String
+  note           String?
+  blockedByUserId String?
+  blockedByName  String?
+  /// Null = permanent block.
+  expiresAt      DateTime?
+  /// Soft reference to order that triggered the block.
+  lastOrderId    String?
+  orderCount     Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, type, value])
+  @@index([organizationId, type])
+  @@index([organizationId, expiresAt])
 }
 
 /// Connected website / e-commerce store (WooCommerce or custom) for order ingest.

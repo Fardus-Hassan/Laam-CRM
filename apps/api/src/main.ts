@@ -32,9 +32,27 @@ function isAllowedOrigin(origin: string | undefined): boolean {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: required for WooCommerce X-WC-Webhook-Signature HMAC verify
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
+
+  // Honor X-Forwarded-For from reverse proxy / CDN (set hop count via TRUST_PROXY)
+  const trustProxy = process.env['TRUST_PROXY'];
+  if (trustProxy === '1' || trustProxy === 'true') {
+    app.set('trust proxy', 1);
+  } else if (trustProxy && /^\d+$/.test(trustProxy)) {
+    app.set('trust proxy', Number(trustProxy));
+  }
+
+  // Cap JSON / form body size (website webhooks stay small; uploads use multipart elsewhere).
+  // NestFactory rawBody:true keeps Buffer for Woo HMAC; these parsers apply size limits.
+  const bodyLimit = process.env['JSON_BODY_LIMIT'] ?? '512kb';
+  app.useBodyParser('json', { limit: bodyLimit });
+  app.useBodyParser('urlencoded', { limit: bodyLimit, extended: true });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -57,7 +75,14 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Tenant-Slug',
+      'X-Laam-Ingest-Token',
+      'X-Website-Token',
+      'X-WC-Webhook-Signature',
+    ],
   });
 
   const uploadsDir = join(process.cwd(), 'uploads');

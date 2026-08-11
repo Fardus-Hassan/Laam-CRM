@@ -41,6 +41,7 @@ import { OrderPaymentsService } from './order-payments.service';
 import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { PathaoCourierService } from './pathao-courier.service';
 import { isPathaoCancelledStatus } from './pathao-status.defaults';
+import { SecurityBlocksService } from './security-blocks.service';
 import { SmsService } from './sms.service';
 import { AutomationsService } from './automations.service';
 import type { PathaoSyncService } from './pathao-sync.service';
@@ -76,6 +77,8 @@ export type CreateOrderInput = CreateOrderPayload & {
   courierChargedToMe?: number;
   websiteStoreId?: string;
   externalOrderId?: string;
+  /** Shopper IP at intake (website webhook / public APIs). */
+  clientIp?: string;
   pathaoCity?: string;
   pathaoZone?: string;
   pathaoArea?: string;
@@ -241,6 +244,7 @@ export class OrdersService {
     private readonly orgOrderStatuses: OrgOrderStatusesService,
     private readonly sms: SmsService,
     private readonly automations: AutomationsService,
+    private readonly securityBlocks: SecurityBlocksService,
     @Inject(forwardRef(() => require('./pathao-sync.service').PathaoSyncService))
     private readonly pathaoSync: PathaoSyncService,
     @Inject(forwardRef(() => require('./carrybee-sync.service').CarrybeeSyncService))
@@ -1581,6 +1585,13 @@ export class OrdersService {
       throw new BadRequestException('Shipping address is required');
     }
 
+    const clientIp = this.securityBlocks.sanitizeClientIp(input.clientIp);
+    await this.securityBlocks.assertNotBlocked(organizationId, {
+      phone: input.customerPhone,
+      altMobile: input.altMobile,
+      ip: clientIp,
+    });
+
     const options = await this.getFormOptions(organizationId);
     const status = input.status || options.statuses[0]?.value || 'pending';
     const source = input.source || options.sources[0]?.value || 'call';
@@ -1748,6 +1759,7 @@ export class OrdersService {
           attachmentUrls: input.attachmentUrls ?? [],
           websiteStoreId: input.websiteStoreId?.trim() || null,
           externalOrderId: input.externalOrderId?.trim() || null,
+          clientIp: clientIp ?? null,
           createdByUserId: actor.userId ?? null,
           createdByName: actor.name ?? null,
           lineItems: {
@@ -2361,6 +2373,23 @@ export class OrdersService {
 
     if (input.lineItems !== undefined && input.lineItems.length === 0) {
       throw new BadRequestException('At least one line item is required');
+    }
+
+    // Blocklist is re-checked when contact identity changes (not on pure status updates).
+    const nextPhone = input.customerPhone?.trim() || existing.customerPhone;
+    const nextAlt =
+      input.altMobile !== undefined
+        ? input.altMobile?.trim() || null
+        : existing.altMobile;
+    if (
+      input.customerPhone !== undefined ||
+      input.altMobile !== undefined
+    ) {
+      await this.securityBlocks.assertNotBlocked(organizationId, {
+        phone: nextPhone,
+        altMobile: nextAlt,
+        ip: (existing as { clientIp?: string | null }).clientIp,
+      });
     }
 
     if (
@@ -4112,6 +4141,7 @@ export class OrdersService {
         (row as { courierSubmitError?: string | null }).courierSubmitError?.trim() || undefined,
       attachments: attachments.length > 0 ? attachments : undefined,
       stockDeducted: Boolean(row.stockDeductedAt),
+      clientIp: (row as { clientIp?: string | null }).clientIp?.trim() || undefined,
       lineItems: row.lineItems.map((l) => ({
         id: l.id,
         productName: l.productName,

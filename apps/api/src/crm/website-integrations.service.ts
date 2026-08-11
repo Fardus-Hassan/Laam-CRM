@@ -15,9 +15,11 @@ import type {
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret, encryptSecret } from './credentials-crypto.util';
 
-type StoredWebsiteSecrets = {
+export type StoredWebsiteSecrets = {
   wooConsumerKey?: string;
   wooConsumerSecret?: string;
+  /** HMAC secret for X-WC-Webhook-Signature (WooCommerce webhook "Secret" field). */
+  wooWebhookSecret?: string;
 };
 
 function hashToken(token: string): string {
@@ -26,6 +28,10 @@ function hashToken(token: string): string {
 
 function generateIngestToken(): string {
   return `laam_wh_${randomBytes(24).toString('base64url')}`;
+}
+
+function generateWebhookSecret(): string {
+  return randomBytes(32).toString('hex');
 }
 
 @Injectable()
@@ -69,6 +75,16 @@ export class WebsiteIntegrationsService {
       secrets.wooConsumerSecret = payload.wooConsumerSecret.trim();
     }
 
+    let revealedWebhookSecret: string | undefined;
+    if (payload.platform === 'woocommerce') {
+      revealedWebhookSecret =
+        payload.wooWebhookSecret?.trim() || generateWebhookSecret();
+      secrets.wooWebhookSecret = revealedWebhookSecret;
+    } else if (payload.wooWebhookSecret?.trim()) {
+      secrets.wooWebhookSecret = payload.wooWebhookSecret.trim();
+      revealedWebhookSecret = secrets.wooWebhookSecret;
+    }
+
     const row = await this.prisma.websiteStore.create({
       data: {
         organizationId,
@@ -83,7 +99,10 @@ export class WebsiteIntegrationsService {
       },
     });
 
-    return this.toPublic(row, ingestToken);
+    return this.toPublic(row, {
+      ingestToken,
+      wooWebhookSecret: revealedWebhookSecret,
+    });
   }
 
   async update(
@@ -105,6 +124,19 @@ export class WebsiteIntegrationsService {
       const next = payload.wooConsumerSecret.trim();
       if (next) secrets.wooConsumerSecret = next;
     }
+    let revealedWebhookSecret: string | undefined;
+    if (payload.wooWebhookSecret !== undefined) {
+      const next = payload.wooWebhookSecret.trim();
+      if (next) {
+        secrets.wooWebhookSecret = next;
+        revealedWebhookSecret = next;
+      }
+    }
+
+    const hasAnySecret =
+      Boolean(secrets.wooConsumerKey) ||
+      Boolean(secrets.wooConsumerSecret) ||
+      Boolean(secrets.wooWebhookSecret);
 
     const updated = await this.prisma.websiteStore.update({
       where: { id },
@@ -115,15 +147,14 @@ export class WebsiteIntegrationsService {
           payload.storeUrl === undefined
             ? undefined
             : payload.storeUrl?.trim() || null,
-        credentialsEnc:
-          secrets.wooConsumerKey || secrets.wooConsumerSecret
-            ? encryptSecret(JSON.stringify(secrets))
-            : row.credentialsEnc,
+        credentialsEnc: hasAnySecret
+          ? encryptSecret(JSON.stringify(secrets))
+          : row.credentialsEnc,
         lastError: null,
       },
     });
 
-    return this.toPublic(updated);
+    return this.toPublic(updated, { wooWebhookSecret: revealedWebhookSecret });
   }
 
   async rotateToken(organizationId: string, id: string): Promise<WebsiteStoreDto> {
@@ -137,7 +168,34 @@ export class WebsiteIntegrationsService {
       where: { id },
       data: { ingestTokenHash: hashToken(ingestToken), lastError: null },
     });
-    return this.toPublic(updated, ingestToken);
+    return this.toPublic(updated, { ingestToken });
+  }
+
+  /** Rotate Woo webhook HMAC secret (show once). */
+  async rotateWebhookSecret(
+    organizationId: string,
+    id: string,
+  ): Promise<WebsiteStoreDto> {
+    const row = await this.prisma.websiteStore.findFirst({
+      where: { id, organizationId },
+    });
+    if (!row) throw new NotFoundException('Website store not found');
+    if (row.platform !== 'woocommerce') {
+      throw new BadRequestException('Webhook secret applies to WooCommerce stores only');
+    }
+
+    const secrets = this.readSecrets(row.credentialsEnc);
+    const wooWebhookSecret = generateWebhookSecret();
+    secrets.wooWebhookSecret = wooWebhookSecret;
+
+    const updated = await this.prisma.websiteStore.update({
+      where: { id },
+      data: {
+        credentialsEnc: encryptSecret(JSON.stringify(secrets)),
+        lastError: null,
+      },
+    });
+    return this.toPublic(updated, { wooWebhookSecret });
   }
 
   async disconnect(organizationId: string, id: string): Promise<{ ok: true }> {
@@ -159,6 +217,10 @@ export class WebsiteIntegrationsService {
       throw new UnauthorizedException('Invalid or disabled ingest token');
     }
     return row;
+  }
+
+  getWebhookSecret(credentialsEnc: string | null | undefined): string | undefined {
+    return this.readSecrets(credentialsEnc ?? null).wooWebhookSecret?.trim() || undefined;
   }
 
   async markIngestSuccess(storeId: string) {
@@ -198,7 +260,7 @@ export class WebsiteIntegrationsService {
       createdAt: Date;
       updatedAt: Date;
     },
-    ingestToken?: string,
+    reveal?: { ingestToken?: string; wooWebhookSecret?: string },
   ): WebsiteStoreDto {
     const secrets = this.readSecrets(row.credentialsEnc);
     return {
@@ -209,8 +271,12 @@ export class WebsiteIntegrationsService {
       enabled: row.enabled,
       storeUrl: row.storeUrl,
       hasIngestToken: true,
-      ...(ingestToken ? { ingestToken } : {}),
+      ...(reveal?.ingestToken ? { ingestToken: reveal.ingestToken } : {}),
       hasWooCredentials: Boolean(secrets.wooConsumerKey && secrets.wooConsumerSecret),
+      hasWooWebhookSecret: Boolean(secrets.wooWebhookSecret),
+      ...(reveal?.wooWebhookSecret
+        ? { wooWebhookSecret: reveal.wooWebhookSecret }
+        : {}),
       lastIngestAt: row.lastIngestAt?.toISOString() ?? null,
       lastError: row.lastError,
       createdAt: row.createdAt.toISOString(),

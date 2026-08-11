@@ -53,7 +53,9 @@ const COURIER_TRACKING_STATUSES = new Set([
 export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail }) {
   const [order, setOrder] = React.useState(initialOrder);
   const [courierTracking, setCourierTracking] = React.useState<OrderCourierTracking | null>(null);
-  const [printType, setPrintType] = React.useState<'invoice' | 'packing' | null>(null);
+  const [printType, setPrintType] = React.useState<'invoice' | 'packing' | 'barcode' | null>(
+    null,
+  );
   const [assignOpen, setAssignOpen] = React.useState(false);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);

@@ -4,10 +4,13 @@ import {
   Delete,
   Get,
   Headers,
+  HttpException,
+  HttpStatus,
   Param,
   Post,
   Put,
   Query,
+  Req,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -15,6 +18,8 @@ import {
   createWebsiteStorePayloadSchema,
   updateWebsiteStorePayloadSchema,
 } from '@laam/types';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 
 import {
   CurrentUser,
@@ -22,6 +27,14 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
+import {
+  websiteIngestByIpLimiter,
+  websiteIngestByTokenLimiter,
+} from './website-ingest-rate-limit';
+import {
+  clientIpFromRequestLike,
+  verifyWooWebhookSignature,
+} from './website-ingest-security.util';
 import { WebsiteIntegrationsService } from './website-integrations.service';
 import { WebsiteOrdersIngestService } from './website-orders-ingest.service';
 
@@ -46,6 +59,31 @@ function extractIngestToken(
   const q = query['token'];
   const qValue = Array.isArray(q) ? q[0] : q;
   return (qValue ?? '').trim();
+}
+
+function enforceIngestRateLimits(token: string, requestIp: string) {
+  const byToken = websiteIngestByTokenLimiter.check(`tok:${token.slice(0, 48)}`);
+  if (!byToken.allowed) {
+    throw new HttpException(
+      {
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        message: 'Ingest rate limit exceeded for this store token. Retry later.',
+        retryAfter: byToken.retryAfterSec,
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  const byIp = websiteIngestByIpLimiter.check(`ip:${requestIp || 'unknown'}`);
+  if (!byIp.allowed) {
+    throw new HttpException(
+      {
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        message: 'Ingest rate limit exceeded from this IP. Retry later.',
+        retryAfter: byIp.retryAfterSec,
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
 }
 
 @ApiTags('CRM — Website stores')
@@ -104,6 +142,16 @@ export class WebsiteIntegrationsController {
     return this.websites.rotateToken(user.organizationId!, id);
   }
 
+  @Post(':id/rotate-webhook-secret')
+  @RequirePermissions('settings.manage')
+  @ApiOperation({
+    summary: 'Rotate WooCommerce webhook HMAC secret (shown once; paste into Woo Secret field)',
+  })
+  rotateWebhookSecret(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.websites.requireOrg(user.organizationId);
+    return this.websites.rotateWebhookSecret(user.organizationId!, id);
+  }
+
   @Delete(':id')
   @RequirePermissions('settings.manage')
   @ApiOperation({ summary: 'Disconnect / delete website store' })
@@ -125,36 +173,68 @@ export class WebsiteOrdersIngestController {
   @Post()
   @ApiOperation({
     summary:
-      'Canonical website order ingest (custom sites). Auth: X-Laam-Ingest-Token or Bearer.',
+      'Canonical website order ingest (custom sites). Auth: X-Laam-Ingest-Token or Bearer. Rate limited.',
   })
   @ApiHeader({ name: 'X-Laam-Ingest-Token', required: true })
   async ingestCanonical(
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Query() query: Record<string, string | string[] | undefined>,
     @Body() body: unknown,
+    @Req() req: Request,
   ) {
     const token = extractIngestToken(headers, query);
     if (!token) throw new UnauthorizedException('Missing ingest token');
+    const requestIp = clientIpFromRequestLike(req);
+    enforceIngestRateLimits(token, requestIp);
     const store = await this.websites.resolveByIngestToken(token);
-    return this.ingest.ingestCanonical(store, body);
+    return this.ingest.ingestCanonical(store, body, {
+      clientIp: requestIp,
+    });
   }
 
   @Public()
   @Post('woocommerce')
   @ApiOperation({
     summary:
-      'WooCommerce order webhook adapter → CRM. Auth: X-Laam-Ingest-Token or ?token=',
+      'WooCommerce order webhook adapter → CRM. Auth: ingest token + X-WC-Webhook-Signature when secret configured.',
   })
   @ApiHeader({ name: 'X-Laam-Ingest-Token', required: true })
+  @ApiHeader({ name: 'X-WC-Webhook-Signature', required: false })
   async ingestWooCommerce(
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Query() query: Record<string, string | string[] | undefined>,
     @Body() body: unknown,
+    @Req() req: RawBodyRequest<Request>,
   ) {
     const token = extractIngestToken(headers, query);
     if (!token) throw new UnauthorizedException('Missing ingest token');
+    const requestIp = clientIpFromRequestLike(req);
+    enforceIngestRateLimits(token, requestIp);
     const store = await this.websites.resolveByIngestToken(token);
+
+    const webhookSecret = this.websites.getWebhookSecret(store.credentialsEnc);
+    const requireSig =
+      Boolean(webhookSecret) ||
+      process.env['LAAM_REQUIRE_WOO_SIGNATURE'] === 'true' ||
+      process.env['LAAM_REQUIRE_WOO_SIGNATURE'] === '1';
+
+    if (requireSig) {
+      if (!webhookSecret) {
+        throw new UnauthorizedException(
+          'WooCommerce webhook secret not configured. Rotate webhook secret in CRM settings and paste into WooCommerce webhook Secret field.',
+        );
+      }
+      verifyWooWebhookSignature({
+        rawBody: req.rawBody,
+        signatureHeader: headers['x-wc-webhook-signature'],
+        secret: webhookSecret,
+      });
+    }
+
     const canonical = this.ingest.mapWooCommercePayload(body);
-    return this.ingest.ingestCanonical(store, canonical);
+    return this.ingest.ingestCanonical(store, canonical, {
+      // Transport IP is Woo/hosting — only use if mapper has no customer IP meta.
+      clientIp: requestIp,
+    });
   }
 }

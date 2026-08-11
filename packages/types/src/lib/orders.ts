@@ -93,6 +93,8 @@ export const orderListItemSchema = z.object({
   fulfillmentWarehouseName: z.string().optional(),
   /** True after inventory was reserved/cut for this order. */
   stockDeducted: z.boolean().optional(),
+  /** Shopper / request IP at order create (website ingest). */
+  clientIp: z.string().optional(),
   /** This shop (CRM): Total orders / Completed — top row. */
   courierShop: courierShopStatsSchema.optional(),
   /** Network lifetime To/Su/Fa + % — bottom row + bar. */
@@ -208,6 +210,8 @@ export const orderDetailSchema = orderListItemSchema.extend({
   courierWeightKg: z.number().positive().optional(),
   /** Courier service level: normal | express */
   courierDeliveryType: z.enum(['normal', 'express']).optional(),
+  /** Shopper / request IP captured at intake */
+  clientIp: z.string().optional(),
 });
 
 export type OrderDetail = z.infer<typeof orderDetailSchema>;

@@ -79,6 +79,8 @@ export function createBlockedEntry(payload: CreateBlockedEntryPayload): BlockedE
     blockedByName: 'Laam Org Admin',
     createdAt: MOCK_TODAY.toISOString(),
     expiresAt,
+    lastOrderId: payload.lastOrderId,
+    orderCount: payload.lastOrderId ? 1 : undefined,
   };
 
   blockedStore = [entry, ...blockedStore];
