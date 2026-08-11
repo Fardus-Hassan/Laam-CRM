@@ -6,6 +6,9 @@ const ORG = 'org-1';
 
 function createMocks() {
   const tx = {
+    productionBatch: {
+      update: jest.fn(),
+    },
     inventoryPurchase: {
       findFirst: jest.fn(),
       updateMany: jest.fn(),
@@ -54,6 +57,11 @@ function createMocks() {
       findMany: jest.fn(),
       count: jest.fn(),
     },
+    productionBatch: {
+      findFirst: jest.fn(),
+      updateMany: jest.fn(),
+      update: jest.fn(),
+    },
     $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
   };
   const catalog = {
@@ -63,6 +71,8 @@ function createMocks() {
     ensureDefaultWarehouse: jest.fn(async () => ({ id: 'wh-main' })),
     postInventoryJournal: jest.fn(),
     applyWarehouseDelta: jest.fn(),
+    consumeStock: jest.fn(),
+    receiveStock: jest.fn(),
   };
   const uom = {
     convertToVariantBase: jest.fn(async (_org, _variantId, quantity) => ({
@@ -81,6 +91,7 @@ describe('InventoryOperationsService', () => {
     catalog as never,
     advanced as never,
     uom as never,
+    { postPurchasePayment: jest.fn(), postOrderCollection: jest.fn() } as never,
   );
 
   beforeEach(() => jest.clearAllMocks());
@@ -188,5 +199,90 @@ describe('InventoryOperationsService', () => {
     );
     expect(advanced.postInventoryJournal).toHaveBeenCalled();
     expect(result.stockStatus).toBe('received');
+  });
+
+  it('voids production by consuming outputs then restoring inputs', async () => {
+    prisma.productionBatch.findFirst.mockResolvedValue({
+      id: 'batch_1',
+      organizationId: ORG,
+      voidedAt: null,
+      result: {
+        id: 'batch_1',
+        batchNumber: 'PRD-2401',
+        outputProductId: 'prod_fg',
+        outputProductName: 'Honey',
+        outputSku: 'H1',
+        warehouseId: 'wh-main',
+        unitsProduced: 10,
+        materialCost: 100,
+        costPerUnit: 10,
+        inputs: [
+          {
+            productId: 'prod_raw',
+            variantId: 'var_raw',
+            name: 'Raw',
+            quantity: 5,
+            unit: 'kg',
+            totalCost: 100,
+            costPerKg: 20,
+            usedUnits: 5,
+          },
+        ],
+        outputs: [
+          {
+            variantId: 'var_fg',
+            variantLabel: '1kg',
+            gramsPerUnit: 1000,
+            units: 10,
+            cost: 100,
+            costPerUnit: 10,
+            rawUsage: [],
+          },
+        ],
+        perUnitRawUsage: [],
+        createdAt: new Date().toISOString(),
+      },
+    });
+    prisma.productionBatch.updateMany.mockResolvedValue({ count: 1 });
+    tx.productionBatch.update.mockResolvedValue({});
+    advanced.consumeStock.mockResolvedValue({});
+    advanced.receiveStock.mockResolvedValue({});
+
+    const result = await service.voidProduction(ORG, 'batch_1', {
+      userId: 'user-1',
+      name: 'Admin',
+    });
+
+    expect(result.voidedAt).toBeTruthy();
+    expect(advanced.consumeStock).toHaveBeenCalledWith(
+      tx,
+      ORG,
+      expect.objectContaining({
+        variantId: 'var_fg',
+        quantity: 10,
+        reason: 'production_void_output',
+      }),
+    );
+    expect(advanced.receiveStock).toHaveBeenCalledWith(
+      tx,
+      ORG,
+      expect.objectContaining({
+        variantId: 'var_raw',
+        quantity: 5,
+        reason: 'production_void_restore',
+      }),
+    );
+  });
+
+  it('rejects void when batch already voided', async () => {
+    prisma.productionBatch.findFirst.mockResolvedValue({
+      id: 'batch_1',
+      voidedAt: new Date(),
+      result: { warehouseId: 'wh-main' },
+    });
+
+    await expect(service.voidProduction(ORG, 'batch_1')).rejects.toThrow(
+      /already voided/i,
+    );
   });
 });

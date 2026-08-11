@@ -886,4 +886,11 @@ export class InventoryOperationsController {
     this.catalog.requireOrg(user.organizationId);
     return this.operations.runProduction(user.organizationId!, body, this.actor(user));
   }
+
+  @Post('mixer/runs/:id/void')
+  @RequirePermissions('inventory.mixer')
+  voidProduction(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+    this.catalog.requireOrg(user.organizationId);
+    return this.operations.voidProduction(user.organizationId!, id, this.actor(user));
+  }
 }

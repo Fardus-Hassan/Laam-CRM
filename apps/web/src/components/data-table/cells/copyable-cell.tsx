@@ -31,13 +31,13 @@ export function DataTableCopyableText({
   }
 
   return (
-    <div className={cn('group/copy flex items-start gap-0.5', className)}>
-      <div className="min-w-0 flex-1">{children ?? <span>{value}</span>}</div>
+    <div className={cn('group/copy flex w-full min-w-0 items-start gap-1.5', className)}>
+      <div className="min-w-0 flex-1 overflow-hidden">{children ?? <span>{value}</span>}</div>
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="size-6 shrink-0 text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
+        className="size-6 shrink-0 self-start text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
         onClick={handleCopy}
         aria-label="Copy"
         data-no-drag-scroll

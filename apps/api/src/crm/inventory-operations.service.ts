@@ -36,6 +36,7 @@ import type {
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { AccountingService } from './accounting.service';
 import { InventoryAdvancedService } from './inventory-advanced.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import {
@@ -62,6 +63,7 @@ export class InventoryOperationsService {
     private readonly catalog: InventoryCatalogService,
     private readonly advanced: InventoryAdvancedService,
     private readonly uom: InventoryUomService,
+    private readonly accounting: AccountingService,
   ) {}
 
   async listSuppliers(
@@ -324,11 +326,20 @@ export class InventoryOperationsService {
   ): Promise<PurchaseListItem> {
     const existing = await this.prisma.inventoryPurchase.findFirst({
       where: { id: purchaseId, organizationId },
-      select: { id: true, stockStatus: true },
+      select: { id: true, stockStatus: true, paymentStatus: true },
     });
     if (!existing) throw new NotFoundException('Purchase order not found');
     if (existing.stockStatus === 'cancelled') {
       throw new ConflictException('Cannot update payment on a cancelled purchase');
+    }
+
+    // Paid → post AP settlement journal (idempotent). Unpaid/partial stay ops-only.
+    if (paymentStatus === 'paid') {
+      await this.accounting.postPurchasePayment(organizationId, purchaseId, 'cash');
+    } else if (existing.paymentStatus === 'paid') {
+      throw new BadRequestException(
+        'Purchase is already marked paid in the ledger. Reverse via Accounting if needed — cannot unpay from Inventory.',
+      );
     }
 
     const updated = await this.prisma.inventoryPurchase.update({
@@ -1229,7 +1240,17 @@ export class InventoryOperationsService {
     ]);
 
     return {
-      items: rows.map((row) => row.result as unknown as ProductionBatchResult),
+      items: rows.map((row) => {
+        const result = row.result as unknown as ProductionBatchResult;
+        if (row.voidedAt && !result.voidedAt) {
+          return {
+            ...result,
+            voidedAt: row.voidedAt.toISOString(),
+            voidedByName: row.voidedByName ?? undefined,
+          };
+        }
+        return result;
+      }),
       total,
       page,
       pageSize,
@@ -1368,6 +1389,103 @@ export class InventoryOperationsService {
     });
 
     return result;
+  }
+
+  async voidProduction(
+    organizationId: string,
+    batchId: string,
+    actor?: Actor,
+  ): Promise<ProductionBatchResult> {
+    const existing = await this.prisma.productionBatch.findFirst({
+      where: { id: batchId, organizationId },
+    });
+    if (!existing) throw new NotFoundException('Production batch not found');
+    if (existing.voidedAt) {
+      throw new ConflictException('Production batch is already voided');
+    }
+
+    const result = existing.result as unknown as ProductionBatchResult;
+    const warehouseId = result.warehouseId;
+    if (!warehouseId) {
+      throw new BadRequestException(
+        'This batch has no warehouse on record and cannot be voided safely',
+      );
+    }
+
+    const now = new Date();
+    const claimed = await this.prisma.productionBatch.updateMany({
+      where: { id: batchId, organizationId, voidedAt: null },
+      data: {
+        voidedAt: now,
+        voidedByUserId: actor?.userId ?? null,
+        voidedByName: actor?.name ?? null,
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException('Production batch is already voided');
+    }
+
+    try {
+      const voided = await this.prisma.$transaction(async (tx) => {
+        // Reverse finished goods first (consume output).
+        for (const line of result.outputs ?? []) {
+          if (!line.variantId || !line.units) continue;
+          await this.applyVariantDelta(tx, organizationId, {
+            productId: result.outputProductId,
+            variantId: line.variantId,
+            delta: -line.units,
+            reason: 'production_void_output',
+            note: `Void ${result.batchNumber} — reverse ${line.variantLabel} ×${line.units}`,
+            sourceType: 'production_void',
+            sourceId: result.batchNumber,
+            actor,
+            warehouseId,
+          });
+        }
+
+        // Restore raw materials.
+        for (const input of result.inputs ?? []) {
+          if (!input.productId || !input.variantId || !input.usedUnits) continue;
+          await this.applyVariantDelta(tx, organizationId, {
+            productId: input.productId,
+            variantId: input.variantId,
+            delta: input.usedUnits,
+            reason: 'production_void_restore',
+            note: `Void ${result.batchNumber} — restore ${input.name}`,
+            sourceType: 'production_void',
+            sourceId: result.batchNumber,
+            actor,
+            warehouseId,
+          });
+        }
+
+        const nextResult: ProductionBatchResult = {
+          ...result,
+          voidedAt: now.toISOString(),
+          voidedByName: actor?.name || undefined,
+        };
+
+        await tx.productionBatch.update({
+          where: { id: batchId },
+          data: { result: nextResult as unknown as Prisma.InputJsonValue },
+        });
+
+        return nextResult;
+      });
+
+      return voided;
+    } catch (error) {
+      // Roll back claim so the batch can be retried after fixing stock.
+      await this.prisma.productionBatch.updateMany({
+        where: { id: batchId, organizationId, voidedAt: now },
+        data: {
+          voidedAt: null,
+          voidedByUserId: null,
+          voidedByName: null,
+        },
+      });
+      throw error;
+    }
   }
 
   private async resolveProductionWarehouseId(

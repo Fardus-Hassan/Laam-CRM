@@ -605,6 +605,7 @@ export class OrdersController {
       employeeName?: string;
       courier?: string;
       fulfillmentWarehouseId?: string;
+      confirmRemoteCancelled?: boolean;
     },
   ) {
     this.orders.requireOrg(user.organizationId);
@@ -617,6 +618,7 @@ export class OrdersController {
         employeeName: body.employeeName,
         courier: body.courier,
         fulfillmentWarehouseId: body.fulfillmentWarehouseId,
+        confirmRemoteCancelled: body.confirmRemoteCancelled,
       },
       this.actor(user),
     );
@@ -1027,14 +1029,19 @@ export class OrdersController {
   @RequirePermissions('courier.manage', 'orders.cancel', 'orders.confirm')
   @ApiOperation({
     summary:
-      'Clear local courier link without remote cancel (use when already cancelled in courier panel)',
+      'Unlink courier: tries remote cancel first; force-clear with confirmRemoteCancelled when already cancelled in panel',
   })
-  unlinkCourier(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+  unlinkCourier(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body?: { confirmRemoteCancelled?: boolean },
+  ) {
     this.orders.requireOrg(user.organizationId);
     return this.orders.unlinkCourierShipment(
       user.organizationId!,
       id,
       this.actor(user),
+      { confirmRemoteCancelled: Boolean(body?.confirmRemoteCancelled) },
     );
   }
 

@@ -535,37 +535,48 @@ export class AccountingService {
     });
     if (!order) throw new NotFoundException('Receivable not found');
 
-    const due = order.amount - (order.paidAmount || 0);
+    const due = Math.round((order.amount - (order.paidAmount || 0)) * 100) / 100;
     if (due <= 0) {
       throw new BadRequestException('Nothing left to collect');
     }
 
-    const cash = cashAccountForPaymentMethod(paymentMethod);
-    await this.postBalancedJournal(organizationId, {
-      eventKey: `ar-collect:${order.id}`,
-      sourceType: 'order_collection',
-      sourceId: order.id,
-      description: `Collect ${order.orderNumber}`,
-      reference: order.orderNumber,
-      entryDate: new Date(),
-      category: 'cod_collection',
+    await this.postOrderCollection(organizationId, {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      amount: due,
+      paidTo: order.amount,
       paymentMethod,
-      lines: [
-        { accountCode: cash.code, accountName: cash.name, debit: due, credit: 0 },
-        {
-          accountCode: '4000',
-          accountName: ACCOUNT_BY_CODE['4000']!.name,
-          debit: 0,
-          credit: due,
-        },
-      ],
     });
 
+    const now = new Date();
     await this.prisma.order.update({
       where: { id: order.id },
       data: {
         paidAmount: order.amount,
         paymentStatus: 'paid',
+        paymentMethod,
+      },
+    });
+
+    await this.prisma.orderPayment.upsert({
+      where: {
+        organizationId_orderId: { organizationId, orderId: order.id },
+      },
+      create: {
+        organizationId,
+        orderId: order.id,
+        method: paymentMethod,
+        status: 'reconciled',
+        collectedAmount: order.amount,
+        collectedAt: now,
+        reconciledAt: now,
+      },
+      update: {
+        method: paymentMethod,
+        status: 'reconciled',
+        collectedAmount: order.amount,
+        collectedAt: now,
+        reconciledAt: now,
       },
     });
 
@@ -579,6 +590,97 @@ export class AccountingService {
       status: 'collected',
       collectedAmount: order.amount,
     };
+  }
+
+  /**
+   * Post sales collection to GL (Dr cash/method, Cr Sales).
+   * Idempotent on cumulative paid-to amount so ops payments and AR collect share keys.
+   * COD as a method is treated as cash-in-hand (not AR) once money is collected.
+   */
+  async postOrderCollection(
+    organizationId: string,
+    input: {
+      orderId: string;
+      orderNumber: string;
+      amount: number;
+      paidTo: number;
+      paymentMethod: string;
+    },
+  ): Promise<string | null> {
+    const amount = Math.round(Number(input.amount) * 100) / 100;
+    if (!(amount > 0)) return null;
+
+    await this.ensureChartOfAccounts(organizationId);
+
+    const method =
+      input.paymentMethod === 'cod' ? 'cash' : input.paymentMethod || 'cash';
+    const cash = cashAccountForPaymentMethod(method);
+    const paidTo = Math.round(Number(input.paidTo) * 100) / 100;
+
+    return this.postBalancedJournal(organizationId, {
+      eventKey: `ar-collect:${input.orderId}:paid-to:${paidTo}`,
+      sourceType: 'order_collection',
+      sourceId: input.orderId,
+      description: `Collect ${input.orderNumber}`,
+      reference: input.orderNumber,
+      entryDate: new Date(),
+      category: 'cod_collection',
+      paymentMethod: method,
+      lines: [
+        { accountCode: cash.code, accountName: cash.name, debit: amount, credit: 0 },
+        {
+          accountCode: '4000',
+          accountName: ACCOUNT_BY_CODE['4000']!.name,
+          debit: 0,
+          credit: amount,
+        },
+      ],
+    });
+  }
+
+  /**
+   * Settle AP for a received purchase (Dr AP / Cr cash). Idempotent per purchase.
+   */
+  async postPurchasePayment(
+    organizationId: string,
+    purchaseId: string,
+    paymentMethod: PaymentMethod = 'cash',
+  ): Promise<void> {
+    const purchase = await this.prisma.inventoryPurchase.findFirst({
+      where: { id: purchaseId, organizationId },
+      include: {
+        lines: { select: { quantity: true, unitCost: true } },
+      },
+    });
+    if (!purchase) throw new NotFoundException('Payable not found');
+
+    const amount = purchase.lines.reduce(
+      (s, l) => s + Number(l.unitCost) * l.quantity,
+      0,
+    );
+    if (!(amount > 0)) return;
+
+    await this.ensureChartOfAccounts(organizationId);
+    const cash = cashAccountForPaymentMethod(paymentMethod);
+    await this.postBalancedJournal(organizationId, {
+      eventKey: `ap-pay:${purchase.id}`,
+      sourceType: 'purchase_payment',
+      sourceId: purchase.id,
+      description: `Pay ${purchase.purchaseNumber}`,
+      reference: purchase.purchaseNumber,
+      entryDate: new Date(),
+      category: 'purchase_payment',
+      paymentMethod,
+      lines: [
+        {
+          accountCode: '2000',
+          accountName: ACCOUNT_BY_CODE['2000']!.name,
+          debit: amount,
+          credit: 0,
+        },
+        { accountCode: cash.code, accountName: cash.name, debit: 0, credit: amount },
+      ],
+    });
   }
 
   async markPayablePaid(
@@ -599,27 +701,8 @@ export class AccountingService {
       (s, l) => s + Number(l.unitCost) * l.quantity,
       0,
     );
-    const cash = cashAccountForPaymentMethod(paymentMethod);
 
-    await this.postBalancedJournal(organizationId, {
-      eventKey: `ap-pay:${purchase.id}`,
-      sourceType: 'purchase_payment',
-      sourceId: purchase.id,
-      description: `Pay ${purchase.purchaseNumber}`,
-      reference: purchase.purchaseNumber,
-      entryDate: new Date(),
-      category: 'purchase_payment',
-      paymentMethod,
-      lines: [
-        {
-          accountCode: '2000',
-          accountName: ACCOUNT_BY_CODE['2000']!.name,
-          debit: amount,
-          credit: 0,
-        },
-        { accountCode: cash.code, accountName: cash.name, debit: 0, credit: amount },
-      ],
-    });
+    await this.postPurchasePayment(organizationId, purchaseId, paymentMethod);
 
     await this.prisma.inventoryPurchase.update({
       where: { id: purchase.id },

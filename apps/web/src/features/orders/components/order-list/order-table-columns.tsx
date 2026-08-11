@@ -7,6 +7,7 @@ import type { CrmColumnDef } from '@/components/data-table';
 import {
   DataTableCourierStats,
   DataTableCopyableText,
+  DataTableEmployeeCell,
   DataTableEmptyValue,
   DataTableMoneySummary,
   DataTablePersonCell,
@@ -104,14 +105,14 @@ export function buildOrderTableColumns(options?: {
   {
     id: 'products',
     header: 'ID & Products',
-    size: 220,
-    minSize: 200,
-    maxSize: 260,
+    size: 200,
+    minSize: 180,
+    // No maxSize — absorbs leftover width on large screens.
     meta: {
       label: 'ID & Products',
       priority: 'primary',
-      headerClassName: 'w-[220px]',
-      cellClassName: 'w-[220px]',
+      headerClassName: 'min-w-[180px]',
+      cellClassName: 'min-w-[180px]',
       align: 'top',
     },
     cell: ({ row }) => (
@@ -128,25 +129,33 @@ export function buildOrderTableColumns(options?: {
     id: 'customer',
     header: 'Name & Number',
     enableSorting: true,
-    size: 158,
-    minSize: 148,
+    // Fixed to phone + 4 actions (does not stretch on large screens).
+    size: 268,
+    minSize: 268,
+    maxSize: 268,
     meta: {
       label: 'Customer',
       priority: 'primary',
-      headerClassName: 'min-w-[158px]',
-      cellClassName: 'min-w-[158px]',
+      headerClassName: 'w-[268px]',
+      cellClassName: 'w-[268px] overflow-hidden',
       align: 'top',
     },
     cell: ({ row }) => (
       <DataTablePersonCell
+        compact
+        className="w-max max-w-full"
         name={row.original.customerName}
         sourceLabel={ORDER_SOURCE_LABELS[row.original.source]}
         phoneSlot={
           <FormPhoneInput
             value={row.original.customerPhone}
             readOnly
-            layout="stacked"
-            className="pointer-events-auto h-8 text-xs"
+            layout="inline"
+            showCopy
+            showSms
+            showCall
+            showWhatsapp
+            className="pointer-events-auto h-8"
           />
         }
       />
@@ -156,13 +165,14 @@ export function buildOrderTableColumns(options?: {
     id: 'date',
     header: 'Date',
     enableSorting: true,
-    size: 168,
-    minSize: 150,
+    size: 178,
+    minSize: 178,
+    maxSize: 178,
     meta: {
       label: 'Dates',
       priority: 'secondary',
-      headerClassName: 'min-w-[160px]',
-      cellClassName: 'min-w-[160px]',
+      headerClassName: 'w-[178px]',
+      cellClassName: 'w-[178px] whitespace-nowrap overflow-hidden',
       align: 'top',
     },
     cell: ({ row }) => <OrderDateStack row={row.original} />,
@@ -170,14 +180,14 @@ export function buildOrderTableColumns(options?: {
   {
     id: 'address',
     header: 'Address',
-    size: 200,
-    minSize: 160,
-    maxSize: 240,
+    size: 220,
+    minSize: 180,
+    // Flexible — takes most extra space on large monitors.
     meta: {
       label: 'Address',
       priority: 'hidden-mobile',
-      headerClassName: 'min-w-[220px]',
-      cellClassName: 'min-w-[220px] max-w-[280px]',
+      headerClassName: 'min-w-[180px]',
+      cellClassName: 'min-w-[180px]',
       align: 'top',
     },
     cell: ({ row }) => (
@@ -194,13 +204,14 @@ export function buildOrderTableColumns(options?: {
   {
     id: 'employee',
     header: 'Employee',
-    size: 120,
-    minSize: 100,
+    size: 148,
+    minSize: 130,
+    // Flexible so full name fits without overlapping the copy icon.
     meta: {
       label: 'Employee',
       priority: 'secondary',
-      headerClassName: 'min-w-[120px]',
-      cellClassName: 'min-w-[120px]',
+      headerClassName: 'min-w-[130px]',
+      cellClassName: 'min-w-[130px] overflow-hidden whitespace-normal',
       align: 'top',
     },
     cell: ({ row }) =>
@@ -209,7 +220,7 @@ export function buildOrderTableColumns(options?: {
           copyValue={row.original.assignedAgentName}
           copyToastMessage="Employee copied"
         >
-          <span className="text-sm font-medium">{row.original.assignedAgentName}</span>
+          <DataTableEmployeeCell label={row.original.assignedAgentName} />
         </DataTableCopyableText>
       ) : (
         <DataTableEmptyValue />
@@ -218,15 +229,15 @@ export function buildOrderTableColumns(options?: {
   {
     id: 'summary',
     header: 'Summary',
-    size: 112,
-    minSize: 108,
-    maxSize: 118,
+    size: 124,
+    minSize: 124,
+    maxSize: 124,
     meta: {
       label: 'Summary',
       priority: 'primary',
-      headerClassName: 'w-[112px]',
-      cellClassName: 'w-[112px]',
-      align: 'top',
+      headerClassName: 'w-[124px]',
+      cellClassName: 'w-[124px]',
+      align: 'middle',
     },
     cell: ({ row }) => (
       <DataTableMoneySummary
@@ -240,14 +251,14 @@ export function buildOrderTableColumns(options?: {
   {
     id: 'courier',
     header: 'Success Rate',
-    size: 180,
-    minSize: 168,
-    maxSize: 210,
+    size: 190,
+    minSize: 170,
+    // Flexible on wide screens.
     meta: {
       label: 'Success Rate',
       priority: 'primary',
-      headerClassName: 'w-[180px] text-center',
-      cellClassName: 'w-[180px]',
+      headerClassName: 'min-w-[170px]',
+      cellClassName: 'min-w-[170px]',
       align: 'middle',
     },
     cell: ({ row }) => {
@@ -255,31 +266,26 @@ export function buildOrderTableColumns(options?: {
       const provider = row.original.courierProvider;
       const status = row.original.courierStatus;
       const consignment = row.original.courierConsignmentId;
+      const providerLabel =
+        provider === 'pathao' ? 'Pathao' : provider === 'carrybee' ? 'Carrybee' : provider;
+      const meta = [providerLabel, status, consignment].filter(Boolean).join(' · ');
 
       if (stats) {
         return (
-          <div className="flex h-full flex-col items-center justify-center gap-1 py-0.5">
-            <DataTableCourierStats
-              shop={row.original.courierShop}
-              network={stats}
-              compact
-            />
-            {provider || status || consignment ? (
-              <div className="max-w-full truncate text-center text-[10px] leading-snug text-muted-foreground">
-                {provider === 'pathao' ? 'Pathao' : provider}
-                {status ? ` · ${status}` : ''}
-                {consignment ? ` · ${consignment}` : ''}
-              </div>
-            ) : null}
-          </div>
+          <DataTableCourierStats
+            shop={row.original.courierShop}
+            network={stats}
+            compact
+            meta={meta || undefined}
+          />
         );
       }
 
       if (provider || status || consignment) {
         return (
-          <div className="space-y-0.5 text-[11px] leading-snug">
-            <p className="font-semibold capitalize text-foreground">
-              {provider === 'pathao' ? 'Pathao' : provider || 'Courier'}
+          <div className="min-w-0 space-y-0.5 text-[11px] leading-snug">
+            <p className="truncate font-semibold capitalize text-foreground">
+              {providerLabel || 'Courier'}
             </p>
             {status ? (
               <p className="line-clamp-2 text-muted-foreground">{status}</p>

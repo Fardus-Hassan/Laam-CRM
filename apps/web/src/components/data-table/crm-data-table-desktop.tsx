@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { flexRender, type Cell, type Row, type Table as TanStackTable } from '@tanstack/react-table';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -16,6 +17,23 @@ import { useDragToScroll } from '@/hooks/use-drag-to-scroll';
 
 const TABLE_CELL_BORDER = 'border-r border-b border-border';
 const TABLE_OUTER_BORDER = 'border-l border-t border-border';
+
+function getColumnSizeStyle(column: {
+  getSize: () => number;
+  columnDef: { minSize?: number; maxSize?: number };
+}): CSSProperties {
+  const size = column.getSize();
+  const minSize = column.columnDef.minSize ?? size;
+  const maxSize = column.columnDef.maxSize;
+  // When maxSize is set equal to size, treat as fixed (won't absorb leftover table width).
+  // Columns without maxSize stretch on large screens to fill w-full.
+  const isFixed = maxSize != null && maxSize <= size;
+  return {
+    width: size,
+    minWidth: minSize,
+    ...(isFixed ? { maxWidth: maxSize } : null),
+  };
+}
 
 type CrmDataTableDesktopProps<T> = {
   table: TanStackTable<T>;
@@ -42,6 +60,13 @@ export function CrmDataTableDesktop<T>({
   const showExpand = Boolean(isTablet && hiddenOnTablet.length > 0);
   // Drag-to-scroll only from header so body text stays selectable.
   const scrollRef = useDragToScroll<HTMLDivElement>({ handleSelector: 'thead' });
+  const totalColumnWidth = table.getTotalSize();
+  const minWidthPx =
+    typeof minTableWidth === 'number'
+      ? Math.max(minTableWidth, totalColumnWidth)
+      : typeof minTableWidth === 'string'
+        ? minTableWidth
+        : totalColumnWidth;
 
   return (
     <div
@@ -56,16 +81,16 @@ export function CrmDataTableDesktop<T>({
     >
       <table
         className={cn(
+          // Full width of the panel; minWidth keeps columns usable on narrow viewports.
           'w-full caption-bottom border-separate border-spacing-0 text-sm',
           'table-fixed',
           TABLE_OUTER_BORDER,
           className,
         )}
-        style={
-          minTableWidth
-            ? { minWidth: typeof minTableWidth === 'number' ? `${minTableWidth}px` : minTableWidth }
-            : { width: '100%' }
-        }
+        style={{
+          width: '100%',
+          minWidth: minWidthPx,
+        }}
       >
         <thead className="sticky top-0 z-30 cursor-grab select-none bg-card shadow-sm [&_*]:select-none">
           {table.getHeaderGroups().map((headerGroup) => (
@@ -85,7 +110,7 @@ export function CrmDataTableDesktop<T>({
                       pinned && 'z-40',
                     )}
                     style={{
-                      width: header.column.getSize(),
+                      ...getColumnSizeStyle(header.column),
                       ...getPinningStyles(header.column),
                     }}
                   >
@@ -190,7 +215,7 @@ function DataCell<T>({
     return (
       <td
         className={cn(cellPadding, 'w-10 bg-card', TABLE_CELL_BORDER)}
-        style={{ width: cell.column.getSize(), ...getPinningStyles(cell.column) }}
+        style={{ ...getColumnSizeStyle(cell.column), ...getPinningStyles(cell.column) }}
       >
         {showExpand ? (
           <Button
@@ -223,7 +248,7 @@ function DataCell<T>({
         pinned && 'z-20',
       )}
       style={{
-        width: cell.column.getSize(),
+        ...getColumnSizeStyle(cell.column),
         ...getPinningStyles(cell.column),
       }}
     >

@@ -732,6 +732,7 @@ export class OrdersService {
       employeeName?: string;
       courier?: string;
       fulfillmentWarehouseId?: string;
+      confirmRemoteCancelled?: boolean;
     },
     actor: ActorLabel,
   ): Promise<{ successCount: number; failedCount: number; message: string }> {
@@ -935,66 +936,42 @@ export class OrdersService {
     if (payload.action === 'courier_unlink') {
       let successCount = 0;
       let skippedCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
       for (const orderId of ids) {
-        const existing = await this.prisma.order.findFirst({
-          where: { id: orderId, organizationId, deletedAt: null },
-        });
-        if (!existing) {
-          skippedCount += 1;
-          continue;
-        }
-        const hadLink = Boolean(
-          existing.courierProvider ||
-            existing.courierConsignmentId ||
-            existing.courierTrackingCode,
-        );
-        if (!hadLink) {
-          skippedCount += 1;
-          continue;
-        }
-        const prev = [
-          existing.courierProvider,
-          existing.courierConsignmentId ?? existing.courierTrackingCode,
-        ]
-          .filter(Boolean)
-          .join(' · ');
-        await this.prisma.$transaction(async (tx) => {
-          await tx.order.update({
-            where: { id: existing.id },
-            data: {
-              courierProvider: null,
-              courierConsignmentId: null,
-              courierTrackingCode: null,
-              courierCollectAmount: null,
-              courierBookedAt: null,
-              courierStatus: null,
-              courierStatusSlug: null,
-              courierStatusSyncedAt: null,
+        try {
+          await this.unlinkCourierShipment(organizationId, orderId, actor, {
+            confirmRemoteCancelled: Boolean(payload.confirmRemoteCancelled),
+          });
+          successCount += 1;
+        } catch (e) {
+          const existing = await this.prisma.order.findFirst({
+            where: { id: orderId, organizationId, deletedAt: null },
+            select: {
+              courierProvider: true,
+              courierConsignmentId: true,
+              courierTrackingCode: true,
             },
           });
-          await tx.orderActivity.create({
-            data: {
-              organizationId,
-              orderId: existing.id,
-              type: 'note',
-              label: 'Courier unlinked',
-              description: prev
-                ? `Cleared local link (${prev}). Remote consignment not cancelled.`
-                : 'Cleared local courier link. Remote consignment not cancelled.',
-              actorUserId: actor.userId ?? null,
-              actorName: actor.name ?? null,
-            },
-          });
-        });
-        successCount += 1;
+          const hadLink = Boolean(
+            existing?.courierProvider ||
+              existing?.courierConsignmentId ||
+              existing?.courierTrackingCode,
+          );
+          if (!existing || !hadLink) {
+            skippedCount += 1;
+            continue;
+          }
+          failedCount += 1;
+          const msg = e instanceof Error ? e.message : 'Unlink failed';
+          if (errors.length < 5) errors.push(msg);
+        }
       }
-      const failedCount = ids.length - successCount;
-      const skipNote =
-        skippedCount > 0 ? ` ${skippedCount} had no courier link or were missing.` : '';
+      const detail = errors.length ? ` Examples: ${errors.join(' · ')}` : '';
       return {
         successCount,
         failedCount,
-        message: `Unlinked courier on ${successCount} order(s).${skipNote}`,
+        message: `Unlinked courier on ${successCount} order(s)${skippedCount ? `, skipped ${skippedCount}` : ''}${failedCount ? `, failed ${failedCount}` : ''}.${detail}`,
       };
     }
 
@@ -2212,6 +2189,7 @@ export class OrdersService {
         data: {
           deletedAt: new Date(),
           stockDeductedAt: existing.stockDeductedAt ? null : existing.stockDeductedAt,
+          stockRestockedOnDelete: Boolean(existing.stockDeductedAt),
           activities: {
             create: {
               organizationId,
@@ -2234,13 +2212,73 @@ export class OrdersService {
   async restoreDeleted(organizationId: string, orderId: string, actor: ActorLabel) {
     const existing = await this.prisma.order.findFirst({
       where: { organizationId, id: orderId, deletedAt: { not: null } },
+      include: { lineItems: true },
     });
     if (!existing) throw new NotFoundException('Deleted order not found');
+
+    const needsRehold =
+      existing.stockRestockedOnDelete &&
+      !existing.stockDeductedAt &&
+      (STOCK_CUT_STATUSES.has(existing.status) ||
+        STOCK_KEEP_DEDUCTED_STATUSES.has(existing.status));
+
+    if (needsRehold) {
+      const warehouseId = await this.resolveFulfillmentWarehouseId(
+        organizationId,
+        existing,
+        existing.fulfillmentWarehouseId ?? undefined,
+      );
+      const cutLines = existing.lineItems
+        .map((l) => {
+          const already = (l as { returnedQuantity?: number }).returnedQuantity ?? 0;
+          const qty = Math.max(0, l.quantity - already);
+          return {
+            productId: l.productId,
+            variantId: l.variantId,
+            quantity: qty,
+            productName: l.productName,
+          };
+        })
+        .filter((l) => l.quantity > 0);
+
+      await this.prisma.$transaction(async (tx) => {
+        if (cutLines.length > 0) {
+          await this.inventory.applyOrderStockDeltas(tx, organizationId, cutLines, {
+            sign: -1,
+            orderNumber: existing.orderNumber,
+            orderId: existing.id,
+            actor: { userId: actor.userId, name: actor.name },
+            warehouseId,
+          });
+        }
+        await tx.order.update({
+          where: { id: existing.id },
+          data: {
+            deletedAt: null,
+            stockDeductedAt: new Date(),
+            stockRestockedOnDelete: false,
+            fulfillmentWarehouseId: warehouseId,
+            activities: {
+              create: {
+                organizationId,
+                type: 'note',
+                label: 'Order restored from recycle bin',
+                description: 'Restored and stock re-held for fulfillment status',
+                actorUserId: actor.userId ?? null,
+                actorName: actor.name ?? null,
+              },
+            },
+          },
+        });
+      });
+      return { ok: true };
+    }
 
     await this.prisma.order.update({
       where: { id: existing.id },
       data: {
         deletedAt: null,
+        stockRestockedOnDelete: false,
         activities: {
           create: {
             organizationId,
@@ -3306,13 +3344,14 @@ export class OrdersService {
   }
 
   /**
-   * Clear local courier fields without calling the remote cancel API.
-   * Use only when the consignment is already cancelled/gone in the courier panel.
+   * Clear local courier fields. Tries remote cancel first; force-clear only when
+   * confirmRemoteCancelled is true (parcel already cancelled in courier panel).
    */
   async unlinkCourierShipment(
     organizationId: string,
     idOrNumber: string,
     actor: ActorLabel,
+    opts?: { confirmRemoteCancelled?: boolean },
   ): Promise<OrderDetail> {
     const existing = await this.prisma.order.findFirst({
       where: {
@@ -3338,6 +3377,27 @@ export class OrdersService {
       .filter(Boolean)
       .join(' · ');
 
+    let clearedAfterRemoteCancel = false;
+    if (existing.courierConsignmentId && existing.courierProvider) {
+      try {
+        await this.cancelRemoteCourierOrThrow(organizationId, existing, {
+          reason: 'Unlinked from CRM',
+        });
+        clearedAfterRemoteCancel = true;
+      } catch (error) {
+        if (!opts?.confirmRemoteCancelled) {
+          const msg = error instanceof Error ? error.message : String(error);
+          throw new BadRequestException(
+            `${msg} Use Cancel Courier to cancel the real shipment, or confirm the parcel is already cancelled in the courier panel to force-unlink.`,
+          );
+        }
+      }
+    } else if (!opts?.confirmRemoteCancelled) {
+      throw new BadRequestException(
+        'Confirm the parcel is already cancelled in the courier panel before force-unlinking a local-only link.',
+      );
+    }
+
     await this.prisma.order.update({
       where: { id: existing.id },
       data: {
@@ -3346,10 +3406,16 @@ export class OrdersService {
           create: {
             organizationId,
             type: 'note',
-            label: 'Courier unlinked',
-            description: prev
-              ? `Cleared local link (${prev}). Remote consignment not cancelled.`
-              : 'Cleared local courier link. Remote consignment not cancelled.',
+            label: clearedAfterRemoteCancel
+              ? 'Courier cancelled and unlinked'
+              : 'Courier force-unlinked',
+            description: clearedAfterRemoteCancel
+              ? prev
+                ? `Cancelled remotely then cleared local link (${prev}).`
+                : 'Cancelled remotely then cleared local courier link.'
+              : prev
+                ? `Force-cleared local link (${prev}). Remote cancel was skipped/failed — confirm parcel status in courier panel.`
+                : 'Force-cleared local courier link. Confirm parcel status in courier panel.',
             actorUserId: actor.userId ?? null,
             actorName: actor.name ?? null,
           },
@@ -3357,7 +3423,7 @@ export class OrdersService {
       },
     });
 
-    if (existing.status === 'in_courier') {
+    if (existing.status === 'in_courier' && clearedAfterRemoteCancel) {
       return this.updateStatus(organizationId, existing.id, 'confirmed', actor);
     }
     return this.getById(organizationId, existing.id);

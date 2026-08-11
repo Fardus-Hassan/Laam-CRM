@@ -630,6 +630,11 @@ export const orderBulkActionPayloadSchema = z.object({
   smsMessage: z.string().optional(),
   /** Required when confirming / booking courier (stock cut). */
   fulfillmentWarehouseId: z.string().optional(),
+  /**
+   * For courier_unlink: acknowledge remote parcel is already cancelled
+   * when remote cancel API fails (force local clear).
+   */
+  confirmRemoteCancelled: z.boolean().optional(),
 });
 
 export type OrderBulkActionPayload = z.infer<typeof orderBulkActionPayloadSchema>;

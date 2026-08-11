@@ -173,6 +173,7 @@ export type InventoryApi = {
   deleteMixerRecipe: (id: string) => Promise<void>;
   previewProduction: (payload: RunProductionBatchPayload) => Promise<ReturnType<typeof previewProductionBatch>>;
   runProduction: (payload: RunProductionBatchPayload) => Promise<ProductionBatchResult>;
+  voidProduction: (id: string) => Promise<ProductionBatchResult>;
   listProductionRuns: (opts?: {
     page?: number;
     pageSize?: number;
@@ -448,6 +449,15 @@ export function createMockInventoryApi(): InventoryApi {
     async runProduction(payload) {
       await delay(150);
       return runProductionBatch(payload);
+    },
+    async voidProduction(id) {
+      await delay(120);
+      const run = MOCK_PRODUCTION_RUNS.find((r) => r.id === id);
+      if (!run) throw new Error('Production batch not found');
+      if (run.voidedAt) throw new Error('Production batch is already voided');
+      run.voidedAt = new Date().toISOString();
+      run.voidedByName = 'Demo';
+      return run;
     },
     async listProductionRuns(opts) {
       await delay(60);
@@ -812,6 +822,13 @@ export function createHttpInventoryApi(): InventoryApi {
         method: 'POST',
         body: JSON.stringify(payload),
       });
+    },
+    async voidProduction(id) {
+      const { apiRequest } = await import('@/lib/api/client');
+      return apiRequest<ProductionBatchResult>(
+        `/crm/inventory/mixer/runs/${encodeURIComponent(id)}/void`,
+        { method: 'POST' },
+      );
     },
     async listProductionRuns(opts) {
       const { apiRequest } = await import('@/lib/api/client');

@@ -27,7 +27,8 @@ export function formatOrderDateTime(value: string) {
   const minutes = String(date.getMinutes()).padStart(2, '0');
   const ampm = hours24 >= 12 ? 'pm' : 'am';
   const hours12 = hours24 % 12 || 12;
-  return `${day}/${month}/${year} - ${hours12}:${minutes} ${ampm}`;
+  // Compact, single-token time so the Date column never wraps.
+  return `${day}/${month}/${year} ${hours12}:${minutes}${ampm}`;
 }
 
 export function formatOrderDateOnly(value: string) {
@@ -102,7 +103,10 @@ export function OrderDateStack({
               ? formatOrderDateOnly(entry.value)
               : formatOrderDateTime(entry.value);
             return (
-              <p key={`${entry.prefix}-${entry.value}`} className="text-xs tabular-nums leading-snug">
+              <p
+                key={`${entry.prefix}-${entry.value}`}
+                className="whitespace-nowrap text-xs tabular-nums leading-snug"
+              >
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="cursor-help font-medium text-muted-foreground underline decoration-dotted underline-offset-2">

@@ -5,6 +5,7 @@ import type { ProductionBatchResult } from '@laam/types';
 import { ChevronDown, ChevronRight, Package, Scale } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   ORDER_CARD_CLASS,
@@ -45,9 +46,17 @@ type ProductionLedgerProps = {
   /** Full matching total when the ledger is paginated. */
   total?: number;
   className?: string;
+  onVoid?: (run: ProductionBatchResult) => void | Promise<void>;
+  voidingId?: string | null;
 };
 
-export function ProductionLedger({ runs, total, className }: ProductionLedgerProps) {
+export function ProductionLedger({
+  runs,
+  total,
+  className,
+  onVoid,
+  voidingId,
+}: ProductionLedgerProps) {
   const [openId, setOpenId] = React.useState<string | null>(runs[0]?.id ?? null);
   const groups = React.useMemo(() => groupByDate(runs), [runs]);
 
@@ -133,6 +142,11 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
                           <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
                             {run.unitsProduced} units
                           </Badge>
+                          {run.voidedAt ? (
+                            <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+                              Voided
+                            </Badge>
+                          ) : null}
                         </div>
                         <p className="mt-0.5 truncate text-sm font-medium">{run.outputProductName}</p>
                         <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
@@ -271,6 +285,29 @@ export function ProductionLedger({ runs, total, className }: ProductionLedgerPro
 
                         {run.note ? (
                           <p className="text-[11px] text-muted-foreground">Note: {run.note}</p>
+                        ) : null}
+
+                        {run.voidedAt ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            Voided{run.voidedByName ? ` by ${run.voidedByName}` : ''} ·{' '}
+                            {formatTime(run.voidedAt)}
+                          </p>
+                        ) : onVoid ? (
+                          <div className="flex justify-end border-t border-border/50 pt-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive hover:text-destructive"
+                              disabled={voidingId === run.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void onVoid(run);
+                              }}
+                            >
+                              {voidingId === run.id ? 'Voiding…' : 'Void batch'}
+                            </Button>
+                          </div>
                         ) : null}
                       </CardContent>
                     ) : null}

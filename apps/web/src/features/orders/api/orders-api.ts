@@ -49,7 +49,10 @@ export type OrdersApi = {
   lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
   deleteOrder: (id: string) => Promise<void>;
   cancelCourier: (id: string, reason?: string) => Promise<OrderDetail>;
-  unlinkCourier: (id: string) => Promise<OrderDetail>;
+  unlinkCourier: (
+    id: string,
+    opts?: { confirmRemoteCancelled?: boolean },
+  ) => Promise<OrderDetail>;
   returnLines: (id: string, payload: ReturnOrderLinesPayload) => Promise<OrderDetail>;
 };
 
@@ -176,7 +179,7 @@ export function createMockOrdersApi(): OrdersApi {
       };
       return store.mockOrderStore[index];
     },
-    async unlinkCourier(id) {
+    async unlinkCourier(id, _opts) {
       return this.cancelCourier(id);
     },
     async returnLines(id, payload) {
@@ -346,12 +349,17 @@ export function createHttpOrdersApi(): OrdersApi {
         },
       );
     },
-    async unlinkCourier(id) {
+    async unlinkCourier(id, opts) {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
       return apiRequest<OrderDetail>(
         `${crmEndpoints.orders}/${encodeURIComponent(id)}/courier/unlink`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            confirmRemoteCancelled: Boolean(opts?.confirmRemoteCancelled),
+          }),
+        },
       );
     },
     async returnLines(id, payload) {

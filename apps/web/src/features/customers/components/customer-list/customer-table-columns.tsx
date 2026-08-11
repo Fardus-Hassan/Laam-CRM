@@ -187,7 +187,7 @@ export function buildCustomerTableColumns(options?: {
         label: 'Success Rate',
         priority: 'primary',
         align: 'middle',
-        headerClassName: 'text-center',
+        headerClassName: '',
       },
       cell: ({ row }) => {
         const score = row.original.courierScore;

@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import {
   DataTableCopyableText,
   DataTableCourierStats,
+  DataTableEmployeeCell,
   DataTableEmptyValue,
   DataTableMoneySummary,
   DataTablePersonCell,
@@ -109,13 +110,15 @@ export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobile
       <div className="space-y-4 p-4">
         <LabeledSection title="Customer">
           <DataTablePersonCell
+            compact
             name={row.customerName}
             sourceLabel={ORDER_SOURCE_LABELS[row.source]}
             phoneSlot={
               <FormPhoneInput
                 value={row.customerPhone}
                 readOnly
-                className="pointer-events-auto h-8 text-xs"
+                layout="inline"
+                className="pointer-events-auto h-8"
               />
             }
           />
@@ -140,16 +143,22 @@ export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobile
 
         {row.courier || row.courierShop ? (
           <LabeledSection title="Courier">
-            <div className="space-y-1">
-              <DataTableCourierStats shop={row.courierShop} network={row.courier} />
-              {row.courierProvider || row.courierStatus || row.courierConsignmentId ? (
-                <p className="text-xs text-muted-foreground">
-                  {row.courierProvider === 'pathao' ? 'Pathao' : row.courierProvider}
-                  {row.courierStatus ? ` · ${row.courierStatus}` : ''}
-                  {row.courierConsignmentId ? ` · ${row.courierConsignmentId}` : ''}
-                </p>
-              ) : null}
-            </div>
+            <DataTableCourierStats
+              shop={row.courierShop}
+              network={row.courier}
+              compact
+              meta={[
+                row.courierProvider === 'pathao'
+                  ? 'Pathao'
+                  : row.courierProvider === 'carrybee'
+                    ? 'Carrybee'
+                    : row.courierProvider,
+                row.courierStatus,
+                row.courierConsignmentId,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            />
           </LabeledSection>
         ) : row.courierProvider || row.courierStatus || row.courierConsignmentId ? (
           <LabeledSection title="Courier">
@@ -177,7 +186,7 @@ export function OrderTableMobileCard({ row, ctx, onNoteClick }: OrderTableMobile
               copyValue={row.assignedAgentName}
               copyToastMessage="Employee copied"
             >
-              <p className="text-sm font-medium">{row.assignedAgentName}</p>
+              <DataTableEmployeeCell label={row.assignedAgentName} />
             </DataTableCopyableText>
           ) : (
             <DataTableEmptyValue />

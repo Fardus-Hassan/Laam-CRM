@@ -6,12 +6,15 @@ export const ORDER_SECTION_GRID_GAP = 'gap-2.5';
 
 export const ORDER_PAGE_GAP = 'space-y-4 sm:space-y-5';
 export const ORDER_CARD_CLASS = 'gap-0 py-0 shadow-none';
+/**
+ * Create + detail share the same sticky sidebar width so left form has room.
+ * Right column: 300–360px (narrower than old create 0.9fr so left expands).
+ */
 export const ORDER_SIDEBAR_GRID_CLASS =
-  'xl:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.9fr)]';
+  'xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]';
 
-/** Order detail: wider sticky summary column that fills available width. */
-export const ORDER_DETAIL_SIDEBAR_GRID_CLASS =
-  'xl:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]';
+/** Same recipe as create order summary column. */
+export const ORDER_DETAIL_SIDEBAR_GRID_CLASS = ORDER_SIDEBAR_GRID_CLASS;
 
 export const ORDER_DETAIL_PAGE_GAP = 'space-y-3';
 

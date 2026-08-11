@@ -13,12 +13,16 @@ import type {
 
 import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccountingService } from './accounting.service';
 
 const METHODS = new Set(['cod', 'bkash', 'nagad', 'bank', 'cash']);
 
 @Injectable()
 export class OrderPaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accounting: AccountingService,
+  ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
     if (!organizationId) throw new BadRequestException('Organization required');
@@ -116,6 +120,7 @@ export class OrderPaymentsService {
             customerName: true,
             amount: true,
             paidAmount: true,
+            paymentMethod: true,
           },
         },
       },
@@ -124,12 +129,26 @@ export class OrderPaymentsService {
 
     const now = new Date();
     const amount = row.order.amount;
+    const previousPaid = Math.max(0, row.order.paidAmount ?? 0);
+    const delta = Math.round((amount - previousPaid) * 100) / 100;
+    const method = normalizeMethod(row.method || row.order.paymentMethod);
+
+    if (delta > 0) {
+      await this.accounting.postOrderCollection(organizationId, {
+        orderId: row.orderId,
+        orderNumber: row.order.orderNumber,
+        amount: delta,
+        paidTo: amount,
+        paymentMethod: method,
+      });
+    }
 
     const [updated] = await this.prisma.$transaction([
       this.prisma.orderPayment.update({
         where: { id: row.id },
         data: {
           status: 'reconciled',
+          method,
           collectedAmount: amount,
           collectedAt: row.collectedAt ?? now,
           reconciledAt: now,
@@ -151,6 +170,7 @@ export class OrderPaymentsService {
         data: {
           paidAmount: amount,
           paymentStatus: 'paid',
+          paymentMethod: method,
         },
       }),
       this.prisma.orderActivity.create({
@@ -159,14 +179,17 @@ export class OrderPaymentsService {
           orderId: row.orderId,
           type: 'note',
           label: 'Payment reconciled',
-          description: `Full amount ${amount} marked reconciled`,
+          description: `Full amount ${amount} marked reconciled (posted to ledger)`,
           actorUserId: actor?.userId ?? null,
           actorName: actor?.name ?? null,
         },
       }),
     ]);
 
-    return this.toRecord(updated);
+    return this.toRecord({
+      ...updated,
+      order: { ...updated.order, paidAmount: amount },
+    });
   }
 
   /** Ensure a payment tracking row exists; sync collected amount from order. */
@@ -227,12 +250,27 @@ export class OrderPaymentsService {
     });
     if (!order) throw new NotFoundException('Order not found');
 
-    const nextPaid = Math.min(order.amount, Math.max(0, order.paidAmount) + amount);
+    const previousPaid = Math.max(0, order.paidAmount);
+    const nextPaid = Math.min(order.amount, previousPaid + amount);
+    const delta = Math.round((nextPaid - previousPaid) * 100) / 100;
+    if (delta <= 0) {
+      throw new BadRequestException('Nothing left to collect on this order');
+    }
+
     const paymentStatus =
       nextPaid >= order.amount ? 'paid' : nextPaid > 0 ? 'partial' : 'cod';
     const method = normalizeMethod(input.method ?? order.paymentMethod);
     const status = deriveStatus(order.amount, nextPaid, paymentStatus);
     const now = new Date();
+
+    // Ledger first (idempotent) so ops + books stay aligned on retry.
+    await this.accounting.postOrderCollection(organizationId, {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      amount: delta,
+      paidTo: nextPaid,
+      paymentMethod: method,
+    });
 
     const [, payment] = await this.prisma.$transaction([
       this.prisma.order.update({
@@ -285,14 +323,13 @@ export class OrderPaymentsService {
           orderId: order.id,
           type: 'note',
           label: 'Payment collected',
-          description: `+${amount} via ${method}${input.note ? ` — ${input.note}` : ''}`,
+          description: `+${delta} via ${method}${input.note ? ` — ${input.note}` : ''} (posted to ledger)`,
           actorUserId: actor?.userId ?? null,
           actorName: actor?.name ?? null,
         },
       }),
     ]);
 
-    // refresh paidAmount on included order
     return this.toRecord({
       ...payment,
       order: {

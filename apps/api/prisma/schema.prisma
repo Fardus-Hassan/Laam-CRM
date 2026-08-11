@@ -536,6 +536,8 @@ model Order {
   attachmentNames    String[] @default([])
   attachmentUrls     String[] @default([])
   stockDeductedAt    DateTime?
+  /// Set when soft-delete restocked inventory so restore can re-hold stock.
+  stockRestockedOnDelete Boolean @default(false)
   /// Warehouse used to cut/hold stock on confirm / courier book.
   fulfillmentWarehouseId String?
   fulfillmentWarehouse   Warehouse? @relation(fields: [fulfillmentWarehouseId], references: [id], onDelete: SetNull)
@@ -1324,6 +1326,9 @@ model ProductionBatch {
   result          Json
   actorUserId     String?
   actorName       String?
+  voidedAt        DateTime?
+  voidedByUserId  String?
+  voidedByName    String?
   createdAt       DateTime     @default(now())
 
   @@unique([organizationId, batchNumber])

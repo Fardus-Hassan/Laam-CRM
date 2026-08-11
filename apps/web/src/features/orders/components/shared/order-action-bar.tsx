@@ -226,14 +226,16 @@ export function OrderActionBar({
     const provider = order.courierProvider === 'carrybee' ? 'Carrybee' : 'Pathao';
     const ok = await confirm({
       title: `Unlink ${provider} shipment?`,
-      description: `Clears the local link to ${order.courierConsignmentId} without calling ${provider}. Use only if the parcel is already cancelled (or gone) in the ${provider} panel.`,
-      confirmLabel: 'Unlink courier',
+      description: `We will try to cancel ${order.courierConsignmentId} at ${provider} first. If remote cancel fails, this still clears the CRM link — only continue if you already cancelled (or confirmed gone) in the ${provider} panel.`,
+      confirmLabel: 'Cancel remotely / force unlink',
       destructive: true,
     });
     if (!ok) return;
     setCourierLoading(true);
     try {
-      const updated = await ordersApi.unlinkCourier(order.id);
+      const updated = await ordersApi.unlinkCourier(order.id, {
+        confirmRemoteCancelled: true,
+      });
       toast.success(`Courier unlinked · ${order.courierConsignmentId}`);
       onCourierBooked?.(updated);
     } catch (error) {

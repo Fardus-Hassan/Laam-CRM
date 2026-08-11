@@ -141,14 +141,15 @@ export function OrderBulkActions({
       const ok = await confirm({
         title: `Unlink courier on ${selectedCount} order(s)?`,
         description:
-          'WARNING: This only clears the CRM link. It does NOT cancel the parcel at Pathao/Carrybee. Use “Cancel Courier” when you want to cancel the real shipment. Use Unlink only if the parcel is already cancelled there.',
-        confirmLabel: 'Unlink courier',
+          'We will try to cancel each parcel at Pathao/Carrybee first. Prefer “Cancel Courier” when you want a normal cancel. Confirm only if parcels are already cancelled there — that acknowledges force-unlink when remote cancel fails.',
+        confirmLabel: 'Cancel remotely / force unlink',
         destructive: true,
       });
       if (!ok) return;
       void bulkAction({
         action: 'courier_unlink',
         orderIds: selectedOrderIds,
+        confirmRemoteCancelled: true,
       }).then(() => onSuccess?.());
       return;
     }
