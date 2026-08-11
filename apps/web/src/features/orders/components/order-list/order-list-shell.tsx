@@ -72,8 +72,10 @@ export function OrderListShell({ queue }: OrderListShellProps) {
     }
     params.set('page', String(page));
     params.set('pageSize', String(pageSize));
-    // All Orders: keep status as an in-page filter only — never put it in the URL,
-    // or the queue resolver treats it as a dedicated status page.
+    // All Orders: status is an in-page filter only — never keep it in the URL.
+    // Status/parent queues: keep URL in sync with the active queue status.
+    // (Deep-link safety lives in the queue resolver + session status cache so kind
+    // is not "all" while a valid ?status= is present.)
     if (queue.kind === 'all') {
       params.delete('status');
     } else {

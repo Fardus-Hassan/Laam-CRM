@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { OrderListShell } from '@/features/orders/components/order-list/order-list-shell';
 import { resolveOrderQueueFromPath } from '@/features/orders/config/order-queue-resolver';
 import { ORDER_STATUSES_CHANGED } from '@/features/orders/data/order-status-store';
+import { useOrderStatusConfig } from '@/features/orders/hooks/use-order-status-config';
 
 type OrderQueueListPageProps = {
   queueSlug: string;
@@ -19,6 +20,7 @@ export function OrderQueueListPage({ queueSlug }: OrderQueueListPageProps) {
   const searchParams = useSearchParams();
   const status = searchParams.get('status') ?? undefined;
   const [version, setVersion] = React.useState(0);
+  useOrderStatusConfig();
 
   React.useEffect(() => {
     function refresh() {

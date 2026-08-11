@@ -10,6 +10,7 @@ import { orderQueueConfigApi } from '@/features/orders/api/order-queue-config-ap
 import {
   getOrderQueuePages,
   getOrderStatuses,
+  getServerOrderStatuses,
   ORDER_STATUSES_CHANGED,
   setServerOrderQueues,
   setServerOrderStatuses,
@@ -17,9 +18,42 @@ import {
 
 const useApi = process.env.NEXT_PUBLIC_USE_API === 'true';
 
+/** Single-flight hydrate so nav + orders page + settings don't triple-fetch. */
+let hydratePromise: Promise<void> | null = null;
+
+export function ensureOrderStatusConfigHydrated(): Promise<void> {
+  if (!useApi) return Promise.resolve();
+  if (hydratePromise) return hydratePromise;
+
+  hydratePromise = (async () => {
+    try {
+      const migrated = await migrateLocalStatusOverridesIfNeeded();
+      if (migrated) {
+        setServerOrderStatuses(migrated);
+      } else {
+        const list = await orderStatusConfigApi.list();
+        setServerOrderStatuses(list);
+      }
+      const queues = await orderQueueConfigApi.list();
+      setServerOrderQueues(queues);
+    } catch {
+      // Keep seed/session cache until next navigation retry.
+      // Reset so a later mount can retry after transient failure.
+      hydratePromise = null;
+    }
+  })();
+
+  return hydratePromise;
+}
+
 export function useOrderStatusConfig() {
   const [version, setVersion] = React.useState(0);
-  const [isLoading, setIsLoading] = React.useState(useApi);
+  const [isLoading, setIsLoading] = React.useState(() => {
+    if (!useApi) return false;
+    // Session cache may already warm memory; no need to block UI.
+    getOrderStatuses();
+    return getServerOrderStatuses() === null;
+  });
 
   React.useEffect(() => {
     function onStatusesChanged() {
@@ -36,24 +70,9 @@ export function useOrderStatusConfig() {
     }
 
     let cancelled = false;
-    void (async () => {
-      try {
-        const migrated = await migrateLocalStatusOverridesIfNeeded();
-        if (cancelled) return;
-        if (migrated) {
-          setServerOrderStatuses(migrated);
-        } else {
-          const list = await orderStatusConfigApi.list();
-          if (!cancelled) setServerOrderStatuses(list);
-        }
-        const queues = await orderQueueConfigApi.list();
-        if (!cancelled) setServerOrderQueues(queues);
-      } catch {
-        // Keep seed defaults until retry
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
+    void ensureOrderStatusConfigHydrated().finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
 
     return () => {
       cancelled = true;

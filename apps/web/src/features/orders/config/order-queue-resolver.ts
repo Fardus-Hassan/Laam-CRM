@@ -41,6 +41,22 @@ const DEFAULT_LIST_CONTEXT: Pick<
   bulkActions: [...DEFAULT_ORDER_BULK_ACTIONS],
 };
 
+/** Accept only safe status slugs from the URL (blocks junk deep links). */
+const STATUS_SLUG_PATTERN = /^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*$/i;
+
+/** Humanize a status slug when config is not hydrated yet (e.g. `rts_carrybee` → `Rts Carrybee`). */
+function labelFromStatusSlug(slug: string): string {
+  return slug
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function isValidStatusSlug(slug: string): boolean {
+  return slug.length > 0 && slug.length <= 64 && STATUS_SLUG_PATTERN.test(slug);
+}
+
 function bulkActionsForStatusSlug(statusSlug: string | undefined): BulkActionId[] {
   if (!statusSlug) return [...DEFAULT_ORDER_BULK_ACTIONS];
   const statusConfig = getStatusConfigBySlug(statusSlug);
@@ -207,6 +223,25 @@ export function resolveOrderQueueFromPath(
         showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
         showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
         followUpDue: tabParentSlug === 'followups' ? true : undefined,
+      };
+    }
+
+    // Cold reload / first visit: org custom statuses (e.g. rts_carrybee) may not be in seed
+    // defaults yet. Keep a validated ?status= as a dedicated queue until API/session cache
+    // hydrates so list shell never treats the page as All Orders and strips the param.
+    if (isValidStatusSlug(statusParam)) {
+      const label = labelFromStatusSlug(statusParam);
+      return {
+        queueSlug: statusParam,
+        kind: 'status',
+        title: `${label} Orders`,
+        description: `Orders in ${label} status.`,
+        href: '/dashboard/orders',
+        statusFilter: statusParam,
+        bulkActions: DEFAULT_LIST_CONTEXT.bulkActions,
+        showGroupByStatus: false,
+        showFilterPanel: DEFAULT_LIST_CONTEXT.showFilterPanel,
+        showSalesSummary: DEFAULT_LIST_CONTEXT.showSalesSummary,
       };
     }
   }

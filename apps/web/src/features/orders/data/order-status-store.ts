@@ -4,6 +4,8 @@ import type { OrderQueuePage } from '@laam/types';
 import { MOCK_ORDER_STATUSES, MOCK_ORDER_QUEUE_PAGES } from '@/features/orders/data/mock-status-config';
 
 const STORAGE_KEY = 'laam-order-status-overrides';
+const STATUS_SESSION_CACHE_KEY = 'laam-order-statuses-session';
+const QUEUE_SESSION_CACHE_KEY = 'laam-order-queues-session';
 const useApi = process.env.NEXT_PUBLIC_USE_API === 'true';
 
 export const ORDER_STATUSES_CHANGED = 'laam-order-statuses-changed';
@@ -16,6 +18,49 @@ function emitChanged() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(ORDER_STATUSES_CHANGED));
   }
+}
+
+function readSessionJson<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionJson(key: string, value: unknown): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Quota / private mode — in-memory still works this session.
+  }
+}
+
+/** Warm serverCaches from sessionStorage without emitting (safe during render). */
+function warmStatusesFromSession(): OrderStatusConfig[] | null {
+  if (serverStatuses) return serverStatuses;
+  const cached = readSessionJson<OrderStatusConfig[]>(STATUS_SESSION_CACHE_KEY);
+  if (!Array.isArray(cached) || cached.length === 0) return null;
+  if (!cached.every((item) => item && typeof item.slug === 'string' && typeof item.label === 'string')) {
+    return null;
+  }
+  serverStatuses = cached;
+  return cached;
+}
+
+function warmQueuesFromSession(): OrderQueuePage[] | null {
+  if (serverQueues) return serverQueues;
+  const cached = readSessionJson<OrderQueuePage[]>(QUEUE_SESSION_CACHE_KEY);
+  if (!Array.isArray(cached) || cached.length === 0) return null;
+  if (!cached.every((item) => item && typeof item.slug === 'string' && typeof item.href === 'string')) {
+    return null;
+  }
+  serverQueues = cached;
+  return cached;
 }
 
 export function loadOrderStatusOverrides(): OrderStatusConfig[] {
@@ -39,12 +84,14 @@ export function saveOrderStatusOverrides(statuses: OrderStatusConfig[]): OrderSt
 /** Replace in-memory server cache (API mode). */
 export function setServerOrderStatuses(statuses: OrderStatusConfig[]): OrderStatusConfig[] {
   serverStatuses = statuses;
+  writeSessionJson(STATUS_SESSION_CACHE_KEY, statuses);
   emitChanged();
   return statuses;
 }
 
 export function setServerOrderQueues(queues: OrderQueuePage[]): OrderQueuePage[] {
   serverQueues = queues;
+  writeSessionJson(QUEUE_SESSION_CACHE_KEY, queues);
   emitChanged();
   return queues;
 }
@@ -54,17 +101,22 @@ export function getServerOrderStatuses(): OrderStatusConfig[] | null {
 }
 
 export function getOrderQueuePages(): OrderQueuePage[] {
-  if (useApi && serverQueues) return serverQueues;
+  if (useApi) {
+    if (serverQueues) return serverQueues;
+    const warmed = warmQueuesFromSession();
+    if (warmed) return warmed;
+    return MOCK_ORDER_QUEUE_PAGES;
+  }
   return MOCK_ORDER_QUEUE_PAGES;
 }
 
 export function getOrderStatuses(): OrderStatusConfig[] {
-  if (useApi && serverStatuses) {
-    return serverStatuses;
-  }
-
-  // API mode before hydrate: seed defaults (SSR / first paint)
   if (useApi) {
+    if (serverStatuses) return serverStatuses;
+    // Sync restore last known org statuses so reload deep-links resolve before API returns.
+    const warmed = warmStatusesFromSession();
+    if (warmed) return warmed;
+    // Cold start / SSR: seed defaults until API hydrate.
     return MOCK_ORDER_STATUSES;
   }
 

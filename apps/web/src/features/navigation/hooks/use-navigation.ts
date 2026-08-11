@@ -54,31 +54,9 @@ export function useNavigation() {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
     if (!permissions.includes('orders.view') && !permissions.includes('settings.view')) return;
 
-    let cancelled = false;
-    void (async () => {
-      try {
-        const { migrateLocalStatusOverridesIfNeeded, orderStatusConfigApi } = await import(
-          '@/features/orders/api/order-status-config-api'
-        );
-        const { setServerOrderStatuses } = await import(
-          '@/features/orders/data/order-status-store'
-        );
-        const migrated = await migrateLocalStatusOverridesIfNeeded();
-        if (cancelled) return;
-        if (migrated) {
-          setServerOrderStatuses(migrated);
-        } else {
-          const list = await orderStatusConfigApi.list();
-          if (!cancelled) setServerOrderStatuses(list);
-        }
-      } catch {
-        // Keep seed defaults until next navigation refresh
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    void import('@/features/orders/hooks/use-order-status-config').then(({ ensureOrderStatusConfigHydrated }) =>
+      ensureOrderStatusConfigHydrated(),
+    );
   }, [permissions]);
 
   React.useEffect(() => {
