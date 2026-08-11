@@ -43,6 +43,8 @@ export function CrmDataTable<T>({
   onSearchChange,
   searchPlaceholder,
   headerSlot,
+  getRowClassName,
+  getRowTitle,
 }: CrmDataTableProps<T>) {
   const density = densityProp;
 
@@ -150,6 +152,8 @@ export function CrmDataTable<T>({
         hiddenOnTablet={hiddenOnTablet}
         className={tableClassName}
         stickyTopSlot={metaBar}
+        getRowClassName={getRowClassName}
+        getRowTitle={getRowTitle}
       />
 
       {showPagination && resolvedTotal > 0 ? (

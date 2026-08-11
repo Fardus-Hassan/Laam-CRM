@@ -1,6 +1,7 @@
 /**
  * Shared CRM table page-size choices (5–1000).
- * Keep in sync across list shells + pagination controls.
+ * Keep in sync across list shells + pagination controls
+ * and apps/api CRM_MAX_PAGE_SIZE.
  */
 export const CRM_MAX_PAGE_SIZE = 1000;
 

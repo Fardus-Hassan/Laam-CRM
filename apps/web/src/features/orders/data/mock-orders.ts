@@ -85,14 +85,22 @@ function buildOrder(
     orderNumber,
     status: overrides.status,
     customerName: overrides.customerName,
-    customerPhone: `01${String(700000000 + index).slice(0, 9)}`,
+    customerPhone: overrides.customerPhone ?? `01${String(700000000 + index).slice(0, 9)}`,
     source: overrides.source ?? source,
     itemsCount: overrides.itemsCount ?? itemsCount,
     amount: overrides.amount ?? amount,
     paymentStatus: overrides.paymentStatus ?? paymentStatus,
     assignedAgentName: overrides.assignedAgentName ?? AGENTS[index % AGENTS.length],
     shippingArea: overrides.shippingArea ?? AREAS[index % AREAS.length],
-    createdAt: `2024-05-${String(createdDay).padStart(2, '0')}T10:${String(index % 60).padStart(2, '0')}:00.000Z`,
+    createdAt:
+      overrides.createdAt ??
+      `2024-05-${String(createdDay).padStart(2, '0')}T10:${String(index % 60).padStart(2, '0')}:00.000Z`,
+    courierSubmitFailed: overrides.courierSubmitFailed,
+    courierSubmitError: overrides.courierSubmitError,
+    courierProvider: overrides.courierProvider,
+    courierStatus: overrides.courierStatus,
+    courierStatusSlug: overrides.courierStatusSlug,
+    courierConsignmentId: overrides.courierConsignmentId,
   };
 
   const lineItems = Array.from({ length: base.itemsCount }, (_, itemIndex) => {
@@ -197,7 +205,12 @@ export const MOCK_ORDERS: OrderDetail[] = [
   buildOrder(2, { status: 'pending', customerName: 'Fatema Akter' }),
   buildOrder(3, { status: 'pending', customerName: 'Karim Hassan' }),
   buildOrder(4, { status: 'pending', customerName: 'Nusrat Jahan' }),
-  buildOrder(5, { status: 'confirmed', customerName: 'Kabir Hossain' }),
+  buildOrder(5, {
+    status: 'confirmed',
+    customerName: 'Kabir Hossain',
+    courierSubmitFailed: true,
+    courierSubmitError: 'Pathao: store credentials not ready',
+  }),
   buildOrder(6, { status: 'confirmed', customerName: 'Rokeya Begum' }),
   buildOrder(7, { status: 'confirmed', customerName: 'Shamim Ahmed' }),
   buildOrder(8, { status: 'confirmed', customerName: 'Farzana Akter' }),
@@ -761,6 +774,12 @@ export function orderDetailToListRow(order: OrderDetail, serialNumber?: number):
     discount: order.discount,
     paid,
     due,
+    courierProvider: order.courierProvider,
+    courierStatus: order.courierStatus,
+    courierStatusSlug: order.courierStatusSlug,
+    courierConsignmentId: order.courierConsignmentId,
+    courierSubmitFailed: order.courierSubmitFailed,
+    courierSubmitError: order.courierSubmitError,
     courier: buildMockCourierStats(
       order.status,
       serialNumber ?? (Number.parseInt(order.orderNumber.replace(/\D/g, ''), 10) || 0),

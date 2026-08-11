@@ -3,6 +3,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
@@ -24,6 +25,10 @@ import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CarrybeeCourierService } from './carrybee-courier.service';
 import type { CarrybeeSyncService } from './carrybee-sync.service';
+import {
+  formatCourierBookError,
+  isAlreadyBookedCourierError,
+} from './courier-book-error.util';
 import { CouponsService } from './coupons.service';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { CourierPhoneHistoryService } from './courier-phone-history.service';
@@ -219,6 +224,8 @@ const DEFAULT_COURIER_NOTE =
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly coupons: CouponsService,
@@ -2992,6 +2999,65 @@ export class OrdersService {
     }
   }
 
+  /** Persist last courier submit failure so list rows can highlight failed attempts. */
+  private async recordCourierSubmitFailure(
+    orderId: string,
+    organizationId: string,
+    error: unknown,
+    actor?: ActorLabel,
+  ): Promise<void> {
+    const message = formatCourierBookError(error);
+    try {
+      const linked = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        select: { courierConsignmentId: true },
+      });
+      if (linked?.courierConsignmentId) return;
+
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: {
+          courierSubmitError: message,
+          courierSubmitFailedAt: new Date(),
+          activities: {
+            create: {
+              organizationId,
+              type: 'note',
+              label: 'Courier submit failed',
+              description: message,
+              actorUserId: actor?.userId ?? null,
+              actorName: actor?.name ?? null,
+            },
+          },
+        },
+      });
+    } catch (persistError) {
+      // Never mask the original book/validation failure with a secondary Prisma error.
+      this.logger.warn(
+        `recordCourierSubmitFailure skipped for ${orderId}: ${
+          persistError instanceof Error ? persistError.message : String(persistError)
+        }`,
+      );
+      // Fallback when client is stale but DB columns exist (post migrate).
+      try {
+        await this.prisma.$executeRaw`
+          UPDATE "Order"
+          SET
+            "courierSubmitError" = ${message},
+            "courierSubmitFailedAt" = ${new Date()}
+          WHERE id = ${orderId}
+            AND "courierConsignmentId" IS NULL
+        `;
+      } catch (rawError) {
+        this.logger.warn(
+          `recordCourierSubmitFailure raw fallback failed for ${orderId}: ${
+            rawError instanceof Error ? rawError.message : String(rawError)
+          }`,
+        );
+      }
+    }
+  }
+
   /**
    * Book order on Pathao sandbox/live.
    * amount_to_collect = due; success → status in_courier.
@@ -3014,58 +3080,58 @@ export class OrdersService {
     });
     if (!existing) throw new NotFoundException('Order not found');
 
-    if (existing.status === 'cancelled') {
-      throw new BadRequestException('Cancelled orders cannot be booked');
-    }
-    if (existing.courierConsignmentId) {
-      throw new BadRequestException(
-        `Already booked with ${existing.courierProvider ?? 'courier'} (${existing.courierConsignmentId})`,
-      );
-    }
-    const address = existing.shippingAddress?.trim() ?? '';
-    // Pathao accepts address-only booking (city/zone/area optional — API can auto-detect).
-    if (address.length < 10) {
-      throw new BadRequestException(
-        'Add a delivery address (min 10 characters) before booking with Pathao',
-      );
-    }
-
-    const phoneDigits = existing.customerPhone.replace(/\D/g, '');
-    const phone =
-      phoneDigits.length === 11
-        ? phoneDigits
-        : phoneDigits.length === 10
-          ? `0${phoneDigits}`
-          : phoneDigits.slice(-11);
-    if (phone.length !== 11) {
-      throw new BadRequestException(
-        'Customer phone must be an 11-digit Bangladesh number for Pathao',
-      );
-    }
-
-    const due = Math.max(0, existing.amount - (existing.paidAmount ?? 0));
-    const itemQuantity = Math.max(
-      1,
-      existing.lineItems.reduce((sum, l) => sum + l.quantity, 0),
-    );
-    const itemDescription = existing.lineItems
-      .map((l) =>
-        l.variationLabel ? `${l.productName} (${l.variationLabel})` : l.productName,
-      )
-      .slice(0, 5)
-      .join(', ')
-      .slice(0, 200);
-
-    const itemWeightKg = await this.resolveCourierWeightKg(organizationId, existing);
-    const deliveryType = this.resolvePathaoDeliveryType(
-      (existing as { courierDeliveryType?: string | null }).courierDeliveryType,
-    );
-
-    const storeId = await this.pathao.resolveStoreId(organizationId);
-
     let stockHeldNow = false;
     let remoteConsignmentId: string | null = null;
     try {
+      if (existing.status === 'cancelled') {
+        throw new BadRequestException('Cancelled orders cannot be booked');
+      }
+      if (existing.courierConsignmentId) {
+        throw new BadRequestException(
+          `Already booked with ${existing.courierProvider ?? 'courier'} (${existing.courierConsignmentId})`,
+        );
+      }
+      const address = existing.shippingAddress?.trim() ?? '';
+      // Pathao accepts address-only booking (city/zone/area optional — API can auto-detect).
+      if (address.length < 10) {
+        throw new BadRequestException(
+          'Add a delivery address (min 10 characters) before booking with Pathao',
+        );
+      }
+
+      const phoneDigits = existing.customerPhone.replace(/\D/g, '');
+      const phone =
+        phoneDigits.length === 11
+          ? phoneDigits
+          : phoneDigits.length === 10
+            ? `0${phoneDigits}`
+            : phoneDigits.slice(-11);
+      if (phone.length !== 11) {
+        throw new BadRequestException(
+          'Customer phone must be an 11-digit Bangladesh number for Pathao',
+        );
+      }
+
+      const due = Math.max(0, existing.amount - (existing.paidAmount ?? 0));
+      const itemQuantity = Math.max(
+        1,
+        existing.lineItems.reduce((sum, l) => sum + l.quantity, 0),
+      );
+      const itemDescription = existing.lineItems
+        .map((l) =>
+          l.variationLabel ? `${l.productName} (${l.variationLabel})` : l.productName,
+        )
+        .slice(0, 5)
+        .join(', ')
+        .slice(0, 200);
+
+      const itemWeightKg = await this.resolveCourierWeightKg(organizationId, existing);
+      const deliveryType = this.resolvePathaoDeliveryType(
+        (existing as { courierDeliveryType?: string | null }).courierDeliveryType,
+      );
+
+      const storeId = await this.pathao.resolveStoreId(organizationId);
+
       stockHeldNow = await this.holdStockForCourierBook(organizationId, existing, actor);
 
       const booked = await this.pathao.createOrder(organizationId, {
@@ -3109,6 +3175,8 @@ export class OrdersService {
           courierStatus: mapped.label,
           courierStatusSlug: mapped.slug,
           courierStatusSyncedAt: new Date(),
+          courierSubmitError: null,
+          courierSubmitFailedAt: null,
           activities: {
             create: {
               organizationId,
@@ -3125,11 +3193,22 @@ export class OrdersService {
       // Stock already held — status move will not cut again.
       return this.updateStatus(organizationId, existing.id, 'in_courier', actor);
     } catch (error) {
-      await this.compensateFailedCourierBook(organizationId, existing, actor, {
-        stockHeldNow,
-        provider: 'pathao',
-        remoteConsignmentId,
-      });
+      if (!existing.courierConsignmentId) {
+        await this.compensateFailedCourierBook(organizationId, existing, actor, {
+          stockHeldNow,
+          provider: 'pathao',
+          remoteConsignmentId,
+        });
+        // "Already booked" is not a failed submit of an unbooked order.
+        if (!isAlreadyBookedCourierError(error)) {
+          await this.recordCourierSubmitFailure(
+            existing.id,
+            organizationId,
+            error,
+            actor,
+          );
+        }
+      }
       throw error;
     }
   }
@@ -3171,58 +3250,58 @@ export class OrdersService {
     });
     if (!existing) throw new NotFoundException('Order not found');
 
-    if (existing.status === 'cancelled') {
-      throw new BadRequestException('Cancelled orders cannot be booked');
-    }
-    if (existing.courierConsignmentId) {
-      throw new BadRequestException(
-        `Already booked with ${existing.courierProvider ?? 'courier'} (${existing.courierConsignmentId})`,
-      );
-    }
-    // Carrybee accepts address-only booking (city/zone optional — API auto-resolves).
-    if (!existing.shippingAddress?.trim() || existing.shippingAddress.trim().length < 10) {
-      throw new BadRequestException(
-        'Shipping address must be at least 10 characters for Carrybee',
-      );
-    }
-
-    const phoneDigits = existing.customerPhone.replace(/\D/g, '');
-    const phone =
-      phoneDigits.length === 11
-        ? phoneDigits
-        : phoneDigits.length === 10
-          ? `0${phoneDigits}`
-          : phoneDigits.slice(-11);
-    if (phone.length !== 11) {
-      throw new BadRequestException(
-        'Customer phone must be an 11-digit Bangladesh number for Carrybee',
-      );
-    }
-
-    const due = Math.max(0, existing.amount - (existing.paidAmount ?? 0));
-    const itemQuantity = Math.max(
-      1,
-      existing.lineItems.reduce((sum, l) => sum + l.quantity, 0),
-    );
-    const itemDescription = existing.lineItems
-      .map((l) =>
-        l.variationLabel ? `${l.productName} (${l.variationLabel})` : l.productName,
-      )
-      .slice(0, 5)
-      .join(', ')
-      .slice(0, 200);
-
-    const itemWeightKg = await this.resolveCourierWeightKg(organizationId, existing);
-    const itemWeightGrams = Math.max(1, Math.round(itemWeightKg * 1000));
-    const deliveryType = this.resolveCarrybeeDeliveryType(
-      (existing as { courierDeliveryType?: string | null }).courierDeliveryType,
-    );
-
-    const storeId = await this.carrybee.assertStoreReady(organizationId);
-
     let stockHeldNow = false;
     let remoteConsignmentId: string | null = null;
     try {
+      if (existing.status === 'cancelled') {
+        throw new BadRequestException('Cancelled orders cannot be booked');
+      }
+      if (existing.courierConsignmentId) {
+        throw new BadRequestException(
+          `Already booked with ${existing.courierProvider ?? 'courier'} (${existing.courierConsignmentId})`,
+        );
+      }
+      // Carrybee accepts address-only booking (city/zone optional — API auto-resolves).
+      if (!existing.shippingAddress?.trim() || existing.shippingAddress.trim().length < 10) {
+        throw new BadRequestException(
+          'Shipping address must be at least 10 characters for Carrybee',
+        );
+      }
+
+      const phoneDigits = existing.customerPhone.replace(/\D/g, '');
+      const phone =
+        phoneDigits.length === 11
+          ? phoneDigits
+          : phoneDigits.length === 10
+            ? `0${phoneDigits}`
+            : phoneDigits.slice(-11);
+      if (phone.length !== 11) {
+        throw new BadRequestException(
+          'Customer phone must be an 11-digit Bangladesh number for Carrybee',
+        );
+      }
+
+      const due = Math.max(0, existing.amount - (existing.paidAmount ?? 0));
+      const itemQuantity = Math.max(
+        1,
+        existing.lineItems.reduce((sum, l) => sum + l.quantity, 0),
+      );
+      const itemDescription = existing.lineItems
+        .map((l) =>
+          l.variationLabel ? `${l.productName} (${l.variationLabel})` : l.productName,
+        )
+        .slice(0, 5)
+        .join(', ')
+        .slice(0, 200);
+
+      const itemWeightKg = await this.resolveCourierWeightKg(organizationId, existing);
+      const itemWeightGrams = Math.max(1, Math.round(itemWeightKg * 1000));
+      const deliveryType = this.resolveCarrybeeDeliveryType(
+        (existing as { courierDeliveryType?: string | null }).courierDeliveryType,
+      );
+
+      const storeId = await this.carrybee.assertStoreReady(organizationId);
+
       stockHeldNow = await this.holdStockForCourierBook(organizationId, existing, actor);
 
       const booked = await this.carrybee.createOrder(organizationId, {
@@ -3266,6 +3345,8 @@ export class OrdersService {
           courierStatus: mapped.label,
           courierStatusSlug: mapped.slug,
           courierStatusSyncedAt: new Date(),
+          courierSubmitError: null,
+          courierSubmitFailedAt: null,
           activities: {
             create: {
               organizationId,
@@ -3282,11 +3363,21 @@ export class OrdersService {
       // Stock already held — status move will not cut again.
       return this.updateStatus(organizationId, existing.id, 'in_courier', actor);
     } catch (error) {
-      await this.compensateFailedCourierBook(organizationId, existing, actor, {
-        stockHeldNow,
-        provider: 'carrybee',
-        remoteConsignmentId,
-      });
+      if (!existing.courierConsignmentId) {
+        await this.compensateFailedCourierBook(organizationId, existing, actor, {
+          stockHeldNow,
+          provider: 'carrybee',
+          remoteConsignmentId,
+        });
+        if (!isAlreadyBookedCourierError(error)) {
+          await this.recordCourierSubmitFailure(
+            existing.id,
+            organizationId,
+            error,
+            actor,
+          );
+        }
+      }
       throw error;
     }
   }
@@ -3439,6 +3530,8 @@ export class OrdersService {
       courierStatus: null as null,
       courierStatusSlug: null as null,
       courierStatusSyncedAt: null as null,
+      courierSubmitError: null as null,
+      courierSubmitFailedAt: null as null,
     };
   }
 
@@ -3845,6 +3938,12 @@ export class OrdersService {
         (row as { courierStatusSlug?: string | null }).courierStatusSlug ?? undefined,
       courierConsignmentId:
         (row as { courierConsignmentId?: string | null }).courierConsignmentId ?? undefined,
+      courierSubmitFailed: Boolean(
+        (row as { courierSubmitFailedAt?: Date | null }).courierSubmitFailedAt ||
+          (row as { courierSubmitError?: string | null }).courierSubmitError?.trim(),
+      ),
+      courierSubmitError:
+        (row as { courierSubmitError?: string | null }).courierSubmitError?.trim() || undefined,
       fulfillmentWarehouseId:
         (row as { fulfillmentWarehouseId?: string | null }).fulfillmentWarehouseId ??
         (row as { fulfillmentWarehouse?: { id: string } | null }).fulfillmentWarehouse?.id ??
@@ -4005,6 +4104,12 @@ export class OrdersService {
       courierStatus: row.courierStatus ?? undefined,
       courierStatusSlug: row.courierStatusSlug ?? undefined,
       courierStatusSyncedAt: row.courierStatusSyncedAt?.toISOString(),
+      courierSubmitFailed: Boolean(
+        (row as { courierSubmitFailedAt?: Date | null }).courierSubmitFailedAt ||
+          (row as { courierSubmitError?: string | null }).courierSubmitError?.trim(),
+      ),
+      courierSubmitError:
+        (row as { courierSubmitError?: string | null }).courierSubmitError?.trim() || undefined,
       attachments: attachments.length > 0 ? attachments : undefined,
       stockDeducted: Boolean(row.stockDeductedAt),
       lineItems: row.lineItems.map((l) => ({

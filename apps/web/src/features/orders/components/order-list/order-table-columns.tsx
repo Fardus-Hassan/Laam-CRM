@@ -52,6 +52,31 @@ export function buildOrderTableColumns(options?: {
     cell: ({ row }) => (
       <div className="mx-auto flex w-full flex-col items-center justify-center gap-1 text-center">
         <StatusBadge status={row.original.status} kind="order" />
+        {row.original.courierSubmitFailed ? (
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex max-w-full cursor-default truncate rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+                  style={{
+                    backgroundColor:
+                      'color-mix(in oklab, var(--brand-accent, #E8B931) 28%, transparent)',
+                    color: 'var(--brand-accent-fg, inherit)',
+                    border:
+                      '1px solid color-mix(in oklab, var(--brand-accent, #E8B931) 55%, transparent)',
+                  }}
+                >
+                  Book fail
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs text-xs">
+                {row.original.courierSubmitError
+                  ? `Courier submit failed: ${row.original.courierSubmitError}`
+                  : 'Courier submit failed'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
         {row.original.serialNumber ? (
           <p className="text-[10px] tabular-nums text-muted-foreground">
             st {row.original.serialNumber}

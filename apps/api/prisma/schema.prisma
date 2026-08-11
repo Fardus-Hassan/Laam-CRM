@@ -524,6 +524,10 @@ model Order {
   courierStatus      String?
   courierStatusSlug  String?
   courierStatusSyncedAt DateTime?
+  /// Last courier book/submit failure reason (cleared on successful book).
+  courierSubmitError String?
+  /// When the last failed courier submit attempt happened.
+  courierSubmitFailedAt DateTime?
   leadId             String?
   utmSource          String?
   utmId              String?
@@ -565,6 +569,7 @@ model Order {
   @@index([organizationId, deletedAt])
   @@index([organizationId, courierStatusSlug])
   @@index([organizationId, courierProvider, courierConsignmentId])
+  @@index([organizationId, courierSubmitFailedAt])
   @@index([courierProvider, courierStatusSyncedAt])
   @@index([organizationId, websiteStoreId])
 }

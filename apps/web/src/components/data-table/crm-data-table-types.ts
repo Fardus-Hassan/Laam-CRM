@@ -73,6 +73,10 @@ export type CrmDataTableProps<T> = {
   entityLabel?: string;
   /** When false, hides the top range/selection meta bar. Default true. */
   showMeta?: boolean;
+  /** Extra classes for a data row (e.g. highlight failed courier submit). */
+  getRowClassName?: (row: T) => string | undefined;
+  /** Optional native title tooltip for the data row. */
+  getRowTitle?: (row: T) => string | undefined;
 };
 
 export function sortingStateFromCrm(sort: CrmSortState | null | undefined): SortingState {

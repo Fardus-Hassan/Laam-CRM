@@ -84,6 +84,10 @@ export const orderListItemSchema = z.object({
   courierStatusSlug: z.string().optional(),
   courierConsignmentId: z.string().optional(),
   courierProvider: z.string().optional(),
+  /** True when last courier book/submit attempt failed (until rebook succeeds). */
+  courierSubmitFailed: z.boolean().optional(),
+  /** Human-readable last courier submit error (tooltip / detail). */
+  courierSubmitError: z.string().optional(),
   /** Warehouse stock is cut from on confirm / courier book. */
   fulfillmentWarehouseId: z.string().optional(),
   fulfillmentWarehouseName: z.string().optional(),

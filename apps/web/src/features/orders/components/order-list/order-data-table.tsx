@@ -99,6 +99,25 @@ export function OrderDataTable({
       search={search}
       onSearchChange={onSearchChange}
       searchPlaceholder="Search orders…"
+      getRowClassName={(row) =>
+        row.courierSubmitFailed
+          ? [
+              'courier-submit-failed',
+              'border-l-[3px] !border-l-[var(--brand-accent,#E8B931)]',
+              'bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_14%,transparent)]',
+              '[&_td]:!bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_14%,var(--card))]',
+              'hover:[&_td]:!bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_22%,var(--card))]',
+              'data-[state=selected]:[&_td]:!bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_18%,var(--card))]',
+            ].join(' ')
+          : undefined
+      }
+      getRowTitle={(row) =>
+        row.courierSubmitFailed
+          ? row.courierSubmitError
+            ? `Courier submit failed: ${row.courierSubmitError}`
+            : 'Courier submit failed'
+          : undefined
+      }
       headerSlot={() => (
         <div className="border-b border-border px-4 py-2.5">
           <h3 className="text-sm font-semibold">Orders</h3>

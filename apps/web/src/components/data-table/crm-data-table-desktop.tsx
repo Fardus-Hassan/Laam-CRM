@@ -52,6 +52,8 @@ type CrmDataTableDesktopProps<T> = {
    * (e.g. “Showing…” + Rows control).
    */
   stickyTopSlot?: React.ReactNode;
+  getRowClassName?: (row: T) => string | undefined;
+  getRowTitle?: (row: T) => string | undefined;
 };
 
 /**
@@ -69,6 +71,8 @@ export function CrmDataTableDesktop<T>({
   hiddenOnTablet = [],
   className,
   stickyTopSlot,
+  getRowClassName,
+  getRowTitle,
 }: CrmDataTableDesktopProps<T>) {
   const cellPadding = density === 'compact' ? 'py-2' : 'py-3';
   const showExpand = Boolean(isTablet && hiddenOnTablet.length > 0);
@@ -196,6 +200,8 @@ export function CrmDataTableDesktop<T>({
                 hiddenOnTablet={hiddenOnTablet}
                 expanded={expandedRows?.[row.id] ?? false}
                 onToggleExpanded={onToggleExpanded}
+                rowClassName={getRowClassName?.(row.original)}
+                rowTitle={getRowTitle?.(row.original)}
               />
             ))}
           </tbody>
@@ -213,6 +219,8 @@ function DesktopRow<T>({
   hiddenOnTablet,
   expanded,
   onToggleExpanded,
+  rowClassName,
+  rowTitle,
 }: {
   row: Row<T>;
   table: TanStackTable<T>;
@@ -221,6 +229,8 @@ function DesktopRow<T>({
   hiddenOnTablet: string[];
   expanded: boolean;
   onToggleExpanded?: (rowId: string) => void;
+  rowClassName?: string;
+  rowTitle?: string;
 }) {
   const isSelected = row.getIsSelected();
   const colSpan = table.getVisibleLeafColumns().length;
@@ -229,11 +239,13 @@ function DesktopRow<T>({
     <>
       <tr
         data-state={isSelected ? 'selected' : undefined}
+        title={rowTitle}
         className={cn(
           'transition-colors',
           'hover:bg-muted/30 data-[state=selected]:bg-primary/5 data-[state=selected]:hover:bg-primary/8',
           'group border-l-2 border-l-transparent hover:border-l-primary',
           isSelected && 'border-l-primary',
+          rowClassName,
         )}
       >
         {row.getVisibleCells().map((cell) => (

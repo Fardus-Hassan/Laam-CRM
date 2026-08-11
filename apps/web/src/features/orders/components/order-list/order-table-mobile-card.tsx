@@ -25,7 +25,7 @@ import { ORDER_SOURCE_LABELS } from '@/features/orders/config/order-status';
 import { OrderDateStack } from '@/features/orders/components/order-list/order-date-stack';
 import { OrderAgeBadge } from '@/features/orders/components/shared/order-age-badge';
 import { OrderFollowUpControl } from '@/features/orders/components/shared/order-follow-up-control';
-
+import { cn } from '@/lib/utils';
 type OrderTableMobileCardProps = {
   row: OrderListRow;
   ctx: CrmRowContext<OrderListRow>;
@@ -41,9 +41,23 @@ export function OrderTableMobileCard({
 }: OrderTableMobileCardProps) {
   const displayId = row.orderNumber.replace(/^ORD-/, '');
   const phoneDigits = row.customerPhone.replace(/\D/g, '');
+  const submitFailed = Boolean(row.courierSubmitFailed);
 
   return (
-    <div className="divide-y divide-border/60">
+    <div
+      className={cn(
+        'divide-y divide-border/60',
+        submitFailed &&
+          'rounded-md border border-[color-mix(in_oklab,var(--brand-accent,#E8B931)_45%,transparent)] bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_12%,var(--card))]',
+      )}
+      title={
+        submitFailed
+          ? row.courierSubmitError
+            ? `Courier submit failed: ${row.courierSubmitError}`
+            : 'Courier submit failed'
+          : undefined
+      }
+    >
       <header className="flex items-start gap-3 p-4">
         <Checkbox
           checked={ctx.isSelected}
