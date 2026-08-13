@@ -79,6 +79,9 @@ export type IncentiveApi = {
   generatePeriod: (yearMonth: string) => Promise<IncentivePeriodRun>;
   approvePeriod: (yearMonth: string) => Promise<IncentivePeriodRun>;
   markPeriodPaid: (yearMonth: string) => Promise<IncentivePeriodRun>;
+  exportPayrollCsv: (
+    yearMonth: string,
+  ) => Promise<{ filename: string; csv: string }>;
 };
 
 function delay(ms: number) {
@@ -640,6 +643,54 @@ export function createMockIncentiveApi(): IncentiveApi {
       );
       return updated;
     },
+    async exportPayrollCsv(yearMonth) {
+      await delay(60);
+      const period = await this.getPeriod(yearMonth);
+      if (!period || (period.status !== 'approved' && period.status !== 'paid')) {
+        throw new Error('Approve the payout period before exporting payroll CSV');
+      }
+      const header = [
+        'yearMonth',
+        'periodStatus',
+        'agentName',
+        'userId',
+        'planName',
+        'teamName',
+        'metricType',
+        'actualValue',
+        'incentiveBdt',
+        'attendanceBonusBdt',
+        'specialBonusBdt',
+        'totalPayBdt',
+        'hrStatus',
+      ];
+      const lines = period.lines.map((line) =>
+        [
+          yearMonth,
+          period.status,
+          line.agentName,
+          '',
+          line.planName,
+          line.teamName ?? '',
+          line.metricType,
+          line.actualValue,
+          line.incentiveBdt,
+          line.attendanceBonusBdt ?? 0,
+          line.specialBonusBdt ?? 0,
+          line.totalPayBdt ?? line.incentiveBdt,
+          line.hrStatus ?? '',
+        ]
+          .map((cell) => {
+            const text = String(cell ?? '');
+            return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+          })
+          .join(','),
+      );
+      return {
+        filename: `incentive-payroll-${yearMonth}.csv`,
+        csv: [header.join(','), ...lines].join('\n'),
+      };
+    },
   };
 }
 
@@ -758,6 +809,10 @@ export function createHttpIncentiveApi(): IncentiveApi {
       apiRequest<IncentivePeriodRun>(
         `/crm/incentive/periods/${encodeURIComponent(yearMonth)}/paid`,
         { method: 'PATCH' },
+      ),
+    exportPayrollCsv: (yearMonth) =>
+      apiRequest<{ filename: string; csv: string }>(
+        `/crm/incentive/periods/${encodeURIComponent(yearMonth)}/export`,
       ),
   };
 }

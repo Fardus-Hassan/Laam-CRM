@@ -194,10 +194,16 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       toast.error('Select an employee');
       return;
     }
+    const selected = teamUsers.find((u) => u.id === employee);
+    if (!selected) {
+      toast.error('Select an employee');
+      return;
+    }
     await bulkAction({
       action: 'transfer_employee',
       orderIds: state.orderIds,
-      employeeName: employee,
+      employeeName: selected.name,
+      employeeUserId: selected.id,
     });
     onSuccess?.();
     onClose();
@@ -317,7 +323,7 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
               value={employee}
               onChange={setEmployee}
               options={teamUsers.map((u) => ({
-                value: u.name,
+                value: u.id,
                 label: u.email ? `${u.name} · ${u.email}` : u.name,
               }))}
               placeholder={teamUsers.length ? 'Search employee' : 'No team members'}

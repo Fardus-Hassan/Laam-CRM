@@ -494,6 +494,8 @@ model Order {
   paymentStatus      String
   paymentMethod      String?
   assignedAgentName  String?
+  /// Stable assignee for KPI / incentive (preferred over assignedAgentName).
+  assignedUserId     String?
   shippingArea       String
   shippingAddress    String?
   district           String?
@@ -576,6 +578,8 @@ model Order {
   @@index([courierProvider, courierStatusSyncedAt])
   @@index([organizationId, websiteStoreId])
   @@index([organizationId, clientIp])
+  @@index([organizationId, assignedAgentName])
+  @@index([organizationId, assignedUserId])
 }
 
 /// Org-level blocklist: IP or mobile — blocked callers cannot place orders.
@@ -1626,7 +1630,7 @@ model IncentiveSlab {
   @@map("IncentiveSlabs")
 }
 
-/// Agent ↔ plan assignment (agentName matches Order.assignedAgentName).
+/// Agent ↔ plan assignment (prefer userId; agentName fallback for legacy orders).
 model IncentiveAssignment {
   id                     String                 @id @default(cuid())
   organizationId         String

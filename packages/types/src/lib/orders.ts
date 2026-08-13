@@ -61,6 +61,8 @@ export const orderListItemSchema = z.object({
   amount: z.number(),
   paymentStatus: paymentStatusSchema,
   assignedAgentName: z.string().optional(),
+  /** Stable CRM user id for assignee (incentive KPI). */
+  assignedUserId: z.string().optional(),
   shippingArea: z.string(),
   createdAt: z.string(),
   /** Last order field update. */
@@ -212,6 +214,8 @@ export const orderDetailSchema = orderListItemSchema.extend({
   courierDeliveryType: z.enum(['normal', 'express']).optional(),
   /** Shopper / request IP captured at intake */
   clientIp: z.string().optional(),
+  /** Stable CRM user id for assignee (incentive KPI). */
+  assignedUserId: z.string().optional(),
 });
 
 export type OrderDetail = z.infer<typeof orderDetailSchema>;
@@ -464,6 +468,7 @@ export const createOrderPayloadSchema = z.object({
   courierNote: z.string().optional(),
   packingNote: z.string().optional(),
   assignedAgentName: z.string().optional(),
+  assignedUserId: z.string().optional(),
   skipFollowup: z.boolean().optional(),
   couponCode: z.string().optional(),
   paidAmount: z.number().nonnegative().optional(),
@@ -570,6 +575,7 @@ export const updateOrderPayloadSchema = z.object({
   customerTag: z.string().optional(),
   orderTag: z.string().optional(),
   assignedAgentName: z.string().optional(),
+  assignedUserId: z.string().optional(),
   pathaoCity: z.string().optional(),
   pathaoZone: z.string().optional(),
   pathaoArea: z.string().optional(),
@@ -633,6 +639,8 @@ export const orderBulkActionPayloadSchema = z.object({
   orderIds: z.array(z.string()).min(1),
   status: orderStatusTypeSchema.optional(),
   employeeName: z.string().optional(),
+  /** Stable assignee id for KPI matching (preferred over name-only). */
+  employeeUserId: z.string().optional(),
   courier: z.string().optional(),
   smsTemplateId: z.string().optional(),
   smsMessage: z.string().optional(),

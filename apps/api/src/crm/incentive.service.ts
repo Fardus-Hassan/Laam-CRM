@@ -44,13 +44,37 @@ import type {
 import { Prisma as PrismaRuntime } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { evaluateMiss, matchIncentiveSlab } from './incentive-calc';
+import {
+  applyReturnRatioCap,
+  assignmentMatchKeys,
+  computeReturnRatioPct,
+  countRecoveries,
+  evaluateMiss,
+  matchIncentiveSlab,
+  orderMatchKeys,
+} from './incentive-calc';
 import { LAAM_INCENTIVE_SEED } from './incentive-seed';
 
 type PlanWithSlabs = PlanRow & {
   slabs: SlabRow[];
   team?: TeamRow | null;
   _count?: { assignments: number };
+};
+
+type IncentiveOrderRow = {
+  id: string;
+  assignedAgentName: string | null;
+  assignedUserId: string | null;
+  status: string;
+  itemsCount: number;
+  orderTag: string | null;
+  orderDate: Date;
+};
+
+type IncentiveStatusActivity = {
+  orderId: string;
+  description: string | null;
+  createdAt: Date;
 };
 
 @Injectable()
@@ -873,7 +897,22 @@ export class IncentiveService {
     });
 
     const agentNames = [...new Set(assignments.map((a) => a.agentName))];
+    const userIds = [
+      ...new Set(
+        assignments
+          .map((a) => a.userId?.trim())
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
     const assignmentIds = assignments.map((a) => a.id);
+    const orderOr: Prisma.OrderWhereInput[] = [];
+    if (agentNames.length) {
+      orderOr.push({ assignedAgentName: { in: agentNames } });
+    }
+    if (userIds.length) {
+      orderOr.push({ assignedUserId: { in: userIds } });
+    }
+
     const [
       orders,
       manualActuals,
@@ -884,17 +923,19 @@ export class IncentiveService {
       settings,
       periodRun,
     ] = await Promise.all([
-      agentNames.length === 0
-        ? Promise.resolve([])
+      orderOr.length === 0
+        ? Promise.resolve([] as IncentiveOrderRow[])
         : this.prisma.order.findMany({
             where: {
               organizationId,
               deletedAt: null,
-              assignedAgentName: { in: agentNames },
+              OR: orderOr,
               orderDate: { gte: historyStart, lte: periodEnd },
             },
             select: {
+              id: true,
               assignedAgentName: true,
+              assignedUserId: true,
               status: true,
               itemsCount: true,
               orderTag: true,
@@ -939,15 +980,43 @@ export class IncentiveService {
       }),
     ]);
 
-    const ordersByAgentMonth = new Map<string, typeof orders>();
+    const orderIds = orders.map((o) => o.id);
+    const statusActivities: IncentiveStatusActivity[] =
+      orderIds.length === 0
+        ? []
+        : await this.prisma.orderActivity.findMany({
+            where: {
+              organizationId,
+              orderId: { in: orderIds },
+              type: 'status',
+              createdAt: { gte: historyStart, lte: periodEnd },
+            },
+            select: {
+              orderId: true,
+              description: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'asc' },
+          });
+
+    const ordersByKeyMonth = new Map<string, IncentiveOrderRow[]>();
     for (const o of orders) {
-      const key = o.assignedAgentName ?? '';
-      if (!key) continue;
       const orderMonth = this.toYearMonth(o.orderDate);
-      const mapKey = `${key}\u0000${orderMonth}`;
-      const list = ordersByAgentMonth.get(mapKey) ?? [];
-      list.push(o);
-      ordersByAgentMonth.set(mapKey, list);
+      for (const key of orderMatchKeys(o)) {
+        const mapKey = `${key}\u0000${orderMonth}`;
+        const list = ordersByKeyMonth.get(mapKey) ?? [];
+        list.push(o);
+        ordersByKeyMonth.set(mapKey, list);
+      }
+    }
+
+    const activitiesByOrderMonth = new Map<string, IncentiveStatusActivity[]>();
+    for (const act of statusActivities) {
+      const month = this.toYearMonth(act.createdAt);
+      const mapKey = `${act.orderId}\u0000${month}`;
+      const list = activitiesByOrderMonth.get(mapKey) ?? [];
+      list.push(act);
+      activitiesByOrderMonth.set(mapKey, list);
     }
     const manualByAssignmentMonth = new Map(
       manualActuals.map((a) => [`${a.assignmentId}\u0000${a.yearMonth}`, a]),
@@ -991,13 +1060,32 @@ export class IncentiveService {
           monthAttendance?.workingDays ??
           salary?.expectedWorkingDays ??
           this.weekdaysInMonth(this.periodBounds(month).start);
+        const agentOrders = this.ordersForAssignment(
+          a,
+          month,
+          ordersByKeyMonth,
+        );
+        const monthBounds = this.periodBounds(month);
+        const recoveryActivities = agentOrders.flatMap(
+          (o) => activitiesByOrderMonth.get(`${o.id}\u0000${month}`) ?? [],
+        );
+        // Include earlier history activities for same orders (sawIncomplete before period)
+        const priorActivities =
+          month === ym
+            ? statusActivities.filter((act) =>
+                agentOrders.some((o) => o.id === act.orderId),
+              )
+            : recoveryActivities;
         return this.calcLine(
           a,
-          ordersByAgentMonth.get(`${a.agentName}\u0000${month}`) ?? [],
+          agentOrders,
           manualByAssignmentMonth.get(`${a.id}\u0000${month}`)?.actualValue,
           surveyByAgentMonth.get(`${a.agentName}\u0000${month}`) ?? 0,
           channelsByAgentMonth.get(`${a.agentName}\u0000${month}`) ?? [],
           workingDays,
+          priorActivities,
+          monthBounds.start,
+          monthBounds.end,
         );
       });
       const line = monthLines[0]!;
@@ -1231,26 +1319,220 @@ export class IncentiveService {
     yearMonth: string,
     user: { userId: string; name?: string; email: string },
   ): Promise<IncentivePeriodRun> {
-    return this.transitionPeriod(
+    const paid = await this.transitionPeriod(
       organizationId,
       yearMonth,
       'approved',
       'paid',
       user,
     );
+    // Audit trail on notes (CRM owns calc + lock; finance pays externally)
+    const stamp = `Paid marked by ${user.name?.trim() || user.email} at ${new Date().toISOString()}`;
+    await this.prisma.incentivePeriodRun.update({
+      where: { id: paid.id },
+      data: {
+        notes: paid.notes ? `${paid.notes}\n${stamp}` : stamp,
+      },
+    });
+    return this.getPeriod(organizationId, yearMonth);
+  }
+
+  /**
+   * Agent / TL dashboard: live incentive summary for the signed-in user.
+   */
+  async mySummary(
+    organizationId: string,
+    actor: { userId: string; name?: string | null },
+    yearMonth?: string,
+  ): Promise<{
+    totalEarned: number;
+    periodLabel: string;
+    breakdown: Array<{ id: string; label: string; amount: number }>;
+    nextPayoutDate: string;
+    history: Array<{
+      id: string;
+      date: string;
+      description: string;
+      type: string;
+      amount: number;
+    }>;
+  }> {
+    const ym = yearMonth?.trim() || this.currentYearMonth();
+    const report = await this.performance(organizationId, ym);
+    const nameKey = (actor.name ?? '').trim().toLowerCase();
+
+    const assignments = await this.prisma.incentiveAssignment.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        OR: [
+          { userId: actor.userId },
+          ...(actor.name?.trim()
+            ? [
+                {
+                  agentName: {
+                    equals: actor.name.trim(),
+                    mode: 'insensitive' as const,
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+      select: { id: true },
+    });
+    const assignmentIds = new Set(assignments.map((a) => a.id));
+    const mine = report.lines.filter((line) => assignmentIds.has(line.assignmentId));
+    const fallback = report.lines.filter(
+      (line) => nameKey && line.agentName.trim().toLowerCase() === nameKey,
+    );
+    const useLines = mine.length ? mine : fallback;
+    const totalEarned = useLines.reduce((s, l) => s + (l.totalPayBdt ?? l.incentiveBdt), 0);
+    const breakdown = useLines.map((l) => ({
+      id: l.assignmentId,
+      label: l.planName,
+      amount: l.totalPayBdt ?? l.incentiveBdt,
+    }));
+
+    const periods = await this.prisma.incentivePeriodRun.findMany({
+      where: { organizationId, status: { in: ['paid', 'approved'] } },
+      orderBy: { yearMonth: 'desc' },
+      take: 6,
+      include: { lines: true },
+    });
+    const history = periods.flatMap((p) => {
+      const agentLines = p.lines.filter((l) => {
+        if (assignmentIds.size && l.assignmentId && assignmentIds.has(l.assignmentId)) {
+          return true;
+        }
+        return nameKey && l.agentName.trim().toLowerCase() === nameKey;
+      });
+      return agentLines.map((l) => ({
+        id: `${p.id}-${l.id}`,
+        date: `${p.yearMonth}-01`,
+        description: `${l.planName} · ${p.yearMonth}`,
+        type: p.status,
+        amount: l.totalPayBdt ?? l.incentiveBdt,
+      }));
+    });
+
+    const [y, m] = ym.split('-').map(Number);
+    const nextPayout = new Date(Date.UTC(y!, m!, 5)); // 5th of next month convention
+    return {
+      totalEarned,
+      periodLabel: ym,
+      breakdown,
+      nextPayoutDate: nextPayout.toISOString().slice(0, 10),
+      history,
+    };
+  }
+
+  async exportPayrollCsv(
+    organizationId: string,
+    yearMonth: string,
+  ): Promise<{ filename: string; csv: string }> {
+    const ym = this.validateYearMonth(yearMonth);
+    const period = await this.prisma.incentivePeriodRun.findUnique({
+      where: { organizationId_yearMonth: { organizationId, yearMonth: ym } },
+      include: { lines: { orderBy: { agentName: 'asc' } } },
+    });
+    if (!period) {
+      throw new NotFoundException(`No incentive period for ${ym}`);
+    }
+    if (period.status === 'draft') {
+      throw new BadRequestException('Approve the period before payroll export');
+    }
+
+    const assignments = await this.prisma.incentiveAssignment.findMany({
+      where: {
+        organizationId,
+        id: { in: period.lines.map((l) => l.assignmentId).filter(Boolean) as string[] },
+      },
+      select: { id: true, userId: true },
+    });
+    const userByAssignment = new Map(
+      assignments.map((a) => [a.id, a.userId ?? ''] as const),
+    );
+
+    const header = [
+      'yearMonth',
+      'periodStatus',
+      'agentName',
+      'userId',
+      'planName',
+      'teamName',
+      'metricType',
+      'actualValue',
+      'incentiveBdt',
+      'attendanceBonusBdt',
+      'specialBonusBdt',
+      'totalPayBdt',
+      'hrStatus',
+    ];
+    const rows = period.lines.map((l) =>
+      [
+        ym,
+        period.status,
+        l.agentName,
+        l.assignmentId ? userByAssignment.get(l.assignmentId) ?? '' : '',
+        l.planName,
+        l.teamName ?? '',
+        l.metricType,
+        l.actualValue,
+        l.incentiveBdt,
+        l.attendanceBonusBdt,
+        l.specialBonusBdt,
+        l.totalPayBdt,
+        l.hrStatus ?? '',
+      ]
+        .map((cell) => {
+          const text = String(cell ?? '');
+          return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        })
+        .join(','),
+    );
+    return {
+      filename: `incentive-payroll-${ym}.csv`,
+      csv: [header.join(','), ...rows].join('\n'),
+    };
+  }
+
+  private currentYearMonth(): string {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
   }
 
   // --- calc helpers ---
+
+  private ordersForAssignment(
+    assignment: { userId?: string | null; agentName: string },
+    month: string,
+    ordersByKeyMonth: Map<string, IncentiveOrderRow[]>,
+  ): IncentiveOrderRow[] {
+    const seen = new Set<string>();
+    const out: IncentiveOrderRow[] = [];
+    for (const key of assignmentMatchKeys(assignment)) {
+      for (const order of ordersByKeyMonth.get(`${key}\u0000${month}`) ?? []) {
+        if (seen.has(order.id)) continue;
+        seen.add(order.id);
+        out.push(order);
+      }
+    }
+    return out;
+  }
 
   private calcLine(
     assignment: AssignmentRow & {
       plan: PlanWithSlabs;
     },
-    orders: { status: string; itemsCount: number; orderTag?: string | null }[],
+    orders: IncentiveOrderRow[],
     manualActual?: number,
     surveyCount = 0,
     channelLogs: { channel: string; activityCount: number }[] = [],
     workingDaysInMonth = 0,
+    statusActivities: IncentiveStatusActivity[] = [],
+    periodStart = new Date(0),
+    periodEnd = new Date(),
   ): IncentivePerformanceLine {
     const plan = assignment.plan;
     const metricType = plan.metricType as IncentiveMetricType;
@@ -1304,9 +1586,7 @@ export class IncentiveService {
         if (deliveredStatuses.includes(st)) delivered += 1;
         if (returnedStatuses.includes(st)) returned += 1;
       }
-      const denom = delivered + returned;
-      actualValue =
-        denom === 0 ? 0 : Math.round((returned / denom) * 10000) / 100;
+      actualValue = computeReturnRatioPct({ delivered, returned });
     } else if (metricType === 'cross_sell_count') {
       const minItems = config.minItems ?? 2;
       const exclude = new Set(
@@ -1332,8 +1612,37 @@ export class IncentiveService {
           (!!o.orderTag && orderTags.has(o.orderTag.toLowerCase()))
         );
       }).length;
+    } else if (metricType === 'recovery_count') {
+      const successStatuses = (
+        config.includeStatuses ?? [
+          'confirmed',
+          'delivered',
+          'completed',
+          'in_courier',
+        ]
+      ).map((s) => s.toLowerCase());
+      const recoveryFromStatuses = (
+        config.recoveryFromStatuses ?? [
+          'pending',
+          'hold_followup',
+          'incomplete',
+          'pending_incomplete',
+        ]
+      ).map((s) => s.toLowerCase());
+      const tags = new Map(
+        orders.map((o) => [o.id, o.orderTag] as const),
+      );
+      actualValue = countRecoveries({
+        orderIds: orders.map((o) => o.id),
+        activities: statusActivities,
+        successStatuses,
+        recoveryFromStatuses,
+        periodStart,
+        periodEnd,
+        orderTagsById: tags,
+      });
     } else if (metricType !== 'manual') {
-      // order_count | recovery_count
+      // order_count
       const exclude = new Set(
         (
           config.excludeStatuses ?? [
@@ -1359,12 +1668,57 @@ export class IncentiveService {
       }).length;
     }
 
-    const match = matchIncentiveSlab(
+    let match = matchIncentiveSlab(
       plan.slabs,
       actualValue,
       direction,
       plan.prorataAboveTop,
     );
+
+    // Personal return-ratio quality gate (PDF) — applies to order-like metrics.
+    let returnCapped = false;
+    if (
+      metricType !== 'return_ratio' &&
+      metricType !== 'manual' &&
+      metricType !== 'survey_count' &&
+      metricType !== 'channel_activity' &&
+      config.maxAgentReturnRatioPct != null
+    ) {
+      const deliveredStatuses = (
+        config.deliveredStatuses ?? [
+          'delivered',
+          'completed',
+          'hand_delivery_completed',
+        ]
+      ).map((s) => s.toLowerCase());
+      const returnedStatuses = (
+        config.returnedStatuses ?? ['returned', 'pending_return']
+      ).map((s) => s.toLowerCase());
+      let delivered = 0;
+      let returned = 0;
+      for (const o of orders) {
+        const st = o.status.toLowerCase();
+        if (deliveredStatuses.includes(st)) delivered += 1;
+        if (returnedStatuses.includes(st)) returned += 1;
+      }
+      const returnRatioPct = computeReturnRatioPct({ delivered, returned });
+      const capped = applyReturnRatioCap({
+        incentiveBdt: match.incentiveBdt,
+        returnRatioPct,
+        maxAgentReturnRatioPct: config.maxAgentReturnRatioPct,
+      });
+      if (capped.capped) {
+        returnCapped = true;
+        match = { ...match, incentiveBdt: 0 };
+        notes = [
+          notes,
+          `Return ratio ${returnRatioPct}% exceeds plan max ${config.maxAgentReturnRatioPct}% — incentive zeroed`,
+        ]
+          .filter(Boolean)
+          .join('. ');
+      }
+    }
+
     const entryTarget =
       direction === 'higher' && plan.slabs.length
         ? Math.min(...plan.slabs.map((slab) => slab.monthlyTarget))
@@ -1372,22 +1726,24 @@ export class IncentiveService {
     const manualMissing = metricType === 'manual' && manualActual === undefined;
     const missed = evaluateMiss(direction, actualValue, plan.slabs);
     const dailyAverage =
-      workingDaysInMonth > 0
+      workingDaysInMonth > 0 && direction === 'higher'
         ? Math.round((actualValue / workingDaysInMonth) * 100) / 100
         : null;
     const belowDailyEntry =
       config.entryDailyTarget != null &&
       dailyAverage != null &&
       dailyAverage < config.entryDailyTarget;
-    const warning = manualMissing
-      ? 'manual_missing'
-      : belowDailyEntry
-        ? 'below_daily_entry'
-        : missed
-          ? direction === 'higher'
-            ? 'below_target'
-            : 'above_return_cap'
-          : 'none';
+    const warning = returnCapped
+      ? 'above_return_cap'
+      : manualMissing
+        ? 'manual_missing'
+        : belowDailyEntry
+          ? 'below_daily_entry'
+          : missed
+            ? direction === 'higher'
+              ? 'below_target'
+              : 'above_return_cap'
+            : 'none';
 
     return {
       assignmentId: assignment.id,

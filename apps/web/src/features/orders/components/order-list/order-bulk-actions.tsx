@@ -175,7 +175,7 @@ export function OrderBulkActions({
   }
 
   const transferOptions = teamUsers.map((u) => ({
-    value: u.name,
+    value: u.id,
     label: u.email ? `${u.name} · ${u.email}` : u.name,
   }));
 
@@ -239,16 +239,19 @@ export function OrderBulkActions({
               <FormField label="Quick transfer">
                 <FormSearchSelect
                   value=""
-                  onChange={(employee) => {
-                    if (!employee || isLoading) return;
+                  onChange={(employeeUserId) => {
+                    if (!employeeUserId || isLoading) return;
                     if (transferOptions.length === 0) {
                       toast.error('No active users found. Add team members in Settings → Users.');
                       return;
                     }
+                    const selected = teamUsers.find((u) => u.id === employeeUserId);
+                    if (!selected) return;
                     void bulkAction({
                       action: 'transfer_employee',
                       orderIds: selectedOrderIds,
-                      employeeName: employee,
+                      employeeName: selected.name,
+                      employeeUserId: selected.id,
                     }).then(() => onSuccess?.());
                   }}
                   options={transferOptions}

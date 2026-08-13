@@ -440,8 +440,12 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         open={assignOpen}
         onOpenChange={setAssignOpen}
         currentAgentName={order.assignedAgentName}
-        onAssign={async (employeeName) => {
-          const updated = await updateOrder(order.id, { assignedAgentName: employeeName });
+        currentAgentUserId={order.assignedUserId}
+        onAssign={async ({ employeeName, employeeUserId }) => {
+          const updated = await updateOrder(order.id, {
+            assignedAgentName: employeeName,
+            assignedUserId: employeeUserId,
+          });
           applyOrderUpdate(updated);
         }}
       />

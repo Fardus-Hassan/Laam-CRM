@@ -141,6 +141,10 @@ class CreateOrderDto {
   assignedAgentName?: string;
 
   @IsOptional()
+  @IsString()
+  assignedUserId?: string;
+
+  @IsOptional()
   @IsBoolean()
   skipFollowup?: boolean;
 
@@ -375,6 +379,10 @@ class UpdateOrderDto {
 
   @IsOptional()
   @IsString()
+  assignedUserId?: string;
+
+  @IsOptional()
+  @IsString()
   pathaoCity?: string;
 
   @IsOptional()
@@ -529,6 +537,7 @@ export class OrdersController {
       courierNote: body.courierNote,
       packingNote: body.packingNote,
       assignedAgentName: body.assignedAgentName,
+      assignedUserId: body.assignedUserId,
       skipFollowup: body.skipFollowup,
       couponCode: body.couponCode,
       leadId: body.leadId,
@@ -603,6 +612,7 @@ export class OrdersController {
       orderIds?: string[];
       status?: string;
       employeeName?: string;
+      employeeUserId?: string;
       courier?: string;
       fulfillmentWarehouseId?: string;
       confirmRemoteCancelled?: boolean;
@@ -616,6 +626,7 @@ export class OrdersController {
         orderIds: body.orderIds ?? [],
         status: body.status,
         employeeName: body.employeeName,
+        employeeUserId: body.employeeUserId,
         courier: body.courier,
         fulfillmentWarehouseId: body.fulfillmentWarehouseId,
         confirmRemoteCancelled: body.confirmRemoteCancelled,

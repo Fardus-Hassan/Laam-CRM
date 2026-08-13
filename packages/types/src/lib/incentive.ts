@@ -40,6 +40,11 @@ export const incentiveMetricConfigSchema = z.object({
   entryDailyTarget: z.number().optional(),
   /** Channels included for channel_activity metric. */
   channels: z.array(incentiveChannelSchema).optional(),
+  /**
+   * Incomplete statuses that qualify an order as “recovered” when it later
+   * reaches includeStatuses (recovery_count). Defaults applied in calc.
+   */
+  recoveryFromStatuses: z.array(z.string()).optional(),
 });
 export type IncentiveMetricConfig = z.infer<typeof incentiveMetricConfigSchema>;
 

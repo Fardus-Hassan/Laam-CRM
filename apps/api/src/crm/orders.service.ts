@@ -134,6 +134,7 @@ export type UpdateOrderInput = {
   customerTag?: string;
   orderTag?: string;
   assignedAgentName?: string;
+  assignedUserId?: string;
   pathaoCity?: string;
   pathaoZone?: string;
   pathaoArea?: string;
@@ -741,6 +742,7 @@ export class OrdersService {
       orderIds: string[];
       status?: string;
       employeeName?: string;
+      employeeUserId?: string;
       courier?: string;
       fulfillmentWarehouseId?: string;
       confirmRemoteCancelled?: boolean;
@@ -787,6 +789,7 @@ export class OrdersService {
 
     if (payload.action === 'transfer_employee') {
       const name = payload.employeeName?.trim() || null;
+      const userId = payload.employeeUserId?.trim() || null;
       let successCount = 0;
       for (const orderId of ids) {
         const existing = await this.prisma.order.findFirst({
@@ -795,7 +798,10 @@ export class OrdersService {
         if (!existing) continue;
         await this.prisma.order.update({
           where: { id: existing.id },
-          data: { assignedAgentName: name },
+          data: {
+            assignedAgentName: name,
+            assignedUserId: userId,
+          },
         });
         successCount += 1;
       }
@@ -1701,6 +1707,7 @@ export class OrdersService {
           paymentStatus,
           paymentMethod,
           assignedAgentName: input.assignedAgentName?.trim() || actor.name || null,
+          assignedUserId: input.assignedUserId?.trim() || actor.userId || null,
           shippingArea,
           shippingAddress: input.shippingAddress.trim(),
           district: input.district?.trim() || shippingArea,
@@ -2696,6 +2703,10 @@ export class OrdersService {
           assignedAgentName:
             input.assignedAgentName !== undefined
               ? input.assignedAgentName.trim() || null
+              : undefined,
+          assignedUserId:
+            input.assignedUserId !== undefined
+              ? input.assignedUserId.trim() || null
               : undefined,
           pathaoCity:
             input.pathaoCity !== undefined
@@ -3937,6 +3948,8 @@ export class OrdersService {
       amount: row.amount,
       paymentStatus: row.paymentStatus as PaymentStatus,
       assignedAgentName: row.assignedAgentName ?? undefined,
+      assignedUserId:
+        (row as { assignedUserId?: string | null }).assignedUserId ?? undefined,
       shippingArea: row.shippingArea,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -4142,6 +4155,9 @@ export class OrdersService {
       attachments: attachments.length > 0 ? attachments : undefined,
       stockDeducted: Boolean(row.stockDeductedAt),
       clientIp: (row as { clientIp?: string | null }).clientIp?.trim() || undefined,
+      assignedUserId:
+        (row as { assignedUserId?: string | null }).assignedUserId?.trim() ||
+        undefined,
       lineItems: row.lineItems.map((l) => ({
         id: l.id,
         productName: l.productName,

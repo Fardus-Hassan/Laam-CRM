@@ -12,7 +12,9 @@ import type {
   IncentivePeriodRun,
   IncentivePlan,
   IncentiveShiftTemplate,
+  IncentiveTeam,
   IncentiveWarning,
+  UpdateIncentiveTeamPayload,
 } from '@laam/types';
 import {
   Check,
@@ -23,6 +25,7 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Upload,
   WalletCards,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -63,7 +66,7 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { formatCurrency, formatDateTime } from '@/lib/format';
-import { downloadCsv } from '@/lib/export-csv';
+import { downloadCsv, downloadTextFile } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 const METRIC_LABELS: Record<IncentiveMetricType, string> = {
@@ -111,6 +114,81 @@ const CHANNEL_LABELS: Record<IncentiveChannel, string> = {
   messenger: 'Messenger',
   whatsapp: 'WhatsApp',
 };
+
+function parseCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]!;
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (ch === ',' && !inQuotes) {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseAttendanceCsv(text: string): Array<{
+  agentName: string;
+  presentDays: number;
+  workingDays: number;
+  lateCount: number;
+  earlyLeaveCount: number;
+  unapprovedAbsence: number;
+}> {
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0]!).map((h) => h.toLowerCase().replace(/\s+/g, ''));
+  const idx = (names: string[]) => headers.findIndex((h) => names.includes(h));
+  const agentIdx = idx(['agentname', 'agent', 'name']);
+  const presentIdx = idx(['presentdays', 'present']);
+  const workingIdx = idx(['workingdays', 'working']);
+  const lateIdx = idx(['latecount', 'late']);
+  const earlyIdx = idx(['earlyleavecount', 'earlyleave']);
+  const absentIdx = idx(['unapprovedabsence', 'absence', 'absent']);
+  if (agentIdx < 0 || presentIdx < 0 || workingIdx < 0) {
+    throw new Error(
+      'CSV needs agentName, presentDays, workingDays columns (optional: lateCount, earlyLeaveCount, unapprovedAbsence)',
+    );
+  }
+  const rows = [];
+  for (const line of lines.slice(1)) {
+    const cells = parseCsvLine(line);
+    const agentName = cells[agentIdx]?.trim() ?? '';
+    if (!agentName) continue;
+    const presentDays = Number(cells[presentIdx] ?? 0);
+    const workingDays = Number(cells[workingIdx] ?? 0);
+    if (!Number.isFinite(presentDays) || !Number.isFinite(workingDays) || workingDays < 1) {
+      continue;
+    }
+    rows.push({
+      agentName,
+      presentDays,
+      workingDays,
+      lateCount: Number(cells[lateIdx] ?? 0) || 0,
+      earlyLeaveCount: Number(cells[earlyIdx] ?? 0) || 0,
+      unapprovedAbsence: Number(cells[absentIdx] ?? 0) || 0,
+    });
+  }
+  return rows;
+}
 
 function OpsTableCard({
   title,
@@ -168,7 +246,10 @@ export function IncentiveHubPage() {
   const [busy, setBusy] = React.useState(false);
   const [tab, setTab] = React.useState<HubTab>('performance');
   const [teamOpen, setTeamOpen] = React.useState(false);
+  const [editingTeam, setEditingTeam] = React.useState<IncentiveTeam | null>(null);
   const [teamName, setTeamName] = React.useState('');
+  const [teamActive, setTeamActive] = React.useState(true);
+  const attendanceFileRef = React.useRef<HTMLInputElement>(null);
   const [planOpen, setPlanOpen] = React.useState(false);
   const [editingPlan, setEditingPlan] = React.useState<IncentivePlan | null>(null);
   const [assignOpen, setAssignOpen] = React.useState(false);
@@ -232,12 +313,79 @@ export function IncentiveHubPage() {
     }
   }
 
-  async function handleCreateTeam() {
-    const payload: CreateIncentiveTeamPayload = { name: teamName.trim() };
-    if (!payload.name) return;
-    await runAction(() => incentiveApi.createTeam(payload), 'Team created');
+  async function handleSaveTeam() {
+    const name = teamName.trim();
+    if (!name) return;
+    if (editingTeam) {
+      const payload: UpdateIncentiveTeamPayload = {
+        name,
+        isActive: teamActive,
+      };
+      await runAction(() => incentiveApi.updateTeam(editingTeam.id, payload), 'Team updated');
+    } else {
+      const payload: CreateIncentiveTeamPayload = { name, isActive: teamActive };
+      await runAction(() => incentiveApi.createTeam(payload), 'Team created');
+    }
     setTeamName('');
+    setTeamActive(true);
+    setEditingTeam(null);
     setTeamOpen(false);
+  }
+
+  function openCreateTeam() {
+    setEditingTeam(null);
+    setTeamName('');
+    setTeamActive(true);
+    setTeamOpen(true);
+  }
+
+  function openEditTeam(team: IncentiveTeam) {
+    setEditingTeam(team);
+    setTeamName(team.name);
+    setTeamActive(team.isActive);
+    setTeamOpen(true);
+  }
+
+  async function handleAttendanceCsv(file: File) {
+    setBusy(true);
+    try {
+      const text = await file.text();
+      const rows = parseAttendanceCsv(text);
+      if (!rows.length) {
+        throw new Error('No valid attendance rows found in CSV');
+      }
+      for (const row of rows) {
+        await incentiveApi.upsertAttendance({
+          agentName: row.agentName,
+          yearMonth,
+          presentDays: row.presentDays,
+          workingDays: row.workingDays,
+          lateCount: row.lateCount,
+          earlyLeaveCount: row.earlyLeaveCount,
+          unapprovedAbsence: row.unapprovedAbsence,
+        });
+      }
+      toast.success(`Imported attendance for ${rows.length} agent(s)`);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Attendance import failed');
+    } finally {
+      setBusy(false);
+      if (attendanceFileRef.current) attendanceFileRef.current.value = '';
+    }
+  }
+
+  async function handlePayrollExport() {
+    setBusy(true);
+    try {
+      const pack = await incentiveApi.exportPayrollCsv(yearMonth);
+      downloadTextFile(pack.filename, pack.csv);
+      toast.success('Payroll CSV downloaded');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Payroll export failed');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleDeletePlan(plan: IncentivePlan) {
@@ -361,7 +509,7 @@ export function IncentiveHubPage() {
   return (
     <PageShell
       title="Incentive & KPI"
-      description="Configurable team targets, agent performance, and locked monthly payouts."
+      description="CRM calculates KPI & locks payouts; export CSV to your payroll system. Not a full HRIS/bank disbursement tool."
     >
       <div className={cn('flex flex-col', ORDER_PAGE_GAP)}>
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -423,7 +571,7 @@ export function IncentiveHubPage() {
                 <RefreshCw className="size-4" />
                 Sync missing
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setTeamOpen(true)}>
+              <Button type="button" size="sm" variant="outline" onClick={openCreateTeam}>
                 <Plus className="size-4" />
                 Team
               </Button>
@@ -723,6 +871,25 @@ export function IncentiveHubPage() {
                   <Button type="button" disabled={busy} onClick={() => void saveOps('attendance')}>
                     Save attendance
                   </Button>
+                  <input
+                    ref={attendanceFileRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleAttendanceCsv(file);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => attendanceFileRef.current?.click()}
+                  >
+                    <Upload className="size-4" />
+                    Import CSV
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -868,6 +1035,51 @@ export function IncentiveHubPage() {
 
         {tab === 'plans' ? (
           <div className="space-y-3">
+            {(data?.teams ?? []).length ? (
+              <Card className={ORDER_CARD_CLASS}>
+                <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                  <CardTitle className="text-base">Teams</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Edit names or deactivate teams without deleting history.
+                  </p>
+                </CardHeader>
+                <CardContent className={ORDER_SECTION_BODY_CLASS}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(data?.teams ?? []).map((team) => (
+                        <TableRow key={team.id}>
+                          <TableCell>{team.name}</TableCell>
+                          <TableCell>
+                            <Badge variant={team.isActive ? 'secondary' : 'outline'}>
+                              {team.isActive ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {canManage ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => openEditTeam(team)}
+                              >
+                                <Edit2 className="size-4" />
+                              </Button>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            ) : null}
             {(data?.plans ?? []).map((plan) => (
               <Card key={plan.id} className={ORDER_CARD_CLASS}>
                 <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-start justify-between gap-2')}>
@@ -1119,7 +1331,7 @@ export function IncentiveHubPage() {
               <div className="flex-1">
                 <CardTitle className="text-base">Monthly payout run</CardTitle>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Generate a locked snapshot, approve it, then mark payroll paid.
+                  Generate → approve → export payroll CSV → mark paid. CRM locks numbers; finance pays outside.
                 </p>
               </div>
               <Input type="month" className="w-40" value={yearMonth} onChange={(event) => setYearMonth(event.target.value)} />
@@ -1158,8 +1370,22 @@ export function IncentiveHubPage() {
                 }
               >
                 <Download className="size-4" />
-                CSV
+                Snapshot CSV
               </Button>
+              {canManage &&
+              selectedPeriod &&
+              (selectedPeriod.status === 'approved' || selectedPeriod.status === 'paid') ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void handlePayrollExport()}
+                >
+                  <Download className="size-4" />
+                  Payroll CSV
+                </Button>
+              ) : null}
               {canManage && (!selectedPeriod || selectedPeriod.status === 'draft') ? (
                 <Button
                   type="button"
@@ -1299,23 +1525,47 @@ export function IncentiveHubPage() {
         ) : null}
       </div>
 
-      <Dialog open={teamOpen} onOpenChange={setTeamOpen}>
+      <Dialog
+        open={teamOpen}
+        onOpenChange={(open) => {
+          setTeamOpen(open);
+          if (!open) {
+            setEditingTeam(null);
+            setTeamName('');
+            setTeamActive(true);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New team</DialogTitle>
+            <DialogTitle>{editingTeam ? 'Edit team' : 'New team'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="incentive-team-name">Name</Label>
-            <Input
-              id="incentive-team-name"
-              value={teamName}
-              onChange={(event) => setTeamName(event.target.value)}
-              placeholder="e.g. Telesales"
-            />
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="incentive-team-name">Name</Label>
+              <Input
+                id="incentive-team-name"
+                value={teamName}
+                onChange={(event) => setTeamName(event.target.value)}
+                placeholder="e.g. Telesales"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={teamActive}
+                onChange={(event) => setTeamActive(event.target.checked)}
+              />
+              Active
+            </label>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setTeamOpen(false)}>Cancel</Button>
-            <Button type="button" disabled={busy} onClick={() => void handleCreateTeam()}>Create</Button>
+            <Button type="button" variant="outline" onClick={() => setTeamOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => void handleSaveTeam()}>
+              {editingTeam ? 'Save' : 'Create'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -558,6 +558,34 @@ export class IncentiveController {
     return this.incentive.performance(user.organizationId!, ym);
   }
 
+  @Get('my-summary')
+  @RequirePermissions('incentive.view', 'dashboard.view')
+  @ApiOperation({ summary: 'Signed-in agent incentive summary (dashboard)' })
+  mySummary(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('yearMonth') yearMonth?: string,
+  ) {
+    this.incentive.requireOrg(user.organizationId);
+    return this.incentive.mySummary(
+      user.organizationId!,
+      { userId: user.userId, name: user.name },
+      yearMonth,
+    );
+  }
+
+  @Get('periods/:yearMonth/export')
+  @RequirePermissions('incentive.view', 'incentive.manage')
+  @ApiOperation({
+    summary: 'Payroll-ready CSV for an approved/paid incentive period',
+  })
+  exportPayroll(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('yearMonth') yearMonth: string,
+  ) {
+    this.incentive.requireOrg(user.organizationId);
+    return this.incentive.exportPayrollCsv(user.organizationId!, yearMonth);
+  }
+
   @Get('ops')
   @RequirePermissions('incentive.view')
   @ApiOperation({
