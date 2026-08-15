@@ -4,6 +4,7 @@ import type {
   TicketListQuery,
   TicketListResponse,
 } from '@laam/types';
+import { newBrowserId } from '@/lib/device-id';
 
 let tickets: SupportTicket[] = [
   {
@@ -111,7 +112,7 @@ export function getTicket(id: string): SupportTicket | undefined {
 
 export function createTicket(payload: CreateTicketPayload): SupportTicket {
   const ticket: SupportTicket = {
-    id: `tk-${crypto.randomUUID().slice(0, 8)}`,
+    id: `tk-${newBrowserId().slice(0, 8)}`,
     subject: payload.subject,
     status: 'open',
     priority: payload.priority,
@@ -122,7 +123,7 @@ export function createTicket(payload: CreateTicketPayload): SupportTicket {
     updatedAt: new Date().toISOString(),
     messages: [
       {
-        id: `m-${crypto.randomUUID().slice(0, 6)}`,
+        id: `m-${newBrowserId().slice(0, 6)}`,
         authorName: 'Laam Org Admin',
         authorRole: 'agent',
         body: payload.body,
@@ -159,7 +160,7 @@ export function addTicketReply(id: string, body: string): SupportTicket | undefi
     messages: [
       ...ticket.messages,
       {
-        id: `m-${crypto.randomUUID().slice(0, 6)}`,
+        id: `m-${newBrowserId().slice(0, 6)}`,
         authorName: 'Laam Org Admin',
         authorRole: 'agent',
         body,
