@@ -292,6 +292,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'orders.view',
     'orders.create',
     'orders.confirm',
+    'incentive.view',
     'tasks.view',
     'tasks.create',
     'activities.view',
@@ -418,6 +419,10 @@ export function resolveUserPermissions(user: {
   const effective = new Set<Permission>(base);
   for (const grant of grants) {
     effective.add(grant);
+  }
+  // Stale custom roles/presets must not hide KPI self-view for roles that include it.
+  if (roleBase.includes('incentive.view')) {
+    effective.add('incentive.view');
   }
   for (const deny of denies) {
     effective.delete(deny);

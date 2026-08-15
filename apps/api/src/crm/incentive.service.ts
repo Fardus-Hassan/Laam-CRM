@@ -39,6 +39,7 @@ import type {
   IncentivePeriodRun as PeriodRow,
   IncentiveSlab as SlabRow,
   IncentiveTeam as TeamRow,
+  Team as OrgTeamRow,
   Prisma,
 } from '@prisma/client';
 import { Prisma as PrismaRuntime } from '@prisma/client';
@@ -51,6 +52,7 @@ import {
   countRecoveries,
   evaluateMiss,
   matchIncentiveSlab,
+  normalizeAgentKey,
   orderMatchKeys,
 } from './incentive-calc';
 import { LAAM_INCENTIVE_SEED } from './incentive-seed';
@@ -58,7 +60,20 @@ import { LAAM_INCENTIVE_SEED } from './incentive-seed';
 type PlanWithSlabs = PlanRow & {
   slabs: SlabRow[];
   team?: TeamRow | null;
+  orgTeam?: Pick<OrgTeamRow, 'id' | 'name'> | null;
   _count?: { assignments: number };
+};
+
+const PLAN_INCLUDE = {
+  slabs: { orderBy: { sortOrder: 'asc' as const } },
+  team: true,
+  orgTeam: { select: { id: true, name: true } },
+  _count: { select: { assignments: true } },
+};
+
+const PLAN_TEAM_INCLUDE = {
+  team: true,
+  orgTeam: { select: { id: true, name: true } },
 };
 
 type IncentiveOrderRow = {
@@ -77,6 +92,21 @@ type IncentiveStatusActivity = {
   createdAt: Date;
 };
 
+export type IncentiveViewer = {
+  userId: string;
+  name?: string | null;
+  systemRole?: string;
+  manage: boolean;
+};
+
+type ViewerScope = {
+  full: boolean;
+  assignmentIds: Set<string>;
+  planIds: Set<string>;
+  userIds: Set<string>;
+  nameKeys: Set<string>;
+};
+
 @Injectable()
 export class IncentiveService {
   constructor(private readonly prisma: PrismaService) {}
@@ -89,125 +119,98 @@ export class IncentiveService {
     }
   }
 
-  async overview(organizationId: string): Promise<IncentiveOverview> {
+  async overview(
+    organizationId: string,
+    viewer?: IncentiveViewer,
+  ): Promise<IncentiveOverview> {
+    await this.backfillOrgTeamLinks(organizationId);
+
     const [teams, plans, assignments, settings] = await Promise.all([
-      this.prisma.incentiveTeam.findMany({
-        where: { organizationId },
-        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-        include: { _count: { select: { plans: true } } },
-      }),
+      this.loadHubTeams(organizationId),
       this.prisma.incentivePlan.findMany({
         where: { organizationId },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-        include: {
-          slabs: { orderBy: { sortOrder: 'asc' } },
-          team: true,
-          _count: { select: { assignments: true } },
-        },
+        include: PLAN_INCLUDE,
       }),
       this.prisma.incentiveAssignment.findMany({
         where: { organizationId },
         orderBy: [{ agentName: 'asc' }],
-        include: { plan: { include: { team: true } } },
+        include: { plan: { include: PLAN_TEAM_INCLUDE } },
       }),
       this.prisma.incentiveOrgSettings.findUnique({
         where: { organizationId },
       }),
     ]);
 
-    return {
-      teams: teams.map((t) => this.toTeam(t, t._count.plans)),
-      plans: plans.map((p) => this.toPlan(p)),
-      assignments: assignments.map((a) =>
-        this.toAssignment(a, a.plan.name, a.plan.team?.name),
+    const mapped = assignments.map((a) =>
+      this.toAssignment(
+        a,
+        a.plan.name,
+        a.plan.orgTeam?.name ?? a.plan.team?.name,
       ),
-      salaryTemplate: this.parseSalary(settings?.salaryTemplate),
+    );
+    const scope = await this.resolveViewerScope(organizationId, viewer);
+    const visibleAssignments = mapped.filter((row) =>
+      this.inAssignmentScope(row, scope),
+    );
+    const planIds = new Set(visibleAssignments.map((row) => row.planId));
+    const visiblePlans = scope.full
+      ? plans.map((p) => this.toPlan(p))
+      : plans.filter((p) => planIds.has(p.id)).map((p) => this.toPlan(p));
+    const orgTeamIds = new Set(
+      visiblePlans.map((p) => p.teamId).filter((id): id is string => !!id),
+    );
+    const visibleTeams = scope.full
+      ? teams
+      : teams.filter((t) => orgTeamIds.has(t.id));
+
+    return {
+      teams: visibleTeams,
+      plans: visiblePlans,
+      assignments: visibleAssignments,
+      salaryTemplate: scope.full ? this.parseSalary(settings?.salaryTemplate) : null,
       shiftTemplates: this.parseShifts(settings?.shiftTemplates),
-      teamCount: teams.length,
-      planCount: plans.length,
-      assignmentCount: assignments.length,
+      teamCount: visibleTeams.length,
+      planCount: visiblePlans.length,
+      assignmentCount: visibleAssignments.length,
     };
   }
 
   async listTeams(organizationId: string): Promise<IncentiveTeam[]> {
-    const rows = await this.prisma.incentiveTeam.findMany({
-      where: { organizationId },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { plans: true } } },
-    });
-    return rows.map((t) => this.toTeam(t, t._count.plans));
+    await this.backfillOrgTeamLinks(organizationId);
+    return this.loadHubTeams(organizationId);
   }
 
   async createTeam(
-    organizationId: string,
-    payload: CreateIncentiveTeamPayload,
+    _organizationId: string,
+    _payload: CreateIncentiveTeamPayload,
   ): Promise<IncentiveTeam> {
-    const name = payload.name.trim();
-    const slug = this.slugify(payload.slug?.trim() || name);
-    try {
-      const row = await this.prisma.incentiveTeam.create({
-        data: {
-          organizationId,
-          name,
-          slug,
-          description: payload.description?.trim() || null,
-          sortOrder: payload.sortOrder ?? 0,
-          isActive: payload.isActive ?? true,
-        },
-        include: { _count: { select: { plans: true } } },
-      });
-      return this.toTeam(row, row._count.plans);
-    } catch (e) {
-      this.rethrowUnique(e, 'Team slug already exists');
-    }
+    throw new BadRequestException(
+      'Create teams on the Users page. Incentive only stores KPI structure for those teams.',
+    );
   }
 
   async updateTeam(
-    organizationId: string,
-    id: string,
-    payload: UpdateIncentiveTeamPayload,
+    _organizationId: string,
+    _id: string,
+    _payload: UpdateIncentiveTeamPayload,
   ): Promise<IncentiveTeam> {
-    await this.requireTeam(organizationId, id);
-    try {
-      const row = await this.prisma.incentiveTeam.update({
-        where: { id },
-        data: {
-          ...(payload.name !== undefined ? { name: payload.name.trim() } : {}),
-          ...(payload.slug !== undefined
-            ? { slug: this.slugify(payload.slug.trim()) }
-            : {}),
-          ...(payload.description !== undefined
-            ? { description: payload.description?.trim() || null }
-            : {}),
-          ...(payload.sortOrder !== undefined
-            ? { sortOrder: payload.sortOrder }
-            : {}),
-          ...(payload.isActive !== undefined
-            ? { isActive: payload.isActive }
-            : {}),
-        },
-        include: { _count: { select: { plans: true } } },
-      });
-      return this.toTeam(row, row._count.plans);
-    } catch (e) {
-      this.rethrowUnique(e, 'Team slug already exists');
-    }
+    throw new BadRequestException(
+      'Rename or deactivate teams on the Users page.',
+    );
   }
 
-  async deleteTeam(organizationId: string, id: string): Promise<void> {
-    await this.requireTeam(organizationId, id);
-    await this.prisma.incentiveTeam.delete({ where: { id } });
+  async deleteTeam(_organizationId: string, _id: string): Promise<void> {
+    throw new BadRequestException(
+      'Remove teams on the Users page. KPI structure stays until you delete the plan.',
+    );
   }
 
   async listPlans(organizationId: string): Promise<IncentivePlan[]> {
     const rows = await this.prisma.incentivePlan.findMany({
       where: { organizationId },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      include: {
-        slabs: { orderBy: { sortOrder: 'asc' } },
-        team: true,
-        _count: { select: { assignments: true } },
-      },
+      include: PLAN_INCLUDE,
     });
     return rows.map((p) => this.toPlan(p));
   }
@@ -218,12 +221,25 @@ export class IncentiveService {
   ): Promise<IncentivePlan> {
     const name = payload.name.trim();
     const slug = this.slugify(payload.slug?.trim() || name);
-    if (payload.teamId) await this.requireTeam(organizationId, payload.teamId);
+    const orgTeam = payload.teamId
+      ? await this.requireOrgTeam(organizationId, payload.teamId)
+      : null;
+    if (orgTeam) {
+      const existing = await this.prisma.incentivePlan.findFirst({
+        where: { organizationId, orgTeamId: orgTeam.id },
+      });
+      if (existing) {
+        throw new ConflictException(
+          'This team already has a KPI structure. Edit it instead.',
+        );
+      }
+    }
     try {
       const row = await this.prisma.incentivePlan.create({
         data: {
           organizationId,
-          teamId: payload.teamId || null,
+          teamId: null,
+          orgTeamId: orgTeam?.id ?? null,
           name,
           slug,
           description: payload.description?.trim() || null,
@@ -239,12 +255,9 @@ export class IncentiveService {
             ? { create: this.slabCreates(payload.slabs) }
             : undefined,
         },
-        include: {
-          slabs: { orderBy: { sortOrder: 'asc' } },
-          team: true,
-          _count: { select: { assignments: true } },
-        },
+        include: PLAN_INCLUDE,
       });
+      await this.syncOrgTeamAssignments(organizationId);
       return this.toPlan(row);
     } catch (e) {
       this.rethrowUnique(e, 'Plan slug already exists');
@@ -257,7 +270,10 @@ export class IncentiveService {
     payload: UpdateIncentivePlanPayload,
   ): Promise<IncentivePlan> {
     await this.requirePlan(organizationId, id);
-    if (payload.teamId) await this.requireTeam(organizationId, payload.teamId);
+    const orgTeam =
+      payload.teamId !== undefined && payload.teamId
+        ? await this.requireOrgTeam(organizationId, payload.teamId)
+        : null;
     try {
       await this.prisma.$transaction(async (tx) => {
         if (payload.slabs !== undefined) {
@@ -281,7 +297,7 @@ export class IncentiveService {
               ? { slug: this.slugify(payload.slug.trim()) }
               : {}),
             ...(payload.teamId !== undefined
-              ? { teamId: payload.teamId || null }
+              ? { orgTeamId: orgTeam?.id ?? null }
               : {}),
             ...(payload.description !== undefined
               ? { description: payload.description?.trim() || null }
@@ -314,12 +330,9 @@ export class IncentiveService {
       });
       const row = await this.prisma.incentivePlan.findUniqueOrThrow({
         where: { id },
-        include: {
-          slabs: { orderBy: { sortOrder: 'asc' } },
-          team: true,
-          _count: { select: { assignments: true } },
-        },
+        include: PLAN_INCLUDE,
       });
+      await this.syncOrgTeamAssignments(organizationId);
       return this.toPlan(row);
     } catch (e) {
       this.rethrowUnique(e, 'Plan slug already exists');
@@ -333,15 +346,22 @@ export class IncentiveService {
 
   async listAssignments(
     organizationId: string,
+    viewer?: IncentiveViewer,
   ): Promise<IncentiveAssignment[]> {
     const rows = await this.prisma.incentiveAssignment.findMany({
       where: { organizationId },
       orderBy: [{ agentName: 'asc' }],
-      include: { plan: { include: { team: true } } },
+        include: { plan: { include: PLAN_TEAM_INCLUDE } },
     });
-    return rows.map((a) =>
-      this.toAssignment(a, a.plan.name, a.plan.team?.name),
+    const mapped = rows.map((a) =>
+      this.toAssignment(
+        a,
+        a.plan.name,
+        a.plan.orgTeam?.name ?? a.plan.team?.name,
+      ),
     );
+    const scope = await this.resolveViewerScope(organizationId, viewer);
+    return mapped.filter((row) => this.inAssignmentScope(row, scope));
   }
 
   async createAssignment(
@@ -373,9 +393,13 @@ export class IncentiveService {
         isActive: payload.isActive ?? true,
         hrStatus: payload.hrStatus ?? 'active',
       },
-      include: { plan: { include: { team: true } } },
+        include: { plan: { include: PLAN_TEAM_INCLUDE } },
     });
-    return this.toAssignment(row, plan.name, row.plan.team?.name);
+    return this.toAssignment(
+      row,
+      plan.name,
+      row.plan.orgTeam?.name ?? row.plan.team?.name,
+    );
   }
 
   async updateAssignment(
@@ -430,9 +454,13 @@ export class IncentiveService {
           ? { consecutiveMissMonths: payload.consecutiveMissMonths }
           : {}),
       },
-      include: { plan: { include: { team: true } } },
+        include: { plan: { include: PLAN_TEAM_INCLUDE } },
     });
-    return this.toAssignment(row, row.plan.name, row.plan.team?.name);
+    return this.toAssignment(
+      row,
+      row.plan.name,
+      row.plan.orgTeam?.name ?? row.plan.team?.name,
+    );
   }
 
   async deleteAssignment(organizationId: string, id: string): Promise<void> {
@@ -504,6 +532,7 @@ export class IncentiveService {
   async getOps(
     organizationId: string,
     yearMonth: string,
+    viewer?: IncentiveViewer,
   ): Promise<IncentiveOpsMonth> {
     const ym = this.validateYearMonth(yearMonth);
     const [attendance, surveys, channels, specialBonuses] = await Promise.all([
@@ -524,31 +553,34 @@ export class IncentiveService {
         orderBy: [{ agentName: 'asc' }, { createdAt: 'asc' }],
       }),
     ]);
-    return {
-      yearMonth: ym,
-      attendance: attendance.map((row) => {
-        const eligible = this.attendanceEligible(row);
-        return {
+    return this.scopeOps(
+      {
+        yearMonth: ym,
+        attendance: attendance.map((row) => {
+          const eligible = this.attendanceEligible(row);
+          return {
+            ...row,
+            fullAttendance: eligible,
+            attendanceBonusEligible: eligible,
+          };
+        }),
+        surveys: surveys.map((row) => ({
           ...row,
-          fullAttendance: eligible,
-          attendanceBonusEligible: eligible,
-        };
-      }),
-      surveys: surveys.map((row) => ({
-        ...row,
-        recordedAt: row.recordedAt.toISOString(),
-      })),
-      channels: channels.map((row) => ({
-        ...row,
-        channel:
-          row.channel as IncentiveOpsMonth['channels'][number]['channel'],
-      })),
-      specialBonuses: specialBonuses.map((row) => ({
-        ...row,
-        createdByName: row.createdByName ?? undefined,
-        createdAt: row.createdAt.toISOString(),
-      })),
-    };
+          recordedAt: row.recordedAt.toISOString(),
+        })),
+        channels: channels.map((row) => ({
+          ...row,
+          channel:
+            row.channel as IncentiveOpsMonth['channels'][number]['channel'],
+        })),
+        specialBonuses: specialBonuses.map((row) => ({
+          ...row,
+          createdByName: row.createdByName ?? undefined,
+          createdAt: row.createdAt.toISOString(),
+        })),
+      },
+      await this.resolveViewerScope(organizationId, viewer),
+    );
   }
 
   async upsertAttendance(
@@ -718,158 +750,43 @@ export class IncentiveService {
     await this.prisma.incentiveSpecialBonus.delete({ where: { id: row.id } });
   }
 
-  /** Seed Laam-style PDF template when org has no teams yet. */
+  /** Attach PDF KPI structure to matching Users-page teams. Does not create teams. */
   async seedDefaults(organizationId: string): Promise<IncentiveOverview> {
-    const existing = await this.prisma.incentiveTeam.count({
+    const orgTeams = await this.prisma.team.findMany({
       where: { organizationId },
     });
-    if (existing > 0) {
-      throw new ConflictException(
-        'Incentive teams already exist. Clear them first or edit plans manually.',
+    if (!orgTeams.length) {
+      throw new BadRequestException(
+        'Create teams on the Users page first, then apply the PDF KPI structure here.',
       );
     }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.incentiveOrgSettings.upsert({
-        where: { organizationId },
-        create: {
-          organizationId,
-          salaryTemplate:
-            LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
-          shiftTemplates:
-            LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
-        },
-        update: {
-          salaryTemplate:
-            LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
-          shiftTemplates:
-            LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
-        },
-      });
-
-      for (const [i, team] of LAAM_INCENTIVE_SEED.teams.entries()) {
-        const teamRow = await tx.incentiveTeam.create({
-          data: {
-            organizationId,
-            name: team.name,
-            slug: team.slug,
-            description: team.description,
-            sortOrder: i,
-            isActive: true,
-          },
-        });
-        if (!team.plan) continue;
-        await tx.incentivePlan.create({
-          data: {
-            organizationId,
-            teamId: teamRow.id,
-            name: team.plan.name,
-            slug: team.plan.slug,
-            description: team.plan.description,
-            metricType: team.plan.metricType,
-            metricConfig: team.plan.metricConfig as
-              | Prisma.InputJsonValue
-              | undefined,
-            teamMonthlyTarget: team.plan.teamMonthlyTarget ?? null,
-            prorataAboveTop: team.plan.prorataAboveTop ?? false,
-            sortOrder: i,
-            isActive: true,
-            slabs: {
-              create: team.plan.slabs.map((s, si) => ({
-                label: s.label ?? null,
-                dailyTarget:
-                  'dailyTarget' in s ? (s.dailyTarget ?? null) : null,
-                monthlyTarget: s.monthlyTarget,
-                incentiveBdt: s.incentiveBdt,
-                sortOrder: si,
-              })),
-            },
-          },
-        });
-      }
-    });
-
+    await this.upsertSeedSettings(organizationId);
+    await this.attachSeedPlansToOrgTeams(organizationId, orgTeams);
+    await this.syncOrgTeamAssignments(organizationId);
     return this.overview(organizationId);
   }
 
-  /** Add only missing Laam seed teams/plans; preserve all tenant customizations. */
+  /** Add missing PDF structures for Users teams that still have none. */
   async syncMissingSeed(organizationId: string): Promise<IncentiveOverview> {
-    await this.prisma.$transaction(async (tx) => {
-      const settings = await tx.incentiveOrgSettings.findUnique({
-        where: { organizationId },
-      });
-      if (!settings) {
-        await tx.incentiveOrgSettings.create({
-          data: {
-            organizationId,
-            salaryTemplate:
-              LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
-            shiftTemplates:
-              LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
-          },
-        });
-      }
-
-      for (const [i, team] of LAAM_INCENTIVE_SEED.teams.entries()) {
-        let teamRow = await tx.incentiveTeam.findUnique({
-          where: { organizationId_slug: { organizationId, slug: team.slug } },
-        });
-        if (!teamRow) {
-          teamRow = await tx.incentiveTeam.create({
-            data: {
-              organizationId,
-              name: team.name,
-              slug: team.slug,
-              description: team.description,
-              sortOrder: i,
-              isActive: true,
-            },
-          });
-        }
-        if (!team.plan) continue;
-        const existingPlan = await tx.incentivePlan.findUnique({
-          where: {
-            organizationId_slug: { organizationId, slug: team.plan.slug },
-          },
-        });
-        if (existingPlan) continue;
-        await tx.incentivePlan.create({
-          data: {
-            organizationId,
-            teamId: teamRow.id,
-            name: team.plan.name,
-            slug: team.plan.slug,
-            description: team.plan.description,
-            metricType: team.plan.metricType,
-            metricConfig: team.plan.metricConfig as
-              | Prisma.InputJsonValue
-              | undefined,
-            teamMonthlyTarget: team.plan.teamMonthlyTarget ?? null,
-            prorataAboveTop: team.plan.prorataAboveTop ?? false,
-            sortOrder: i,
-            isActive: true,
-            slabs: {
-              create: team.plan.slabs.map((slab, slabIndex) => ({
-                label: slab.label ?? null,
-                dailyTarget:
-                  'dailyTarget' in slab ? (slab.dailyTarget ?? null) : null,
-                monthlyTarget: slab.monthlyTarget,
-                incentiveBdt: slab.incentiveBdt,
-                sortOrder: slabIndex,
-              })),
-            },
-          },
-        });
-      }
+    const orgTeams = await this.prisma.team.findMany({
+      where: { organizationId },
     });
+    await this.upsertSeedSettings(organizationId);
+    if (orgTeams.length) {
+      await this.attachSeedPlansToOrgTeams(organizationId, orgTeams);
+    }
+    await this.syncOrgTeamAssignments(organizationId);
     return this.overview(organizationId);
   }
 
   async performance(
     organizationId: string,
     yearMonth: string,
+    viewer?: IncentiveViewer,
   ): Promise<IncentivePerformanceReport> {
     const ym = this.validateYearMonth(yearMonth);
+    await this.backfillOrgTeamLinks(organizationId);
+    await this.syncOrgTeamAssignments(organizationId);
     const months = [
       ym,
       this.offsetYearMonth(ym, -1),
@@ -889,8 +806,8 @@ export class IncentiveService {
       include: {
         plan: {
           include: {
-            slabs: { orderBy: { sortOrder: 'asc' } },
-            team: true,
+            slabs: { orderBy: { sortOrder: 'asc' as const } },
+            ...PLAN_TEAM_INCLUDE,
           },
         },
       },
@@ -1148,6 +1065,7 @@ export class IncentiveService {
         planId: line.planId,
         planName: line.planName,
         teamName: line.teamName,
+        orgTeamId: plan?.orgTeamId ?? null,
         teamMonthlyTarget: plan?.teamMonthlyTarget ?? null,
         actualTotal: 0,
       };
@@ -1158,7 +1076,7 @@ export class IncentiveService {
       rollups.set(line.planId, current);
     }
 
-    return {
+    const report: IncentivePerformanceReport = {
       yearMonth: ym,
       periodStart: periodStart.toISOString().slice(0, 10),
       periodEnd: periodEnd.toISOString().slice(0, 10),
@@ -1185,9 +1103,16 @@ export class IncentiveService {
         (periodRun?.status as IncentivePerformanceReport['periodStatus']) ??
         'live',
     };
+    return this.scopePerformance(
+      report,
+      await this.resolveViewerScope(organizationId, viewer),
+    );
   }
 
-  async listPeriods(organizationId: string): Promise<IncentivePeriodRun[]> {
+  async listPeriods(
+    organizationId: string,
+    viewer?: IncentiveViewer,
+  ): Promise<IncentivePeriodRun[]> {
     const rows = await this.prisma.incentivePeriodRun.findMany({
       where: { organizationId },
       orderBy: { yearMonth: 'desc' },
@@ -1195,12 +1120,14 @@ export class IncentiveService {
         lines: { orderBy: [{ teamName: 'asc' }, { agentName: 'asc' }] },
       },
     });
-    return rows.map((row) => this.toPeriod(row));
+    const scope = await this.resolveViewerScope(organizationId, viewer);
+    return rows.map((row) => this.scopePeriod(this.toPeriod(row), scope));
   }
 
   async getPeriod(
     organizationId: string,
     yearMonth: string,
+    viewer?: IncentiveViewer,
   ): Promise<IncentivePeriodRun> {
     const ym = this.validateYearMonth(yearMonth);
     const row = await this.prisma.incentivePeriodRun.findUnique({
@@ -1210,7 +1137,10 @@ export class IncentiveService {
       },
     });
     if (!row) throw new NotFoundException('Incentive period not found');
-    return this.toPeriod(row);
+    return this.scopePeriod(
+      this.toPeriod(row),
+      await this.resolveViewerScope(organizationId, viewer),
+    );
   }
 
   async generatePeriod(
@@ -1748,9 +1678,10 @@ export class IncentiveService {
     return {
       assignmentId: assignment.id,
       agentName: assignment.agentName,
+      userId: assignment.userId,
       planId: plan.id,
       planName: plan.name,
-      teamName: plan.team?.name,
+      teamName: plan.orgTeam?.name ?? plan.team?.name,
       metricType,
       actualValue,
       matchedSlabId: match.slab?.id ?? null,
@@ -1776,26 +1707,11 @@ export class IncentiveService {
 
   // --- mappers ---
 
-  private toTeam(
-    row: TeamRow & { _count?: { plans: number } },
-    planCount?: number,
-  ): IncentiveTeam {
-    return {
-      id: row.id,
-      name: row.name,
-      slug: row.slug,
-      description: row.description ?? undefined,
-      sortOrder: row.sortOrder,
-      isActive: row.isActive,
-      planCount: planCount ?? row._count?.plans,
-    };
-  }
-
   private toPlan(row: PlanWithSlabs): IncentivePlan {
     return {
       id: row.id,
-      teamId: row.teamId,
-      teamName: row.team?.name,
+      teamId: row.orgTeamId ?? row.teamId,
+      teamName: row.orgTeam?.name ?? row.team?.name,
       name: row.name,
       slug: row.slug,
       description: row.description ?? undefined,
@@ -1907,6 +1823,174 @@ export class IncentiveService {
           undefined,
         notes: line.notes ?? undefined,
       })),
+    };
+  }
+
+  private async resolveViewerScope(
+    organizationId: string,
+    viewer?: IncentiveViewer,
+  ): Promise<ViewerScope> {
+    if (!viewer || viewer.manage) {
+      return {
+        full: true,
+        assignmentIds: new Set(),
+        planIds: new Set(),
+        userIds: new Set(),
+        nameKeys: new Set(),
+      };
+    }
+
+    const userIds = new Set<string>([viewer.userId]);
+    const nameKeys = new Set<string>();
+    const selfName = normalizeAgentKey(viewer.name);
+    if (selfName) nameKeys.add(selfName);
+
+    if (viewer.systemRole === 'team_leader') {
+      const me = await this.prisma.user.findFirst({
+        where: { id: viewer.userId, organizationId },
+        select: { teamId: true },
+      });
+      if (me?.teamId) {
+        const mates = await this.prisma.user.findMany({
+          where: { organizationId, teamId: me.teamId, status: 'active' },
+          select: { id: true, name: true },
+        });
+        for (const mate of mates) {
+          userIds.add(mate.id);
+          const key = normalizeAgentKey(mate.name);
+          if (key) nameKeys.add(key);
+        }
+      }
+    }
+
+    const nameList = [...nameKeys];
+    const assignments = await this.prisma.incentiveAssignment.findMany({
+      where: {
+        organizationId,
+        OR: [
+          { userId: { in: [...userIds] } },
+          ...(nameList.length
+            ? nameList.map((name) => ({
+                agentName: { equals: name, mode: 'insensitive' as const },
+              }))
+            : []),
+        ],
+      },
+      select: { id: true, planId: true },
+    });
+
+    return {
+      full: false,
+      assignmentIds: new Set(assignments.map((row) => row.id)),
+      planIds: new Set(assignments.map((row) => row.planId)),
+      userIds,
+      nameKeys,
+    };
+  }
+
+  private inAssignmentScope(
+    row: { id: string; userId?: string | null; agentName: string },
+    scope: ViewerScope,
+  ): boolean {
+    if (scope.full) return true;
+    if (scope.assignmentIds.has(row.id)) return true;
+    if (row.userId && scope.userIds.has(row.userId)) return true;
+    return scope.nameKeys.has(normalizeAgentKey(row.agentName));
+  }
+
+  private inLineScope(
+    line: { assignmentId?: string | null; agentName: string },
+    scope: ViewerScope,
+  ): boolean {
+    if (scope.full) return true;
+    if (line.assignmentId && scope.assignmentIds.has(line.assignmentId)) {
+      return true;
+    }
+    return scope.nameKeys.has(normalizeAgentKey(line.agentName));
+  }
+
+  private inOpsScope(
+    row: {
+      assignmentId?: string | null;
+      userId?: string | null;
+      agentName: string;
+    },
+    scope: ViewerScope,
+  ): boolean {
+    if (scope.full) return true;
+    if (row.assignmentId && scope.assignmentIds.has(row.assignmentId)) {
+      return true;
+    }
+    if (row.userId && scope.userIds.has(row.userId)) return true;
+    return scope.nameKeys.has(normalizeAgentKey(row.agentName));
+  }
+
+  private scopePerformance(
+    report: IncentivePerformanceReport,
+    scope: ViewerScope,
+  ): IncentivePerformanceReport {
+    if (scope.full) return report;
+    const lines = report.lines.filter((line) => this.inLineScope(line, scope));
+    return {
+      ...report,
+      lines,
+      totalIncentiveBdt: lines.reduce((sum, line) => sum + line.incentiveBdt, 0),
+      totalSpecialBonusBdt: lines.reduce(
+        (sum, line) => sum + (line.specialBonusBdt ?? 0),
+        0,
+      ),
+      totalAttendanceBonusBdt: lines.reduce(
+        (sum, line) => sum + (line.attendanceBonusBdt ?? 0),
+        0,
+      ),
+      totalPayBdt: lines.reduce(
+        (sum, line) => sum + (line.totalPayBdt ?? 0),
+        0,
+      ),
+      warningCount: lines.filter(
+        (line) => line.warning && line.warning !== 'none',
+      ).length,
+      teamRollups: report.teamRollups?.filter((rollup) =>
+        lines.some((line) => line.planId === rollup.planId),
+      ),
+    };
+  }
+
+  private scopePeriod(
+    period: IncentivePeriodRun,
+    scope: ViewerScope,
+  ): IncentivePeriodRun {
+    if (scope.full) return period;
+    const lines = period.lines.filter((line) => this.inLineScope(line, scope));
+    return {
+      ...period,
+      lines,
+      totalIncentiveBdt: lines.reduce((sum, line) => sum + line.incentiveBdt, 0),
+      totalSpecialBonusBdt: lines.reduce(
+        (sum, line) => sum + (line.specialBonusBdt ?? 0),
+        0,
+      ),
+      totalAttendanceBonusBdt: lines.reduce(
+        (sum, line) => sum + (line.attendanceBonusBdt ?? 0),
+        0,
+      ),
+      totalPayBdt: lines.reduce(
+        (sum, line) => sum + (line.totalPayBdt ?? line.incentiveBdt),
+        0,
+      ),
+    };
+  }
+
+  private scopeOps(ops: IncentiveOpsMonth, scope: ViewerScope): IncentiveOpsMonth {
+    if (scope.full) return ops;
+    return {
+      ...ops,
+      attendance: ops.attendance.filter((row) => this.inOpsScope(row, scope)),
+      surveys: ops.surveys.filter((row) => this.inOpsScope(row, scope)),
+      channels: ops.channels.filter((row) => this.inOpsScope(row, scope)),
+      specialBonuses: ops.specialBonuses.filter((row) =>
+        this.inOpsScope(row, scope),
+      ),
     };
   }
 
@@ -2078,11 +2162,272 @@ export class IncentiveService {
     }
   }
 
-  private async requireTeam(organizationId: string, id: string) {
-    const row = await this.prisma.incentiveTeam.findFirst({
+  private async loadHubTeams(
+    organizationId: string,
+  ): Promise<IncentiveTeam[]> {
+    const orgTeams = await this.prisma.team.findMany({
+      where: { organizationId },
+      orderBy: { name: 'asc' },
+      include: {
+        members: { select: { id: true } },
+      },
+    });
+    const plans = await this.prisma.incentivePlan.findMany({
+      where: { organizationId, orgTeamId: { not: null } },
+      select: { id: true, orgTeamId: true },
+    });
+    const planByTeam = new Map(
+      plans.map((p) => [p.orgTeamId as string, p.id] as const),
+    );
+    return orgTeams.map((team, index) => {
+      const memberIds = new Set(team.members.map((m) => m.id));
+      memberIds.add(team.leaderUserId);
+      const planId = planByTeam.get(team.id) ?? null;
+      return {
+        id: team.id,
+        name: team.name,
+        slug: this.slugify(team.name),
+        sortOrder: index,
+        isActive: true,
+        planCount: planId ? 1 : 0,
+        memberCount: memberIds.size,
+        planId,
+        hasStructure: Boolean(planId),
+      };
+    });
+  }
+
+  private matchSeedOrgTeam<T extends { id: string; name: string }>(
+    orgTeams: T[],
+    seed: { name: string; slug: string },
+  ): T | undefined {
+    const seedSlug = this.slugify(seed.slug || seed.name);
+    const seedNameSlug = this.slugify(seed.name);
+    return orgTeams.find((team) => {
+      const teamSlug = this.slugify(team.name);
+      return teamSlug === seedSlug || teamSlug === seedNameSlug;
+    });
+  }
+
+  private async upsertSeedSettings(organizationId: string) {
+    const existing = await this.prisma.incentiveOrgSettings.findUnique({
+      where: { organizationId },
+    });
+    if (existing) return;
+    await this.prisma.incentiveOrgSettings.create({
+      data: {
+        organizationId,
+        salaryTemplate:
+          LAAM_INCENTIVE_SEED.salary as unknown as Prisma.InputJsonValue,
+        shiftTemplates:
+          LAAM_INCENTIVE_SEED.shifts as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  private async attachSeedPlansToOrgTeams(
+    organizationId: string,
+    orgTeams: Array<{ id: string; name: string }>,
+  ) {
+    for (const [index, seed] of LAAM_INCENTIVE_SEED.teams.entries()) {
+      if (!seed.plan) continue;
+      const match = this.matchSeedOrgTeam(orgTeams, seed);
+      if (!match) continue;
+      const existingForTeam = await this.prisma.incentivePlan.findFirst({
+        where: { organizationId, orgTeamId: match.id },
+      });
+      if (existingForTeam) continue;
+      const slugTaken = await this.prisma.incentivePlan.findUnique({
+        where: {
+          organizationId_slug: { organizationId, slug: seed.plan.slug },
+        },
+      });
+      const slug = slugTaken
+        ? `${seed.plan.slug}-${match.id.slice(0, 8)}`
+        : seed.plan.slug;
+      await this.prisma.incentivePlan.create({
+        data: {
+          organizationId,
+          teamId: null,
+          orgTeamId: match.id,
+          name: seed.plan.name,
+          slug,
+          description: seed.plan.description,
+          metricType: seed.plan.metricType,
+          metricConfig: seed.plan.metricConfig as
+            | Prisma.InputJsonValue
+            | undefined,
+          teamMonthlyTarget: seed.plan.teamMonthlyTarget ?? null,
+          prorataAboveTop: seed.plan.prorataAboveTop ?? false,
+          sortOrder: index,
+          isActive: true,
+          slabs: {
+            create: seed.plan.slabs.map((slab, slabIndex) => ({
+              label: slab.label ?? null,
+              dailyTarget:
+                'dailyTarget' in slab ? (slab.dailyTarget ?? null) : null,
+              monthlyTarget: slab.monthlyTarget,
+              incentiveBdt: slab.incentiveBdt,
+              sortOrder: slabIndex,
+            })),
+          },
+        },
+      });
+    }
+  }
+
+  private async backfillOrgTeamLinks(organizationId: string) {
+    const orgTeams = await this.prisma.team.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+    });
+    if (!orgTeams.length) return;
+
+    const taken = new Set(
+      (
+        await this.prisma.incentivePlan.findMany({
+          where: { organizationId, orgTeamId: { not: null } },
+          select: { orgTeamId: true },
+        })
+      )
+        .map((p) => p.orgTeamId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    const unlinked = await this.prisma.incentivePlan.findMany({
+      where: { organizationId, orgTeamId: null },
+      include: { team: true },
+    });
+
+    for (const plan of unlinked) {
+      const seed = LAAM_INCENTIVE_SEED.teams.find(
+        (row) => row.plan?.slug === plan.slug,
+      );
+      const bySeed = seed
+        ? this.matchSeedOrgTeam(orgTeams, seed)
+        : undefined;
+      const byLegacyName = plan.team?.name
+        ? this.matchSeedOrgTeam(orgTeams, {
+            name: plan.team.name,
+            slug: this.slugify(plan.team.name),
+          })
+        : undefined;
+      const byPlanName = this.matchSeedOrgTeam(orgTeams, {
+        name: plan.name,
+        slug: this.slugify(plan.name),
+      });
+      const match = bySeed ?? byLegacyName ?? byPlanName;
+      if (!match || taken.has(match.id)) continue;
+      await this.prisma.incentivePlan.update({
+        where: { id: plan.id },
+        data: { orgTeamId: match.id },
+      });
+      taken.add(match.id);
+    }
+  }
+
+  private async syncOrgTeamAssignments(organizationId: string) {
+    const plans = await this.prisma.incentivePlan.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        orgTeamId: { not: null },
+      },
+      select: { id: true, orgTeamId: true },
+    });
+    const startsOn = new Date(Date.UTC(2000, 0, 1));
+
+    for (const plan of plans) {
+      const orgTeam = await this.prisma.team.findFirst({
+        where: { id: plan.orgTeamId!, organizationId },
+        include: {
+          members: { select: { id: true, name: true } },
+          leader: { select: { id: true, name: true } },
+        },
+      });
+      if (!orgTeam) continue;
+
+      const users = new Map<string, { id: string; name: string }>();
+      users.set(orgTeam.leader.id, {
+        id: orgTeam.leader.id,
+        name: orgTeam.leader.name,
+      });
+      for (const member of orgTeam.members) {
+        users.set(member.id, { id: member.id, name: member.name });
+      }
+
+      const existing = await this.prisma.incentiveAssignment.findMany({
+        where: { organizationId, planId: plan.id },
+      });
+      const byUserId = new Map(
+        existing
+          .filter((row) => row.userId)
+          .map((row) => [row.userId as string, row]),
+      );
+
+      for (const user of users.values()) {
+        const current = byUserId.get(user.id);
+        if (current) {
+          if (!current.isActive || current.agentName !== user.name) {
+            await this.prisma.incentiveAssignment.update({
+              where: { id: current.id },
+              data: {
+                isActive: true,
+                agentName: user.name,
+                hrStatus:
+                  current.hrStatus === 'terminated'
+                    ? current.hrStatus
+                    : 'active',
+              },
+            });
+          }
+          continue;
+        }
+        const nameMatch = existing.find(
+          (row) =>
+            !row.userId &&
+            this.slugify(row.agentName) === this.slugify(user.name),
+        );
+        if (nameMatch) {
+          await this.prisma.incentiveAssignment.update({
+            where: { id: nameMatch.id },
+            data: { userId: user.id, isActive: true, agentName: user.name },
+          });
+          continue;
+        }
+        await this.prisma.incentiveAssignment.create({
+          data: {
+            organizationId,
+            planId: plan.id,
+            agentName: user.name,
+            userId: user.id,
+            startsOn,
+            isActive: true,
+            hrStatus: 'active',
+          },
+        });
+      }
+
+      for (const row of existing) {
+        if (row.userId && !users.has(row.userId) && row.isActive) {
+          await this.prisma.incentiveAssignment.update({
+            where: { id: row.id },
+            data: { isActive: false },
+          });
+        }
+      }
+    }
+  }
+
+  private async requireOrgTeam(organizationId: string, id: string) {
+    const row = await this.prisma.team.findFirst({
       where: { id, organizationId },
     });
-    if (!row) throw new NotFoundException('Incentive team not found');
+    if (!row) {
+      throw new NotFoundException(
+        'Team not found. Create it on the Users page.',
+      );
+    }
     return row;
   }
 

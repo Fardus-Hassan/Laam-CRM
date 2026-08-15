@@ -1,3 +1,5 @@
+import { env } from '@/config/env';
+
 const DEVICE_KEY = 'laam_device_id';
 
 export {
@@ -14,11 +16,19 @@ export function getOrCreateDeviceId(): string {
   return id;
 }
 
+function apexDomain(): string {
+  return env.platformDomain || 'laamcrm.com';
+}
+
+function isLocalHost(host: string): boolean {
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
+}
+
 /**
  * Resolve tenant slug from hostname.
  * - localhost → platform (null)
  * - laam.localhost → laam
- * - laam.laamcrm.com → laam
+ * - laam.{PLATFORM_DOMAIN} → laam
  */
 export function getTenantSlugFromHost(hostname?: string): string | null {
   const host = (hostname ?? (typeof window !== 'undefined' ? window.location.hostname : '')).toLowerCase();
@@ -28,9 +38,13 @@ export function getTenantSlugFromHost(hostname?: string): string | null {
   if (host.endsWith('.localhost')) {
     return host.replace(/\.localhost$/, '') || null;
   }
-  const parts = host.split('.');
-  if (parts.length >= 3 && parts[1] === 'laamcrm') {
-    return parts[0] || null;
+  const domain = apexDomain();
+  if (host === domain || host === `www.${domain}`) {
+    return null;
+  }
+  if (host.endsWith(`.${domain}`)) {
+    const slug = host.slice(0, -(domain.length + 1));
+    return slug.split('.')[0] || null;
   }
   return null;
 }
@@ -40,28 +54,35 @@ export function isPlatformHost(hostname?: string): boolean {
 }
 
 export function tenantDashboardUrl(slug: string): string {
-  if (typeof window === 'undefined') {
-    return `http://${slug}.localhost:3000/dashboard`;
-  }
-  const { protocol, port } = window.location;
-  const portSuffix = port ? `:${port}` : '';
-  return `${protocol}//${slug}.localhost${portSuffix}/dashboard`;
+  return tenantOrigin(slug) + '/dashboard';
 }
 
 export function tenantLoginUrl(slug: string): string {
-  if (typeof window === 'undefined') {
-    return `http://${slug}.localhost:3000/login`;
-  }
-  const { protocol, port } = window.location;
-  const portSuffix = port ? `:${port}` : '';
-  return `${protocol}//${slug}.localhost${portSuffix}/login`;
+  return tenantOrigin(slug) + '/login';
 }
 
 export function platformLoginUrl(): string {
   if (typeof window === 'undefined') {
-    return 'http://localhost:3000/login';
+    const domain = env.platformDomain;
+    return domain ? `https://${domain}/login` : 'http://localhost:3000/login';
   }
-  const { protocol, port } = window.location;
-  const portSuffix = port ? `:${port}` : '';
-  return `${protocol}//localhost${portSuffix}/login`;
+  const { protocol, port, hostname } = window.location;
+  if (isLocalHost(hostname)) {
+    const portSuffix = port ? `:${port}` : '';
+    return `${protocol}//localhost${portSuffix}/login`;
+  }
+  return `${protocol}//${apexDomain()}/login`;
+}
+
+function tenantOrigin(slug: string): string {
+  if (typeof window === 'undefined') {
+    const domain = env.platformDomain;
+    return domain ? `https://${slug}.${domain}` : `http://${slug}.localhost:3000`;
+  }
+  const { protocol, port, hostname } = window.location;
+  if (isLocalHost(hostname)) {
+    const portSuffix = port ? `:${port}` : '';
+    return `${protocol}//${slug}.localhost${portSuffix}`;
+  }
+  return `${protocol}//${slug}.${apexDomain()}`;
 }

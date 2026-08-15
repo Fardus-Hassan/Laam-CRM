@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import * as classTransformer from 'class-transformer';
 import * as classValidator from 'class-validator';
 import { AppModule } from './app/app.module';
+import { isPlatformCorsHost } from './common/tenant.util';
 
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) {
@@ -15,17 +16,7 @@ function isAllowedOrigin(origin: string | undefined): boolean {
 
   try {
     const url = new URL(origin);
-    const host = url.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return true;
-    }
-    if (host.endsWith('.localhost')) {
-      return true;
-    }
-    if (host === 'laamcrm.com' || host.endsWith('.laamcrm.com')) {
-      return true;
-    }
-    return false;
+    return isPlatformCorsHost(url.hostname);
   } catch {
     return false;
   }

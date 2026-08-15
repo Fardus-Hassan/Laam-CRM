@@ -238,6 +238,7 @@ export function createMockIncentiveApi(): IncentiveApi {
                 planId: plan.id,
                 planName: plan.name,
                 teamName: plan.teamName,
+                orgTeamId: plan.teamId ?? null,
                 teamMonthlyTarget: plan.teamMonthlyTarget,
                 actualTotal,
                 met: actualTotal >= (plan.teamMonthlyTarget ?? 0),
@@ -250,28 +251,15 @@ export function createMockIncentiveApi(): IncentiveApi {
     async seedDefaults() {
       await delay(150);
       return mutateMockIncentive((s) => {
-        if (s.teams.length) throw new Error('Incentive teams already exist');
         const seeded = getEmptyIncentiveOverview(true);
         Object.assign(s, seeded);
         return s;
       });
     },
-    async createTeam(payload) {
-      await delay(100);
-      return mutateMockIncentive((s) => {
-        const team: IncentiveTeam = {
-          id: `team-${Date.now()}`,
-          name: payload.name.trim(),
-          slug: (payload.slug || payload.name).toLowerCase().replace(/\s+/g, '-'),
-          description: payload.description ?? undefined,
-          sortOrder: payload.sortOrder ?? s.teams.length,
-          isActive: payload.isActive ?? true,
-          planCount: 0,
-        };
-        s.teams = [...s.teams, team];
-        s.teamCount = s.teams.length;
-        return team;
-      });
+    async createTeam() {
+      throw new Error(
+        'Create teams on the Users page. Incentive only stores KPI structure for those teams.',
+      );
     },
     async updateTeam(id, payload) {
       await delay(80);

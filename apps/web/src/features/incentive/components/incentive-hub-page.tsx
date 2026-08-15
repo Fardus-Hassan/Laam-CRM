@@ -1,8 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import type {
-  CreateIncentiveTeamPayload,
   IncentiveChannel,
   IncentiveHrStatus,
   IncentiveMetricType,
@@ -14,7 +14,6 @@ import type {
   IncentiveShiftTemplate,
   IncentiveTeam,
   IncentiveWarning,
-  UpdateIncentiveTeamPayload,
 } from '@laam/types';
 import {
   Check,
@@ -35,13 +34,6 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -99,7 +91,7 @@ function currentYearMonth() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-type HubTab = 'performance' | 'ops' | 'plans' | 'assignments' | 'salary' | 'payout';
+type HubTab = 'teams' | 'structure' | 'performance' | 'payout';
 
 const HR_LABELS: Record<IncentiveHrStatus, string> = {
   active: 'Active',
@@ -244,11 +236,11 @@ export function IncentiveHubPage() {
   const [yearMonth, setYearMonth] = React.useState(currentYearMonth);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
-  const [tab, setTab] = React.useState<HubTab>('performance');
-  const [teamOpen, setTeamOpen] = React.useState(false);
-  const [editingTeam, setEditingTeam] = React.useState<IncentiveTeam | null>(null);
-  const [teamName, setTeamName] = React.useState('');
-  const [teamActive, setTeamActive] = React.useState(true);
+  const [tab, setTab] = React.useState<HubTab>(
+    canManage || user?.role === 'team_leader' ? 'teams' : 'performance',
+  );
+  const [selectedTeamId, setSelectedTeamId] = React.useState('');
+  const [lockedTeamId, setLockedTeamId] = React.useState<string | undefined>();
   const attendanceFileRef = React.useRef<HTMLInputElement>(null);
   const [planOpen, setPlanOpen] = React.useState(false);
   const [editingPlan, setEditingPlan] = React.useState<IncentivePlan | null>(null);
@@ -313,37 +305,20 @@ export function IncentiveHubPage() {
     }
   }
 
-  async function handleSaveTeam() {
-    const name = teamName.trim();
-    if (!name) return;
-    if (editingTeam) {
-      const payload: UpdateIncentiveTeamPayload = {
-        name,
-        isActive: teamActive,
-      };
-      await runAction(() => incentiveApi.updateTeam(editingTeam.id, payload), 'Team updated');
-    } else {
-      const payload: CreateIncentiveTeamPayload = { name, isActive: teamActive };
-      await runAction(() => incentiveApi.createTeam(payload), 'Team created');
-    }
-    setTeamName('');
-    setTeamActive(true);
-    setEditingTeam(null);
-    setTeamOpen(false);
+  function openStructureForTeam(team: IncentiveTeam) {
+    setSelectedTeamId(team.id);
+    setLockedTeamId(team.id);
+    const plan =
+      data?.plans.find((row) => row.id === team.planId || row.teamId === team.id) ??
+      null;
+    setEditingPlan(plan);
+    setTab('structure');
+    if (canManage) setPlanOpen(true);
   }
 
-  function openCreateTeam() {
-    setEditingTeam(null);
-    setTeamName('');
-    setTeamActive(true);
-    setTeamOpen(true);
-  }
-
-  function openEditTeam(team: IncentiveTeam) {
-    setEditingTeam(team);
-    setTeamName(team.name);
-    setTeamActive(team.isActive);
-    setTeamOpen(true);
+  function openPerformanceForTeam(team: IncentiveTeam) {
+    setSelectedTeamId(team.id);
+    setTab('performance');
   }
 
   async function handleAttendanceCsv(file: File) {
@@ -429,19 +404,54 @@ export function IncentiveHubPage() {
     );
   }
 
-  const empty = !loading && data?.teamCount === 0;
-  const selfOnly = !canManage;
+  const empty = !loading && (data?.teamCount ?? 0) === 0;
+  const isTeamLead = user?.role === 'team_leader';
+  const selfOnly = !canManage && !isTeamLead;
   const currentUserName = user?.name.trim().toLocaleLowerCase() ?? '';
-  const visiblePerformanceLines = (performance?.lines ?? []).filter(
-    (line) =>
-      !selfOnly || line.agentName.trim().toLocaleLowerCase() === currentUserName,
+  const currentUserId = user?.id ?? '';
+
+  function isOwnAgent(row: {
+    assignmentId?: string | null;
+    userId?: string | null;
+    agentName: string;
+  }) {
+    if (!selfOnly) return true;
+    if (row.userId && currentUserId && row.userId === currentUserId) return true;
+    const assignment = (data?.assignments ?? []).find(
+      (item) => item.id === row.assignmentId,
+    );
+    if (assignment?.userId && currentUserId && assignment.userId === currentUserId) {
+      return true;
+    }
+    return row.agentName.trim().toLocaleLowerCase() === currentUserName;
+  }
+
+  const visiblePerformanceLines = (performance?.lines ?? []).filter((line) => {
+    if (!isOwnAgent(line)) return false;
+    if (!selectedTeamId) return true;
+    const plan = (data?.plans ?? []).find((row) => row.id === line.planId);
+    if (plan?.teamId === selectedTeamId) return true;
+    const team = (data?.teams ?? []).find((row) => row.id === selectedTeamId);
+    return Boolean(team && line.teamName === team.name);
+  });
+  const visibleRollups = (performance?.teamRollups ?? []).filter((rollup) => {
+    if (!selectedTeamId) return true;
+    if (rollup.orgTeamId === selectedTeamId) return true;
+    const plan = (data?.plans ?? []).find((row) => row.id === rollup.planId);
+    if (plan?.teamId === selectedTeamId) return true;
+    const team = (data?.teams ?? []).find((row) => row.id === selectedTeamId);
+    return Boolean(team && rollup.teamName === team.name);
+  });
+  const selectedTeam = (data?.teams ?? []).find((row) => row.id === selectedTeamId);
+  const structurePlans = (data?.plans ?? []).filter((plan) => {
+    if (!selectedTeamId) return true;
+    return plan.teamId === selectedTeamId || plan.id === selectedTeam?.planId;
+  });
+  const visiblePayoutLines = (selectedPeriod?.lines ?? []).filter((line) =>
+    isOwnAgent(line),
   );
-  const visiblePayoutLines = (selectedPeriod?.lines ?? []).filter(
-    (line) =>
-      !selfOnly || line.agentName.trim().toLocaleLowerCase() === currentUserName,
-  );
-  const visibleAssignments = (data?.assignments ?? []).filter(
-    (row) => !selfOnly || row.agentName.trim().toLocaleLowerCase() === currentUserName,
+  const visibleAssignments = (data?.assignments ?? []).filter((row) =>
+    isOwnAgent(row),
   );
 
   function selectOpsAgent(assignmentId: string) {
@@ -509,20 +519,31 @@ export function IncentiveHubPage() {
   return (
     <PageShell
       title="Incentive & KPI"
-      description="CRM calculates KPI & locks payouts; export CSV to your payroll system. Not a full HRIS/bank disbursement tool."
+      description={
+        canManage
+          ? 'KPI structure and performance for Users-page teams. Numbers lock after payout approval.'
+          : 'Your monthly target, live incentive, and payout status. Numbers lock after admin approval.'
+      }
     >
       <div className={cn('flex flex-col', ORDER_PAGE_GAP)}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-1 border-b pb-2">
             {(
-              [
-                ['performance', 'Performance'],
-                ['ops', 'Ops'],
-                ['plans', 'Plans & slabs'],
-                ['assignments', 'Assignments'],
-                ['salary', 'Salary & shifts'],
-                ['payout', 'Payout'],
-              ] as const
+              (
+                canManage
+                  ? ([
+                      ['teams', 'Teams'],
+                      ['structure', 'Structure'],
+                      ['performance', 'Performance'],
+                      ['payout', 'Payout'],
+                    ] as const)
+                  : ([
+                      ['teams', 'My team'],
+                      ['structure', 'My structure'],
+                      ['performance', 'My performance'],
+                      ['payout', 'My payout'],
+                    ] as const)
+              )
             ).map(([id, label]) => (
               <button
                 key={id}
@@ -542,20 +563,24 @@ export function IncentiveHubPage() {
           {canManage ? (
             <div className="flex flex-wrap gap-2">
               {empty ? (
+                <Button type="button" size="sm" variant="outline" asChild>
+                  <Link href="/dashboard/users?view=team">Create teams in Users</Link>
+                </Button>
+              ) : (
                 <Button
                   type="button"
                   size="sm"
                   onClick={() =>
                     void runAction(
                       () => incentiveApi.seedDefaults(),
-                      'Default incentive template seeded',
+                      'PDF KPI structure applied to matching Users teams',
                     )
                   }
                 >
                   <Sparkles className="size-4" />
-                  Seed template
+                  Apply PDF structure
                 </Button>
-              ) : null}
+              )}
               <Button
                 type="button"
                 size="sm"
@@ -564,39 +589,12 @@ export function IncentiveHubPage() {
                 onClick={() =>
                   void runAction(
                     () => incentiveApi.seedSyncMissing(),
-                    'Missing agent assignments synced',
+                    'Users team members synced to KPI',
                   )
                 }
               >
                 <RefreshCw className="size-4" />
-                Sync missing
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={openCreateTeam}>
-                <Plus className="size-4" />
-                Team
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setEditingPlan(null);
-                  setPlanOpen(true);
-                }}
-              >
-                <Plus className="size-4" />
-                Plan
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => {
-                  setEditingAssignment(null);
-                  setAssignOpen(true);
-                }}
-              >
-                <Plus className="size-4" />
-                Assign agent
+                Sync members
               </Button>
             </div>
           ) : null}
@@ -604,9 +602,9 @@ export function IncentiveHubPage() {
 
         <CrmSummaryStrip
           items={[
-            { id: 'teams', label: 'Teams', value: String(data?.teamCount ?? '—') },
-            { id: 'plans', label: 'Plans', value: String(data?.planCount ?? '—') },
-            { id: 'assignments', label: 'Assignments', value: String(data?.assignmentCount ?? '—') },
+            { id: 'teams', label: 'Users teams', value: String(data?.teamCount ?? '—') },
+            { id: 'plans', label: 'KPI structures', value: String(data?.planCount ?? '—') },
+            { id: 'assignments', label: 'Agents on KPI', value: String(data?.assignmentCount ?? '—') },
             {
               id: 'payout',
               label: selectedPeriod ? 'Locked payout' : 'Live estimate',
@@ -615,15 +613,92 @@ export function IncentiveHubPage() {
           ]}
         />
 
+        {tab === 'teams' ? (
+          <Card className={ORDER_CARD_CLASS}>
+            <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+              <CardTitle className="text-base">Users teams</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Teams come from the Users page. Set KPI structure here, then view this month’s result.
+              </p>
+            </CardHeader>
+            <CardContent className={ORDER_SECTION_BODY_CLASS}>
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : empty ? (
+                <p className="text-sm text-muted-foreground">
+                  No teams yet.{' '}
+                  <Link className="underline" href="/dashboard/users?view=team">
+                    Create teams in Users
+                  </Link>
+                  , then apply PDF structure.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Team</TableHead>
+                      <TableHead>Members</TableHead>
+                      <TableHead>KPI structure</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(data?.teams ?? []).map((team) => (
+                      <TableRow key={team.id}>
+                        <TableCell className="font-medium">{team.name}</TableCell>
+                        <TableCell>{team.memberCount ?? '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant={team.hasStructure ? 'success' : 'secondary'}>
+                            {team.hasStructure ? 'Set' : 'Not set'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {canManage ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openStructureForTeam(team)}
+                              >
+                                Structure
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => openPerformanceForTeam(team)}
+                            >
+                              This month
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+
         {tab === 'performance' ? (
           <div className="space-y-3">
-            {performance?.teamRollups?.length ? (
+            {selectedTeam ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <Badge variant="secondary">{selectedTeam.name}</Badge>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedTeamId('')}>
+                  All teams
+                </Button>
+              </div>
+            ) : null}
+            {visibleRollups.length ? (
               <Card className={ORDER_CARD_CLASS}>
                 <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-                  <CardTitle className="text-base">Team target rollups</CardTitle>
+                  <CardTitle className="text-base">Team target vs actual</CardTitle>
                 </CardHeader>
                 <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'grid gap-2 sm:grid-cols-2 lg:grid-cols-3')}>
-                  {performance.teamRollups.map((rollup) => (
+                  {visibleRollups.map((rollup) => (
                     <div key={rollup.planId} className="rounded-md border p-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium">{rollup.planName}</p>
@@ -808,7 +883,7 @@ export function IncentiveHubPage() {
           </div>
         ) : null}
 
-        {tab === 'ops' ? (
+        {tab === 'structure' && canManage ? (
           <div className="space-y-3">
             <Card className={ORDER_CARD_CLASS}>
               <CardHeader
@@ -935,11 +1010,7 @@ export function IncentiveHubPage() {
                 title="Attendance"
                 headers={['Agent', 'Present / working', 'Late', 'Eligible']}
                 rows={(ops?.attendance ?? [])
-                  .filter(
-                    (row) =>
-                      !selfOnly ||
-                      row.agentName.trim().toLocaleLowerCase() === currentUserName,
-                  )
+                  .filter((row) => isOwnAgent(row))
                   .map((row) => [
                     row.agentName,
                     `${row.presentDays} / ${row.workingDays}`,
@@ -951,22 +1022,14 @@ export function IncentiveHubPage() {
                 title="Surveys"
                 headers={['Agent', 'Count', 'Note']}
                 rows={(ops?.surveys ?? [])
-                  .filter(
-                    (row) =>
-                      !selfOnly ||
-                      row.agentName.trim().toLocaleLowerCase() === currentUserName,
-                  )
+                  .filter((row) => isOwnAgent(row))
                   .map((row) => [row.agentName, row.surveyCount, row.note ?? '—'])}
               />
               <OpsTableCard
                 title="Channel activity"
                 headers={['Agent', 'Channel', 'Count']}
                 rows={(ops?.channels ?? [])
-                  .filter(
-                    (row) =>
-                      !selfOnly ||
-                      row.agentName.trim().toLocaleLowerCase() === currentUserName,
-                  )
+                  .filter((row) => isOwnAgent(row))
                   .map((row) => [
                     row.agentName,
                     CHANNEL_LABELS[row.channel],
@@ -992,11 +1055,7 @@ export function IncentiveHubPage() {
                       </TableHeader>
                       <TableBody>
                         {ops.specialBonuses
-                          .filter(
-                            (row) =>
-                              !selfOnly ||
-                              row.agentName.trim().toLocaleLowerCase() === currentUserName,
-                          )
+                          .filter((row) => isOwnAgent(row))
                           .map((row) => (
                             <TableRow key={row.id}>
                               <TableCell className="font-medium">{row.agentName}</TableCell>
@@ -1033,54 +1092,51 @@ export function IncentiveHubPage() {
           </div>
         ) : null}
 
-        {tab === 'plans' ? (
+        {tab === 'structure' ? (
           <div className="space-y-3">
-            {(data?.teams ?? []).length ? (
-              <Card className={ORDER_CARD_CLASS}>
-                <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-                  <CardTitle className="text-base">Teams</CardTitle>
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row flex-wrap items-center gap-2')}>
+                <div className="flex-1">
+                  <CardTitle className="text-base">KPI structure</CardTitle>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Edit names or deactivate teams without deleting history.
+                    Metric, daily/monthly targets, and incentive slabs for one Users team.
                   </p>
-                </CardHeader>
-                <CardContent className={ORDER_SECTION_BODY_CLASS}>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(data?.teams ?? []).map((team) => (
-                        <TableRow key={team.id}>
-                          <TableCell>{team.name}</TableCell>
-                          <TableCell>
-                            <Badge variant={team.isActive ? 'secondary' : 'outline'}>
-                              {team.isActive ? 'Active' : 'Inactive'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {canManage ? (
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => openEditTeam(team)}
-                              >
-                                <Edit2 className="size-4" />
-                              </Button>
-                            ) : null}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            ) : null}
-            {(data?.plans ?? []).map((plan) => (
+                </div>
+                <select
+                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                  value={selectedTeamId}
+                  onChange={(event) => {
+                    setSelectedTeamId(event.target.value);
+                    setLockedTeamId(event.target.value || undefined);
+                  }}
+                >
+                  <option value="">All teams</option>
+                  {(data?.teams ?? []).map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+                {canManage && selectedTeam ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => openStructureForTeam(selectedTeam)}
+                  >
+                    <Plus className="size-4" />
+                    {selectedTeam.hasStructure ? 'Edit structure' : 'Set structure'}
+                  </Button>
+                ) : null}
+              </CardHeader>
+            </Card>
+            {!structurePlans.length ? (
+              <p className="text-sm text-muted-foreground">
+                {selectedTeam
+                  ? 'No KPI structure for this team yet. Set metric and slabs.'
+                  : 'Select a Users team, or apply the PDF template to matching names.'}
+              </p>
+            ) : (
+              structurePlans.map((plan) => (
               <Card key={plan.id} className={ORDER_CARD_CLASS}>
                 <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-start justify-between gap-2')}>
                   <div>
@@ -1097,6 +1153,8 @@ export function IncentiveHubPage() {
                         size="icon"
                         variant="ghost"
                         onClick={() => {
+                          setLockedTeamId(plan.teamId ?? undefined);
+                          setSelectedTeamId(plan.teamId ?? '');
                           setEditingPlan(plan);
                           setPlanOpen(true);
                         }}
@@ -1136,11 +1194,12 @@ export function IncentiveHubPage() {
                   )}
                 </CardContent>
               </Card>
-            ))}
+              ))
+            )}
           </div>
         ) : null}
 
-        {tab === 'assignments' ? (
+        {false ? (
           <Card className={ORDER_CARD_CLASS}>
             <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'pt-4')}>
               {!visibleAssignments.length ? (
@@ -1217,7 +1276,7 @@ export function IncentiveHubPage() {
           </Card>
         ) : null}
 
-        {tab === 'salary' ? (
+        {tab === 'structure' && canManage ? (
           <div className="grid gap-3 lg:grid-cols-2">
             <Card className={ORDER_CARD_CLASS}>
               <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-center justify-between')}>
@@ -1525,56 +1584,15 @@ export function IncentiveHubPage() {
         ) : null}
       </div>
 
-      <Dialog
-        open={teamOpen}
-        onOpenChange={(open) => {
-          setTeamOpen(open);
-          if (!open) {
-            setEditingTeam(null);
-            setTeamName('');
-            setTeamActive(true);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingTeam ? 'Edit team' : 'New team'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="incentive-team-name">Name</Label>
-              <Input
-                id="incentive-team-name"
-                value={teamName}
-                onChange={(event) => setTeamName(event.target.value)}
-                placeholder="e.g. Telesales"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={teamActive}
-                onChange={(event) => setTeamActive(event.target.checked)}
-              />
-              Active
-            </label>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setTeamOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" disabled={busy} onClick={() => void handleSaveTeam()}>
-              {editingTeam ? 'Save' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <PlanFormDialog
         open={planOpen}
         initial={editingPlan}
         teams={data?.teams ?? []}
-        onClose={() => setPlanOpen(false)}
+        lockedTeamId={lockedTeamId}
+        onClose={() => {
+          setPlanOpen(false);
+          setLockedTeamId(selectedTeamId || undefined);
+        }}
         onSaved={() => void load()}
       />
       <AssignmentFormDialog
