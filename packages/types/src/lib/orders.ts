@@ -61,6 +61,8 @@ export const orderListItemSchema = z.object({
   amount: z.number(),
   paymentStatus: paymentStatusSchema,
   assignedAgentName: z.string().optional(),
+  /** Stable CRM user id for assignee (incentive KPI). */
+  assignedUserId: z.string().optional(),
   shippingArea: z.string(),
   createdAt: z.string(),
   /** Last order field update. */
@@ -84,11 +86,17 @@ export const orderListItemSchema = z.object({
   courierStatusSlug: z.string().optional(),
   courierConsignmentId: z.string().optional(),
   courierProvider: z.string().optional(),
+  /** True when last courier book/submit attempt failed (until rebook succeeds). */
+  courierSubmitFailed: z.boolean().optional(),
+  /** Human-readable last courier submit error (tooltip / detail). */
+  courierSubmitError: z.string().optional(),
   /** Warehouse stock is cut from on confirm / courier book. */
   fulfillmentWarehouseId: z.string().optional(),
   fulfillmentWarehouseName: z.string().optional(),
   /** True after inventory was reserved/cut for this order. */
   stockDeducted: z.boolean().optional(),
+  /** Shopper / request IP at order create (website ingest). */
+  clientIp: z.string().optional(),
   /** This shop (CRM): Total orders / Completed — top row. */
   courierShop: courierShopStatsSchema.optional(),
   /** Network lifetime To/Su/Fa + % — bottom row + bar. */
@@ -204,6 +212,10 @@ export const orderDetailSchema = orderListItemSchema.extend({
   courierWeightKg: z.number().positive().optional(),
   /** Courier service level: normal | express */
   courierDeliveryType: z.enum(['normal', 'express']).optional(),
+  /** Shopper / request IP captured at intake */
+  clientIp: z.string().optional(),
+  /** Stable CRM user id for assignee (incentive KPI). */
+  assignedUserId: z.string().optional(),
 });
 
 export type OrderDetail = z.infer<typeof orderDetailSchema>;
@@ -456,6 +468,7 @@ export const createOrderPayloadSchema = z.object({
   courierNote: z.string().optional(),
   packingNote: z.string().optional(),
   assignedAgentName: z.string().optional(),
+  assignedUserId: z.string().optional(),
   skipFollowup: z.boolean().optional(),
   couponCode: z.string().optional(),
   paidAmount: z.number().nonnegative().optional(),
@@ -562,6 +575,7 @@ export const updateOrderPayloadSchema = z.object({
   customerTag: z.string().optional(),
   orderTag: z.string().optional(),
   assignedAgentName: z.string().optional(),
+  assignedUserId: z.string().optional(),
   pathaoCity: z.string().optional(),
   pathaoZone: z.string().optional(),
   pathaoArea: z.string().optional(),
@@ -625,11 +639,18 @@ export const orderBulkActionPayloadSchema = z.object({
   orderIds: z.array(z.string()).min(1),
   status: orderStatusTypeSchema.optional(),
   employeeName: z.string().optional(),
+  /** Stable assignee id for KPI matching (preferred over name-only). */
+  employeeUserId: z.string().optional(),
   courier: z.string().optional(),
   smsTemplateId: z.string().optional(),
   smsMessage: z.string().optional(),
   /** Required when confirming / booking courier (stock cut). */
   fulfillmentWarehouseId: z.string().optional(),
+  /**
+   * For courier_unlink: acknowledge remote parcel is already cancelled
+   * when remote cancel API fails (force local clear).
+   */
+  confirmRemoteCancelled: z.boolean().optional(),
 });
 
 export type OrderBulkActionPayload = z.infer<typeof orderBulkActionPayloadSchema>;

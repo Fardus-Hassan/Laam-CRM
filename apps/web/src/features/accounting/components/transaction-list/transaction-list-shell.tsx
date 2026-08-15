@@ -214,7 +214,7 @@ export function TransactionListShell({
           }}
         />
 
-        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-visible')}>
           <CardContent className={cn('p-0', ORDER_SECTION_BODY_CLASS)}>
             {error ? (
               <p className="px-4 py-8 text-center text-sm text-destructive">{error}</p>

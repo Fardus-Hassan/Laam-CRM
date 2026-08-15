@@ -141,6 +141,10 @@ class CreateOrderDto {
   assignedAgentName?: string;
 
   @IsOptional()
+  @IsString()
+  assignedUserId?: string;
+
+  @IsOptional()
   @IsBoolean()
   skipFollowup?: boolean;
 
@@ -375,6 +379,10 @@ class UpdateOrderDto {
 
   @IsOptional()
   @IsString()
+  assignedUserId?: string;
+
+  @IsOptional()
+  @IsString()
   pathaoCity?: string;
 
   @IsOptional()
@@ -529,6 +537,7 @@ export class OrdersController {
       courierNote: body.courierNote,
       packingNote: body.packingNote,
       assignedAgentName: body.assignedAgentName,
+      assignedUserId: body.assignedUserId,
       skipFollowup: body.skipFollowup,
       couponCode: body.couponCode,
       leadId: body.leadId,
@@ -603,8 +612,10 @@ export class OrdersController {
       orderIds?: string[];
       status?: string;
       employeeName?: string;
+      employeeUserId?: string;
       courier?: string;
       fulfillmentWarehouseId?: string;
+      confirmRemoteCancelled?: boolean;
     },
   ) {
     this.orders.requireOrg(user.organizationId);
@@ -615,8 +626,10 @@ export class OrdersController {
         orderIds: body.orderIds ?? [],
         status: body.status,
         employeeName: body.employeeName,
+        employeeUserId: body.employeeUserId,
         courier: body.courier,
         fulfillmentWarehouseId: body.fulfillmentWarehouseId,
+        confirmRemoteCancelled: body.confirmRemoteCancelled,
       },
       this.actor(user),
     );
@@ -1027,14 +1040,19 @@ export class OrdersController {
   @RequirePermissions('courier.manage', 'orders.cancel', 'orders.confirm')
   @ApiOperation({
     summary:
-      'Clear local courier link without remote cancel (use when already cancelled in courier panel)',
+      'Unlink courier: tries remote cancel first; force-clear with confirmRemoteCancelled when already cancelled in panel',
   })
-  unlinkCourier(@CurrentUser() user: AuthUserPayload, @Param('id') id: string) {
+  unlinkCourier(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id') id: string,
+    @Body() body?: { confirmRemoteCancelled?: boolean },
+  ) {
     this.orders.requireOrg(user.organizationId);
     return this.orders.unlinkCourierShipment(
       user.organizationId!,
       id,
       this.actor(user),
+      { confirmRemoteCancelled: Boolean(body?.confirmRemoteCancelled) },
     );
   }
 

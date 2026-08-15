@@ -28,6 +28,9 @@ function createPrismaMock() {
     findFirst: jest.fn(),
     update: jest.fn(),
   };
+  const orderPayment = {
+    upsert: jest.fn(),
+  };
   const inventoryPurchase = {
     findMany: jest.fn(),
     findFirst: jest.fn(),
@@ -39,6 +42,7 @@ function createPrismaMock() {
     accountingJournalEntry,
     accountingJournalLine,
     order,
+    orderPayment,
     inventoryPurchase,
   };
 }
@@ -199,6 +203,7 @@ describe('AccountingService', () => {
     prisma.accountingJournalEntry.findFirst.mockResolvedValue(null);
     prisma.accountingJournalEntry.create.mockResolvedValue({ id: 'je_collect' });
     prisma.order.update.mockResolvedValue({});
+    prisma.orderPayment.upsert.mockResolvedValue({});
 
     const service = new AccountingService(prisma as never);
     const item = await service.markReceivableCollected(orgId, 'ord_1');
@@ -207,10 +212,45 @@ describe('AccountingService', () => {
     expect(item.collectedAmount).toBe(2000);
     expect(prisma.order.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { paidAmount: 2000, paymentStatus: 'paid' },
+        data: expect.objectContaining({
+          paidAmount: 2000,
+          paymentStatus: 'paid',
+        }),
       }),
     );
-    expect(prisma.accountingJournalEntry.create).toHaveBeenCalled();
+    expect(prisma.accountingJournalEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventKey: 'ar-collect:ord_1:paid-to:2000',
+        }),
+      }),
+    );
+    expect(prisma.orderPayment.upsert).toHaveBeenCalled();
+  });
+
+  it('posts partial order collection with paid-to event key', async () => {
+    const prisma = createPrismaMock();
+    prisma.accountingAccount.count.mockResolvedValue(STANDARD_COA.length);
+    prisma.accountingJournalEntry.findFirst.mockResolvedValue(null);
+    prisma.accountingJournalEntry.create.mockResolvedValue({ id: 'je_partial' });
+
+    const service = new AccountingService(prisma as never);
+    await service.postOrderCollection(orgId, {
+      orderId: 'ord_2',
+      orderNumber: 'ORD-2',
+      amount: 500,
+      paidTo: 500,
+      paymentMethod: 'bkash',
+    });
+
+    expect(prisma.accountingJournalEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventKey: 'ar-collect:ord_2:paid-to:500',
+          paymentMethod: 'bkash',
+        }),
+      }),
+    );
   });
 
   it('throws when payable purchase missing', async () => {

@@ -52,7 +52,7 @@ export function DataTableProductList({
   const hiddenCount = Math.max(0, products.length - maxItems);
 
   return (
-    <div className={cn('space-y-1.5', className)}>
+    <div className={cn(compact ? 'space-y-1' : 'space-y-1.5', className)}>
       <Link
         href={orderHref}
         className="inline-flex items-center text-sm font-semibold text-primary hover:underline"
@@ -63,19 +63,19 @@ export function DataTableProductList({
         {visible.map((product, index) => (
           <div
             key={`${product.name}-${index}`}
-            className="flex items-start gap-2"
+            className={cn('flex items-start', compact ? 'gap-1.5' : 'gap-2')}
           >
             <ProductThumb imageUrl={product.imageUrl} name={product.name} />
             <div className="min-w-0 flex-1">
               <p className="line-clamp-1 text-xs leading-snug font-medium">{product.name}</p>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0">
                 {product.variationLabel ? (
-                  <span className="text-[11px] text-muted-foreground">{product.variationLabel}</span>
+                  <span className="text-[10px] text-muted-foreground">{product.variationLabel}</span>
                 ) : null}
-                <span className="text-[11px] tabular-nums text-muted-foreground">
+                <span className="text-[10px] tabular-nums text-muted-foreground">
                   ×{product.quantity ?? 1} · {formatCurrency(product.price)}
                 </span>
-                {product.sku ? (
+                {product.sku && !compact ? (
                   <span className="text-[10px] text-muted-foreground/80">{product.sku}</span>
                 ) : null}
                 {!compact ? (
@@ -92,7 +92,7 @@ export function DataTableProductList({
           </div>
         ))}
         {hiddenCount > 0 ? (
-          <p className="text-[10px] text-muted-foreground">+{hiddenCount} more item(s)</p>
+          <p className="text-[10px] text-muted-foreground">+{hiddenCount} more</p>
         ) : null}
       </div>
     </div>

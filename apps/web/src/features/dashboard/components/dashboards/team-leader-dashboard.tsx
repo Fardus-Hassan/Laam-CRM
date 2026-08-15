@@ -129,6 +129,9 @@ export function TeamLeaderDashboardView({ data }: TeamLeaderDashboardViewProps) 
 
         <DashboardCard
           title={data.incentive.title}
+          action={
+            <CardLinkAction href="/dashboard/incentive" label="View KPI" />
+          }
           className="min-w-0 lg:col-span-1 2xl:col-span-3"
         >
           <IncentiveSummaryCard data={data.incentive.data} />

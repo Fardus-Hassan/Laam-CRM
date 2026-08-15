@@ -2,6 +2,8 @@
 
 import { X } from 'lucide-react';
 
+import { CrmPageSizeControl } from '@/components/data-table/crm-page-size-control';
+import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +15,9 @@ type CrmDataTableMetaProps = {
   entityLabel?: string;
   selectedCount?: number;
   onClearSelection?: () => void;
+  /** Show rows control at the top of the table (synced with footer). */
+  onPageSizeChange?: (size: number) => void;
+  pageSizeOptions?: number[];
   className?: string;
 };
 
@@ -21,7 +26,8 @@ function formatCount(n: number) {
 }
 
 /**
- * Range + selection summary shown above every CRM data table.
+ * Range + selection summary (+ optional top page-size) above the table body.
+ * Stays outside the scrollport so it remains visible with the sticky column header frame.
  */
 export function CrmDataTableMeta({
   page,
@@ -30,6 +36,8 @@ export function CrmDataTableMeta({
   entityLabel = 'entries',
   selectedCount = 0,
   onClearSelection,
+  onPageSizeChange,
+  pageSizeOptions = [...CRM_PAGE_SIZE_OPTIONS],
   className,
 }: CrmDataTableMetaProps) {
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -39,7 +47,7 @@ export function CrmDataTableMeta({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/15 px-3 py-2',
+        'flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-card px-3 py-2',
         className,
       )}
     >
@@ -57,28 +65,39 @@ export function CrmDataTableMeta({
         {entityLabel}
       </p>
 
-      {hasSelection ? (
-        <div
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border border-primary/30',
-            'bg-primary/10 px-2 py-1 text-xs font-medium text-primary',
-          )}
-        >
-          <span className="tabular-nums">{formatCount(selectedCount)} selected</span>
-          {onClearSelection ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-5 gap-0.5 px-1 text-[11px] text-primary hover:bg-primary/15 hover:text-primary"
-              onClick={onClearSelection}
-            >
-              <X className="size-3" />
-              Clear
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {hasSelection ? (
+          <div
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border border-primary/30',
+              'bg-primary/10 px-2 py-1 text-xs font-medium text-primary',
+            )}
+          >
+            <span className="tabular-nums">{formatCount(selectedCount)} selected</span>
+            {onClearSelection ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-5 gap-0.5 px-1 text-[11px] text-primary hover:bg-primary/15 hover:text-primary"
+                onClick={onClearSelection}
+              >
+                <X className="size-3" />
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {onPageSizeChange ? (
+          <CrmPageSizeControl
+            pageSize={pageSize}
+            onPageSizeChange={onPageSizeChange}
+            options={pageSizeOptions}
+            aria-label="Rows per page (top)"
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

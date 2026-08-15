@@ -66,6 +66,9 @@ export function getEmptyIncentiveOverview(seeded = false): IncentiveOverview {
         sortOrder: 0,
         isActive: true,
         planCount: 1,
+        memberCount: 3,
+        planId: 'mock-plan-ts',
+        hasStructure: true,
       },
       {
         id: 'mock-logistic',
@@ -75,6 +78,9 @@ export function getEmptyIncentiveOverview(seeded = false): IncentiveOverview {
         sortOrder: 1,
         isActive: true,
         planCount: 1,
+        memberCount: 2,
+        planId: 'mock-plan-log',
+        hasStructure: true,
       },
     ],
     plans: [

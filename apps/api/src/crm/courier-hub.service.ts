@@ -15,6 +15,9 @@ import type {
 
 import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  formatCourierBookError,
+} from './courier-book-error.util';
 import { CourierIntegrationsService } from './courier-integrations.service';
 import { OrdersService } from './orders.service';
 import { NotificationsService } from './notifications.service';
@@ -283,8 +286,8 @@ export class CourierHubService {
         submitted += 1;
       } catch (e) {
         failed += 1;
-        const msg = e instanceof Error ? e.message : 'Book failed';
-        if (errors.length < 5) errors.push(msg);
+        const msg = formatCourierBookError(e, { maxLength: 280 });
+        if (errors.length < 5 && !errors.includes(msg)) errors.push(msg);
       }
     }
 

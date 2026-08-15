@@ -8,9 +8,9 @@ import {
   ChevronsRight,
 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import { FormSelect } from '@/components/form/form-select';
+import { CrmPageSizeControl } from '@/components/data-table/crm-page-size-control';
 import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 type CrmDataTablePaginationProps = {
@@ -22,6 +22,8 @@ type CrmDataTablePaginationProps = {
   onPageSizeChange?: (size: number) => void;
   /** When false, hides “Showing X–Y of Z” (use top meta bar instead). Default true. */
   showRangeSummary?: boolean;
+  /** Sticky to the bottom of the dashboard page scrollport. Default false. */
+  sticky?: boolean;
   className?: string;
 };
 
@@ -52,6 +54,7 @@ export function CrmDataTablePagination({
   onPageChange,
   onPageSizeChange,
   showRangeSummary = true,
+  sticky = false,
   className,
 }: CrmDataTablePaginationProps) {
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
@@ -68,8 +71,13 @@ export function CrmDataTablePagination({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 border-t border-border/70 bg-muted/10 px-3 py-2.5',
+        'flex flex-col gap-3 border-t border-border/70 bg-card/95 px-3 py-2.5 backdrop-blur',
+        'supports-[backdrop-filter]:bg-card/90',
         'sm:flex-row sm:items-center sm:justify-between sm:gap-4',
+        sticky &&
+          // Flush to dashboard scrollport bottom (shell has sm:pb-0 so no gap under bar).
+          // Mobile keeps pb-16 on the shell for the quick-action FAB strip.
+          'sticky bottom-0 z-30 border-b-0 shadow-[0_-8px_20px_-12px_rgba(0,0,0,0.45)]',
         className,
       )}
     >
@@ -95,17 +103,12 @@ export function CrmDataTablePagination({
         )}
 
         {onPageSizeChange ? (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="hidden sm:inline">Rows</span>
-            <FormSelect
-              value={String(pageSize)}
-              onChange={(value) => onPageSizeChange(Number(value))}
-              options={pageSizeOptions.map((n) => ({ value: String(n), label: String(n) }))}
-              searchable={false}
-              className="h-8 w-[4.5rem]"
-              aria-label="Rows per page"
-            />
-          </div>
+          <CrmPageSizeControl
+            pageSize={pageSize}
+            onPageSizeChange={onPageSizeChange}
+            options={pageSizeOptions}
+            aria-label="Rows per page (footer)"
+          />
         ) : null}
       </div>
 

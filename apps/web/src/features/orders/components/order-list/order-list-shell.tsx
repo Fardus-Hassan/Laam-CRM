@@ -31,7 +31,7 @@ import { OrderWorkspaceHeader } from '@/features/orders/components/order-list/or
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { useOrderRowsList } from '@/features/orders/hooks/use-order-rows-list';
 import { createOrdersListBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
-import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
+import { clampCrmPageSize, CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { buildOrderSalesSummaryFromListSummary } from '@laam/types';
@@ -49,7 +49,9 @@ export function OrderListShell({ queue }: OrderListShellProps) {
 
   const [search, setSearch] = React.useState(searchParams.get('search') ?? '');
   const [page, setPage] = React.useState(Number(searchParams.get('page') ?? 1));
-  const [pageSize, setPageSize] = React.useState(Number(searchParams.get('pageSize') ?? 10));
+  const [pageSize, setPageSize] = React.useState(
+    clampCrmPageSize(Number(searchParams.get('pageSize') ?? 10)),
+  );
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [sort, setSort] = React.useState<{ id: string; desc: boolean } | null>(null);
   const [filters, setFilters] = React.useState<OrderFilterValues>(EMPTY_FILTERS);
@@ -70,8 +72,10 @@ export function OrderListShell({ queue }: OrderListShellProps) {
     }
     params.set('page', String(page));
     params.set('pageSize', String(pageSize));
-    // All Orders: keep status as an in-page filter only — never put it in the URL,
-    // or the queue resolver treats it as a dedicated status page.
+    // All Orders: status is an in-page filter only — never keep it in the URL.
+    // Status/parent queues: keep URL in sync with the active queue status.
+    // (Deep-link safety lives in the queue resolver + session status cache so kind
+    // is not "all" while a valid ?status= is present.)
     if (queue.kind === 'all') {
       params.delete('status');
     } else {
@@ -179,7 +183,7 @@ export function OrderListShell({ queue }: OrderListShellProps) {
   }
 
   function handlePageSizeChange(size: number) {
-    setPageSize(size);
+    setPageSize(clampCrmPageSize(size));
     setPage(1);
   }
 
@@ -278,7 +282,7 @@ export function OrderListShell({ queue }: OrderListShellProps) {
           />
         ) : null}
 
-        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-visible')}>
           <OrderSelectionBar
             selectedCount={selectedIds.size}
             selectedOrderIds={[...selectedIds]}
@@ -326,6 +330,9 @@ export function OrderListShell({ queue }: OrderListShellProps) {
                   setPage(1);
                 }}
                 onNoteClick={setNoteRow}
+                onFollowUpSaved={() => {
+                  handleRefresh();
+                }}
               />
             )}
           </CardContent>

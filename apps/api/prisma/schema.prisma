@@ -68,6 +68,7 @@ model Organization {
   billingInvoices          BillingInvoice[]
   billingPaymentMethods    BillingPaymentMethod[]
   websiteStores            WebsiteStore[]
+  securityBlocks           SecurityBlock[]
   incentiveTeams           IncentiveTeam[]
   incentivePlans           IncentivePlan[]
   incentiveAssignments     IncentiveAssignment[]
@@ -266,9 +267,10 @@ model Team {
   name           String
   leaderUserId   String
   leader         User         @relation("TeamLeader", fields: [leaderUserId], references: [id], onDelete: Restrict)
-  members        User[]       @relation("TeamMembers")
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  members         User[]          @relation("TeamMembers")
+  incentivePlans  IncentivePlan[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@index([organizationId])
   @@index([leaderUserId])
@@ -493,6 +495,8 @@ model Order {
   paymentStatus      String
   paymentMethod      String?
   assignedAgentName  String?
+  /// Stable assignee for KPI / incentive (preferred over assignedAgentName).
+  assignedUserId     String?
   shippingArea       String
   shippingAddress    String?
   district           String?
@@ -524,6 +528,10 @@ model Order {
   courierStatus      String?
   courierStatusSlug  String?
   courierStatusSyncedAt DateTime?
+  /// Last courier book/submit failure reason (cleared on successful book).
+  courierSubmitError String?
+  /// When the last failed courier submit attempt happened.
+  courierSubmitFailedAt DateTime?
   leadId             String?
   utmSource          String?
   utmId              String?
@@ -536,6 +544,8 @@ model Order {
   attachmentNames    String[] @default([])
   attachmentUrls     String[] @default([])
   stockDeductedAt    DateTime?
+  /// Set when soft-delete restocked inventory so restore can re-hold stock.
+  stockRestockedOnDelete Boolean @default(false)
   /// Warehouse used to cut/hold stock on confirm / courier book.
   fulfillmentWarehouseId String?
   fulfillmentWarehouse   Warehouse? @relation(fields: [fulfillmentWarehouseId], references: [id], onDelete: SetNull)
@@ -545,6 +555,8 @@ model Order {
   websiteStore       WebsiteStore? @relation(fields: [websiteStoreId], references: [id], onDelete: SetNull)
   /// Idempotency key from source shop (Woo order id, custom order id).
   externalOrderId    String?
+  /// Customer / shopper IP at order create (website ingest uses request IP).
+  clientIp           String?
   createdByUserId    String?
   createdByName      String?
   createdAt          DateTime @default(now())
@@ -563,8 +575,41 @@ model Order {
   @@index([organizationId, deletedAt])
   @@index([organizationId, courierStatusSlug])
   @@index([organizationId, courierProvider, courierConsignmentId])
+  @@index([organizationId, courierSubmitFailedAt])
   @@index([courierProvider, courierStatusSyncedAt])
   @@index([organizationId, websiteStoreId])
+  @@index([organizationId, clientIp])
+  @@index([organizationId, assignedAgentName])
+  @@index([organizationId, assignedUserId])
+}
+
+/// Org-level blocklist: IP or mobile — blocked callers cannot place orders.
+model SecurityBlock {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// ip | mobile
+  type           String
+  /// Normalized value used for unique match (digits-only phone, lowercased IP).
+  value          String
+  /// Display / original form when different from normalized value.
+  valueDisplay   String?
+  /// fraud | duplicate | abuse | chargeback | manual | other
+  reason         String
+  note           String?
+  blockedByUserId String?
+  blockedByName  String?
+  /// Null = permanent block.
+  expiresAt      DateTime?
+  /// Soft reference to order that triggered the block.
+  lastOrderId    String?
+  orderCount     Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, type, value])
+  @@index([organizationId, type])
+  @@index([organizationId, expiresAt])
 }
 
 /// Connected website / e-commerce store (WooCommerce or custom) for order ingest.
@@ -1324,6 +1369,9 @@ model ProductionBatch {
   result          Json
   actorUserId     String?
   actorName       String?
+  voidedAt        DateTime?
+  voidedByUserId  String?
+  voidedByName    String?
   createdAt       DateTime     @default(now())
 
   @@unique([organizationId, batchNumber])
@@ -1544,6 +1592,9 @@ model IncentivePlan {
   organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teamId            String?
   team              IncentiveTeam?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  /// Users-page Team (source of truth). Prefer this over IncentiveTeam.
+  orgTeamId         String?
+  orgTeam           Team?                 @relation(fields: [orgTeamId], references: [id], onDelete: SetNull)
   name              String
   slug              String
   description       String?
@@ -1566,6 +1617,7 @@ model IncentivePlan {
   @@unique([organizationId, slug])
   @@index([organizationId, isActive])
   @@index([organizationId, teamId])
+  @@index([organizationId, orgTeamId])
   @@map("IncentivePlans")
 }
 
@@ -1583,7 +1635,7 @@ model IncentiveSlab {
   @@map("IncentiveSlabs")
 }
 
-/// Agent ↔ plan assignment (agentName matches Order.assignedAgentName).
+/// Agent ↔ plan assignment (prefer userId; agentName fallback for legacy orders).
 model IncentiveAssignment {
   id                     String                 @id @default(cuid())
   organizationId         String

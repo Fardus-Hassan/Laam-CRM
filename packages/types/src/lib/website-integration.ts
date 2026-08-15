@@ -15,6 +15,10 @@ export const websiteStoreSchema = z.object({
   /** Present only right after create/rotate — show once. */
   ingestToken: z.string().optional(),
   hasWooCredentials: z.boolean(),
+  /** Woo webhook HMAC secret is stored (shown only on create/rotate-secret). */
+  hasWooWebhookSecret: z.boolean().default(false),
+  /** Present only right after create / rotate-webhook-secret for Woo stores. */
+  wooWebhookSecret: z.string().optional(),
   lastIngestAt: z.string().nullable(),
   lastError: z.string().nullable(),
   createdAt: z.string(),
@@ -36,6 +40,11 @@ export const createWebsiteStorePayloadSchema = z.object({
   /** WooCommerce REST consumer key (optional; for future pull). Leave blank to skip. */
   wooConsumerKey: z.string().optional(),
   wooConsumerSecret: z.string().optional(),
+  /**
+   * Optional override for Woo webhook HMAC secret.
+   * If omitted on Woo store create, CRM generates one (show once).
+   */
+  wooWebhookSecret: z.string().min(8).max(200).optional(),
 });
 
 export type CreateWebsiteStorePayload = z.infer<typeof createWebsiteStorePayloadSchema>;
@@ -47,6 +56,8 @@ export const updateWebsiteStorePayloadSchema = z.object({
   wooConsumerKey: z.string().optional(),
   /** Leave blank to keep existing secret. */
   wooConsumerSecret: z.string().optional(),
+  /** Replace webhook secret (paste from Woo or set then put same in Woo “Secret”). */
+  wooWebhookSecret: z.string().min(8).max(200).optional(),
 });
 
 export type UpdateWebsiteStorePayload = z.infer<typeof updateWebsiteStorePayloadSchema>;
@@ -82,6 +93,11 @@ export const websiteOrderIngestPayloadSchema = z.object({
   discount: z.number().nonnegative().optional(),
   notes: z.string().optional(),
   orderDate: z.string().optional(),
+  /**
+   * Shopper public IP (IPv4/IPv6). Prefer this when your backend posts on behalf of the browser.
+   * If omitted, CRM falls back to the HTTP request IP (X-Forwarded-For).
+   */
+  clientIp: z.string().min(3).max(64).optional(),
   utmSource: z.string().optional(),
   utmId: z.string().optional(),
   utmContent: z.string().optional(),

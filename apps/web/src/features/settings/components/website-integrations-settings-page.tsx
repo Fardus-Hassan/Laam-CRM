@@ -15,10 +15,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
-import {
-  websiteIngestPaths,
-  websiteSettingsApi,
-} from '@/features/settings/api/website-settings-api';
+import { websiteSettingsApi } from '@/features/settings/api/website-settings-api';
+import { WebsiteIntegrationApiGuide } from '@/features/settings/components/website-integration-api-guide';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -46,17 +44,15 @@ export function WebsiteIntegrationsSettingsPage() {
     storeId: string;
     token: string;
   } | null>(null);
+  const [revealedWebhookSecret, setRevealedWebhookSecret] = React.useState<{
+    storeId: string;
+    secret: string;
+  } | null>(null);
 
   const [name, setName] = React.useState('');
   const [slug, setSlug] = React.useState('');
   const [platform, setPlatform] = React.useState<WebsitePlatform>('woocommerce');
   const [storeUrl, setStoreUrl] = React.useState('');
-
-  const paths = websiteIngestPaths();
-  const apiBase =
-    typeof window !== 'undefined'
-      ? (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333/api').replace(/\/$/, '')
-      : '';
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -92,10 +88,20 @@ export function WebsiteIntegrationsSettingsPage() {
       if (created.ingestToken) {
         setRevealedToken({ storeId: created.id, token: created.ingestToken });
       }
+      if (created.wooWebhookSecret) {
+        setRevealedWebhookSecret({
+          storeId: created.id,
+          secret: created.wooWebhookSecret,
+        });
+      }
       setName('');
       setSlug('');
       setStoreUrl('');
-      toast.success('Website connected — copy the ingest token now');
+      toast.success(
+        created.wooWebhookSecret
+          ? 'Website connected — copy ingest token + Woo webhook secret now'
+          : 'Website connected — copy the ingest token now',
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create store');
     } finally {
@@ -113,6 +119,27 @@ export function WebsiteIntegrationsSettingsPage() {
       toast.success('Token rotated — copy the new token');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Rotate failed');
+    }
+  }
+
+  async function handleRotateWebhookSecret(id: string) {
+    const ok = await confirm({
+      title: 'Rotate Woo webhook secret?',
+      description:
+        'Update the new secret in your WooCommerce webhook “Secret” field or signatures will fail.',
+      confirmLabel: 'Rotate secret',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      const updated = await websiteSettingsApi.rotateWebhookSecret(id);
+      setStores((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+      if (updated.wooWebhookSecret) {
+        setRevealedWebhookSecret({ storeId: id, secret: updated.wooWebhookSecret });
+      }
+      toast.success('Webhook secret rotated — copy and paste into WooCommerce');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Rotate webhook secret failed');
     }
   }
 
@@ -138,6 +165,7 @@ export function WebsiteIntegrationsSettingsPage() {
       await websiteSettingsApi.disconnect(id);
       setStores((prev) => prev.filter((s) => s.id !== id));
       if (revealedToken?.storeId === id) setRevealedToken(null);
+      if (revealedWebhookSecret?.storeId === id) setRevealedWebhookSecret(null);
       toast.success('Disconnected');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Delete failed');
@@ -152,7 +180,7 @@ export function WebsiteIntegrationsSettingsPage() {
   return (
     <PageShell
       title="Website / E-commerce"
-      description="Connect WooCommerce or custom shops. Orders ingest via secure token (industry-standard webhook hub)."
+      description="Connect WooCommerce or custom shops. Orders ingest via secure token — full API body and step-by-step guide below."
     >
       <div className={ORDER_PAGE_GAP}>
         <Button type="button" size="sm" variant="ghost" className="w-fit px-0" asChild>
@@ -180,6 +208,34 @@ export function WebsiteIntegrationsSettingsPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => copy(revealedToken.token, 'Token')}
+                >
+                  <Copy className="size-3.5" />
+                  Copy
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {revealedWebhookSecret ? (
+          <Card className={cn(ORDER_CARD_CLASS, 'border-amber-500/40')}>
+            <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+              <CardTitle className="text-sm">Woo webhook secret (shown once)</CardTitle>
+            </CardHeader>
+            <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-2')}>
+              <p className="text-xs text-muted-foreground">
+                Paste this into WooCommerce webhook field <strong className="text-foreground">Secret</strong>.
+                CRM verifies <code className="rounded bg-muted px-1 font-mono text-[11px]">X-WC-Webhook-Signature</code>.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="max-w-full break-all rounded-md bg-muted px-2 py-1 text-xs">
+                  {revealedWebhookSecret.secret}
+                </code>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copy(revealedWebhookSecret.secret, 'Webhook secret')}
                 >
                   <Copy className="size-3.5" />
                   Copy
@@ -238,6 +294,18 @@ export function WebsiteIntegrationsSettingsPage() {
                             : '—'}
                           {store.lastError ? ` · Error: ${store.lastError}` : ''}
                         </p>
+                        {store.platform === 'woocommerce' ? (
+                          <p className="text-xs text-muted-foreground">
+                            Webhook HMAC:{' '}
+                            {store.hasWooWebhookSecret ? (
+                              <span className="text-foreground">configured</span>
+                            ) : (
+                              <span className="text-amber-700 dark:text-amber-400">
+                                missing — rotate secret
+                              </span>
+                            )}
+                          </p>
+                        ) : null}
                       </div>
                       <Can permission="settings.manage">
                         <div className="flex flex-wrap gap-1.5">
@@ -257,6 +325,16 @@ export function WebsiteIntegrationsSettingsPage() {
                           >
                             Rotate token
                           </Button>
+                          {store.platform === 'woocommerce' ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void handleRotateWebhookSecret(store.id)}
+                            >
+                              Rotate webhook secret
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             size="sm"
@@ -327,51 +405,7 @@ export function WebsiteIntegrationsSettingsPage() {
           </Card>
         </Can>
 
-        <Card className={ORDER_CARD_CLASS}>
-          <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-            <CardTitle className="text-sm">How to connect</CardTitle>
-          </CardHeader>
-          <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3 text-sm')}>
-            <div className="space-y-1">
-              <p className="font-medium">WooCommerce</p>
-              <p className="text-xs text-muted-foreground">
-                WooCommerce → Settings → Advanced → Webhooks → Add webhook.
-                Topic: Order created. Delivery URL:
-              </p>
-              <code className="block break-all rounded-md bg-muted px-2 py-1 text-[11px]">
-                {apiBase}
-                {paths.woocommerce}?token=YOUR_INGEST_TOKEN
-              </code>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  copy(`${apiBase}${paths.woocommerce}?token=YOUR_INGEST_TOKEN`, 'Woo URL')
-                }
-              >
-                <Copy className="size-3.5" />
-                Copy Woo URL template
-              </Button>
-            </div>
-            <div className="space-y-1">
-              <p className="font-medium">Custom site</p>
-              <p className="text-xs text-muted-foreground">
-                POST JSON to the canonical ingest endpoint with header{' '}
-                <code className="text-[11px]">X-Laam-Ingest-Token</code>:
-              </p>
-              <code className="block break-all rounded-md bg-muted px-2 py-1 text-[11px]">
-                POST {apiBase}
-                {paths.canonical}
-              </code>
-              <p className="text-xs text-muted-foreground">
-                Body: externalOrderId, customerName, customerPhone, shippingAddress, lineItems
-                (sku, productName, quantity, unitPrice). Same order id twice = idempotent
-                (no duplicate).
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <WebsiteIntegrationApiGuide />
       </div>
       {confirmDialog}
     </PageShell>

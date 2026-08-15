@@ -206,6 +206,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'orders.view',
     'orders.create',
     'orders.confirm',
+    'incentive.view',
     'tasks.view',
     'tasks.create',
     'activities.view',

@@ -261,7 +261,7 @@ export class InventoryAdvancedController {
     this.catalog.requireOrg(user.organizationId);
     return this.advanced.listOrgStockMovements(user.organizationId!, {
       page: Math.max(1, Number(pageRaw) || 1),
-      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+      pageSize: Math.min(1000, Math.max(1, Number(pageSizeRaw) || 50)),
       productId,
       variantId,
       warehouseId,
@@ -350,7 +350,7 @@ export class InventoryAdvancedController {
       search,
       fefo: fefoRaw === '1' || fefoRaw === 'true',
       page: Math.max(1, Number(pageRaw) || 1),
-      pageSize: Math.min(100, Math.max(1, Number(pageSizeRaw) || 50)),
+      pageSize: Math.min(1000, Math.max(1, Number(pageSizeRaw) || 50)),
     });
   }
 

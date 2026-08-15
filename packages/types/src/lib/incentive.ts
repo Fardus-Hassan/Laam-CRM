@@ -40,6 +40,11 @@ export const incentiveMetricConfigSchema = z.object({
   entryDailyTarget: z.number().optional(),
   /** Channels included for channel_activity metric. */
   channels: z.array(incentiveChannelSchema).optional(),
+  /**
+   * Incomplete statuses that qualify an order as “recovered” when it later
+   * reaches includeStatuses (recovery_count). Defaults applied in calc.
+   */
+  recoveryFromStatuses: z.array(z.string()).optional(),
 });
 export type IncentiveMetricConfig = z.infer<typeof incentiveMetricConfigSchema>;
 
@@ -69,6 +74,11 @@ export const incentiveTeamSchema = z.object({
   sortOrder: z.number(),
   isActive: z.boolean(),
   planCount: z.number().optional(),
+  /** Users-page team member count (leader + members). */
+  memberCount: z.number().optional(),
+  /** KPI plan attached to this Users team. */
+  planId: z.string().nullable().optional(),
+  hasStructure: z.boolean().optional(),
 });
 export type IncentiveTeam = z.infer<typeof incentiveTeamSchema>;
 
@@ -208,6 +218,7 @@ export type IncentiveWarning = z.infer<typeof incentiveWarningSchema>;
 export const incentivePerformanceLineSchema = z.object({
   assignmentId: z.string(),
   agentName: z.string(),
+  userId: z.string().nullable().optional(),
   planId: z.string(),
   planName: z.string(),
   teamName: z.string().optional(),
@@ -249,6 +260,7 @@ export const incentivePerformanceReportSchema = z.object({
         planId: z.string(),
         planName: z.string(),
         teamName: z.string().optional(),
+        orgTeamId: z.string().nullable().optional(),
         teamMonthlyTarget: z.number().nullable().optional(),
         actualTotal: z.number(),
         met: z.boolean().optional(),

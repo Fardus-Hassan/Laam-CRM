@@ -353,7 +353,7 @@ export class CustomersService {
     query: CustomerListQuery,
   ): Promise<CustomerListResponse> {
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
+    const pageSize = Math.min(1000, Math.max(1, query.pageSize ?? 20));
 
     const existingCount = await this.prisma.customer.count({ where: { organizationId } });
     if (existingCount === 0) {

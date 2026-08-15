@@ -77,8 +77,11 @@ const FOLLOWUP_STATUS_OPTIONS = [
   { value: 'overdue', label: 'Overdue' },
 ];
 
-/** Quick purchase-count pills (Bizmation-style). */
-export const PURCHASE_COUNT_PILLS = [2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+/** Quick purchase-count pills (Bizmation-style). Exact order counts 1–10. */
+export const PURCHASE_COUNT_PILLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+/** Premium = 10 or more completed purchases/orders. */
+export const PREMIUM_PURCHASE_MIN = 10;
 
 export function emptyCustomerFilters(): CustomerFilterValues {
   return {

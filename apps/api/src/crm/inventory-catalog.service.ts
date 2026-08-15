@@ -668,7 +668,7 @@ export class InventoryCatalogService {
   ): Promise<ProductListResponse> {
     await this.ensureDefaultCategories(organizationId);
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(Math.max(1, query.pageSize ?? 20), 100);
+    const pageSize = Math.min(Math.max(1, query.pageSize ?? 20), 1000);
     const search = query.search?.trim();
 
     const where: Prisma.ProductWhereInput = {
@@ -1335,7 +1335,7 @@ export class InventoryCatalogService {
     if (!product) throw new NotFoundException('Product not found');
 
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(Math.max(1, query.pageSize ?? 20), 100);
+    const pageSize = Math.min(Math.max(1, query.pageSize ?? 20), 1000);
     const where = { organizationId, productId };
 
     const [total, rows] = await Promise.all([
@@ -1393,7 +1393,7 @@ export class InventoryCatalogService {
     if (!product) throw new NotFoundException('Product not found');
 
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(Math.max(1, query.pageSize ?? 10), 100);
+    const pageSize = Math.min(Math.max(1, query.pageSize ?? 10), 1000);
     const where = {
       organizationId,
       OR: [{ productId }, { entityType: 'product', entityId: productId }],

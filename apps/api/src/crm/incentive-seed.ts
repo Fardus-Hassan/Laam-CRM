@@ -88,6 +88,7 @@ export const LAAM_INCENTIVE_SEED = {
           ],
           excludeStatuses: ['cancelled', 'canceled', 'failed', 'duplicate'],
           entryDailyTarget: 8,
+          maxAgentReturnRatioPct: 15,
         },
         prorataAboveTop: true,
         slabs: [
@@ -311,6 +312,12 @@ export const LAAM_INCENTIVE_SEED = {
         metricType: 'recovery_count',
         metricConfig: {
           includeStatuses: ['confirmed', 'delivered', 'completed'],
+          recoveryFromStatuses: [
+            'pending',
+            'hold_followup',
+            'incomplete',
+            'pending_incomplete',
+          ],
           excludeStatuses: ['cancelled', 'canceled', 'failed', 'duplicate'],
         },
         slabs: [

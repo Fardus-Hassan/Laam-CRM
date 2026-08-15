@@ -229,6 +229,7 @@ export function createMockFollowupForCustomer(input: {
   district?: string;
   agentName?: string;
   note?: string;
+  scheduleDate?: string;
 }): FollowupDetail {
   const now = new Date().toISOString();
   const id = `followup-cust-${Date.now()}`;
@@ -237,7 +238,7 @@ export function createMockFollowupForCustomer(input: {
     queue: 1,
     customerId: input.customerId ?? `cust-phone-${input.phone.replace(/\D/g, '')}`,
     customerNumber: input.customerNumber ?? input.phone.slice(-6),
-    scheduleDate: MOCK_FOLLOWUP_TODAY,
+    scheduleDate: input.scheduleDate ?? MOCK_FOLLOWUP_TODAY,
     skipped: false,
     name: input.name,
     phone: input.phone,
@@ -258,6 +259,7 @@ export function createMockFollowupForCustomer(input: {
       {
         id: `${id}-a1`,
         label: 'Follow-up scheduled',
+        description: input.scheduleDate ? `Due ${input.scheduleDate}` : undefined,
         timestamp: now,
         actorName: input.agentName,
       },

@@ -18,15 +18,22 @@ import { Button } from '@/components/ui/button';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
 import { cn } from '@/lib/utils';
 
+export type OrderAssignResult = {
+  employeeName: string;
+  employeeUserId?: string;
+};
+
 type OrderAssignSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAssign: (employeeName: string) => void | Promise<void>;
+  onAssign: (result: OrderAssignResult) => void | Promise<void>;
   currentAgentName?: string;
+  currentAgentUserId?: string;
 };
 
 type AgentOption = {
   value: string;
+  userId?: string;
   name: string;
   email?: string;
   isCurrent: boolean;
@@ -37,15 +44,22 @@ export function OrderAssignSheet({
   onOpenChange,
   onAssign,
   currentAgentName,
+  currentAgentUserId,
 }: OrderAssignSheetProps) {
-  const [employee, setEmployee] = React.useState('');
+  const [selectedKey, setSelectedKey] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
 
   React.useEffect(() => {
     if (!open) return;
-    setEmployee(currentAgentName ?? '');
+    setSelectedKey(
+      currentAgentUserId
+        ? `u:${currentAgentUserId}`
+        : currentAgentName
+          ? `n:${currentAgentName}`
+          : '',
+    );
     let cancelled = false;
     setLoading(true);
     void rbacApi
@@ -66,32 +80,48 @@ export function OrderAssignSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, currentAgentName]);
+  }, [open, currentAgentName, currentAgentUserId]);
 
   const options = React.useMemo((): AgentOption[] => {
     const base: AgentOption[] = users.map((u) => ({
-      value: u.name,
+      value: `u:${u.id}`,
+      userId: u.id,
       name: u.name,
       email: u.email || undefined,
-      isCurrent: Boolean(currentAgentName && u.name === currentAgentName),
+      isCurrent: Boolean(
+        (currentAgentUserId && u.id === currentAgentUserId) ||
+          (!currentAgentUserId && currentAgentName && u.name === currentAgentName),
+      ),
     }));
-    if (currentAgentName && !base.some((o) => o.value === currentAgentName)) {
+    if (
+      currentAgentName &&
+      !base.some(
+        (o) =>
+          o.userId === currentAgentUserId ||
+          (!currentAgentUserId && o.name === currentAgentName),
+      )
+    ) {
       base.unshift({
-        value: currentAgentName,
+        value: currentAgentUserId ? `u:${currentAgentUserId}` : `n:${currentAgentName}`,
+        userId: currentAgentUserId,
         name: currentAgentName,
         isCurrent: true,
       });
     }
     return base;
-  }, [users, currentAgentName]);
+  }, [users, currentAgentName, currentAgentUserId]);
 
   async function handleSubmit() {
-    if (!employee) return;
+    const option = options.find((o) => o.value === selectedKey);
+    if (!option) return;
     setSaving(true);
     try {
-      await onAssign(employee);
+      await onAssign({
+        employeeName: option.name,
+        employeeUserId: option.userId,
+      });
       onOpenChange(false);
-      setEmployee('');
+      setSelectedKey('');
     } finally {
       setSaving(false);
     }
@@ -118,14 +148,14 @@ export function OrderAssignSheet({
                 className="max-h-[min(28rem,calc(100vh-14rem))] space-y-1 overflow-y-auto rounded-lg border border-border/70 p-1"
               >
                 {options.map((option) => {
-                  const selected = employee === option.value;
+                  const selected = selectedKey === option.value;
                   return (
                     <button
                       key={option.value}
                       type="button"
                       role="option"
                       aria-selected={selected}
-                      onClick={() => setEmployee(option.value)}
+                      onClick={() => setSelectedKey(option.value)}
                       className={cn(
                         'flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors',
                         selected
@@ -171,7 +201,7 @@ export function OrderAssignSheet({
           </Button>
           <Button
             type="button"
-            disabled={!employee || saving || loading}
+            disabled={!selectedKey || saving || loading}
             onClick={() => void handleSubmit()}
           >
             Assign

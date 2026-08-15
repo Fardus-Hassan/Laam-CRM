@@ -43,6 +43,8 @@ export function CrmDataTable<T>({
   onSearchChange,
   searchPlaceholder,
   headerSlot,
+  getRowClassName,
+  getRowTitle,
 }: CrmDataTableProps<T>) {
   const density = densityProp;
 
@@ -78,12 +80,19 @@ export function CrmDataTable<T>({
             ? () => selection.onChange(new Set())
             : undefined
         }
+        onPageSizeChange={
+          showPagination && onPageSizeChange ? onPageSizeChange : undefined
+        }
+        pageSizeOptions={pageSizeOptions}
       />
     ) : null;
 
+  // No overflow-hidden — it breaks page-level sticky header/footer.
+  const rootClass = cn('flex min-w-0 max-w-full flex-col', className);
+
   if (isLoading) {
     return (
-      <div className={cn('flex min-w-0 max-w-full flex-col overflow-hidden rounded-lg', className)}>
+      <div className={rootClass}>
         {headerSlot ? headerSlot(table) : null}
         <CrmDataTableSkeleton />
       </div>
@@ -105,7 +114,7 @@ export function CrmDataTable<T>({
 
   if (data.length === 0) {
     return (
-      <div className={cn('flex min-w-0 max-w-full flex-col overflow-hidden rounded-lg', className)}>
+      <div className={rootClass}>
         {toolbar}
         {metaBar}
         <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 px-6 py-14 text-center">
@@ -114,14 +123,24 @@ export function CrmDataTable<T>({
           </span>
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         </div>
+        {showPagination && onPageSizeChange ? (
+          <CrmDataTablePagination
+            page={page}
+            pageSize={pageSize}
+            total={resolvedTotal}
+            pageSizeOptions={pageSizeOptions}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+            showRangeSummary={false}
+          />
+        ) : null}
       </div>
     );
   }
 
   return (
-    <div className={cn('flex min-w-0 max-w-full flex-col overflow-hidden rounded-lg', className)}>
+    <div className={rootClass}>
       {toolbar}
-      {metaBar}
 
       <CrmDataTableDesktop
         table={table}
@@ -132,6 +151,9 @@ export function CrmDataTable<T>({
         onToggleExpanded={toggleRowExpanded}
         hiddenOnTablet={hiddenOnTablet}
         className={tableClassName}
+        stickyTopSlot={metaBar}
+        getRowClassName={getRowClassName}
+        getRowTitle={getRowTitle}
       />
 
       {showPagination && resolvedTotal > 0 ? (
@@ -143,6 +165,7 @@ export function CrmDataTable<T>({
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
           showRangeSummary={false}
+          sticky
         />
       ) : null}
     </div>

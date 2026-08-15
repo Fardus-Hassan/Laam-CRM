@@ -697,6 +697,8 @@ export const productionBatchResultSchema = z.object({
   perUnitRawUsage: z.array(productionRawUsageSchema),
   note: z.string().optional(),
   createdAt: z.string(),
+  voidedAt: z.string().optional(),
+  voidedByName: z.string().optional(),
 });
 
 export type ProductionBatchResult = z.infer<typeof productionBatchResultSchema>;

@@ -10,10 +10,11 @@ import type {
 } from '@laam/types';
 import { toast } from 'sonner';
 
+import { Plus, Trash2 } from 'lucide-react';
+
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
 import { FormSearchSelect } from '@/components/form/form-search-select';
-import { FormTextarea } from '@/components/form/form-textarea';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -42,13 +43,33 @@ const CHANNELS = [
   { slug: 'whatsapp', label: 'WhatsApp' },
 ];
 
+type SlabDraft = {
+  label: string;
+  monthlyTarget: string;
+  dailyTarget: string;
+  incentiveBdt: string;
+};
+
+const EMPTY_SLAB: SlabDraft = {
+  label: '',
+  monthlyTarget: '',
+  dailyTarget: '',
+  incentiveBdt: '',
+};
+
+const DEFAULT_SLABS: SlabDraft[] = [
+  { label: 'Starter', monthlyTarget: '208', dailyTarget: '8', incentiveBdt: '1000' },
+  { label: 'Target', monthlyTarget: '260', dailyTarget: '', incentiveBdt: '3000' },
+  { label: 'Top', monthlyTarget: '520', dailyTarget: '20', incentiveBdt: '7000' },
+];
+
 type Draft = {
   name: string;
   teamId: string;
   metricType: IncentiveMetricType;
   prorataAboveTop: boolean;
   teamMonthlyTarget: string;
-  slabsText: string;
+  slabs: SlabDraft[];
   includeStatuses: string[];
   excludeStatuses: string[];
   deliveredStatuses: string[];
@@ -67,17 +88,15 @@ function toDraft(plan?: IncentivePlan | null): Draft {
     prorataAboveTop: plan?.prorataAboveTop ?? false,
     teamMonthlyTarget:
       plan?.teamMonthlyTarget == null ? '' : String(plan.teamMonthlyTarget),
-    slabsText:
-      plan?.slabs
-        .map((slab) =>
-          [
-            slab.monthlyTarget,
-            slab.incentiveBdt,
-            slab.dailyTarget ?? '',
-            slab.label ?? '',
-          ].join(','),
-        )
-        .join('\n') ?? '208,1000,8,Starter\n260,3000,,Target\n520,7000,20,Top',
+    slabs:
+      plan?.slabs.length
+        ? plan.slabs.map((slab) => ({
+            label: slab.label ?? '',
+            monthlyTarget: String(slab.monthlyTarget),
+            dailyTarget: slab.dailyTarget == null ? '' : String(slab.dailyTarget),
+            incentiveBdt: String(slab.incentiveBdt),
+          }))
+        : DEFAULT_SLABS,
     includeStatuses: plan?.metricConfig?.includeStatuses ?? [],
     excludeStatuses: plan?.metricConfig?.excludeStatuses ?? [],
     deliveredStatuses: plan?.metricConfig?.deliveredStatuses ?? [],
@@ -132,12 +151,14 @@ export function PlanFormDialog({
   onSaved,
   initial,
   teams,
+  lockedTeamId,
 }: {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
   initial?: IncentivePlan | null;
   teams: IncentiveTeam[];
+  lockedTeamId?: string;
 }) {
   const { statuses } = useOrderStatusConfig();
   const [draft, setDraft] = React.useState<Draft>(() => toDraft(initial));
@@ -145,11 +166,38 @@ export function PlanFormDialog({
   const editing = Boolean(initial);
 
   React.useEffect(() => {
-    if (open) setDraft(toDraft(initial));
-  }, [initial, open]);
+    if (!open) return;
+    const next = toDraft(initial);
+    if (lockedTeamId) {
+      next.teamId = lockedTeamId;
+      if (!initial) {
+        const teamName = teams.find((team) => team.id === lockedTeamId)?.name;
+        next.name = teamName ? `${teamName} KPI` : next.name;
+      }
+    }
+    setDraft(next);
+  }, [initial, open, lockedTeamId, teams]);
 
   function patch(values: Partial<Draft>) {
     setDraft((current) => ({ ...current, ...values }));
+  }
+
+  function patchSlab(index: number, values: Partial<SlabDraft>) {
+    setDraft((current) => ({
+      ...current,
+      slabs: current.slabs.map((slab, i) => (i === index ? { ...slab, ...values } : slab)),
+    }));
+  }
+
+  function addSlab() {
+    setDraft((current) => ({ ...current, slabs: [...current.slabs, { ...EMPTY_SLAB }] }));
+  }
+
+  function removeSlab(index: number) {
+    setDraft((current) => ({
+      ...current,
+      slabs: current.slabs.length <= 1 ? current.slabs : current.slabs.filter((_, i) => i !== index),
+    }));
   }
 
   async function handleSubmit() {
@@ -157,24 +205,24 @@ export function PlanFormDialog({
       toast.error('Plan name is required');
       return;
     }
-    const slabs = draft.slabsText
-      .split('\n')
-      .map((line, sortOrder) => {
-        const [monthly, incentive, daily, label] = line.split(',').map((part) => part.trim());
-        return {
-          monthlyTarget: Number(monthly),
-          incentiveBdt: Number(incentive),
-          dailyTarget: daily ? Number(daily) : null,
-          label: label || null,
-          sortOrder,
-        };
-      })
+    if (!draft.teamId) {
+      toast.error('Pick a Users team for this KPI structure');
+      return;
+    }
+    const slabs = draft.slabs
+      .map((slab, sortOrder) => ({
+        monthlyTarget: Number(slab.monthlyTarget),
+        incentiveBdt: Number(slab.incentiveBdt),
+        dailyTarget: slab.dailyTarget.trim() ? Number(slab.dailyTarget) : null,
+        label: slab.label.trim() || null,
+        sortOrder,
+      }))
       .filter(
         (slab) =>
           Number.isFinite(slab.monthlyTarget) && Number.isFinite(slab.incentiveBdt),
       );
-    if (draft.slabsText.trim() && !slabs.length) {
-      toast.error('Enter valid slabs, one per line');
+    if (!slabs.length) {
+      toast.error('Add at least one slab with monthly target and incentive');
       return;
     }
 
@@ -233,24 +281,24 @@ export function PlanFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{editing ? 'Edit incentive plan' : 'New incentive plan'}</DialogTitle>
+          <DialogTitle>
+            {editing ? 'Edit KPI structure' : 'Set KPI structure'}
+          </DialogTitle>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <FormField label="Name" required>
               <FormInput value={draft.name} onChange={(e) => patch({ name: e.target.value })} />
             </FormField>
-            <FormField label="Team">
+            <FormField label="Team" required>
               <FormSearchSelect
                 value={draft.teamId}
                 onChange={(teamId) => patch({ teamId })}
-                options={[
-                  { value: '', label: 'No team' },
-                  ...teams.map((team) => ({ value: team.id, label: team.name })),
-                ]}
+                options={teams.map((team) => ({ value: team.id, label: team.name }))}
                 searchable={false}
+                disabled={Boolean(lockedTeamId)}
               />
             </FormField>
             <FormField label="Metric">
@@ -342,16 +390,73 @@ export function PlanFormDialog({
               </FormField>
             </div>
           ) : null}
-          <FormField
-            label="Slabs"
-            hint="monthly target, incentive BDT, daily target (optional), label (optional)"
-          >
-            <FormTextarea
-              rows={5}
-              value={draft.slabsText}
-              onChange={(e) => patch({ slabsText: e.target.value })}
-            />
-          </FormField>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">Slabs</p>
+              <Button type="button" size="sm" variant="outline" onClick={addSlab}>
+                <Plus className="size-4" />
+                Add slab
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Each row is one bonus level. Higher monthly target = higher incentive.
+            </p>
+            <div className="space-y-2">
+              {draft.slabs.map((slab, index) => (
+                <div
+                  key={index}
+                  className="grid gap-2 rounded-md border p-2 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]"
+                >
+                  <FormField label="Label">
+                    <FormInput
+                      placeholder="e.g. Starter"
+                      value={slab.label}
+                      onChange={(e) => patchSlab(index, { label: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Monthly target">
+                    <FormInput
+                      type="number"
+                      min={0}
+                      placeholder="260"
+                      value={slab.monthlyTarget}
+                      onChange={(e) => patchSlab(index, { monthlyTarget: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Daily target">
+                    <FormInput
+                      type="number"
+                      min={0}
+                      placeholder="Optional"
+                      value={slab.dailyTarget}
+                      onChange={(e) => patchSlab(index, { dailyTarget: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Incentive ৳">
+                    <FormInput
+                      type="number"
+                      min={0}
+                      placeholder="3000"
+                      value={slab.incentiveBdt}
+                      onChange={(e) => patchSlab(index, { incentiveBdt: e.target.value })}
+                    />
+                  </FormField>
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      disabled={draft.slabs.length <= 1}
+                      onClick={() => removeSlab(index)}
+                      aria-label="Remove slab"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

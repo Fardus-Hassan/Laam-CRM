@@ -1,5 +1,7 @@
 'use client';
 
+import * as React from 'react';
+import type { CSSProperties } from 'react';
 import { flexRender, type Cell, type Row, type Table as TanStackTable } from '@tanstack/react-table';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -17,6 +19,25 @@ import { useDragToScroll } from '@/hooks/use-drag-to-scroll';
 const TABLE_CELL_BORDER = 'border-r border-b border-border';
 const TABLE_OUTER_BORDER = 'border-l border-t border-border';
 
+/** Hide scrollbar on sticky header strip — body shows the real horizontal bar. */
+const HIDE_SCROLLBAR =
+  '[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden';
+
+function getColumnSizeStyle(column: {
+  getSize: () => number;
+  columnDef: { minSize?: number; maxSize?: number };
+}): CSSProperties {
+  const size = column.getSize();
+  const minSize = column.columnDef.minSize ?? size;
+  const maxSize = column.columnDef.maxSize;
+  const isFixed = maxSize != null && maxSize <= size;
+  return {
+    width: size,
+    minWidth: minSize,
+    ...(isFixed ? { maxWidth: maxSize } : null),
+  };
+}
+
 type CrmDataTableDesktopProps<T> = {
   table: TanStackTable<T>;
   density: CrmDataTableDensity;
@@ -26,8 +47,20 @@ type CrmDataTableDesktopProps<T> = {
   onToggleExpanded?: (rowId: string) => void;
   hiddenOnTablet?: string[];
   className?: string;
+  /**
+   * Renders inside the sticky top shell above the column headers
+   * (e.g. “Showing…” + Rows control).
+   */
+  stickyTopSlot?: React.ReactNode;
+  getRowClassName?: (row: T) => string | undefined;
+  getRowTitle?: (row: T) => string | undefined;
 };
 
+/**
+ * Full-height table (no max-height). Vertical scroll = dashboard page.
+ * Sticky header shell (meta + column headers). Horizontal strips stay in sync;
+ * drag thead left/right like before.
+ */
 export function CrmDataTableDesktop<T>({
   table,
   density,
@@ -37,82 +70,143 @@ export function CrmDataTableDesktop<T>({
   onToggleExpanded,
   hiddenOnTablet = [],
   className,
+  stickyTopSlot,
+  getRowClassName,
+  getRowTitle,
 }: CrmDataTableDesktopProps<T>) {
   const cellPadding = density === 'compact' ? 'py-2' : 'py-3';
   const showExpand = Boolean(isTablet && hiddenOnTablet.length > 0);
-  // Drag-to-scroll only from header so body text stays selectable.
-  const scrollRef = useDragToScroll<HTMLDivElement>({ handleSelector: 'thead' });
+  const headerScrollRef = useDragToScroll<HTMLDivElement>({ handleSelector: 'thead' });
+  const bodyScrollRef = React.useRef<HTMLDivElement>(null);
+  const syncing = React.useRef(false);
+
+  function syncScroll(source: 'header' | 'body') {
+    if (syncing.current) return;
+    const header = headerScrollRef.current;
+    const body = bodyScrollRef.current;
+    if (!header || !body) return;
+    syncing.current = true;
+    if (source === 'header') body.scrollLeft = header.scrollLeft;
+    else header.scrollLeft = body.scrollLeft;
+    requestAnimationFrame(() => {
+      syncing.current = false;
+    });
+  }
+
+  const totalColumnWidth = table.getTotalSize();
+  const minWidthPx =
+    typeof minTableWidth === 'number'
+      ? Math.max(minTableWidth, totalColumnWidth)
+      : typeof minTableWidth === 'string'
+        ? minTableWidth
+        : totalColumnWidth;
+
+  const leafColumns = table.getVisibleLeafColumns();
+  const tableStyle: CSSProperties = {
+    width: '100%',
+    minWidth: minWidthPx,
+  };
+
+  const colgroup = (
+    <colgroup>
+      {leafColumns.map((column) => (
+        <col key={column.id} style={getColumnSizeStyle(column)} />
+      ))}
+    </colgroup>
+  );
+
+  const sharedTableClass = cn(
+    'w-full caption-bottom border-separate border-spacing-0 text-sm table-fixed',
+    TABLE_OUTER_BORDER,
+    className,
+  );
 
   return (
-    <div
-      ref={scrollRef}
-      className={cn(
-        // Fixed viewport: sticky header + body scroll (x/y). Pagination sits outside.
-        'custom-scrollbar relative min-h-[16rem] min-w-0 w-full max-w-full overflow-auto overscroll-contain',
-        'max-h-[min(62vh,34rem)] sm:max-h-[min(70vh,44rem)]',
-        '[&[data-drag-scrolling=true]]:cursor-grabbing',
-        '[&[data-drag-scrolling=true]_thead]:cursor-grabbing',
-      )}
-    >
-      <table
+    <div className="min-w-0">
+      {/*
+        Sticky to dashboard page scroll (under app header h-14 / sm:h-16).
+        Meta + column headers pin together. No fixed table height.
+      */}
+      <div
         className={cn(
-          'w-full caption-bottom border-separate border-spacing-0 text-sm',
-          'table-fixed',
-          TABLE_OUTER_BORDER,
-          className,
+          'sticky z-30 border-b border-border/70 bg-card shadow-sm',
+          'top-14 sm:top-16',
         )}
-        style={
-          minTableWidth
-            ? { minWidth: typeof minTableWidth === 'number' ? `${minTableWidth}px` : minTableWidth }
-            : { width: '100%' }
-        }
       >
-        <thead className="sticky top-0 z-30 cursor-grab select-none bg-card shadow-sm [&_*]:select-none">
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id} className="hover:bg-transparent">
-              {headerGroup.headers.map((header) => {
-                const meta = getColumnMeta(header);
-                const pinned = header.column.getIsPinned();
-                return (
-                  <th
-                    key={header.id}
-                    colSpan={header.colSpan}
-                    className={cn(
-                      'h-10 bg-card px-3 py-2.5 text-left align-middle text-[11px] font-semibold tracking-wide text-muted-foreground uppercase',
-                      TABLE_CELL_BORDER,
-                      meta.headerClassName,
-                      getPinningClassName(header.column),
-                      pinned && 'z-40',
-                    )}
-                    style={{
-                      width: header.column.getSize(),
-                      ...getPinningStyles(header.column),
-                    }}
-                  >
-                    {header.isPlaceholder || header.column.id === '__expand' ? null : (
-                      <CrmDataTableColumnHeader header={header} />
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          ))}
-        </thead>
-        <tbody className="select-text">
-          {table.getRowModel().rows.map((row) => (
-            <DesktopRow
-              key={row.id}
-              row={row}
-              table={table}
-              cellPadding={cellPadding}
-              showExpand={showExpand}
-              hiddenOnTablet={hiddenOnTablet}
-              expanded={expandedRows?.[row.id] ?? false}
-              onToggleExpanded={onToggleExpanded}
-            />
-          ))}
-        </tbody>
-      </table>
+        {stickyTopSlot}
+
+        <div
+          ref={headerScrollRef}
+          onScroll={() => syncScroll('header')}
+          className={cn(
+            'custom-scrollbar overflow-x-auto overflow-y-hidden overscroll-x-contain',
+            HIDE_SCROLLBAR,
+            'cursor-grab [&[data-drag-scrolling=true]]:cursor-grabbing',
+          )}
+        >
+          <table className={sharedTableClass} style={tableStyle}>
+            {colgroup}
+            <thead className="select-none [&_*]:select-none">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id} className="hover:bg-transparent">
+                  {headerGroup.headers.map((header) => {
+                    const meta = getColumnMeta(header);
+                    const pinned = header.column.getIsPinned();
+                    return (
+                      <th
+                        key={header.id}
+                        colSpan={header.colSpan}
+                        className={cn(
+                          'h-10 bg-card px-3 py-2.5 text-left align-middle text-[11px] font-semibold tracking-wide text-muted-foreground uppercase',
+                          TABLE_CELL_BORDER,
+                          meta.headerClassName,
+                          getPinningClassName(header.column),
+                          pinned && 'z-40',
+                        )}
+                        style={{
+                          ...getColumnSizeStyle(header.column),
+                          ...getPinningStyles(header.column),
+                        }}
+                      >
+                        {header.isPlaceholder || header.column.id === '__expand' ? null : (
+                          <CrmDataTableColumnHeader header={header} />
+                        )}
+                      </th>
+                    );
+                  })}
+                </tr>
+              ))}
+            </thead>
+          </table>
+        </div>
+      </div>
+
+      {/* Natural height body — page scrolls vertically. Only horizontal overflow. */}
+      <div
+        ref={bodyScrollRef}
+        onScroll={() => syncScroll('body')}
+        className="custom-scrollbar min-w-0 overflow-x-auto overscroll-x-contain"
+      >
+        <table className={sharedTableClass} style={tableStyle}>
+          {colgroup}
+          <tbody className="select-text">
+            {table.getRowModel().rows.map((row) => (
+              <DesktopRow
+                key={row.id}
+                row={row}
+                table={table}
+                cellPadding={cellPadding}
+                showExpand={showExpand}
+                hiddenOnTablet={hiddenOnTablet}
+                expanded={expandedRows?.[row.id] ?? false}
+                onToggleExpanded={onToggleExpanded}
+                rowClassName={getRowClassName?.(row.original)}
+                rowTitle={getRowTitle?.(row.original)}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -125,6 +219,8 @@ function DesktopRow<T>({
   hiddenOnTablet,
   expanded,
   onToggleExpanded,
+  rowClassName,
+  rowTitle,
 }: {
   row: Row<T>;
   table: TanStackTable<T>;
@@ -133,6 +229,8 @@ function DesktopRow<T>({
   hiddenOnTablet: string[];
   expanded: boolean;
   onToggleExpanded?: (rowId: string) => void;
+  rowClassName?: string;
+  rowTitle?: string;
 }) {
   const isSelected = row.getIsSelected();
   const colSpan = table.getVisibleLeafColumns().length;
@@ -141,11 +239,13 @@ function DesktopRow<T>({
     <>
       <tr
         data-state={isSelected ? 'selected' : undefined}
+        title={rowTitle}
         className={cn(
           'transition-colors',
           'hover:bg-muted/30 data-[state=selected]:bg-primary/5 data-[state=selected]:hover:bg-primary/8',
           'group border-l-2 border-l-transparent hover:border-l-primary',
           isSelected && 'border-l-primary',
+          rowClassName,
         )}
       >
         {row.getVisibleCells().map((cell) => (
@@ -190,7 +290,7 @@ function DataCell<T>({
     return (
       <td
         className={cn(cellPadding, 'w-10 bg-card', TABLE_CELL_BORDER)}
-        style={{ width: cell.column.getSize(), ...getPinningStyles(cell.column) }}
+        style={{ ...getColumnSizeStyle(cell.column), ...getPinningStyles(cell.column) }}
       >
         {showExpand ? (
           <Button
@@ -223,7 +323,7 @@ function DataCell<T>({
         pinned && 'z-20',
       )}
       style={{
-        width: cell.column.getSize(),
+        ...getColumnSizeStyle(cell.column),
         ...getPinningStyles(cell.column),
       }}
     >

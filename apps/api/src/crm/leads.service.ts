@@ -193,7 +193,7 @@ export class LeadsService {
     await this.ensureDemoLeads(organizationId);
 
     const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
+    const pageSize = Math.min(1000, Math.max(1, query.pageSize ?? 20));
     const where: Prisma.LeadWhereInput = { organizationId };
     const and: Prisma.LeadWhereInput[] = [];
 

@@ -25,6 +25,7 @@ import { MoneySummaryPanel } from '@/features/orders/components/shared/money-sum
 import { OrderActionBar } from '@/features/orders/components/shared/order-action-bar';
 import { OrderAssignSheet } from '@/features/orders/components/shared/order-assign-sheet';
 import { OrderDetailSidebarMeta } from '@/features/orders/components/shared/order-detail-header';
+import { OrderFollowUpControl } from '@/features/orders/components/shared/order-follow-up-control';
 import { FulfillmentWarehouseSelect } from '@/features/orders/components/shared/fulfillment-warehouse-select';
 import { OrderRelatedLinks } from '@/features/orders/components/shared/order-related-links';
 import { OrderReturnItemsButton } from '@/features/orders/components/shared/order-line-items-card';
@@ -52,7 +53,9 @@ const COURIER_TRACKING_STATUSES = new Set([
 export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail }) {
   const [order, setOrder] = React.useState(initialOrder);
   const [courierTracking, setCourierTracking] = React.useState<OrderCourierTracking | null>(null);
-  const [printType, setPrintType] = React.useState<'invoice' | 'packing' | null>(null);
+  const [printType, setPrintType] = React.useState<'invoice' | 'packing' | 'barcode' | null>(
+    null,
+  );
   const [assignOpen, setAssignOpen] = React.useState(false);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -358,6 +361,18 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
             >
               <OrderDetailSidebarMeta order={order} className="w-full" />
 
+              <OrderFollowUpControl
+                variant="panel"
+                orderId={order.id}
+                orderNumber={order.orderNumber}
+                followUpDueAt={order.followUpDueAt}
+                followUpSetAt={order.followUpSetAt}
+                className="w-full"
+                onSaved={() => {
+                  void refreshOrder();
+                }}
+              />
+
               <MoneySummaryPanel
                 mode="edit"
                 form={form}
@@ -425,8 +440,12 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         open={assignOpen}
         onOpenChange={setAssignOpen}
         currentAgentName={order.assignedAgentName}
-        onAssign={async (employeeName) => {
-          const updated = await updateOrder(order.id, { assignedAgentName: employeeName });
+        currentAgentUserId={order.assignedUserId}
+        onAssign={async ({ employeeName, employeeUserId }) => {
+          const updated = await updateOrder(order.id, {
+            assignedAgentName: employeeName,
+            assignedUserId: employeeUserId,
+          });
           applyOrderUpdate(updated);
         }}
       />

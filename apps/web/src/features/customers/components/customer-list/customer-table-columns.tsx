@@ -3,23 +3,20 @@
 import Link from 'next/link';
 import type { CustomerListItem, CustomerSegmentCount, CustomerStatus } from '@laam/types';
 import {
-  CalendarClock,
-  MessageCircle,
   MessageSquare,
   MessageSquarePlus,
-  Phone,
   ShoppingBag,
   Tag,
 } from 'lucide-react';
 
 import type { CrmColumnDef } from '@/components/data-table';
 import {
-  DataTableCopyableText,
   DataTableDateTime,
   DataTableEmptyValue,
   DataTablePersonCell,
   TruncatedText,
 } from '@/components/data-table/cells';
+import { FormPhoneInput } from '@/components/form/form-phone-input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DataTableCourierStats } from '@/components/data-table/cells';
@@ -29,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { CustomerFollowUpControl } from '@/features/customers/components/shared/customer-follow-up-control';
 import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
 import { formatDate, formatDateTime } from '@/lib/format';
 
@@ -47,12 +45,12 @@ export function formatCustomerDateTime(value: string) {
 
 export function buildCustomerTableColumns(options?: {
   onNoteClick?: (row: CustomerListItem) => void;
-  onFollowUpClick?: (row: CustomerListItem) => void;
+  onFollowUpSaved?: (row: CustomerListItem, followUpDue: string) => void;
   statusOptions?: CustomerSegmentCount[];
   onStatusChange?: (row: CustomerListItem, status: CustomerStatus) => void | Promise<void>;
 }): CrmColumnDef<CustomerListItem>[] {
   const onNoteClick = options?.onNoteClick;
-  const onFollowUpClick = options?.onFollowUpClick;
+  const onFollowUpSaved = options?.onFollowUpSaved;
   const statusOptions = options?.statusOptions ?? [];
   const onStatusChange = options?.onStatusChange;
 
@@ -121,38 +119,31 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'customer',
       header: 'Name & Number',
-      size: 200,
+      size: 280,
+      minSize: 260,
       meta: { label: 'Customer', priority: 'primary', align: 'top' },
-      cell: ({ row }) => {
-        const phoneDigits = row.original.phone.replace(/\D/g, '');
-        return (
-          <div className="space-y-1.5">
-            <DataTablePersonCell
-              name={row.original.name}
-              phone={`Join: ${formatCustomerDate(row.original.createdAt)}`}
-            />
-            <div className="flex flex-wrap items-center gap-1">
-              <Button type="button" size="sm" variant="outline" className="h-6 px-1.5" asChild>
-                <a href={`tel:${phoneDigits}`}>
-                  <Phone className="size-3" />
-                </a>
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-6 px-1.5"
-                onClick={() => {
-                  window.open(`https://wa.me/${phoneDigits}`, '_blank', 'noopener,noreferrer');
-                }}
-              >
-                <MessageCircle className="size-3" />
-              </Button>
-              <DataTableCopyableText value={row.original.phone} className="text-xs" />
+      cell: ({ row }) => (
+        <DataTablePersonCell
+          compact
+          className="w-max max-w-full"
+          name={row.original.name}
+          sourceLabel={`Join ${formatCustomerDate(row.original.createdAt)}`}
+          phoneSlot={
+            <div className="flex max-w-full items-center gap-0.5">
+              <FormPhoneInput
+                value={row.original.phone}
+                readOnly
+                layout="inline"
+                showCopy
+                showSms
+                showCall
+                showWhatsapp
+                className="pointer-events-auto h-8"
+              />
             </div>
-          </div>
-        );
-      },
+          }
+        />
+      ),
     },
     {
       id: 'orders',
@@ -187,7 +178,7 @@ export function buildCustomerTableColumns(options?: {
         label: 'Success Rate',
         priority: 'primary',
         align: 'middle',
-        headerClassName: 'text-center',
+        headerClassName: '',
       },
       cell: ({ row }) => {
         const score = row.original.courierScore;
@@ -295,19 +286,26 @@ export function buildCustomerTableColumns(options?: {
     {
       id: 'followup',
       header: 'Follow-up',
-      size: 88,
+      size: 100,
       meta: { label: 'Follow-up', priority: 'secondary', align: 'middle' },
       cell: ({ row }) => (
-        <Button
-          type="button"
-          size="sm"
-          variant={row.original.hasFollowUp ? 'secondary' : 'outline'}
-          className="h-7 px-2 text-xs"
-          onClick={() => onFollowUpClick?.(row.original)}
-        >
-          <CalendarClock className="size-3" />
-          {row.original.hasFollowUp ? 'Due' : 'Set'}
-        </Button>
+        <div className="flex min-w-0 flex-col items-start gap-1">
+          {row.original.followUpDue ? (
+            <span className="text-[10px] tabular-nums text-muted-foreground">
+              {formatCustomerDate(row.original.followUpDue)}
+            </span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">—</span>
+          )}
+          <CustomerFollowUpControl
+            customerId={row.original.id}
+            customerName={row.original.name}
+            followUpDue={row.original.followUpDue}
+            hasFollowUp={row.original.hasFollowUp}
+            assignedAgentName={row.original.assignedAgentName}
+            onSaved={(due) => onFollowUpSaved?.(row.original, due)}
+          />
+        </div>
       ),
     },
     {

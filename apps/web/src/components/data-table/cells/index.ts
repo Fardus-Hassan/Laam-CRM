@@ -7,5 +7,10 @@ export {
 } from '@/components/data-table/cells/money-cells';
 export { DataTableProductList } from '@/components/data-table/cells/product-cells';
 export { DataTableCourierStats } from '@/components/data-table/cells/courier-cells';
-export { DataTableDateTime, DataTablePersonCell } from '@/components/data-table/cells/person-cells';
+export {
+  DataTableDateTime,
+  DataTableEmployeeCell,
+  DataTablePersonCell,
+  parseAgentDisplayLabel,
+} from '@/components/data-table/cells/person-cells';
 export { DataTableCopyableText } from '@/components/data-table/cells/copyable-cell';

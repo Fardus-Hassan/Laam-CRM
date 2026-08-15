@@ -7,7 +7,7 @@ import type {
   UpdateFollowupPayload,
 } from '@laam/types';
 
-import { getMockCustomerById } from '@/features/customers/data/mock-customers';
+import { getMockCustomerById, updateMockCustomer } from '@/features/customers/data/mock-customers';
 import {
   bulkUpdateMockFollowups,
   createMockFollowupForCustomer,
@@ -49,7 +49,7 @@ export function createMockFollowupsApi(): FollowupsApi {
       await delay(120);
       const customer = getMockCustomerById(payload.customerId);
       if (!customer) throw new Error('Customer not found');
-      return createMockFollowupForCustomer({
+      const created = createMockFollowupForCustomer({
         customerId: customer.id,
         customerNumber: customer.customerNumber,
         name: customer.name,
@@ -58,7 +58,17 @@ export function createMockFollowupsApi(): FollowupsApi {
         district: customer.district,
         agentName: payload.assignedAgentName ?? customer.assignedAgentName,
         note: payload.note,
+        scheduleDate: payload.scheduleDate,
       });
+      if (payload.scheduleDate) {
+        updateMockCustomer(customer.id, {
+          hasFollowUp: true,
+          followUpDue: payload.scheduleDate,
+        });
+      } else {
+        updateMockCustomer(customer.id, { hasFollowUp: true });
+      }
+      return created;
     },
     async updateFollowup(id, patch) {
       await delay(100);

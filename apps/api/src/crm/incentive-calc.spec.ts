@@ -1,4 +1,11 @@
-import { matchIncentiveSlab, evaluateMiss, resolveIncentiveWarning, nextHrStatus } from './incentive-calc';
+import {
+  matchIncentiveSlab,
+  evaluateMiss,
+  resolveIncentiveWarning,
+  nextHrStatus,
+  applyReturnRatioCap,
+  countRecoveries,
+} from './incentive-calc';
 
 describe('matchIncentiveSlab', () => {
   const orderSlabs = [
@@ -108,5 +115,101 @@ describe('evaluateMiss / resolveIncentiveWarning', () => {
       hrStatus: 'active',
       consecutiveMissMonths: 0,
     });
+  });
+
+  it('flags above_return_cap when returnCapped', () => {
+    expect(
+      resolveIncentiveWarning({
+        direction: 'higher',
+        actual: 300,
+        slabs: orderSlabs,
+        consecutiveMissMonths: 0,
+        returnCapped: true,
+      }),
+    ).toBe('above_return_cap');
+  });
+});
+
+describe('applyReturnRatioCap', () => {
+  it('zeros incentive when personal return exceeds plan max', () => {
+    expect(
+      applyReturnRatioCap({
+        incentiveBdt: 7000,
+        returnRatioPct: 16,
+        maxAgentReturnRatioPct: 15,
+      }),
+    ).toEqual({ incentiveBdt: 0, capped: true });
+  });
+
+  it('keeps incentive at or under the cap', () => {
+    expect(
+      applyReturnRatioCap({
+        incentiveBdt: 7000,
+        returnRatioPct: 15,
+        maxAgentReturnRatioPct: 15,
+      }),
+    ).toEqual({ incentiveBdt: 7000, capped: false });
+  });
+
+  it('no-ops when max is unset', () => {
+    expect(
+      applyReturnRatioCap({
+        incentiveBdt: 3000,
+        returnRatioPct: 40,
+        maxAgentReturnRatioPct: null,
+      }),
+    ).toEqual({ incentiveBdt: 3000, capped: false });
+  });
+});
+
+describe('countRecoveries', () => {
+  const periodStart = new Date('2026-08-01T00:00:00.000Z');
+  const periodEnd = new Date('2026-08-31T23:59:59.999Z');
+
+  it('counts incomplete → success within the period', () => {
+    const n = countRecoveries({
+      orderIds: ['o1', 'o2'],
+      activities: [
+        {
+          orderId: 'o1',
+          description: 'incomplete',
+          createdAt: new Date('2026-08-05T10:00:00.000Z'),
+        },
+        {
+          orderId: 'o1',
+          description: 'delivered',
+          createdAt: new Date('2026-08-12T10:00:00.000Z'),
+        },
+        {
+          orderId: 'o2',
+          description: 'pending',
+          createdAt: new Date('2026-08-03T10:00:00.000Z'),
+        },
+      ],
+      successStatuses: ['delivered', 'completed'],
+      recoveryFromStatuses: ['incomplete', 'hold', 'pending'],
+      periodStart,
+      periodEnd,
+    });
+    expect(n).toBe(1);
+  });
+
+  it('counts tag-based recovery without prior incomplete activity', () => {
+    const n = countRecoveries({
+      orderIds: ['o3'],
+      activities: [
+        {
+          orderId: 'o3',
+          description: 'delivered',
+          createdAt: new Date('2026-08-20T10:00:00.000Z'),
+        },
+      ],
+      successStatuses: ['delivered'],
+      recoveryFromStatuses: ['incomplete'],
+      periodStart,
+      periodEnd,
+      orderTagsById: new Map([['o3', 'recovery']]),
+    });
+    expect(n).toBe(1);
   });
 });

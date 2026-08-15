@@ -291,7 +291,9 @@ export function LeadDetailView({ lead: initialLead, onLeadUpdated }: LeadDetailV
       <OrderAssignSheet
         open={assignOpen}
         onOpenChange={setAssignOpen}
-        onAssign={assignAgent}
+        onAssign={async ({ employeeName }) => {
+          await assignAgent(employeeName);
+        }}
       />
 
       <LeadStatusDialog

@@ -501,8 +501,17 @@ export function buildPrintDocumentHtml({
   primaryColor,
 }: {
   order: OrderDetail;
-  type: 'invoice' | 'packing';
+  type: Extract<OrderPrintType, 'invoice' | 'packing' | 'barcode'>;
 } & BrandPrintOpts) {
+  if (type === 'barcode') {
+    return buildBulkPrintDocumentHtml({
+      orders: [order],
+      type: 'barcode',
+      brandName,
+      logoUrl,
+      primaryColor,
+    });
+  }
   const sheet = buildInvoiceOrPackingSheet(order, type, { brandName, logoUrl, primaryColor });
   return wrapPrintDocument(`${brandName} — ${order.orderNumber}`, primaryColor, sheet);
 }

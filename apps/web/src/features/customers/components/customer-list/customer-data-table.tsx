@@ -23,7 +23,7 @@ type CustomerDataTableProps = {
   onPageSizeChange?: (size: number) => void;
   showPagination?: boolean;
   onNoteClick?: (row: CustomerListItem) => void;
-  onFollowUpClick?: (row: CustomerListItem) => void;
+  onFollowUpSaved?: (row: CustomerListItem, followUpDue: string) => void;
   statusOptions?: CustomerSegmentCount[];
   onStatusChange?: (row: CustomerListItem, status: CustomerStatus) => void | Promise<void>;
 };
@@ -41,7 +41,7 @@ export function CustomerDataTable({
   onPageSizeChange,
   showPagination,
   onNoteClick,
-  onFollowUpClick,
+  onFollowUpSaved,
   statusOptions = [],
   onStatusChange,
 }: CustomerDataTableProps) {
@@ -49,11 +49,11 @@ export function CustomerDataTable({
     () =>
       buildCustomerTableColumns({
         onNoteClick,
-        onFollowUpClick,
+        onFollowUpSaved,
         statusOptions,
         onStatusChange,
       }),
-    [onNoteClick, onFollowUpClick, statusOptions, onStatusChange],
+    [onNoteClick, onFollowUpSaved, statusOptions, onStatusChange],
   );
 
   const mobileCard = React.useCallback(
@@ -62,12 +62,12 @@ export function CustomerDataTable({
         row={row}
         ctx={ctx}
         onNoteClick={onNoteClick}
-        onFollowUpClick={onFollowUpClick}
+        onFollowUpSaved={onFollowUpSaved}
         statusOptions={statusOptions}
         onStatusChange={onStatusChange}
       />
     ),
-    [onNoteClick, onFollowUpClick, statusOptions, onStatusChange],
+    [onNoteClick, onFollowUpSaved, statusOptions, onStatusChange],
   );
 
   const selectionState = React.useMemo(

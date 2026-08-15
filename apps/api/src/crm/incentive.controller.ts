@@ -43,7 +43,9 @@ import {
   RequirePermissions,
   type AuthUserPayload,
 } from '../common/decorators';
-import { IncentiveService } from './incentive.service';
+import { hasPermission } from '../common/effective-permissions';
+import { PermissionResolverService } from '../common/permission-resolver.service';
+import { IncentiveService, type IncentiveViewer } from './incentive.service';
 
 const METRIC_TYPES = [
   'order_count',
@@ -533,14 +535,29 @@ class SpecialBonusDto {
 @ApiTags('CRM — Incentive')
 @Controller('crm/incentive')
 export class IncentiveController {
-  constructor(private readonly incentive: IncentiveService) {}
+  constructor(
+    private readonly incentive: IncentiveService,
+    private readonly permissions: PermissionResolverService,
+  ) {}
+
+  private async viewer(user: AuthUserPayload): Promise<IncentiveViewer> {
+    const perms = await this.permissions.resolveForUserId(user.userId);
+    return {
+      userId: user.userId,
+      name: user.name,
+      systemRole: user.systemRole,
+      manage: hasPermission(perms, 'incentive.manage'),
+    };
+  }
 
   @Get('overview')
   @RequirePermissions('incentive.view')
   @ApiOperation({ summary: 'Incentive hub overview' })
   overview(@CurrentUser() user: AuthUserPayload) {
     this.incentive.requireOrg(user.organizationId);
-    return this.incentive.overview(user.organizationId!);
+    return this.viewer(user).then((viewer) =>
+      this.incentive.overview(user.organizationId!, viewer),
+    );
   }
 
   @Get('performance')
@@ -555,7 +572,37 @@ export class IncentiveController {
     const ym =
       yearMonth?.trim() ||
       `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    return this.incentive.performance(user.organizationId!, ym);
+    return this.viewer(user).then((viewer) =>
+      this.incentive.performance(user.organizationId!, ym, viewer),
+    );
+  }
+
+  @Get('my-summary')
+  @RequirePermissions('incentive.view', 'dashboard.view')
+  @ApiOperation({ summary: 'Signed-in agent incentive summary (dashboard)' })
+  mySummary(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('yearMonth') yearMonth?: string,
+  ) {
+    this.incentive.requireOrg(user.organizationId);
+    return this.incentive.mySummary(
+      user.organizationId!,
+      { userId: user.userId, name: user.name },
+      yearMonth,
+    );
+  }
+
+  @Get('periods/:yearMonth/export')
+  @RequirePermissions('incentive.manage')
+  @ApiOperation({
+    summary: 'Payroll-ready CSV for an approved/paid incentive period',
+  })
+  exportPayroll(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('yearMonth') yearMonth: string,
+  ) {
+    this.incentive.requireOrg(user.organizationId);
+    return this.incentive.exportPayrollCsv(user.organizationId!, yearMonth);
   }
 
   @Get('ops')
@@ -572,7 +619,9 @@ export class IncentiveController {
     const ym =
       yearMonth?.trim() ||
       `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    return this.incentive.getOps(user.organizationId!, ym);
+    return this.viewer(user).then((viewer) =>
+      this.incentive.getOps(user.organizationId!, ym, viewer),
+    );
   }
 
   @Put('attendance')
@@ -661,7 +710,9 @@ export class IncentiveController {
   @ApiOperation({ summary: 'List generated incentive periods' })
   listPeriods(@CurrentUser() user: AuthUserPayload) {
     this.incentive.requireOrg(user.organizationId);
-    return this.incentive.listPeriods(user.organizationId!);
+    return this.viewer(user).then((viewer) =>
+      this.incentive.listPeriods(user.organizationId!, viewer),
+    );
   }
 
   @Get('periods/:yearMonth')
@@ -672,7 +723,9 @@ export class IncentiveController {
     @Param('yearMonth') yearMonth: string,
   ) {
     this.incentive.requireOrg(user.organizationId);
-    return this.incentive.getPeriod(user.organizationId!, yearMonth);
+    return this.viewer(user).then((viewer) =>
+      this.incentive.getPeriod(user.organizationId!, yearMonth, viewer),
+    );
   }
 
   @Post('periods/:yearMonth/generate')
@@ -814,7 +867,9 @@ export class IncentiveController {
   @RequirePermissions('incentive.view')
   listAssignments(@CurrentUser() user: AuthUserPayload) {
     this.incentive.requireOrg(user.organizationId);
-    return this.incentive.listAssignments(user.organizationId!);
+    return this.viewer(user).then((viewer) =>
+      this.incentive.listAssignments(user.organizationId!, viewer),
+    );
   }
 
   @Post('assignments')

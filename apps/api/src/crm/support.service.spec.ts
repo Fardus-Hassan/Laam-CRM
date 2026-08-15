@@ -19,6 +19,12 @@ function createPrismaMock() {
   };
 }
 
+function createNotificationsMock() {
+  return {
+    notifySafe: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 const orgId = 'org-1';
 const actor = { userId: 'u1', name: 'E2E Org Admin' };
 
@@ -52,20 +58,25 @@ function sampleRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createService(prisma: ReturnType<typeof createPrismaMock>) {
+  return new SupportService(prisma as never, createNotificationsMock() as never);
+}
+
 describe('SupportService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('requireOrg throws without organization', () => {
-    const service = new SupportService({} as never);
+    const service = createService(createPrismaMock());
     expect(() => service.requireOrg(null)).toThrow(BadRequestException);
   });
 
   it('creates a ticket with first agent message', async () => {
     const prisma = createPrismaMock();
     prisma.supportTicket.create.mockResolvedValue(sampleRow());
-    const service = new SupportService(prisma as never);
+    const notifications = createNotificationsMock();
+    const service = new SupportService(prisma as never, notifications as never);
 
     const result = await service.create(
       orgId,
@@ -92,6 +103,13 @@ describe('SupportService', () => {
     );
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]!.authorRole).toBe('agent');
+    expect(notifications.notifySafe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: orgId,
+        type: 'ticket',
+        title: expect.stringContaining('Wrong product'),
+      }),
+    );
   });
 
   it('lists with summary counts', async () => {
@@ -104,7 +122,7 @@ describe('SupportService', () => {
         { status: 'pending', priority: 'urgent' },
         { status: 'resolved', priority: 'low' },
       ]);
-    const service = new SupportService(prisma as never);
+    const service = createService(prisma);
 
     const result = await service.list(orgId, { page: 1, pageSize: 20 });
     expect(result.items).toHaveLength(1);
@@ -132,7 +150,7 @@ describe('SupportService', () => {
         ],
       }),
     );
-    const service = new SupportService(prisma as never);
+    const service = createService(prisma);
 
     const result = await service.reply(orgId, 'tk-1', 'We will replace today', actor);
     expect(prisma.supportTicket.update).toHaveBeenCalledWith(
@@ -145,7 +163,7 @@ describe('SupportService', () => {
 
   it('updateStatus throws when missing', async () => {
     const prisma = createPrismaMock();
-    const service = new SupportService(prisma as never);
+    const service = createService(prisma);
     await expect(
       service.updateStatus(orgId, 'missing', 'closed', actor),
     ).rejects.toBeInstanceOf(NotFoundException);

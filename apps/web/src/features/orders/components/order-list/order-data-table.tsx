@@ -28,6 +28,7 @@ type OrderDataTableProps = {
   search?: string;
   onSearchChange?: (value: string) => void;
   onNoteClick?: (row: OrderListRow) => void;
+  onFollowUpSaved?: (orderId: string, followUpDueAt: string) => void;
 };
 
 export function OrderDataTable({
@@ -48,17 +49,23 @@ export function OrderDataTable({
   search,
   onSearchChange,
   onNoteClick,
+  onFollowUpSaved,
 }: OrderDataTableProps) {
   const columns = React.useMemo(
-    () => buildOrderTableColumns({ onNoteClick }),
-    [onNoteClick],
+    () => buildOrderTableColumns({ onNoteClick, onFollowUpSaved }),
+    [onNoteClick, onFollowUpSaved],
   );
 
   const mobileCard = React.useCallback(
     (row: OrderListRow, ctx: Parameters<typeof OrderTableMobileCard>[0]['ctx']) => (
-      <OrderTableMobileCard row={row} ctx={ctx} onNoteClick={onNoteClick} />
+      <OrderTableMobileCard
+        row={row}
+        ctx={ctx}
+        onNoteClick={onNoteClick}
+        onFollowUpSaved={onFollowUpSaved}
+      />
     ),
-    [onNoteClick],
+    [onNoteClick, onFollowUpSaved],
   );
 
   const selectionState = React.useMemo(
@@ -92,6 +99,25 @@ export function OrderDataTable({
       search={search}
       onSearchChange={onSearchChange}
       searchPlaceholder="Search orders…"
+      getRowClassName={(row) =>
+        row.courierSubmitFailed
+          ? [
+              'courier-submit-failed',
+              'border-l-[3px] !border-l-[var(--brand-accent,#E8B931)]',
+              'bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_14%,transparent)]',
+              '[&_td]:!bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_14%,var(--card))]',
+              'hover:[&_td]:!bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_22%,var(--card))]',
+              'data-[state=selected]:[&_td]:!bg-[color-mix(in_oklab,var(--brand-accent,#E8B931)_18%,var(--card))]',
+            ].join(' ')
+          : undefined
+      }
+      getRowTitle={(row) =>
+        row.courierSubmitFailed
+          ? row.courierSubmitError
+            ? `Courier submit failed: ${row.courierSubmitError}`
+            : 'Courier submit failed'
+          : undefined
+      }
       headerSlot={() => (
         <div className="border-b border-border px-4 py-2.5">
           <h3 className="text-sm font-semibold">Orders</h3>

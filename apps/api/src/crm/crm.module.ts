@@ -79,6 +79,8 @@ import { WebsiteIntegrationsService } from './website-integrations.service';
 import { WebsiteOrdersIngestService } from './website-orders-ingest.service';
 import { IncentiveController } from './incentive.controller';
 import { IncentiveService } from './incentive.service';
+import { SecurityBlocksController } from './security-blocks.controller';
+import { SecurityBlocksService } from './security-blocks.service';
 
 @Module({
   imports: [AuthModule],
@@ -101,6 +103,7 @@ import { IncentiveService } from './incentive.service';
     SmsSettingsController,
     WebsiteIntegrationsController,
     WebsiteOrdersIngestController,
+    SecurityBlocksController,
     CouponsController,
     FollowupsController,
     RbacController,
@@ -152,6 +155,7 @@ import { IncentiveService } from './incentive.service';
     SmsService,
     WebsiteIntegrationsService,
     WebsiteOrdersIngestService,
+    SecurityBlocksService,
     OrderPaymentsService,
     FailedOrdersService,
     CouponsService,

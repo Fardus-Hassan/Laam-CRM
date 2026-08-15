@@ -1182,6 +1182,7 @@ export function MixerListShell() {
   const [runsTotal, setRunsTotal] = React.useState(0);
   const [runsPage, setRunsPage] = React.useState(1);
   const [runsPageSize, setRunsPageSize] = React.useState(INV_LIST_DEFAULT_PAGE_SIZE);
+  const [voidingId, setVoidingId] = React.useState<string | null>(null);
   const [products, setProducts] = React.useState<InventoryProductListItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [guideRecipe, setGuideRecipe] = React.useState<MixerRecipeListItem | null>(null);
@@ -1385,6 +1386,28 @@ export function MixerListShell() {
     }
   }
 
+  async function voidBatch(run: ProductionBatchResult) {
+    if (run.voidedAt) return;
+    const ok = await confirm({
+      title: `Void batch ${run.batchNumber}?`,
+      description:
+        'This reverses finished-goods stock and restores raw materials. Cannot be undone twice — only void if the batch was a mistake and finished stock is still available.',
+      confirmLabel: 'Void batch',
+      destructive: true,
+    });
+    if (!ok) return;
+    setVoidingId(run.id);
+    try {
+      await inventoryApi.voidProduction(run.id);
+      toast.success(`Voided ${run.batchNumber}`);
+      loadRuns(runsPage, runsPageSize);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not void batch');
+    } finally {
+      setVoidingId(null);
+    }
+  }
+
   function applyRecipe(recipe: MixerRecipeListItem) {
     setGuideRecipe(recipe);
     setGuideNonce((n) => n + 1);
@@ -1527,7 +1550,12 @@ export function MixerListShell() {
         </div>
 
         <div className="space-y-2">
-          <ProductionLedger runs={runs} total={runsTotal} />
+          <ProductionLedger
+            runs={runs}
+            total={runsTotal}
+            onVoid={(run) => void voidBatch(run)}
+            voidingId={voidingId}
+          />
           {runsTotal > 0 ? (
             <CrmDataTablePagination
               page={runsPage}

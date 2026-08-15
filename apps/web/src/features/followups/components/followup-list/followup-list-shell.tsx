@@ -219,7 +219,7 @@ export function FollowupListShell() {
           onClearAll={handleClearFilters}
         />
 
-        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-hidden')}>
+        <Card className={cn(ORDER_CARD_CLASS, 'min-w-0 overflow-visible')}>
           <FollowupSelectionBar
             selectedCount={selectedIds.size}
             selectedFollowupIds={[...selectedIds]}

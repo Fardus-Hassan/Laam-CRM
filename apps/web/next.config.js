@@ -13,6 +13,7 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333/api',
     NEXT_PUBLIC_USE_API: process.env.NEXT_PUBLIC_USE_API ?? 'true',
     NEXT_PUBLIC_ENABLE_ROLE_SWITCH: process.env.NEXT_PUBLIC_ENABLE_ROLE_SWITCH ?? 'false',
+    NEXT_PUBLIC_PLATFORM_DOMAIN: process.env.NEXT_PUBLIC_PLATFORM_DOMAIN ?? '',
   },
   async rewrites() {
     const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333/api').replace(
