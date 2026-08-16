@@ -4,6 +4,7 @@ import type {
   BlockedListResponse,
   CreateBlockedEntryPayload,
 } from '@laam/types';
+import { newBrowserId } from '@/lib/device-id';
 
 const MOCK_TODAY = new Date('2026-07-02');
 
@@ -70,7 +71,7 @@ export function createBlockedEntry(payload: CreateBlockedEntryPayload): BlockedE
     : undefined;
 
   const entry: BlockedEntry = {
-    id: `blk-${crypto.randomUUID().slice(0, 8)}`,
+    id: `blk-${newBrowserId().slice(0, 8)}`,
     type: payload.type,
     value: payload.value,
     reason: payload.reason,

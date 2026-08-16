@@ -1,4 +1,5 @@
 import type { Coupon, CreateCouponPayload } from '@laam/types';
+import { newBrowserId } from '@/lib/device-id';
 
 let coupons: Coupon[] = [
   { id: 'cp-1', code: 'RAMADAN10', type: 'percent', value: 10, minOrderBdt: 1000, maxDiscountBdt: 500, usageCount: 48, usageLimit: 200, expiresAt: '2026-08-01', isActive: true, description: 'Ramadan special 10% off' },
@@ -13,7 +14,7 @@ export function listCoupons(): Coupon[] {
 
 export function createCoupon(payload: CreateCouponPayload): Coupon {
   const coupon: Coupon = {
-    id: `cp-${crypto.randomUUID().slice(0, 8)}`,
+    id: `cp-${newBrowserId().slice(0, 8)}`,
     code: payload.code.toUpperCase(),
     type: payload.type,
     value: payload.value,

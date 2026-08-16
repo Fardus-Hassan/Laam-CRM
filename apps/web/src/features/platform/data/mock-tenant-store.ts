@@ -20,6 +20,7 @@ import {
 } from '@laam/types';
 
 import { MOCK_ORGANIZATION } from '@/features/auth/mocks/mock-organization';
+import { newBrowserId } from '@/lib/device-id';
 
 export const PERMISSION_PRESETS: PermissionPreset[] = [
   {
@@ -142,7 +143,7 @@ function buildDefaultRoles(organizationId: string): {
 } {
   const presetRoleIds: Record<string, string> = {};
   const roles = PERMISSION_PRESETS.map((preset) => {
-    const id = crypto.randomUUID();
+    const id = newBrowserId();
     presetRoleIds[preset.id] = id;
 
     return {
@@ -382,8 +383,8 @@ export function getTenantOwner(tenantId: string): TenantUser | undefined {
 }
 
 export function createTenant(input: CreateTenantRequest): Tenant {
-  const organizationId = crypto.randomUUID();
-  const ownerUserId = crypto.randomUUID();
+  const organizationId = newBrowserId();
+  const ownerUserId = newBrowserId();
   const { roles, presetRoleIds } = buildDefaultRoles(organizationId);
   const orgAdminRoleId = presetRoleIds.preset_org_admin;
 
@@ -451,7 +452,7 @@ export function saveCustomPreset(
   }
 
   const preset: PermissionPreset = {
-    id: `custom_${crypto.randomUUID()}`,
+    id: `custom_${newBrowserId()}`,
     name: input.name.trim(),
     description: input.description?.trim() || undefined,
     permissions: [...input.permissions],
@@ -524,7 +525,7 @@ export function createRole(
 
   const preset = input.presetId ? getPresetById(input.presetId) : undefined;
   const role: CustomRole = {
-    id: crypto.randomUUID(),
+    id: newBrowserId(),
     organizationId,
     name: input.name,
     description: input.description ?? preset?.description,
@@ -593,7 +594,7 @@ export function createUser(
   }
 
   const user: TenantUser = {
-    id: crypto.randomUUID(),
+    id: newBrowserId(),
     organizationId,
     name: input.name,
     email: input.email,
@@ -693,7 +694,7 @@ export function createTeam(
 
   const members = input.memberUserIds.filter((id) => id !== input.leaderUserId);
   const team: OrgTeam = {
-    id: `team-${crypto.randomUUID().slice(0, 8)}`,
+    id: `team-${newBrowserId().slice(0, 8)}`,
     organizationId,
     name: input.name.trim(),
     leaderUserId: input.leaderUserId,
