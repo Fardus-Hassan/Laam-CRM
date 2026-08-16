@@ -17,7 +17,6 @@ import type {
 } from '@laam/types';
 import {
   Check,
-  Download,
   Edit2,
   Plus,
   RefreshCw,
@@ -58,7 +57,8 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { formatCurrency, formatDateTime } from '@/lib/format';
-import { downloadCsv, downloadTextFile } from '@/lib/export-csv';
+import { ExportMenu } from '@/components/export-menu';
+import { downloadCsvText, type TableExportFormat } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 const METRIC_LABELS: Record<IncentiveMetricType, string> = {
@@ -350,12 +350,12 @@ export function IncentiveHubPage() {
     }
   }
 
-  async function handlePayrollExport() {
+  async function handlePayrollExport(format: TableExportFormat = 'csv') {
     setBusy(true);
     try {
       const pack = await incentiveApi.exportPayrollCsv(yearMonth);
-      downloadTextFile(pack.filename, pack.csv);
-      toast.success('Payroll CSV downloaded');
+      downloadCsvText(pack.filename, pack.csv, format);
+      toast.success(format === 'excel' ? 'Payroll Excel downloaded' : 'Payroll CSV downloaded');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Payroll export failed');
     } finally {
@@ -718,44 +718,33 @@ export function IncentiveHubPage() {
             <Card className={ORDER_CARD_CLASS}>
               <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-center gap-3')}>
                 <CardTitle className="flex-1 text-base">Monthly performance</CardTitle>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!visiblePerformanceLines.length}
-                  onClick={() =>
-                    downloadCsv(
-                      `incentive-performance-${yearMonth}.csv`,
-                      [
-                        'Agent',
-                        'Plan',
-                        'Metric',
-                        'Actual',
-                        'Slab',
-                        'HR status',
-                        'Incentive',
-                        'Attendance bonus',
-                        'Special bonus',
-                        'Total pay',
-                      ],
-                      visiblePerformanceLines.map((line) => [
-                        line.agentName,
-                        line.planName,
-                        METRIC_LABELS[line.metricType],
-                        line.actualValue,
-                        line.matchedSlabLabel,
-                        line.hrStatus ? HR_LABELS[line.hrStatus] : '',
-                        line.incentiveBdt,
-                        line.attendanceBonusBdt,
-                        line.specialBonusBdt,
-                        line.totalPayBdt,
-                      ]),
-                    )
-                  }
-                >
-                  <Download className="size-4" />
-                  CSV
-                </Button>
+                <ExportMenu
+                  filename={`incentive-performance-${yearMonth}`}
+                  headers={[
+                    'Agent',
+                    'Plan',
+                    'Metric',
+                    'Actual',
+                    'Slab',
+                    'HR status',
+                    'Incentive',
+                    'Attendance bonus',
+                    'Special bonus',
+                    'Total pay',
+                  ]}
+                  rows={visiblePerformanceLines.map((line) => [
+                    line.agentName,
+                    line.planName,
+                    METRIC_LABELS[line.metricType],
+                    line.actualValue,
+                    line.matchedSlabLabel,
+                    line.hrStatus ? HR_LABELS[line.hrStatus] : '',
+                    line.incentiveBdt,
+                    line.attendanceBonusBdt,
+                    line.specialBonusBdt,
+                    line.totalPayBdt,
+                  ])}
+                />
                 <Input
                   type="month"
                   className="w-40"
@@ -1390,60 +1379,47 @@ export function IncentiveHubPage() {
               <div className="flex-1">
                 <CardTitle className="text-base">Monthly payout run</CardTitle>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Generate → approve → export payroll CSV → mark paid. CRM locks numbers; finance pays outside.
+                  Generate → approve → export payroll CSV or Excel → mark paid. CRM locks numbers; finance pays outside.
                 </p>
               </div>
               <Input type="month" className="w-40" value={yearMonth} onChange={(event) => setYearMonth(event.target.value)} />
               {selectedPeriod ? <Badge variant="secondary" className="capitalize">{selectedPeriod.status}</Badge> : null}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!visiblePayoutLines.length}
-                onClick={() =>
-                  downloadCsv(
-                    `incentive-payout-${yearMonth}.csv`,
-                    [
-                      'Agent',
-                      'Plan',
-                      'Actual',
-                      'Slab',
-                      'HR status',
-                      'Incentive',
-                      'Attendance bonus',
-                      'Special bonus',
-                      'Total pay',
-                    ],
-                    visiblePayoutLines.map((line) => [
-                      line.agentName,
-                      line.planName,
-                      line.actualValue,
-                      line.matchedSlabLabel,
-                      line.hrStatus ? HR_LABELS[line.hrStatus] : '',
-                      line.incentiveBdt,
-                      line.attendanceBonusBdt,
-                      line.specialBonusBdt,
-                      line.totalPayBdt,
-                    ]),
-                  )
-                }
-              >
-                <Download className="size-4" />
-                Snapshot CSV
-              </Button>
+              <ExportMenu
+                filename={`incentive-payout-${yearMonth}`}
+                headers={[
+                  'Agent',
+                  'Plan',
+                  'Actual',
+                  'Slab',
+                  'HR status',
+                  'Incentive',
+                  'Attendance bonus',
+                  'Special bonus',
+                  'Total pay',
+                ]}
+                rows={visiblePayoutLines.map((line) => [
+                  line.agentName,
+                  line.planName,
+                  line.actualValue,
+                  line.matchedSlabLabel,
+                  line.hrStatus ? HR_LABELS[line.hrStatus] : '',
+                  line.incentiveBdt,
+                  line.attendanceBonusBdt,
+                  line.specialBonusBdt,
+                  line.totalPayBdt,
+                ])}
+              />
               {canManage &&
               selectedPeriod &&
               (selectedPeriod.status === 'approved' || selectedPeriod.status === 'paid') ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
+                <ExportMenu
+                  filename={`incentive-payroll-${yearMonth}`}
+                  headers={[]}
+                  rows={[[]]}
                   disabled={busy}
-                  onClick={() => void handlePayrollExport()}
-                >
-                  <Download className="size-4" />
-                  Payroll CSV
-                </Button>
+                  label="Payroll"
+                  onExport={(format) => void handlePayrollExport(format)}
+                />
               ) : null}
               {canManage && (!selectedPeriod || selectedPeriod.status === 'draft') ? (
                 <Button

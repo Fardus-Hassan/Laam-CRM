@@ -71,6 +71,7 @@ export const tenantUserSchema = z.object({
     .object({
       id: z.string().uuid(),
       name: z.string().min(1),
+      email: z.string().email().optional(),
     })
     .nullable()
     .optional(),

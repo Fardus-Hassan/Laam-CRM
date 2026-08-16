@@ -3,13 +3,16 @@
 import * as React from 'react';
 import type { OrgTeam, TenantUser } from '@laam/types';
 import { ROLE_LABELS } from '@laam/types';
-import { Plus, Trash2, UsersRound } from 'lucide-react';
+import { Plus, Search, Trash2, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
+import { FormField } from '@/components/form/form-field';
+import { FormSearchSelect } from '@/components/form/form-search-select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
@@ -24,6 +27,7 @@ type TeamsAdminPanelProps = {
   organizationId: string;
   users: TenantUser[];
   teams: OrgTeam[];
+  roles: { id: string; name: string }[];
   onChanged: () => Promise<void>;
 };
 
@@ -31,6 +35,7 @@ export function TeamsAdminPanel({
   organizationId,
   users,
   teams,
+  roles,
   onChanged,
 }: TeamsAdminPanelProps) {
   const { confirm, confirmDialog } = useConfirmDialog();
@@ -39,6 +44,7 @@ export function TeamsAdminPanel({
   const [leaderUserId, setLeaderUserId] = React.useState('');
   const [memberUserIds, setMemberUserIds] = React.useState<string[]>([]);
   const [creating, setCreating] = React.useState(false);
+  const [agentQuery, setAgentQuery] = React.useState('');
 
   const selected = teams.find((t) => t.id === selectedId);
 
@@ -48,34 +54,41 @@ export function TeamsAdminPanel({
       setLeaderUserId(selected.leaderUserId);
       setMemberUserIds([...selected.memberUserIds]);
       setCreating(false);
+      setAgentQuery('');
     } else if (!teams.length) {
       setCreating(true);
       setName('');
       setLeaderUserId('');
       setMemberUserIds([]);
+      setAgentQuery('');
     }
   }, [selected, teams.length]);
 
-  const leaders = users.filter(
-    (u) =>
-      (u.status === 'active' || u.status === 'invited') &&
-      (u.systemRole === 'team_leader' ||
-        u.systemRole === 'sales_rep' ||
-        u.systemRole === 'sales_manager' ||
-        u.id === selected?.leaderUserId),
+  const assignableUsers = users.filter(
+    (u) => u.status === 'active' || u.status === 'invited',
   );
 
-  const agentCandidates = users.filter(
-    (u) =>
-      (u.status === 'active' || u.status === 'invited') &&
-      u.id !== leaderUserId &&
-      (u.systemRole === 'sales_rep' ||
-        u.systemRole === 'team_leader' ||
-        memberUserIds.includes(u.id)),
-  );
+  const leaders = assignableUsers;
+
+  const agentCandidates = assignableUsers.filter((u) => u.id !== leaderUserId);
+  const agentQueryNormalized = agentQuery.trim().toLowerCase();
+  const visibleAgents = agentQueryNormalized
+    ? agentCandidates.filter((u) => {
+        const haystack = `${u.name} ${u.email} ${userRoleLabel(u)}`.toLowerCase();
+        return haystack.includes(agentQueryNormalized);
+      })
+    : agentCandidates;
 
   function userName(id: string) {
     return users.find((u) => u.id === id)?.name ?? id.slice(0, 8);
+  }
+
+  function userRoleLabel(user: TenantUser) {
+    if (user.customRoleId) {
+      const custom = roles.find((role) => role.id === user.customRoleId);
+      if (custom) return custom.name;
+    }
+    return ROLE_LABELS[user.systemRole] ?? user.systemRole;
   }
 
   function toggleMember(id: string) {
@@ -135,6 +148,7 @@ export function TeamsAdminPanel({
     setName('');
     setLeaderUserId(leaders[0]?.id ?? '');
     setMemberUserIds([]);
+    setAgentQuery('');
   }
 
   return (
@@ -186,7 +200,7 @@ export function TeamsAdminPanel({
             {creating ? 'Create team' : selected ? `Edit — ${selected.name}` : 'Team details'}
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Admin assigns a team leader (role: Team Leader) and agents under them.
+            Pick any user as team leader. Their current role stays the same.
           </p>
         </CardHeader>
         <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-4')}>
@@ -204,32 +218,38 @@ export function TeamsAdminPanel({
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Team leader</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              <FormField label="Team leader">
+                <FormSearchSelect
                   value={leaderUserId}
-                  onChange={(e) => {
-                    setLeaderUserId(e.target.value);
-                    setMemberUserIds((ids) => ids.filter((id) => id !== e.target.value));
+                  onChange={(next) => {
+                    setLeaderUserId(next);
+                    setMemberUserIds((ids) => ids.filter((id) => id !== next));
                   }}
-                >
-                  <option value="">Select leader…</option>
-                  {leaders.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({ROLE_LABELS[u.systemRole]})
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-muted-foreground">
-                  Saving sets their role to Team Leader (unless they are admin/manager).
-                </p>
-              </div>
+                  placeholder="Select leader…"
+                  searchPlaceholder="Search users…"
+                  emptyMessage="No users to assign"
+                  options={leaders.map((u) => ({
+                    value: u.id,
+                    label: u.name,
+                    description: `${u.email} · ${userRoleLabel(u)}`,
+                  }))}
+                />
+              </FormField>
 
               <div className="space-y-2">
                 <Label>Agents under this leader</Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={agentQuery}
+                    onChange={(event) => setAgentQuery(event.target.value)}
+                    placeholder="Search name, email, or role…"
+                    className="h-8 pl-8"
+                    aria-label="Search agents"
+                  />
+                </div>
                 <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border p-2">
-                  {agentCandidates.map((u) => {
+                  {visibleAgents.map((u) => {
                     const checked = memberUserIds.includes(u.id);
                     return (
                       <label
@@ -242,9 +262,14 @@ export function TeamsAdminPanel({
                           onChange={() => toggleMember(u.id)}
                           className="size-4 rounded border"
                         />
-                        <span className="min-w-0 flex-1 truncate">{u.name}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{u.name}</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">
+                            {u.email}
+                          </span>
+                        </span>
                         <Badge variant="secondary" className="text-[10px]">
-                          {ROLE_LABELS[u.systemRole]}
+                          {userRoleLabel(u)}
                         </Badge>
                         {u.teamId && u.teamId !== selectedId ? (
                           <span className="text-[10px] text-amber-600">other team</span>
@@ -254,6 +279,8 @@ export function TeamsAdminPanel({
                   })}
                   {!agentCandidates.length ? (
                     <p className="p-2 text-xs text-muted-foreground">No agents available.</p>
+                  ) : !visibleAgents.length ? (
+                    <p className="p-2 text-xs text-muted-foreground">No matching agents.</p>
                   ) : null}
                 </div>
               </div>

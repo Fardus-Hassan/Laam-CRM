@@ -16,6 +16,7 @@ import {
 } from '@/features/followups/config/followup-bulk-actions';
 import { useFollowupMutations } from '@/features/followups/hooks/use-followup-mutations';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
+import { downloadCsvAndExcel } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 type FollowupBulkActionsProps = {
@@ -52,31 +53,22 @@ export function FollowupBulkActions({
           toast.error('No rows to export');
           return;
         }
-        const header =
-          'Customer ID,Name,Phone,Schedule,Status,Tag,SMS,Assigned,Product\n';
-        const body = selectedRows
-          .map((row) =>
-            [
-              row.customerNumber,
-              `"${row.name}"`,
-              row.phone,
-              row.scheduleDate ?? '',
-              row.followupStatus,
-              `"${row.tags.join('; ')}"`,
-              row.smsStatus,
-              row.assignedAgentName ?? '',
-              `"${row.recentProducts[0]?.productName ?? ''}"`,
-            ].join(','),
-          )
-          .join('\n');
-        const blob = new Blob([header + body], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `followups-export-${Date.now()}.csv`;
-        anchor.click();
-        URL.revokeObjectURL(url);
-        toast.success(`Exported ${selectedRows.length} follow-up(s)`);
+        downloadCsvAndExcel(
+          `followups-export-${Date.now()}`,
+          ['Customer ID', 'Name', 'Phone', 'Schedule', 'Status', 'Tag', 'SMS', 'Assigned', 'Product'],
+          selectedRows.map((row) => [
+            row.customerNumber,
+            row.name,
+            row.phone,
+            row.scheduleDate ?? '',
+            row.followupStatus,
+            row.tags.join('; '),
+            row.smsStatus,
+            row.assignedAgentName ?? '',
+            row.recentProducts[0]?.productName ?? '',
+          ]),
+        );
+        toast.success(`Exported ${selectedRows.length} follow-up(s) as CSV and Excel`);
         onSuccess?.();
       },
     });

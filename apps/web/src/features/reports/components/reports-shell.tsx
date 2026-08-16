@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ReportPeriod, ReportViewId } from '@laam/types';
-import { Download, RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
 
 import { Can } from '@/components/auth/can';
 import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
@@ -22,7 +22,8 @@ import {
   ORDER_PAGE_GAP,
 } from '@/features/orders/components/create-order/section-layout';
 import { reportsApi } from '@/features/reports/api/reports-api';
-import { downloadCsv } from '@/lib/export-csv';
+import { ExportMenu } from '@/components/export-menu';
+import { downloadTable, type TableExportFormat } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 const PERIOD_OPTIONS: { value: ReportPeriod; label: string }[] = [
@@ -62,22 +63,23 @@ export function ReportsShell({ initialView, initialPeriod }: ReportsShellProps) 
     router.replace(`/dashboard/reports?${params.toString()}`, { scroll: false });
   }
 
-  async function handleExportCsv() {
-    const filename = `report-${view}-${period}.csv`;
+  async function handleExport(format: TableExportFormat) {
+    const filename = `report-${view}-${period}`;
+    const dl = (headers: string[], rows: Parameters<typeof downloadTable>[2]) =>
+      downloadTable(filename, headers, rows, format);
     if (view === 'summary') {
       const data = await reportsApi.getSummary(period);
-      downloadCsv(filename, ['KPI', 'Value', 'Change'], data.kpis.map((k) => [k.label, k.value, k.change ?? '']));
+      dl( ['KPI', 'Value', 'Change'], data.kpis.map((k) => [k.label, k.value, k.change ?? '']));
       return;
     }
     if (view === 'sales') {
       const data = await reportsApi.getSales(period);
-      downloadCsv(filename, ['KPI', 'Value'], data.kpis.map((k) => [k.label, k.value]));
+      dl( ['KPI', 'Value'], data.kpis.map((k) => [k.label, k.value]));
       return;
     }
     if (view === 'revenue') {
       const data = await reportsApi.getRevenue(period);
-      downloadCsv(
-        filename,
+      dl(
         ['KPI', 'Value'],
         [
           ...data.kpis.map((k) => [k.label, k.value]),
@@ -88,13 +90,12 @@ export function ReportsShell({ initialView, initialPeriod }: ReportsShellProps) 
     }
     if (view === 'product-daily') {
       const data = await reportsApi.getProductDaily(period);
-      downloadCsv(filename, ['Day', 'Units'], data.map((d) => [d.label, d.value]));
+      dl( ['Day', 'Units'], data.map((d) => [d.label, d.value]));
       return;
     }
     if (view === 'team-targets') {
       const rows = await reportsApi.getTeamTargets(period);
-      downloadCsv(
-        filename,
+      dl(
         ['Name', 'Target orders', 'Actual orders', 'Target revenue', 'Actual revenue', 'Progress %'],
         rows.map((r) => [
           r.name,
@@ -109,8 +110,7 @@ export function ReportsShell({ initialView, initialPeriod }: ReportsShellProps) 
     }
     if (view === 'upsales') {
       const rows = await reportsApi.getUpsales(period);
-      downloadCsv(
-        filename,
+      dl(
         ['Base', 'Upsell', 'Count', 'Revenue', 'Rate'],
         rows.map((r) => [r.baseProduct, r.upsellProduct, r.count, r.revenueBdt, r.rate]),
       );
@@ -118,36 +118,36 @@ export function ReportsShell({ initialView, initialPeriod }: ReportsShellProps) 
     }
     if (view === 'platform') {
       const data = await reportsApi.getPlatform();
-      downloadCsv(filename, ['KPI', 'Value'], data.kpis.map((k) => [k.label, k.value]));
+      dl( ['KPI', 'Value'], data.kpis.map((k) => [k.label, k.value]));
       return;
     }
     if (view === 'repeat-customers') {
       const rows = await reportsApi.getRepeatCustomers(period);
-      downloadCsv(filename, ['Name', 'Mobile', 'Orders', 'Spent', 'Last order'], rows.map((r) => [r.name, r.mobile, r.orderCount, r.totalSpentBdt, r.lastOrderDate]));
+      dl( ['Name', 'Mobile', 'Orders', 'Spent', 'Last order'], rows.map((r) => [r.name, r.mobile, r.orderCount, r.totalSpentBdt, r.lastOrderDate]));
       return;
     }
     if (view === 'agents' || view === 'orders-by-employee' || view === 'employee-activity' || view === 'teams') {
       const rows = await reportsApi.getEmployees(view, period);
-      downloadCsv(filename, ['Name', 'Role', 'Orders', 'Revenue'], rows.map((r) => [r.name, r.role, r.orders, r.revenueBdt]));
+      dl( ['Name', 'Role', 'Orders', 'Revenue'], rows.map((r) => [r.name, r.role, r.orders, r.revenueBdt]));
       return;
     }
     if (view === 'sources') {
       const rows = await reportsApi.getLeadSources(period);
-      downloadCsv(filename, ['Source', 'Leads', 'Orders', 'Conversion', 'Revenue'], rows.map((r) => [r.source, r.leads, r.orders, r.conversionRate, r.revenueBdt]));
+      dl( ['Source', 'Leads', 'Orders', 'Conversion', 'Revenue'], rows.map((r) => [r.source, r.leads, r.orders, r.conversionRate, r.revenueBdt]));
       return;
     }
     if (view === 'login-history') {
       const rows = await reportsApi.getLoginHistory();
-      downloadCsv(filename, ['User', 'Email', 'IP', 'Device', 'Time', 'Status'], rows.map((r) => [r.userName, r.email, r.ip, r.device, r.loggedInAt, r.status]));
+      dl( ['User', 'Email', 'IP', 'Device', 'Time', 'Status'], rows.map((r) => [r.userName, r.email, r.ip, r.device, r.loggedInAt, r.status]));
       return;
     }
     if (view === 'marketing' || view === 'campaign') {
       const data = await reportsApi.getMarketing(period);
-      downloadCsv(filename, ['Campaign', 'Spend', 'Revenue', 'ROAS', 'Orders'], data.campaigns.map((c) => [c.name, c.spendBdt, c.revenueBdt, c.roas, c.orders]));
+      dl( ['Campaign', 'Spend', 'Revenue', 'ROAS', 'Orders'], data.campaigns.map((c) => [c.name, c.spendBdt, c.revenueBdt, c.roas, c.orders]));
       return;
     }
     const ranked = await reportsApi.getRankedProducts(view, period);
-    downloadCsv(filename, ['Rank', 'Product', 'SKU', 'Value', 'Secondary'], ranked.map((r) => [r.rank, r.name, r.sku ?? '', r.value, r.secondaryValue ?? '']));
+    dl(['Rank', 'Product', 'SKU', 'Value', 'Secondary'], ranked.map((r) => [r.rank, r.name, r.sku ?? '', r.value, r.secondaryValue ?? '']));
   }
 
   return (
@@ -178,10 +178,12 @@ export function ReportsShell({ initialView, initialPeriod }: ReportsShellProps) 
               Refresh
             </Button>
             <Can permission="reports.export">
-              <Button type="button" size="sm" variant="outline" onClick={() => void handleExportCsv()}>
-                <Download className="size-4" />
-                Export CSV
-              </Button>
+              <ExportMenu
+                filename={`report-${view}-${period}`}
+                headers={[]}
+                rows={[[]]}
+                onExport={(format) => void handleExport(format)}
+              />
             </Can>
           </div>
         </div>

@@ -142,7 +142,7 @@ export function CustomerListShell() {
         pageSize: 5000,
         ...filterQuery,
       });
-      toast.success('Export started');
+      toast.success('CSV and Excel export started');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Export failed');
     }

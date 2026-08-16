@@ -15,6 +15,7 @@ import {
   type ProductBulkActionId,
 } from '@/features/inventory/config/product-bulk-actions';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
+import { downloadCsvAndExcel } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 type ProductBulkActionsProps = {
@@ -47,28 +48,20 @@ export function ProductBulkActions({
           toast.error('No rows to export');
           return;
         }
-        const header = 'SKU,Name,Category,Stock,Status,Sale Price,Supplier\n';
-        const body = selectedRows
-          .map((row) =>
-            [
-              row.sku,
-              `"${row.name}"`,
-              row.category,
-              row.stock,
-              row.status,
-              row.salePriceMin,
-              `"${row.supplierName ?? ''}"`,
-            ].join(','),
-          )
-          .join('\n');
-        const blob = new Blob([header + body], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `products-export-${Date.now()}.csv`;
-        anchor.click();
-        URL.revokeObjectURL(url);
-        toast.success(`Exported ${selectedRows.length} product(s)`);
+        downloadCsvAndExcel(
+          `products-export-${Date.now()}`,
+          ['SKU', 'Name', 'Category', 'Stock', 'Status', 'Sale Price', 'Supplier'],
+          selectedRows.map((row) => [
+            row.sku,
+            row.name,
+            row.category,
+            row.stock,
+            row.status,
+            row.salePriceMin,
+            row.supplierName ?? '',
+          ]),
+        );
+        toast.success(`Exported ${selectedRows.length} product(s) as CSV and Excel`);
         onSuccess?.();
       },
     });

@@ -106,7 +106,7 @@ export function FormCombobox({
           disabled={disabled}
           className={cn(
             FORM_CONTROL_HEIGHT_CLASS,
-            'w-full justify-between gap-2 px-3 font-normal',
+            'w-full min-w-0 shrink justify-between gap-2 px-3 font-normal',
             !value && 'text-muted-foreground',
             open && 'border-primary/50 ring-1 ring-primary/20',
             className,

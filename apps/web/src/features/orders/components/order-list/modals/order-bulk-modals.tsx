@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { FulfillmentWarehouseSelect } from '@/features/orders/components/shared/fulfillment-warehouse-select';
-import { exportOrdersToCsv } from '@/features/orders/lib/export-orders-csv';
+import { exportOrdersTable } from '@/features/orders/lib/export-orders-csv';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
 import { orderSmsApi, smsSettingsApi } from '@/features/settings/api/sms-settings-api';
@@ -220,13 +220,13 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
     onClose();
   }
 
-  function handleExport() {
+  function handleExport(format: 'csv' | 'excel') {
     if (state?.type !== 'export') return;
     if (selectedRows.length === 0) {
       toast.error('No row data available for export');
       return;
     }
-    exportOrdersToCsv(selectedRows);
+    exportOrdersTable(selectedRows, format);
     toast.success(`Exported ${selectedRows.length} order(s)`);
     onClose();
   }
@@ -372,15 +372,18 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <DialogTitle>Export orders</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Download CSV with order number, customer, amount, payment, and address for{' '}
+            Download CSV or Excel with order number, customer, amount, payment, and address for{' '}
             {state.type === 'export' ? state.orderIds.length : 0} selected order(s).
           </p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleExport}>
-              Download CSV
+            <Button type="button" variant="outline" onClick={() => handleExport('csv')}>
+              CSV
+            </Button>
+            <Button type="button" onClick={() => handleExport('excel')}>
+              Excel
             </Button>
           </DialogFooter>
         </DialogContent>

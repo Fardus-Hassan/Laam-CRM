@@ -15,6 +15,7 @@ import {
   type CustomerBulkActionId,
 } from '@/features/customers/config/customer-bulk-actions';
 import { useCustomerMutations } from '@/features/customers/hooks/use-customer-mutations';
+import { downloadCsvAndExcel } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 type CustomerBulkActionsProps = {
@@ -47,31 +48,22 @@ export function CustomerBulkActions({
           toast.error('No rows to export');
           return;
         }
-        const header =
-          'Customer ID,Name,Phone,Orders,Delivered,Courier Rate,Total Spent,Status,Tags\n';
-        const body = selectedRows
-          .map((row) =>
-            [
-              row.customerNumber,
-              `"${row.name}"`,
-              row.phone,
-              row.orderCount,
-              row.deliveredCount,
-              row.courierScore.rate,
-              row.totalSpent,
-              row.status,
-              `"${row.tags.join('; ')}"`,
-            ].join(','),
-          )
-          .join('\n');
-        const blob = new Blob([header + body], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `customers-export-${Date.now()}.csv`;
-        anchor.click();
-        URL.revokeObjectURL(url);
-        toast.success(`Exported ${selectedRows.length} customer(s)`);
+        downloadCsvAndExcel(
+          `customers-export-${Date.now()}`,
+          ['Customer ID', 'Name', 'Phone', 'Orders', 'Delivered', 'Courier Rate', 'Total Spent', 'Status', 'Tags'],
+          selectedRows.map((row) => [
+            row.customerNumber,
+            row.name,
+            row.phone,
+            row.orderCount,
+            row.deliveredCount,
+            row.courierScore.rate,
+            row.totalSpent,
+            row.status,
+            row.tags.join('; '),
+          ]),
+        );
+        toast.success(`Exported ${selectedRows.length} customer(s) as CSV and Excel`);
         onSuccess?.();
       },
     });

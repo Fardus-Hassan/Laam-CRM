@@ -16,6 +16,7 @@ import {
 } from '@/features/leads/config/lead-bulk-actions';
 import { useLeadMutations } from '@/features/leads/hooks/use-lead-mutations';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
+import { downloadCsvAndExcel } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 type LeadBulkActionsProps = {
@@ -52,29 +53,21 @@ export function LeadBulkActions({
           toast.error('No rows to export');
           return;
         }
-        const header = 'Lead ID,Name,Phone,Status,Source,Agent,Value,Campaign\n';
-        const body = selectedRows
-          .map((row) =>
-            [
-              row.leadNumber,
-              `"${row.name}"`,
-              row.phone,
-              row.status,
-              row.source,
-              row.assignedAgentName ?? '',
-              row.estimatedValue ?? '',
-              row.campaignName ?? '',
-            ].join(','),
-          )
-          .join('\n');
-        const blob = new Blob([header + body], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `leads-export-${Date.now()}.csv`;
-        anchor.click();
-        URL.revokeObjectURL(url);
-        toast.success(`Exported ${selectedRows.length} lead(s)`);
+        downloadCsvAndExcel(
+          `leads-export-${Date.now()}`,
+          ['Lead ID', 'Name', 'Phone', 'Status', 'Source', 'Agent', 'Value', 'Campaign'],
+          selectedRows.map((row) => [
+            row.leadNumber,
+            row.name,
+            row.phone,
+            row.status,
+            row.source,
+            row.assignedAgentName ?? '',
+            row.estimatedValue ?? '',
+            row.campaignName ?? '',
+          ]),
+        );
+        toast.success(`Exported ${selectedRows.length} lead(s) as CSV and Excel`);
         onSuccess?.();
       },
     });

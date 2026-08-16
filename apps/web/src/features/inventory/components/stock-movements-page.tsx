@@ -23,7 +23,7 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { downloadCsv } from '@/lib/export-csv';
+import { ExportMenu } from '@/components/export-menu';
 import { rangeFromISO, toISODateRange } from '@/lib/date-range';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -130,25 +130,23 @@ export function StockMovementsPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  function handleExport() {
-    downloadCsv(
-      'stock-movements.csv',
-      ['Date', 'Product', 'SKU', 'Variant', 'Warehouse', 'Change', 'Before', 'After', 'Reason', 'Note', 'By'],
-      items.map((m) => [
-        formatDateTime(m.createdAt),
-        m.productName ?? '',
-        m.productSku ?? '',
-        m.variantLabel ?? '',
-        m.warehouseName ?? '',
-        m.delta,
-        m.previousStock,
-        m.newStock,
-        reasonLabel(m.reason),
-        m.note ?? '',
-        m.actorName ?? '',
-      ]),
-    );
-  }
+  const movementExport = {
+    filename: 'stock-movements',
+    headers: ['Date', 'Product', 'SKU', 'Variant', 'Warehouse', 'Change', 'Before', 'After', 'Reason', 'Note', 'By'],
+    rows: items.map((m) => [
+      formatDateTime(m.createdAt),
+      m.productName ?? '',
+      m.productSku ?? '',
+      m.variantLabel ?? '',
+      m.warehouseName ?? '',
+      m.delta,
+      m.previousStock,
+      m.newStock,
+      reasonLabel(m.reason),
+      m.note ?? '',
+      m.actorName ?? '',
+    ]),
+  };
 
   return (
     <PageShell title="Inventory" description="Org-wide stock ledger — every movement with reason and audit trail.">
@@ -167,9 +165,11 @@ export function StockMovementsPage() {
               Refresh
             </Button>
             <Can permission="inventory.export">
-              <Button type="button" size="sm" variant="outline" onClick={handleExport}>
-                Export CSV
-              </Button>
+              <ExportMenu
+                filename={movementExport.filename}
+                headers={movementExport.headers}
+                rows={movementExport.rows}
+              />
             </Can>
           </div>
         </div>

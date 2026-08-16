@@ -5,6 +5,7 @@ import type { CreateTenantUserRequest, Permission, TenantUser } from '@laam/type
 import { ROLE_LABELS } from '@laam/types';
 import { Plus } from 'lucide-react';
 
+import { FormSearchSelect } from '@/components/form/form-search-select';
 import { PermissionMatrix } from '@/features/rbac/components/permission-matrix';
 import { InviteUserDialog } from '@/features/rbac/components/invite-user-dialog';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
@@ -162,26 +163,26 @@ export function UsersAdminPanel() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Custom role</Label>
-                    <select
-                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    <FormSearchSelect
                       value={selected.customRoleId ?? ''}
-                      onChange={(event) =>
+                      onChange={(next) =>
                         setUsers((current) =>
                           current.map((user) =>
                             user.id === selected.id
-                              ? { ...user, customRoleId: event.target.value || undefined }
+                              ? { ...user, customRoleId: next || undefined }
                               : user,
                           ),
                         )
                       }
-                    >
-                      <option value="">System role only</option>
-                      {roles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.name}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Select role…"
+                      searchPlaceholder="Search roles…"
+                      options={[
+                        { value: '', label: 'No custom role' },
+                        ...roles
+                          .filter((role) => !role.isSystem)
+                          .map((role) => ({ value: role.id, label: role.name })),
+                      ]}
+                    />
                   </div>
                   {canSwitchRole ? (
                     <div className="space-y-2">

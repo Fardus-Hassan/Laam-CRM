@@ -14,58 +14,11 @@ import type {
   UpdateTenantUserAcl,
   UserRole,
 } from '@laam/types';
-import {
-  ROLE_DASHBOARD_TEMPLATE,
-  ROLE_PERMISSIONS,
-} from '@laam/types';
 
 import { MOCK_ORGANIZATION } from '@/features/auth/mocks/mock-organization';
 import { newBrowserId } from '@/lib/device-id';
 
-export const PERMISSION_PRESETS: PermissionPreset[] = [
-  {
-    id: 'preset_sales_agent',
-    name: 'Sales Agent',
-    description: 'Call center agent — leads, orders, follow-ups',
-    permissions: [...ROLE_PERMISSIONS.sales_rep],
-    dashboardTemplate: ROLE_DASHBOARD_TEMPLATE.sales_rep,
-  },
-  {
-    id: 'preset_team_leader',
-    name: 'Team Leader',
-    description: 'Manages team leads and orders',
-    permissions: [...ROLE_PERMISSIONS.team_leader],
-    dashboardTemplate: ROLE_DASHBOARD_TEMPLATE.team_leader,
-  },
-  {
-    id: 'preset_sales_head',
-    name: 'Sales Head',
-    description: 'Sales office manager',
-    permissions: [...ROLE_PERMISSIONS.sales_manager],
-    dashboardTemplate: ROLE_DASHBOARD_TEMPLATE.sales_manager,
-  },
-  {
-    id: 'preset_marketing_head',
-    name: 'Marketing Head',
-    description: 'Facebook ads and lead generation',
-    permissions: [...ROLE_PERMISSIONS.marketing_head],
-    dashboardTemplate: ROLE_DASHBOARD_TEMPLATE.marketing_head,
-  },
-  {
-    id: 'preset_ceo',
-    name: 'CEO / Executive',
-    description: 'Executive overview',
-    permissions: [...ROLE_PERMISSIONS.ceo],
-    dashboardTemplate: ROLE_DASHBOARD_TEMPLATE.ceo,
-  },
-  {
-    id: 'preset_org_admin',
-    name: 'Org Admin',
-    description: 'Full organization access',
-    permissions: [...ROLE_PERMISSIONS.org_admin],
-    dashboardTemplate: ROLE_DASHBOARD_TEMPLATE.org_admin,
-  },
-];
+export const PERMISSION_PRESETS: PermissionPreset[] = [];
 
 type OrgStore = {
   organization: Organization;
@@ -137,33 +90,7 @@ function touchOrgStore(organizationId: string) {
   }
 }
 
-function buildDefaultRoles(organizationId: string): {
-  roles: CustomRole[];
-  presetRoleIds: Record<string, string>;
-} {
-  const presetRoleIds: Record<string, string> = {};
-  const roles = PERMISSION_PRESETS.map((preset) => {
-    const id = newBrowserId();
-    presetRoleIds[preset.id] = id;
-
-    return {
-      id,
-      organizationId,
-      name: preset.name,
-      description: preset.description,
-      permissions: [...preset.permissions],
-      dashboardTemplate: preset.dashboardTemplate,
-      isSystem: true,
-    };
-  });
-
-  return { roles, presetRoleIds };
-}
-
-function buildLaamSeedUsers(
-  organizationId: string,
-  presetRoleIds: Record<string, string>,
-): TenantUser[] {
+function buildLaamSeedUsers(organizationId: string): TenantUser[] {
   return [
     {
       id: '00000000-0000-4000-8000-000000000010',
@@ -172,7 +99,6 @@ function buildLaamSeedUsers(
       email: 'admin@laam.com',
       phone: '01700000001',
       systemRole: 'org_admin',
-      customRoleId: presetRoleIds.preset_org_admin,
       permissionGrants: [],
       permissionDenies: [],
       status: 'active',
@@ -185,7 +111,6 @@ function buildLaamSeedUsers(
       email: 'sakib@laamcrm.com',
       phone: '01711223344',
       systemRole: 'sales_rep',
-      customRoleId: presetRoleIds.preset_sales_agent,
       permissionGrants: [],
       permissionDenies: [],
       status: 'active',
@@ -200,7 +125,6 @@ function buildLaamSeedUsers(
       email: 'mitu@laamcrm.com',
       phone: '01822334455',
       systemRole: 'team_leader',
-      customRoleId: presetRoleIds.preset_team_leader,
       permissionGrants: [],
       permissionDenies: [],
       status: 'active',
@@ -214,7 +138,6 @@ function buildLaamSeedUsers(
       name: 'Imran Hossain',
       email: 'imran@laamcrm.com',
       systemRole: 'sales_manager',
-      customRoleId: presetRoleIds.preset_sales_head,
       permissionGrants: ['reports.export'],
       permissionDenies: [],
       status: 'active',
@@ -228,7 +151,6 @@ function buildLaamSeedUsers(
       email: 'nadia@laamcrm.com',
       phone: '01933445566',
       systemRole: 'sales_rep',
-      customRoleId: presetRoleIds.preset_sales_agent,
       permissionGrants: [],
       permissionDenies: [],
       status: 'active',
@@ -242,7 +164,6 @@ function buildLaamSeedUsers(
       email: 'karim@laamcrm.com',
       phone: '01644556677',
       systemRole: 'team_leader',
-      customRoleId: presetRoleIds.preset_team_leader,
       permissionGrants: [],
       permissionDenies: [],
       status: 'active',
@@ -256,7 +177,6 @@ function buildLaamSeedUsers(
       email: 'rina@laamcrm.com',
       phone: '01555667788',
       systemRole: 'sales_rep',
-      customRoleId: presetRoleIds.preset_sales_agent,
       permissionGrants: [],
       permissionDenies: [],
       status: 'active',
@@ -269,7 +189,6 @@ function buildLaamSeedUsers(
       email: 'tariq@laamcrm.com',
       phone: '01366778899',
       systemRole: 'sales_rep',
-      customRoleId: presetRoleIds.preset_sales_agent,
       permissionGrants: [],
       permissionDenies: [],
       status: 'active',
@@ -306,7 +225,6 @@ function buildLaamSeedTeams(organizationId: string): OrgTeam[] {
 }
 
 const laamOrgId = MOCK_ORGANIZATION.id;
-const laamBootstrap = buildDefaultRoles(laamOrgId);
 
 let tenants: Tenant[] = [
   {
@@ -325,10 +243,10 @@ const orgStores = new Map<string, OrgStore>([
     laamOrgId,
     {
       organization: { ...MOCK_ORGANIZATION },
-      roles: laamBootstrap.roles,
-      users: buildLaamSeedUsers(laamOrgId, laamBootstrap.presetRoleIds),
+      roles: [],
+      users: buildLaamSeedUsers(laamOrgId),
       teams: buildLaamSeedTeams(laamOrgId),
-      presetRoleIds: laamBootstrap.presetRoleIds,
+      presetRoleIds: {},
       customPresets: [],
     },
   ],
@@ -385,8 +303,6 @@ export function getTenantOwner(tenantId: string): TenantUser | undefined {
 export function createTenant(input: CreateTenantRequest): Tenant {
   const organizationId = newBrowserId();
   const ownerUserId = newBrowserId();
-  const { roles, presetRoleIds } = buildDefaultRoles(organizationId);
-  const orgAdminRoleId = presetRoleIds.preset_org_admin;
 
   const organization: Organization = {
     id: organizationId,
@@ -401,7 +317,6 @@ export function createTenant(input: CreateTenantRequest): Tenant {
     name: input.owner.name,
     email: input.owner.email,
     systemRole: 'org_admin',
-    customRoleId: orgAdminRoleId,
     permissionGrants: [],
     permissionDenies: [],
     status: 'active',
@@ -420,10 +335,10 @@ export function createTenant(input: CreateTenantRequest): Tenant {
 
   orgStores.set(organizationId, {
     organization,
-    roles,
+    roles: [],
     users: [owner],
     teams: [],
-    presetRoleIds,
+    presetRoleIds: {},
     customPresets: [],
   });
 
@@ -433,7 +348,7 @@ export function createTenant(input: CreateTenantRequest): Tenant {
 
 export function listRoles(organizationId: string): CustomRole[] {
   ensureOrgStoreHydrated(organizationId);
-  return [...(orgStores.get(organizationId)?.roles ?? [])];
+  return [...(orgStores.get(organizationId)?.roles ?? [])].filter((role) => !role.isSystem);
 }
 
 export function listCustomPresets(organizationId: string): PermissionPreset[] {
@@ -495,14 +410,6 @@ export function getRolePermissions(
   const role = getRole(organizationId, roleId);
   if (!role) {
     return undefined;
-  }
-
-  // System roles always resolve from current preset catalog (picks up new permissions).
-  if (role.isSystem) {
-    const preset = PERMISSION_PRESETS.find((p) => p.name === role.name);
-    if (preset) {
-      return [...preset.permissions];
-    }
   }
 
   return role.permissions;
@@ -655,28 +562,10 @@ function syncUserTeamLinks(
   const memberSet = new Set(memberUserIds);
   store.users = store.users.map((user) => {
     if (user.id === leaderUserId) {
-      return {
-        ...user,
-        teamId,
-        systemRole: user.systemRole === 'org_admin' || user.systemRole === 'sales_manager'
-          ? user.systemRole
-          : 'team_leader',
-        customRoleId:
-          user.systemRole === 'org_admin' || user.systemRole === 'sales_manager'
-            ? user.customRoleId
-            : store.presetRoleIds.preset_team_leader ?? user.customRoleId,
-      };
+      return { ...user, teamId };
     }
     if (memberSet.has(user.id)) {
-      return {
-        ...user,
-        teamId,
-        systemRole: user.systemRole === 'team_leader' ? 'sales_rep' : user.systemRole,
-        customRoleId:
-          user.systemRole === 'team_leader'
-            ? store.presetRoleIds.preset_sales_agent ?? user.customRoleId
-            : user.customRoleId,
-      };
+      return { ...user, teamId };
     }
     if (user.teamId === teamId) {
       return { ...user, teamId: undefined };

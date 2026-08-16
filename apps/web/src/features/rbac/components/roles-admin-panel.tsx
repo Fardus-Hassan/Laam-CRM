@@ -6,8 +6,9 @@ import { DASHBOARD_TEMPLATE_LABELS } from '@laam/types';
 import { Copy, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { FormSearchSelect } from '@/components/form/form-search-select';
 import { PermissionMatrix } from '@/features/rbac/components/permission-matrix';
-import { PERMISSION_PRESETS, rbacApi } from '@/features/rbac/api/rbac-api';
+import { rbacApi } from '@/features/rbac/api/rbac-api';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { Can } from '@/components/auth/can';
@@ -15,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { FormTextarea } from '@/components/form/form-textarea';
 
 function resolvePresetPermissions(preset: PermissionPreset): Permission[] {
@@ -35,17 +35,14 @@ export function RolesAdminPanel() {
   const [draftDescription, setDraftDescription] = React.useState('');
   const [draftPermissions, setDraftPermissions] = React.useState<Permission[]>([]);
   const [createName, setCreateName] = React.useState('');
-  const [createPresetId, setCreatePresetId] = React.useState(PERMISSION_PRESETS[0]?.id ?? '');
-  const [applyPresetId, setApplyPresetId] = React.useState(PERMISSION_PRESETS[0]?.id ?? '');
+  const [createPresetId, setCreatePresetId] = React.useState('');
+  const [applyPresetId, setApplyPresetId] = React.useState('');
   const [savePresetName, setSavePresetName] = React.useState('');
 
-  const allPresets = React.useMemo(
-    () => [...PERMISSION_PRESETS, ...customPresets],
-    [customPresets],
-  );
+  const savedPresets = customPresets;
 
   const selected = roles.find((role) => role.id === selectedId);
-  const selectedPreset = allPresets.find((preset) => preset.id === createPresetId);
+  const selectedPreset = savedPresets.find((preset) => preset.id === createPresetId);
 
   const refresh = React.useCallback(async () => {
     if (!organizationId) {
@@ -56,7 +53,7 @@ export function RolesAdminPanel() {
       rbacApi.listRoles(organizationId),
       rbacApi.listCustomPresets(organizationId),
     ]);
-    setRoles(nextRoles);
+    setRoles(nextRoles.filter((role) => !role.isSystem));
     setCustomPresets(nextCustomPresets);
     setSelectedId((current) => current ?? nextRoles[0]?.id ?? null);
   }, [organizationId]);
@@ -75,13 +72,13 @@ export function RolesAdminPanel() {
   }, [selected]);
 
   React.useEffect(() => {
-    if (!allPresets.some((preset) => preset.id === createPresetId)) {
-      setCreatePresetId(allPresets[0]?.id ?? '');
+    if (!savedPresets.some((preset) => preset.id === createPresetId)) {
+      setCreatePresetId('');
     }
-    if (!allPresets.some((preset) => preset.id === applyPresetId)) {
-      setApplyPresetId(allPresets[0]?.id ?? '');
+    if (!savedPresets.some((preset) => preset.id === applyPresetId)) {
+      setApplyPresetId('');
     }
-  }, [allPresets, applyPresetId, createPresetId]);
+  }, [savedPresets, applyPresetId, createPresetId]);
 
   const handleCreate = async () => {
     if (!organizationId || !canManage) {
@@ -89,12 +86,11 @@ export function RolesAdminPanel() {
     }
 
     const name = createName.trim() || `Custom role ${roles.filter((r) => !r.isSystem).length + 1}`;
-    const preset = allPresets.find((item) => item.id === createPresetId);
+    const preset = savedPresets.find((item) => item.id === createPresetId);
 
     const created = await rbacApi.createRole(organizationId, {
       name,
       description: preset?.description,
-      presetId: preset && PERMISSION_PRESETS.some((p) => p.id === preset.id) ? preset.id : undefined,
       permissions: preset ? resolvePresetPermissions(preset) : [],
     });
 
@@ -151,7 +147,7 @@ export function RolesAdminPanel() {
   };
 
   const handleApplyPreset = () => {
-    const preset = allPresets.find((item) => item.id === applyPresetId);
+    const preset = savedPresets.find((item) => item.id === applyPresetId);
     if (!preset) {
       return;
     }
@@ -188,9 +184,17 @@ export function RolesAdminPanel() {
       return;
     }
 
-    await rbacApi.deleteCustomPreset(organizationId, presetId);
-    await refresh();
-    toast.success('Custom preset removed');
+    try {
+      const deleted = await rbacApi.deleteCustomPreset(organizationId, presetId);
+      if (!deleted) {
+        toast.error('Could not delete this preset');
+        return;
+      }
+      await refresh();
+      toast.success('Preset removed');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete this preset');
+    }
   };
 
   if (!organizationId) {
@@ -213,6 +217,11 @@ export function RolesAdminPanel() {
           </CardHeader>
           <CardContent className="space-y-3 p-3">
             <ul className="max-h-[320px] space-y-1 overflow-y-auto custom-scrollbar">
+              {roles.length === 0 ? (
+                <li className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  No roles yet. Create a name and pick permissions — nothing is preloaded for a new company.
+                </li>
+              ) : null}
               {roles.map((role) => (
                 <li key={role.id}>
                   <button
@@ -225,15 +234,6 @@ export function RolesAdminPanel() {
                     }`}
                   >
                     <span className="truncate">{role.name}</span>
-                    {role.isSystem ? (
-                      <Badge variant="secondary" className="shrink-0 text-[10px]">
-                        System
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="shrink-0 text-[10px]">
-                        Custom
-                      </Badge>
-                    )}
                   </button>
                 </li>
               ))}
@@ -250,19 +250,21 @@ export function RolesAdminPanel() {
                   onChange={(event) => setCreateName(event.target.value)}
                   placeholder="e.g. Call center lead"
                 />
-                <Label className="text-xs">Start from preset</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                <Label className="text-xs">Start from saved preset (optional)</Label>
+                <FormSearchSelect
                   value={createPresetId}
-                  onChange={(event) => setCreatePresetId(event.target.value)}
-                >
-                  {allPresets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name}
-                      {preset.id.startsWith('custom_') ? ' (saved)' : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setCreatePresetId}
+                  placeholder="Blank permissions"
+                  searchPlaceholder="Search presets…"
+                  emptyMessage="No saved presets yet"
+                  options={[
+                    { value: '', label: 'Blank permissions' },
+                    ...savedPresets.map((preset) => ({
+                      value: preset.id,
+                      label: preset.name,
+                    })),
+                  ]}
+                />
                 {selectedPreset?.description ? (
                   <p className="text-xs text-muted-foreground">{selectedPreset.description}</p>
                 ) : null}
@@ -377,39 +379,48 @@ export function RolesAdminPanel() {
                     <p className="mb-3 text-xs font-medium text-muted-foreground">
                       Permission presets
                     </p>
-                    <div className="grid gap-3 lg:grid-cols-2">
-                      <div className="space-y-2">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="min-w-0 space-y-2">
                         <Label className="text-xs">Apply preset to this role</Label>
-                        <div className="flex gap-2">
-                          <select
-                            className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm"
-                            value={applyPresetId}
-                            onChange={(event) => setApplyPresetId(event.target.value)}
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <FormSearchSelect
+                              value={applyPresetId}
+                              onChange={setApplyPresetId}
+                              placeholder="Select saved preset…"
+                              searchPlaceholder="Search presets…"
+                              emptyMessage="No saved presets yet"
+                              options={savedPresets.map((preset) => ({
+                                value: preset.id,
+                                label: preset.name,
+                              }))}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="shrink-0"
+                            onClick={handleApplyPreset}
                           >
-                            {allPresets.map((preset) => (
-                              <option key={preset.id} value={preset.id}>
-                                {preset.name}
-                              </option>
-                            ))}
-                          </select>
-                          <Button type="button" size="sm" variant="secondary" onClick={handleApplyPreset}>
                             Apply
                           </Button>
                         </div>
                       </div>
-                      <div className="space-y-2">
+                      <div className="min-w-0 space-y-2">
                         <Label className="text-xs">Save current permissions as preset</Label>
-                        <div className="flex gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
                           <Input
                             value={savePresetName}
                             onChange={(event) => setSavePresetName(event.target.value)}
                             placeholder="Preset name"
-                            className="h-9"
+                            className="h-8 min-w-0 flex-1"
                           />
                           <Button
                             type="button"
                             size="sm"
                             variant="secondary"
+                            className="shrink-0"
                             onClick={() => void handleSaveAsPreset()}
                           >
                             Save
