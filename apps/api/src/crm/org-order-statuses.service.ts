@@ -323,6 +323,17 @@ export class OrgOrderStatusesService {
     return Boolean(row);
   }
 
+  async getStatusMeta(
+    organizationId: string,
+    slug: string,
+  ): Promise<{ slug: string; group: string } | null> {
+    await this.ensureSeeded(organizationId);
+    return this.prisma.orgOrderStatus.findFirst({
+      where: { organizationId, slug: slug.trim().toLowerCase() },
+      select: { slug: true, group: true },
+    });
+  }
+
   async upsert(
     organizationId: string,
     input: UpsertOrderStatusConfigPayload,

@@ -26,21 +26,17 @@ import {
 import { incentiveApi } from '@/features/incentive/api/incentive-api';
 import { useOrderStatusConfig } from '@/features/orders/hooks/use-order-status-config';
 
-const METRICS: Array<{ value: IncentiveMetricType; label: string }> = [
+const CORE_METRICS: Array<{ value: IncentiveMetricType; label: string }> = [
   { value: 'order_count', label: 'Order count' },
-  { value: 'cross_sell_count', label: 'Cross-sell count' },
+  { value: 'cross_sell_count', label: 'Cross-sell / upsell' },
   { value: 'return_ratio', label: 'Return ratio %' },
+];
+
+const LEGACY_METRICS: Array<{ value: IncentiveMetricType; label: string }> = [
   { value: 'recovery_count', label: 'Recovery count' },
   { value: 'survey_count', label: 'Survey count' },
   { value: 'channel_activity', label: 'Channel activity' },
   { value: 'manual', label: 'Manual' },
-];
-
-const CHANNELS = [
-  { slug: 'call', label: 'Call' },
-  { slug: 'facebook_comment', label: 'Facebook comments' },
-  { slug: 'messenger', label: 'Messenger' },
-  { slug: 'whatsapp', label: 'WhatsApp' },
 ];
 
 type SlabDraft = {
@@ -152,6 +148,7 @@ export function PlanFormDialog({
   initial,
   teams,
   lockedTeamId,
+  occupiedMetrics = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -159,24 +156,36 @@ export function PlanFormDialog({
   initial?: IncentivePlan | null;
   teams: IncentiveTeam[];
   lockedTeamId?: string;
+  occupiedMetrics?: IncentiveMetricType[];
 }) {
   const { statuses } = useOrderStatusConfig();
   const [draft, setDraft] = React.useState<Draft>(() => toDraft(initial));
   const [saving, setSaving] = React.useState(false);
   const editing = Boolean(initial);
+  const metricOptions = [
+    ...CORE_METRICS.filter(
+      (metric) =>
+        metric.value === draft.metricType || !occupiedMetrics.includes(metric.value),
+    ),
+    ...LEGACY_METRICS.filter((metric) => metric.value === draft.metricType),
+  ];
 
   React.useEffect(() => {
     if (!open) return;
     const next = toDraft(initial);
     if (lockedTeamId) {
       next.teamId = lockedTeamId;
-      if (!initial) {
-        const teamName = teams.find((team) => team.id === lockedTeamId)?.name;
-        next.name = teamName ? `${teamName} KPI` : next.name;
-      }
+    }
+    if (!initial) {
+      const firstFree =
+        CORE_METRICS.find((metric) => !occupiedMetrics.includes(metric.value)) ??
+        CORE_METRICS[0]!;
+      next.metricType = firstFree.value;
+      const teamName = teams.find((team) => team.id === (lockedTeamId || next.teamId))?.name;
+      next.name = teamName ? `${teamName} · ${firstFree.label}` : firstFree.label;
     }
     setDraft(next);
-  }, [initial, open, lockedTeamId, teams]);
+  }, [initial, open, lockedTeamId, teams, occupiedMetrics]);
 
   function patch(values: Partial<Draft>) {
     setDraft((current) => ({ ...current, ...values }));
@@ -304,10 +313,20 @@ export function PlanFormDialog({
             <FormField label="Metric">
               <FormSearchSelect
                 value={draft.metricType}
-                onChange={(metricType) =>
-                  patch({ metricType: metricType as IncentiveMetricType })
-                }
-                options={METRICS}
+                onChange={(metricType) => {
+                  const next = metricType as IncentiveMetricType;
+                  const label =
+                    CORE_METRICS.find((metric) => metric.value === next)?.label ??
+                    LEGACY_METRICS.find((metric) => metric.value === next)?.label;
+                  const teamName = teams.find((team) => team.id === draft.teamId)?.name;
+                  patch({
+                    metricType: next,
+                    ...(!editing && teamName && label
+                      ? { name: `${teamName} · ${label}` }
+                      : {}),
+                  });
+                }}
+                options={metricOptions}
                 searchable={false}
               />
             </FormField>
@@ -330,48 +349,43 @@ export function PlanFormDialog({
               />
             </FormField>
           ) : null}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <FormField label="Entry daily target" hint="Optional first-warning threshold">
-              <FormInput
-                type="number"
-                min={0}
-                value={draft.entryDailyTarget}
-                onChange={(e) => patch({ entryDailyTarget: e.target.value })}
-              />
-            </FormField>
-            <FormField label="Maximum agent return ratio %" hint="Optional eligibility cap">
-              <FormInput
-                type="number"
-                min={0}
-                step="0.01"
-                value={draft.maxAgentReturnRatioPct}
-                onChange={(e) => patch({ maxAgentReturnRatioPct: e.target.value })}
-              />
-            </FormField>
-          </div>
-          {draft.metricType === 'channel_activity' ? (
-            <FormField label="Included channels">
-              <StatusChecks
-                statuses={CHANNELS}
-                values={draft.channels}
-                onChange={(channels) => patch({ channels })}
-              />
-            </FormField>
+          {draft.metricType === 'order_count' || draft.metricType === 'cross_sell_count' ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Entry daily target" hint="Optional first-warning threshold">
+                  <FormInput
+                    type="number"
+                    min={0}
+                    value={draft.entryDailyTarget}
+                    onChange={(e) => patch({ entryDailyTarget: e.target.value })}
+                  />
+                </FormField>
+                <FormField label="Maximum agent return ratio %" hint="Optional eligibility cap">
+                  <FormInput
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={draft.maxAgentReturnRatioPct}
+                    onChange={(e) => patch({ maxAgentReturnRatioPct: e.target.value })}
+                  />
+                </FormField>
+              </div>
+              <FormField label="Include order statuses">
+                <StatusChecks
+                  statuses={statuses}
+                  values={draft.includeStatuses}
+                  onChange={(includeStatuses) => patch({ includeStatuses })}
+                />
+              </FormField>
+              <FormField label="Exclude order statuses">
+                <StatusChecks
+                  statuses={statuses}
+                  values={draft.excludeStatuses}
+                  onChange={(excludeStatuses) => patch({ excludeStatuses })}
+                />
+              </FormField>
+            </>
           ) : null}
-          <FormField label="Include order statuses">
-            <StatusChecks
-              statuses={statuses}
-              values={draft.includeStatuses}
-              onChange={(includeStatuses) => patch({ includeStatuses })}
-            />
-          </FormField>
-          <FormField label="Exclude order statuses">
-            <StatusChecks
-              statuses={statuses}
-              values={draft.excludeStatuses}
-              onChange={(excludeStatuses) => patch({ excludeStatuses })}
-            />
-          </FormField>
           {draft.metricType === 'return_ratio' ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <FormField label="Delivered statuses">

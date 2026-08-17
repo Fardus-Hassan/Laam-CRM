@@ -79,6 +79,7 @@ export const incentiveTeamSchema = z.object({
   /** KPI plan attached to this Users team. */
   planId: z.string().nullable().optional(),
   hasStructure: z.boolean().optional(),
+  metricTypes: z.array(incentiveMetricTypeSchema).optional(),
 });
 export type IncentiveTeam = z.infer<typeof incentiveTeamSchema>;
 
@@ -222,12 +223,15 @@ export const incentivePerformanceLineSchema = z.object({
   planId: z.string(),
   planName: z.string(),
   teamName: z.string().optional(),
+  orgTeamId: z.string().nullable().optional(),
   metricType: incentiveMetricTypeSchema,
   actualValue: z.number(),
+  rangeActualValue: z.number().nullable().optional(),
   matchedSlabId: z.string().nullable().optional(),
   matchedSlabLabel: z.string().nullable().optional(),
   monthlyTarget: z.number().nullable().optional(),
   entryTarget: z.number().nullable().optional(),
+  dailyTarget: z.number().nullable().optional(),
   dailyAverage: z.number().nullable().optional(),
   incentiveBdt: z.number(),
   specialBonusBdt: z.number().optional(),
@@ -243,12 +247,27 @@ export const incentivePerformanceLineSchema = z.object({
 });
 export type IncentivePerformanceLine = z.infer<typeof incentivePerformanceLineSchema>;
 
+export const incentiveDailyPointSchema = z.object({
+  date: z.string(),
+  assignmentId: z.string(),
+  agentName: z.string(),
+  userId: z.string().nullable().optional(),
+  planId: z.string(),
+  teamName: z.string().optional(),
+  orgTeamId: z.string().nullable().optional(),
+  metricType: incentiveMetricTypeSchema,
+  actualValue: z.number(),
+  dailyTarget: z.number().nullable().optional(),
+});
+export type IncentiveDailyPoint = z.infer<typeof incentiveDailyPointSchema>;
+
 export const incentivePerformanceReportSchema = z.object({
   yearMonth: z.string(),
   periodStart: z.string(),
   periodEnd: z.string(),
   workingDaysInMonth: z.number().optional(),
   lines: z.array(incentivePerformanceLineSchema),
+  daily: z.array(incentiveDailyPointSchema).optional(),
   totalIncentiveBdt: z.number(),
   totalSpecialBonusBdt: z.number().optional(),
   totalAttendanceBonusBdt: z.number().optional(),

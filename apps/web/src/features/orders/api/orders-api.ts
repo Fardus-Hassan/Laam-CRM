@@ -3,6 +3,7 @@ import type {
   CreateOrderPayload,
   DuplicateCheckQuery,
   DuplicateCheckResult,
+  OrgRoutingConfig,
   OrderBulkActionPayload,
   OrderCourierTracking,
   OrderCustomerLookup,
@@ -46,6 +47,8 @@ export type OrdersApi = {
   getOrdersByPhone: (phone: string, excludeOrderId?: string) => Promise<OrderDetail[]>;
   quickSearchOrders: (query: string, limit?: number) => Promise<OrderListRow[]>;
   getFormOptions: () => Promise<OrderFormOptionsResponse>;
+  getRoutingConfig: () => Promise<OrgRoutingConfig>;
+  updateRoutingConfig: (patch: Partial<OrgRoutingConfig>) => Promise<OrgRoutingConfig>;
   lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
   deleteOrder: (id: string) => Promise<void>;
   cancelCourier: (id: string, reason?: string) => Promise<OrderDetail>;
@@ -134,6 +137,28 @@ export function createMockOrdersApi(): OrdersApi {
         ],
         defaultCourierNote: DEFAULT_COURIER_NOTE,
         defaultShipping: 120,
+      };
+    },
+    async getRoutingConfig() {
+      await delay(50);
+      return {
+        orderRouting: { mode: 'auto_split', teamIds: [] },
+        courierRouting: { mode: 'auto_split', teamIds: [] },
+      };
+    },
+    async updateRoutingConfig(patch) {
+      await delay(50);
+      return {
+        orderRouting: {
+          mode: patch.orderRouting?.mode ?? 'auto_split',
+          teamIds: patch.orderRouting?.teamIds ?? [],
+          assigneeUserId: patch.orderRouting?.assigneeUserId,
+        },
+        courierRouting: {
+          mode: patch.courierRouting?.mode ?? 'auto_split',
+          teamIds: patch.courierRouting?.teamIds ?? [],
+          assigneeUserId: patch.courierRouting?.assigneeUserId,
+        },
       };
     },
     async lookupCustomer(phone) {
@@ -324,6 +349,19 @@ export function createHttpOrdersApi(): OrdersApi {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
       return apiRequest<OrderFormOptionsResponse>(`${crmEndpoints.orders}/meta/form-options`);
+    },
+    async getRoutingConfig() {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<OrgRoutingConfig>(`${crmEndpoints.orders}/meta/routing-config`);
+    },
+    async updateRoutingConfig(patch) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<OrgRoutingConfig>(`${crmEndpoints.orders}/meta/routing-config`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
     },
     async lookupCustomer(phone) {
       const { apiRequest } = await import('@/lib/api/client');

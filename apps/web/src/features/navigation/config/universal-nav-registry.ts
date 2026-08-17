@@ -482,6 +482,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               permissions: pv('settings.manage', 'orders.create'),
             },
             {
+              id: 'settings-assignment-routing',
+              title: 'Assignment routing',
+              url: '/dashboard/settings/assignment-routing',
+              permissions: pv('settings.manage', 'orders.assign'),
+            },
+            {
               id: 'settings-sms',
               title: 'SMS templates',
               url: '/dashboard/settings/sms-templates',

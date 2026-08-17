@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { memoryStorage } from 'multer';
 
@@ -143,6 +143,19 @@ class CreateOrderDto {
   @IsOptional()
   @IsString()
   assignedUserId?: string;
+
+  @IsOptional()
+  @IsIn(['auto_split', 'specific_member'])
+  assignmentMode?: 'auto_split' | 'specific_member';
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  routingTeamIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  routingUserId?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -495,6 +508,33 @@ class UpdateOrderDto {
   fulfillmentWarehouseId?: string | null;
 }
 
+class RoutingRuleDto {
+  @IsOptional()
+  @IsString()
+  mode?: 'auto_split' | 'specific_member';
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  teamIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  assigneeUserId?: string;
+}
+
+class RoutingConfigDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RoutingRuleDto)
+  orderRouting?: RoutingRuleDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RoutingRuleDto)
+  courierRouting?: RoutingRuleDto;
+}
+
 function parseBoolQuery(value?: string): boolean | undefined {
   if (value === 'true' || value === '1') return true;
   if (value === 'false' || value === '0') return false;
@@ -538,6 +578,9 @@ export class OrdersController {
       packingNote: body.packingNote,
       assignedAgentName: body.assignedAgentName,
       assignedUserId: body.assignedUserId,
+      assignmentMode: body.assignmentMode,
+      routingTeamIds: body.routingTeamIds,
+      routingUserId: body.routingUserId,
       skipFollowup: body.skipFollowup,
       couponCode: body.couponCode,
       leadId: body.leadId,
@@ -616,6 +659,9 @@ export class OrdersController {
       courier?: string;
       fulfillmentWarehouseId?: string;
       confirmRemoteCancelled?: boolean;
+      assignmentMode?: 'auto_split' | 'specific_member';
+      routingTeamIds?: string[];
+      routingUserId?: string;
     },
   ) {
     this.orders.requireOrg(user.organizationId);
@@ -630,9 +676,31 @@ export class OrdersController {
         courier: body.courier,
         fulfillmentWarehouseId: body.fulfillmentWarehouseId,
         confirmRemoteCancelled: body.confirmRemoteCancelled,
+        assignmentMode: body.assignmentMode,
+        routingTeamIds: body.routingTeamIds,
+        routingUserId: body.routingUserId,
       },
       this.actor(user),
     );
+  }
+
+  @Get('meta/routing-config')
+  @RequirePermissions('orders.assign', 'settings.manage')
+  @ApiOperation({ summary: 'Get org default routing config for order/courier assignment' })
+  getRoutingConfig(@CurrentUser() user: AuthUserPayload) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.getRoutingConfig(user.organizationId!);
+  }
+
+  @Patch('meta/routing-config')
+  @RequirePermissions('orders.assign', 'settings.manage')
+  @ApiOperation({ summary: 'Update org default routing config for order/courier assignment' })
+  updateRoutingConfig(
+    @CurrentUser() user: AuthUserPayload,
+    @Body() body: RoutingConfigDto,
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.updateRoutingConfig(user.organizationId!, body);
   }
 
   @Get('meta/form-options/manage')

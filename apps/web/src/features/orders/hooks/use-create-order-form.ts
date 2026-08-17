@@ -106,6 +106,9 @@ function createInitialState(): CreateOrderFormState {
     couponApplied: false,
     couponDiscountAmount: 0,
     skipFollowup: false,
+    salesAssignMode: '',
+    salesTeamIds: [],
+    salesUserId: '',
     catalogSearch: '',
     catalogCategory: '',
   };

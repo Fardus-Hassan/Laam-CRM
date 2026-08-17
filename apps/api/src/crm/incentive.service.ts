@@ -14,6 +14,7 @@ import type {
   IncentiveMetricType,
   IncentiveOpsMonth,
   IncentiveOverview,
+  IncentiveDailyPoint,
   IncentivePerformanceLine,
   IncentivePerformanceReport,
   IncentivePeriodRun,
@@ -80,9 +81,16 @@ type IncentiveOrderRow = {
   id: string;
   assignedAgentName: string | null;
   assignedUserId: string | null;
+  logisticAssignedAgentName: string | null;
+  logisticAssignedUserId: string | null;
+  orderCreditAgentName: string | null;
+  orderCreditUserId: string | null;
+  orderCreditedAt: Date | null;
   status: string;
   itemsCount: number;
   orderTag: string | null;
+  source: string;
+  incentiveFlags: Prisma.JsonValue | null;
   orderDate: Date;
 };
 
@@ -124,6 +132,7 @@ export class IncentiveService {
     viewer?: IncentiveViewer,
   ): Promise<IncentiveOverview> {
     await this.backfillOrgTeamLinks(organizationId);
+    await this.syncOrgTeamAssignments(organizationId);
 
     const [teams, plans, assignments, settings] = await Promise.all([
       this.loadHubTeams(organizationId),
@@ -208,7 +217,7 @@ export class IncentiveService {
 
   async listPlans(organizationId: string): Promise<IncentivePlan[]> {
     const rows = await this.prisma.incentivePlan.findMany({
-      where: { organizationId },
+      where: { organizationId, isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: PLAN_INCLUDE,
     });
@@ -220,22 +229,23 @@ export class IncentiveService {
     payload: CreateIncentivePlanPayload,
   ): Promise<IncentivePlan> {
     const name = payload.name.trim();
-    const slug = this.slugify(payload.slug?.trim() || name);
     const orgTeam = payload.teamId
       ? await this.requireOrgTeam(organizationId, payload.teamId)
       : null;
     if (orgTeam) {
-      const existing = await this.prisma.incentivePlan.findFirst({
-        where: { organizationId, orgTeamId: orgTeam.id },
-      });
-      if (existing) {
-        throw new ConflictException(
-          'This team already has a KPI structure. Edit it instead.',
-        );
-      }
+      await this.assertTeamMetricFree(
+        organizationId,
+        orgTeam.id,
+        payload.metricType,
+      );
     }
+    const slug = await this.allocatePlanSlug(
+      organizationId,
+      payload.slug?.trim() || `${name}-${payload.metricType}-${orgTeam?.id ?? 'org'}`,
+    );
+    let row;
     try {
-      const row = await this.prisma.incentivePlan.create({
+      row = await this.prisma.incentivePlan.create({
         data: {
           organizationId,
           teamId: null,
@@ -257,11 +267,11 @@ export class IncentiveService {
         },
         include: PLAN_INCLUDE,
       });
-      await this.syncOrgTeamAssignments(organizationId);
-      return this.toPlan(row);
     } catch (e) {
       this.rethrowUnique(e, 'Plan slug already exists');
     }
+    await this.syncOrgTeamAssignments(organizationId);
+    return this.toPlan(row!);
   }
 
   async updatePlan(
@@ -269,11 +279,19 @@ export class IncentiveService {
     id: string,
     payload: UpdateIncentivePlanPayload,
   ): Promise<IncentivePlan> {
-    await this.requirePlan(organizationId, id);
+    const existing = await this.requirePlan(organizationId, id);
     const orgTeam =
       payload.teamId !== undefined && payload.teamId
         ? await this.requireOrgTeam(organizationId, payload.teamId)
-        : null;
+        : payload.teamId === undefined
+          ? existing.orgTeamId
+            ? await this.requireOrgTeam(organizationId, existing.orgTeamId)
+            : null
+          : null;
+    const nextMetric = payload.metricType ?? (existing.metricType as IncentiveMetricType);
+    if (orgTeam) {
+      await this.assertTeamMetricFree(organizationId, orgTeam.id, nextMetric, id);
+    }
     try {
       await this.prisma.$transaction(async (tx) => {
         if (payload.slabs !== undefined) {
@@ -341,7 +359,10 @@ export class IncentiveService {
 
   async deletePlan(organizationId: string, id: string): Promise<void> {
     await this.requirePlan(organizationId, id);
-    await this.prisma.incentivePlan.delete({ where: { id } });
+    await this.prisma.incentivePlan.update({
+      where: { id },
+      data: { isActive: false },
+    });
   }
 
   async listAssignments(
@@ -783,6 +804,7 @@ export class IncentiveService {
     organizationId: string,
     yearMonth: string,
     viewer?: IncentiveViewer,
+    range?: { from?: string; to?: string },
   ): Promise<IncentivePerformanceReport> {
     const ym = this.validateYearMonth(yearMonth);
     await this.backfillOrgTeamLinks(organizationId);
@@ -792,14 +814,19 @@ export class IncentiveService {
       this.offsetYearMonth(ym, -1),
       this.offsetYearMonth(ym, -2),
     ];
-    const { start: periodStart, end: periodEnd } = this.periodBounds(ym);
-    const historyStart = this.periodBounds(months[2]!).start;
+    const { start: monthStart, end: monthEnd } = this.periodBounds(ym);
+    const window = this.resolvePerformanceWindow(ym, range);
+    const historyStart =
+      this.periodBounds(months[2]!).start.getTime() < window.start.getTime()
+        ? this.periodBounds(months[2]!).start
+        : window.start;
+    const periodStart = monthStart;
+    const periodEnd = monthEnd;
 
     const assignments = await this.prisma.incentiveAssignment.findMany({
       where: {
         organizationId,
         isActive: true,
-        hrStatus: { not: 'terminated' },
         startsOn: { lte: periodEnd },
         OR: [{ endsOn: null }, { endsOn: { gte: periodStart } }],
       },
@@ -825,9 +852,13 @@ export class IncentiveService {
     const orderOr: Prisma.OrderWhereInput[] = [];
     if (agentNames.length) {
       orderOr.push({ assignedAgentName: { in: agentNames } });
+      orderOr.push({ logisticAssignedAgentName: { in: agentNames } });
+      orderOr.push({ orderCreditAgentName: { in: agentNames } });
     }
     if (userIds.length) {
       orderOr.push({ assignedUserId: { in: userIds } });
+      orderOr.push({ logisticAssignedUserId: { in: userIds } });
+      orderOr.push({ orderCreditUserId: { in: userIds } });
     }
 
     const [
@@ -846,16 +877,30 @@ export class IncentiveService {
             where: {
               organizationId,
               deletedAt: null,
-              OR: orderOr,
-              orderDate: { gte: historyStart, lte: periodEnd },
+              AND: [
+                { OR: orderOr },
+                {
+                  OR: [
+                    { orderDate: { gte: historyStart, lte: window.end } },
+                    { orderCreditedAt: { gte: historyStart, lte: window.end } },
+                  ],
+                },
+              ],
             },
             select: {
               id: true,
               assignedAgentName: true,
               assignedUserId: true,
+              logisticAssignedAgentName: true,
+              logisticAssignedUserId: true,
+              orderCreditAgentName: true,
+              orderCreditUserId: true,
+              orderCreditedAt: true,
               status: true,
               itemsCount: true,
               orderTag: true,
+              source: true,
+              incentiveFlags: true,
               orderDate: true,
             },
           }),
@@ -893,7 +938,7 @@ export class IncentiveService {
       }),
       this.prisma.incentivePeriodRun.findUnique({
         where: { organizationId_yearMonth: { organizationId, yearMonth: ym } },
-        select: { status: true },
+        include: { lines: true },
       }),
     ]);
 
@@ -906,7 +951,7 @@ export class IncentiveService {
               organizationId,
               orderId: { in: orderIds },
               type: 'status',
-              createdAt: { gte: historyStart, lte: periodEnd },
+              createdAt: { gte: historyStart, lte: window.end },
             },
             select: {
               orderId: true,
@@ -916,14 +961,23 @@ export class IncentiveService {
             orderBy: { createdAt: 'asc' },
           });
 
-    const ordersByKeyMonth = new Map<string, IncentiveOrderRow[]>();
+    const ordersByKey = new Map<string, IncentiveOrderRow[]>();
     for (const o of orders) {
-      const orderMonth = this.toYearMonth(o.orderDate);
-      for (const key of orderMatchKeys(o)) {
-        const mapKey = `${key}\u0000${orderMonth}`;
-        const list = ordersByKeyMonth.get(mapKey) ?? [];
+      const keySet = new Set<string>([
+        ...orderMatchKeys(o),
+        ...assignmentMatchKeys({
+          userId: o.logisticAssignedUserId,
+          agentName: o.logisticAssignedAgentName ?? '',
+        }),
+        ...assignmentMatchKeys({
+          userId: o.orderCreditUserId,
+          agentName: o.orderCreditAgentName ?? '',
+        }),
+      ]);
+      for (const key of keySet) {
+        const list = ordersByKey.get(key) ?? [];
         list.push(o);
-        ordersByKeyMonth.set(mapKey, list);
+        ordersByKey.set(key, list);
       }
     }
 
@@ -980,7 +1034,8 @@ export class IncentiveService {
         const agentOrders = this.ordersForAssignment(
           a,
           month,
-          ordersByKeyMonth,
+          ordersByKey,
+          a.plan.metricType as IncentiveMetricType,
         );
         const monthBounds = this.periodBounds(month);
         const recoveryActivities = agentOrders.flatMap(
@@ -1030,8 +1085,48 @@ export class IncentiveService {
       line.hrStatus = this.hrStatusForMisses(consecutiveMissMonths);
       if (consecutiveMissMonths >= 3) line.warning = 'terminated';
       else if (consecutiveMissMonths >= 2) line.warning = 'final_warning';
+      const windowIsFullMonth =
+        window.start.getTime() === periodStart.getTime() &&
+        window.end.getTime() === periodEnd.getTime();
+      if (windowIsFullMonth) {
+        line.rangeActualValue = line.actualValue;
+      } else {
+        const rangeOrders = this.ordersForAssignmentRange(
+          a,
+          window.start,
+          window.end,
+          ordersByKey,
+          a.plan.metricType as IncentiveMetricType,
+        );
+        const rangeActivities = statusActivities.filter(
+          (act) =>
+            act.createdAt >= window.start &&
+            act.createdAt <= window.end &&
+            rangeOrders.some((order) => order.id === act.orderId),
+        );
+        const rangeLine = this.calcLine(
+          a,
+          rangeOrders,
+          manualByAssignmentMonth.get(`${a.id}\u0000${ym}`)?.actualValue,
+          surveyByAgentMonth.get(`${a.agentName}\u0000${ym}`) ?? 0,
+          channelsByAgentMonth.get(`${a.agentName}\u0000${ym}`) ?? [],
+          this.weekdaysBetween(window.start, window.end),
+          rangeActivities,
+          window.start,
+          window.end,
+        );
+        line.rangeActualValue = rangeLine.actualValue;
+      }
       lines.push(line);
     }
+
+    const daily = this.buildDailyPoints(
+      assignments,
+      ordersByKey,
+      statusActivities,
+      window.start,
+      window.end,
+    );
 
     const paidBonusAgents = new Set<string>();
     for (const line of lines) {
@@ -1078,10 +1173,11 @@ export class IncentiveService {
 
     const report: IncentivePerformanceReport = {
       yearMonth: ym,
-      periodStart: periodStart.toISOString().slice(0, 10),
-      periodEnd: periodEnd.toISOString().slice(0, 10),
+      periodStart: window.start.toISOString().slice(0, 10),
+      periodEnd: window.end.toISOString().slice(0, 10),
       workingDaysInMonth: defaultWorkingDays,
       lines,
+      daily,
       totalIncentiveBdt: lines.reduce((s, l) => s + l.incentiveBdt, 0),
       totalSpecialBonusBdt: lines.reduce(
         (sum, line) => sum + (line.specialBonusBdt ?? 0),
@@ -1103,6 +1199,49 @@ export class IncentiveService {
         (periodRun?.status as IncentivePerformanceReport['periodStatus']) ??
         'live',
     };
+    const rangeActive = Boolean(range?.from || range?.to);
+    if (
+      !rangeActive &&
+      periodRun &&
+      (periodRun.status === 'approved' || periodRun.status === 'paid') &&
+      periodRun.lines.length
+    ) {
+      const snapshot = new Map(
+        periodRun.lines
+          .filter((row) => row.assignmentId)
+          .map((row) => [row.assignmentId as string, row]),
+      );
+      report.lines = report.lines.map((line) => {
+        const locked = snapshot.get(line.assignmentId);
+        if (!locked) return line;
+        return {
+          ...line,
+          actualValue: locked.actualValue,
+          incentiveBdt: locked.incentiveBdt,
+          matchedSlabLabel: locked.matchedSlabLabel,
+          specialBonusBdt: locked.specialBonusBdt ?? line.specialBonusBdt,
+          attendanceBonusBdt:
+            locked.attendanceBonusBdt ?? line.attendanceBonusBdt,
+          totalPayBdt: locked.totalPayBdt ?? line.totalPayBdt,
+        };
+      });
+      report.totalIncentiveBdt = report.lines.reduce(
+        (sum, line) => sum + line.incentiveBdt,
+        0,
+      );
+      report.totalSpecialBonusBdt = report.lines.reduce(
+        (sum, line) => sum + (line.specialBonusBdt ?? 0),
+        0,
+      );
+      report.totalAttendanceBonusBdt = report.lines.reduce(
+        (sum, line) => sum + (line.attendanceBonusBdt ?? 0),
+        0,
+      );
+      report.totalPayBdt = report.lines.reduce(
+        (sum, line) => sum + (line.totalPayBdt ?? 0),
+        0,
+      );
+    }
     return this.scopePerformance(
       report,
       await this.resolveViewerScope(organizationId, viewer),
@@ -1265,6 +1404,49 @@ export class IncentiveService {
       },
     });
     return this.getPeriod(organizationId, yearMonth);
+  }
+
+  async lockMonth(
+    organizationId: string,
+    yearMonth: string,
+    user: { userId: string; name?: string; email: string },
+  ): Promise<IncentivePeriodRun> {
+    const ym = this.validateYearMonth(yearMonth);
+    const existing = await this.prisma.incentivePeriodRun.findUnique({
+      where: { organizationId_yearMonth: { organizationId, yearMonth: ym } },
+    });
+    if (existing?.status === 'approved' || existing?.status === 'paid') {
+      return this.getPeriod(organizationId, ym);
+    }
+    await this.generatePeriod(organizationId, ym, user);
+    return this.approvePeriod(organizationId, ym, user);
+  }
+
+  async unlockMonth(
+    organizationId: string,
+    yearMonth: string,
+  ): Promise<IncentivePeriodRun> {
+    const ym = this.validateYearMonth(yearMonth);
+    const existing = await this.prisma.incentivePeriodRun.findUnique({
+      where: { organizationId_yearMonth: { organizationId, yearMonth: ym } },
+    });
+    if (!existing) throw new NotFoundException('Incentive period not found');
+    if (existing.status === 'paid') {
+      throw new ConflictException('Paid months cannot be unlocked');
+    }
+    if (existing.status !== 'approved') {
+      throw new BadRequestException('Only locked months can be unlocked');
+    }
+    await this.prisma.incentivePeriodRun.update({
+      where: { id: existing.id },
+      data: {
+        status: 'draft',
+        approvedAt: null,
+        approvedByUserId: null,
+        approvedByName: null,
+      },
+    });
+    return this.getPeriod(organizationId, ym);
   }
 
   /**
@@ -1434,21 +1616,136 @@ export class IncentiveService {
 
   // --- calc helpers ---
 
+  private matchesOrderCredit(
+    assignment: { userId?: string | null; agentName: string },
+    order: IncentiveOrderRow,
+  ): boolean {
+    const creditKeys = assignmentMatchKeys({
+      userId: order.orderCreditUserId,
+      agentName: order.orderCreditAgentName ?? '',
+    });
+    if (!creditKeys.length) return false;
+    return assignmentMatchKeys(assignment).some((key) => creditKeys.includes(key));
+  }
+
+  private kpiEventDate(
+    metricType: IncentiveMetricType,
+    order: IncentiveOrderRow,
+  ): Date {
+    if (metricType === 'order_count' || metricType === 'cross_sell_count') {
+      return order.orderCreditedAt ?? order.orderDate;
+    }
+    return order.orderDate;
+  }
+
   private ordersForAssignment(
     assignment: { userId?: string | null; agentName: string },
     month: string,
-    ordersByKeyMonth: Map<string, IncentiveOrderRow[]>,
+    ordersByKey: Map<string, IncentiveOrderRow[]>,
+    metricType: IncentiveMetricType,
+  ): IncentiveOrderRow[] {
+    const { start, end } = this.periodBounds(month);
+    return this.ordersForAssignmentRange(
+      assignment,
+      start,
+      end,
+      ordersByKey,
+      metricType,
+    );
+  }
+
+  private ordersForAssignmentRange(
+    assignment: { userId?: string | null; agentName: string },
+    start: Date,
+    end: Date,
+    ordersByKey: Map<string, IncentiveOrderRow[]>,
+    metricType: IncentiveMetricType,
   ): IncentiveOrderRow[] {
     const seen = new Set<string>();
     const out: IncentiveOrderRow[] = [];
     for (const key of assignmentMatchKeys(assignment)) {
-      for (const order of ordersByKeyMonth.get(`${key}\u0000${month}`) ?? []) {
+      for (const order of ordersByKey.get(key) ?? []) {
         if (seen.has(order.id)) continue;
+        const eventAt = this.kpiEventDate(metricType, order);
+        if (eventAt < start || eventAt > end) continue;
         seen.add(order.id);
         out.push(order);
       }
     }
     return out;
+  }
+
+  private dailyTargetFor(plan: PlanWithSlabs): number | null {
+    const fromSlab = plan.slabs.find(
+      (slab) => slab.dailyTarget != null && slab.dailyTarget > 0,
+    )?.dailyTarget;
+    if (fromSlab != null) return fromSlab;
+    return this.parseConfig(plan.metricConfig).entryDailyTarget ?? null;
+  }
+
+  private buildDailyPoints(
+    assignments: Array<AssignmentRow & { plan: PlanWithSlabs }>,
+    ordersByKey: Map<string, IncentiveOrderRow[]>,
+    statusActivities: IncentiveStatusActivity[],
+    start: Date,
+    end: Date,
+  ): IncentiveDailyPoint[] {
+    const dailyMetrics = new Set<IncentiveMetricType>([
+      'order_count',
+      'cross_sell_count',
+      'return_ratio',
+      'recovery_count',
+    ]);
+    const points: IncentiveDailyPoint[] = [];
+    for (const assignment of assignments) {
+      if (!assignment.plan.isActive) continue;
+      const metricType = assignment.plan.metricType as IncentiveMetricType;
+      if (!dailyMetrics.has(metricType)) continue;
+      const dailyTarget = this.dailyTargetFor(assignment.plan);
+      for (const date of this.eachUtcDate(start, end)) {
+        const dayStart = this.parseDate(date)!;
+        const dayEnd = this.endOfIsoDate(date);
+        const dayOrders = this.ordersForAssignmentRange(
+          assignment,
+          dayStart,
+          dayEnd,
+          ordersByKey,
+          metricType,
+        );
+        if (!dayOrders.length) continue;
+        const dayActivities = statusActivities.filter(
+          (act) =>
+            act.createdAt >= dayStart &&
+            act.createdAt <= dayEnd &&
+            dayOrders.some((order) => order.id === act.orderId),
+        );
+        const point = this.calcLine(
+          assignment,
+          dayOrders,
+          undefined,
+          0,
+          [],
+          1,
+          dayActivities,
+          dayStart,
+          dayEnd,
+        );
+        if (metricType !== 'return_ratio' && point.actualValue === 0) continue;
+        points.push({
+          date,
+          assignmentId: assignment.id,
+          agentName: assignment.agentName,
+          userId: assignment.userId,
+          planId: assignment.planId,
+          teamName: assignment.plan.orgTeam?.name ?? assignment.plan.team?.name,
+          orgTeamId: assignment.plan.orgTeamId ?? null,
+          metricType,
+          actualValue: point.actualValue,
+          dailyTarget,
+        });
+      }
+    }
+    return points;
   }
 
   private calcLine(
@@ -1511,7 +1808,15 @@ export class IncentiveService {
       ).map((s) => s.toLowerCase());
       let delivered = 0;
       let returned = 0;
-      for (const o of orders) {
+      const returnOrders = orders.filter((o) =>
+        assignmentMatchKeys(assignment).some((key) =>
+          assignmentMatchKeys({
+            userId: o.logisticAssignedUserId,
+            agentName: o.logisticAssignedAgentName ?? '',
+          }).includes(key),
+        ),
+      );
+      for (const o of returnOrders) {
         const st = o.status.toLowerCase();
         if (deliveredStatuses.includes(st)) delivered += 1;
         if (returnedStatuses.includes(st)) returned += 1;
@@ -1534,9 +1839,15 @@ export class IncentiveService {
         (config.orderTags ?? []).map((tag) => tag.toLowerCase()),
       );
       actualValue = orders.filter((o) => {
+        if (!this.matchesOrderCredit(assignment, o)) return false;
+        const source = o.source.toLowerCase();
+        if (source !== 'website' && source !== 'ecommerce') return false;
         const st = o.status.toLowerCase();
         if (exclude.has(st)) return false;
         if (include?.length && !include.includes(st)) return false;
+        const flags = o.incentiveFlags as { crossSell?: boolean; upsell?: boolean } | null;
+        const flagged = Boolean(flags?.crossSell || flags?.upsell);
+        if (flagged) return true;
         return (
           o.itemsCount >= minItems ||
           (!!o.orderTag && orderTags.has(o.orderTag.toLowerCase()))
@@ -1592,6 +1903,7 @@ export class IncentiveService {
         ]
       ).map((s) => s.toLowerCase());
       actualValue = orders.filter((o) => {
+        if (!this.matchesOrderCredit(assignment, o)) return false;
         const st = o.status.toLowerCase();
         if (exclude.has(st)) return false;
         return include.includes(st);
@@ -1682,12 +1994,14 @@ export class IncentiveService {
       planId: plan.id,
       planName: plan.name,
       teamName: plan.orgTeam?.name ?? plan.team?.name,
+      orgTeamId: plan.orgTeamId ?? null,
       metricType,
       actualValue,
       matchedSlabId: match.slab?.id ?? null,
       matchedSlabLabel: match.slab?.label ?? null,
       monthlyTarget: match.slab?.monthlyTarget ?? null,
       entryTarget,
+      dailyTarget: this.dailyTargetFor(plan),
       dailyAverage,
       incentiveBdt: match.incentiveBdt,
       prorataApplied: match.prorataApplied,
@@ -1953,6 +2267,9 @@ export class IncentiveService {
       teamRollups: report.teamRollups?.filter((rollup) =>
         lines.some((line) => line.planId === rollup.planId),
       ),
+      daily: report.daily?.filter((point) =>
+        lines.some((line) => line.assignmentId === point.assignmentId),
+      ),
     };
   }
 
@@ -2041,6 +2358,23 @@ export class IncentiveService {
       .slice(0, 64);
   }
 
+  private async allocatePlanSlug(
+    organizationId: string,
+    preferred: string,
+  ): Promise<string> {
+    const base = this.slugify(preferred) || 'plan';
+    for (let i = 0; i < 25; i += 1) {
+      const slug =
+        i === 0 ? base : this.slugify(`${base}-${i + 1}`).slice(0, 64);
+      const taken = await this.prisma.incentivePlan.findUnique({
+        where: { organizationId_slug: { organizationId, slug } },
+        select: { id: true },
+      });
+      if (!taken) return slug;
+    }
+    return this.slugify(`${base}-${Date.now()}`).slice(0, 64);
+  }
+
   private parseDate(value?: string | null): Date | null {
     if (!value) return null;
     const d = new Date(`${value}T00:00:00.000Z`);
@@ -2117,6 +2451,83 @@ export class IncentiveService {
     return weekdays;
   }
 
+  private weekdaysBetween(start: Date, end: Date): number {
+    let weekdays = 0;
+    for (const date of this.eachUtcDate(start, end)) {
+      const weekday = this.parseDate(date)!.getUTCDay();
+      if (weekday !== 0 && weekday !== 6) weekdays += 1;
+    }
+    return weekdays;
+  }
+
+  private resolvePerformanceWindow(
+    yearMonth: string,
+    range?: { from?: string; to?: string },
+  ): { start: Date; end: Date } {
+    const month = this.periodBounds(yearMonth);
+    if (!range?.from && !range?.to) return month;
+    if (!range.from || !range.to) {
+      throw new BadRequestException('from and to dates are required together');
+    }
+    const start = this.parseDate(range.from);
+    const end = this.endOfIsoDate(range.to);
+    if (!start || Number.isNaN(end.getTime())) {
+      throw new BadRequestException('from and to must be YYYY-MM-DD');
+    }
+    if (end < start) {
+      throw new BadRequestException('to must be on or after from');
+    }
+    const days = this.eachUtcDate(start, end).length;
+    if (days > 93) {
+      throw new BadRequestException('Date range cannot exceed 93 days');
+    }
+    return { start, end };
+  }
+
+  private monthsOverlapping(start: Date, end: Date): string[] {
+    const months: string[] = [];
+    let cursor = this.startOfMonth(start);
+    const last = this.startOfMonth(end);
+    while (cursor.getTime() <= last.getTime()) {
+      months.push(this.toYearMonth(cursor));
+      cursor = new Date(
+        Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1),
+      );
+    }
+    return months;
+  }
+
+  private eachUtcDate(start: Date, end: Date): string[] {
+    const dates: string[] = [];
+    const cursor = new Date(
+      Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+    );
+    const last = new Date(
+      Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()),
+    );
+    while (cursor.getTime() <= last.getTime()) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return dates;
+  }
+
+  private endOfIsoDate(value: string): Date {
+    const start = this.parseDate(value);
+    if (!start) throw new BadRequestException(`Invalid date: ${value}`);
+    return new Date(
+      Date.UTC(
+        start.getUTCFullYear(),
+        start.getUTCMonth(),
+        start.getUTCDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
+    );
+  }
+
   private hrStatusForMisses(
     consecutiveMissMonths: number,
   ): IncentivePerformanceLine['hrStatus'] {
@@ -2173,26 +2584,48 @@ export class IncentiveService {
       },
     });
     const plans = await this.prisma.incentivePlan.findMany({
-      where: { organizationId, orgTeamId: { not: null } },
-      select: { id: true, orgTeamId: true },
+      where: { organizationId, orgTeamId: { not: null }, isActive: true },
+      select: { id: true, orgTeamId: true, metricType: true },
     });
-    const planByTeam = new Map(
-      plans.map((p) => [p.orgTeamId as string, p.id] as const),
-    );
+    const plansByTeam = new Map<string, Array<{ id: string; metricType: string }>>();
+    for (const plan of plans) {
+      const teamId = plan.orgTeamId as string;
+      const list = plansByTeam.get(teamId) ?? [];
+      list.push({ id: plan.id, metricType: plan.metricType });
+      plansByTeam.set(teamId, list);
+    }
     return orgTeams.map((team, index) => {
       const memberIds = new Set(team.members.map((m) => m.id));
       memberIds.add(team.leaderUserId);
-      const planId = planByTeam.get(team.id) ?? null;
+      const teamPlans = plansByTeam.get(team.id) ?? [];
+      const metricTypes = [
+        ...new Set(
+          teamPlans
+            .map((plan) => plan.metricType)
+            .filter((metric): metric is IncentiveMetricType =>
+              [
+                'order_count',
+                'cross_sell_count',
+                'return_ratio',
+                'recovery_count',
+                'survey_count',
+                'channel_activity',
+                'manual',
+              ].includes(metric),
+            ),
+        ),
+      ];
       return {
         id: team.id,
         name: team.name,
         slug: this.slugify(team.name),
         sortOrder: index,
         isActive: true,
-        planCount: planId ? 1 : 0,
+        planCount: teamPlans.length,
         memberCount: memberIds.size,
-        planId,
-        hasStructure: Boolean(planId),
+        planId: teamPlans[0]?.id ?? null,
+        hasStructure: teamPlans.length > 0,
+        metricTypes,
       };
     });
   }
@@ -2335,7 +2768,9 @@ export class IncentiveService {
       },
       select: { id: true, orgTeamId: true },
     });
-    const startsOn = new Date(Date.UTC(2000, 0, 1));
+    const startsOn = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
+    );
 
     for (const plan of plans) {
       const orgTeam = await this.prisma.team.findFirst({
@@ -2368,16 +2803,20 @@ export class IncentiveService {
       for (const user of users.values()) {
         const current = byUserId.get(user.id);
         if (current) {
-          if (!current.isActive || current.agentName !== user.name) {
+          if (
+            !current.isActive ||
+            current.agentName !== user.name ||
+            current.hrStatus === 'terminated'
+          ) {
             await this.prisma.incentiveAssignment.update({
               where: { id: current.id },
               data: {
                 isActive: true,
                 agentName: user.name,
-                hrStatus:
-                  current.hrStatus === 'terminated'
-                    ? current.hrStatus
-                    : 'active',
+                hrStatus: 'active',
+                consecutiveMissMonths: 0,
+                endsOn: null,
+                startsOn,
               },
             });
           }
@@ -2439,6 +2878,29 @@ export class IncentiveService {
     return row;
   }
 
+  private async assertTeamMetricFree(
+    organizationId: string,
+    orgTeamId: string,
+    metricType: IncentiveMetricType,
+    excludePlanId?: string,
+  ) {
+    const existing = await this.prisma.incentivePlan.findFirst({
+      where: {
+        organizationId,
+        orgTeamId,
+        metricType,
+        isActive: true,
+        ...(excludePlanId ? { id: { not: excludePlanId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'This team already has a KPI structure for that metric. Edit it instead.',
+      );
+    }
+  }
+
   private async requireAssignment(organizationId: string, id: string) {
     const row = await this.prisma.incentiveAssignment.findFirst({
       where: { id, organizationId },
@@ -2454,6 +2916,12 @@ export class IncentiveService {
       'code' in e &&
       (e as { code?: string }).code === 'P2002'
     ) {
+      const target = (e as { meta?: { target?: string[] } }).meta?.target ?? [];
+      if (target.includes('orgTeamId')) {
+        throw new ConflictException(
+          'This team already has a KPI plan. That database limit is removed in a later migration — apply it, or edit the existing plan.',
+        );
+      }
       throw new ConflictException(message);
     }
     throw e;

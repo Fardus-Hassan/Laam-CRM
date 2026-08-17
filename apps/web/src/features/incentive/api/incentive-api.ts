@@ -40,9 +40,15 @@ import {
   upsertMockOpsRow,
 } from '../data/mock-incentive';
 
+export type IncentivePerformanceQuery = {
+  yearMonth?: string;
+  from?: string;
+  to?: string;
+};
+
 export type IncentiveApi = {
   getOverview: () => Promise<IncentiveOverview>;
-  getPerformance: (yearMonth?: string) => Promise<IncentivePerformanceReport>;
+  getPerformance: (query?: string | IncentivePerformanceQuery) => Promise<IncentivePerformanceReport>;
   seedDefaults: () => Promise<IncentiveOverview>;
   createTeam: (payload: CreateIncentiveTeamPayload) => Promise<IncentiveTeam>;
   updateTeam: (id: string, payload: UpdateIncentiveTeamPayload) => Promise<IncentiveTeam>;
@@ -78,6 +84,8 @@ export type IncentiveApi = {
   getPeriod: (yearMonth: string) => Promise<IncentivePeriodRun | null>;
   generatePeriod: (yearMonth: string) => Promise<IncentivePeriodRun>;
   approvePeriod: (yearMonth: string) => Promise<IncentivePeriodRun>;
+  lockMonth: (yearMonth: string) => Promise<IncentivePeriodRun>;
+  unlockMonth: (yearMonth: string) => Promise<IncentivePeriodRun>;
   markPeriodPaid: (yearMonth: string) => Promise<IncentivePeriodRun>;
   exportPayrollCsv: (
     yearMonth: string,
@@ -88,17 +96,26 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function performanceQuery(
+  query?: string | IncentivePerformanceQuery,
+): IncentivePerformanceQuery {
+  if (!query) return {};
+  if (typeof query === 'string') return { yearMonth: query };
+  return query;
+}
+
 export function createMockIncentiveApi(): IncentiveApi {
   return {
     async getOverview() {
       await delay(80);
       return mutateMockIncentive((s) => s);
     },
-    async getPerformance(yearMonth) {
+    async getPerformance(query) {
       await delay(100);
       const now = new Date();
+      const parsed = performanceQuery(query);
       const ym =
-        yearMonth ||
+        parsed.yearMonth ||
         `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const period = mutateMockIncentivePeriods((rows) =>
         rows.find((row) => row.yearMonth === ym),
@@ -132,6 +149,7 @@ export function createMockIncentiveApi(): IncentiveApi {
           warningCount: period.lines.filter((line) => line.warning && line.warning !== 'none')
             .length,
           periodStatus: period.status,
+          daily: [],
         };
       }
       return mutateMockIncentive((state) => {
@@ -245,6 +263,7 @@ export function createMockIncentiveApi(): IncentiveApi {
               };
             }),
           periodStatus: 'live' as const,
+          daily: [],
         };
       });
     },
@@ -613,6 +632,30 @@ export function createMockIncentiveApi(): IncentiveApi {
       );
       return updated;
     },
+    async lockMonth(yearMonth) {
+      const current = await this.getPeriod(yearMonth);
+      if (current?.status === 'approved' || current?.status === 'paid') return current;
+      if (!current) await this.generatePeriod(yearMonth);
+      return this.approvePeriod(yearMonth);
+    },
+    async unlockMonth(yearMonth) {
+      const current = await this.getPeriod(yearMonth);
+      if (!current) throw new Error('Month is not locked');
+      if (current.status === 'paid') throw new Error('Paid months cannot be unlocked');
+      if (current.status !== 'approved') throw new Error('Only locked months can be unlocked');
+      const updated = {
+        ...current,
+        status: 'draft' as const,
+        approvedAt: null,
+        approvedByName: null,
+      };
+      replaceMockIncentivePeriods(
+        mutateMockIncentivePeriods((rows) =>
+          rows.map((row) => (row.yearMonth === yearMonth ? updated : row)),
+        ),
+      );
+      return updated;
+    },
     async markPeriodPaid(yearMonth) {
       const current = await this.getPeriod(yearMonth);
       if (!current || current.status !== 'approved') {
@@ -685,9 +728,16 @@ export function createMockIncentiveApi(): IncentiveApi {
 export function createHttpIncentiveApi(): IncentiveApi {
   return {
     getOverview: () => apiRequest<IncentiveOverview>('/crm/incentive/overview'),
-    getPerformance: (yearMonth) => {
-      const q = yearMonth ? `?yearMonth=${encodeURIComponent(yearMonth)}` : '';
-      return apiRequest<IncentivePerformanceReport>(`/crm/incentive/performance${q}`);
+    getPerformance: (query) => {
+      const parsed = performanceQuery(query);
+      const params = new URLSearchParams();
+      if (parsed.yearMonth) params.set('yearMonth', parsed.yearMonth);
+      if (parsed.from) params.set('from', parsed.from);
+      if (parsed.to) params.set('to', parsed.to);
+      const q = params.toString();
+      return apiRequest<IncentivePerformanceReport>(
+        `/crm/incentive/performance${q ? `?${q}` : ''}`,
+      );
     },
     seedDefaults: () =>
       apiRequest<IncentiveOverview>('/crm/incentive/seed-defaults', { method: 'POST' }),
@@ -792,6 +842,16 @@ export function createHttpIncentiveApi(): IncentiveApi {
       apiRequest<IncentivePeriodRun>(
         `/crm/incentive/periods/${encodeURIComponent(yearMonth)}/approve`,
         { method: 'PATCH' },
+      ),
+    lockMonth: (yearMonth) =>
+      apiRequest<IncentivePeriodRun>(
+        `/crm/incentive/periods/${encodeURIComponent(yearMonth)}/lock`,
+        { method: 'POST' },
+      ),
+    unlockMonth: (yearMonth) =>
+      apiRequest<IncentivePeriodRun>(
+        `/crm/incentive/periods/${encodeURIComponent(yearMonth)}/unlock`,
+        { method: 'POST' },
       ),
     markPeriodPaid: (yearMonth) =>
       apiRequest<IncentivePeriodRun>(

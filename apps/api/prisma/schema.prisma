@@ -73,6 +73,7 @@ model Organization {
   incentivePlans           IncentivePlan[]
   incentiveAssignments     IncentiveAssignment[]
   incentiveOrgSettings     IncentiveOrgSettings?
+  routingConfig            OrgRoutingConfig?
   incentiveManualActuals   IncentiveManualActual[]
   incentivePeriodRuns      IncentivePeriodRun[]
   incentiveAttendances     IncentiveAttendance[]
@@ -497,6 +498,17 @@ model Order {
   assignedAgentName  String?
   /// Stable assignee for KPI / incentive (preferred over assignedAgentName).
   assignedUserId     String?
+  /// Logistic assignee used for courier workload split and return-ratio KPI.
+  logisticAssignedUserId String?
+  logisticAssignedAgentName String?
+  /// Snapshot of sales assignee when order KPI is credited (anti-gaming).
+  orderCreditUserId  String?
+  orderCreditAgentName String?
+  orderCreditedAt    DateTime?
+  /// Snapshot of original inbound cart for CS/US checks.
+  inboundOriginalSnapshot Json?
+  /// Derived incentive flags (cross_sell / upsell metadata).
+  incentiveFlags     Json?
   shippingArea       String
   shippingAddress    String?
   district           String?
@@ -581,6 +593,25 @@ model Order {
   @@index([organizationId, clientIp])
   @@index([organizationId, assignedAgentName])
   @@index([organizationId, assignedUserId])
+  @@index([organizationId, logisticAssignedUserId])
+  @@index([organizationId, orderCreditUserId])
+}
+
+/// Org-level routing defaults for order and courier assignment.
+model OrgRoutingConfig {
+  id                 String       @id @default(cuid())
+  organizationId     String       @unique
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderMode          String       @default("auto_split")
+  orderTeamIds       String[]     @default([])
+  orderAssigneeUserId String?
+  courierMode        String       @default("auto_split")
+  courierTeamIds     String[]     @default([])
+  courierAssigneeUserId String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 /// Org-level blocklist: IP or mobile — blocked callers cannot place orders.
@@ -1618,6 +1649,7 @@ model IncentivePlan {
   @@index([organizationId, isActive])
   @@index([organizationId, teamId])
   @@index([organizationId, orgTeamId])
+  @@index([organizationId, orgTeamId, metricType])
   @@map("IncentivePlans")
 }
 

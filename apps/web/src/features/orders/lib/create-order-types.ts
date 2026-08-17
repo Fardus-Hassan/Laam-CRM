@@ -86,6 +86,10 @@ export type CreateOrderFormState = {
   couponDiscountAmount: number;
   skipFollowup: boolean;
 
+  salesAssignMode: '' | 'auto_split' | 'specific_member';
+  salesTeamIds: string[];
+  salesUserId: string;
+
   catalogSearch: string;
   catalogCategory: string;
 };

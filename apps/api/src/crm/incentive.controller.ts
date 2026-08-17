@@ -566,14 +566,22 @@ export class IncentiveController {
   performance(
     @CurrentUser() user: AuthUserPayload,
     @Query('yearMonth') yearMonth?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     this.incentive.requireOrg(user.organizationId);
     const now = new Date();
     const ym =
       yearMonth?.trim() ||
-      `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+      (to?.trim().slice(0, 7) && /^\d{4}-(0[1-9]|1[0-2])$/.test(to.trim().slice(0, 7))
+        ? to.trim().slice(0, 7)
+        : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`);
+    const range =
+      from?.trim() || to?.trim()
+        ? { from: from?.trim(), to: to?.trim() }
+        : undefined;
     return this.viewer(user).then((viewer) =>
-      this.incentive.performance(user.organizationId!, ym, viewer),
+      this.incentive.performance(user.organizationId!, ym, viewer, range),
     );
   }
 
@@ -748,6 +756,28 @@ export class IncentiveController {
   ) {
     this.incentive.requireOrg(user.organizationId);
     return this.incentive.approvePeriod(user.organizationId!, yearMonth, user);
+  }
+
+  @Post('periods/:yearMonth/lock')
+  @RequirePermissions('incentive.manage')
+  @ApiOperation({ summary: 'Snapshot and lock a month so KPI totals no longer move' })
+  lockMonth(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('yearMonth') yearMonth: string,
+  ) {
+    this.incentive.requireOrg(user.organizationId);
+    return this.incentive.lockMonth(user.organizationId!, yearMonth, user);
+  }
+
+  @Post('periods/:yearMonth/unlock')
+  @RequirePermissions('incentive.manage')
+  @ApiOperation({ summary: 'Reopen a locked month (not paid) for live recalculation' })
+  unlockMonth(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('yearMonth') yearMonth: string,
+  ) {
+    this.incentive.requireOrg(user.organizationId);
+    return this.incentive.unlockMonth(user.organizationId!, yearMonth);
   }
 
   @Patch('periods/:yearMonth/paid')
