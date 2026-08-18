@@ -26,6 +26,8 @@ import { NotificationsController } from './notifications.controller';
 import { ObjectStorageService } from './object-storage.service';
 import { OrgCategoriesController } from './org-categories.controller';
 import { OrgCustomerStatusesController } from './org-customer-statuses.controller';
+import { OrgSettingsController } from './org-settings.controller';
+import { OrgSettingsService } from './org-settings.service';
 import { OrgOrderStatusesController } from './org-order-statuses.controller';
 import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { OrgOrderQueuesController } from './org-order-queues.controller';
@@ -108,6 +110,7 @@ import { SecurityBlocksService } from './security-blocks.service';
     FollowupsController,
     RbacController,
     BrandingController,
+    OrgSettingsController,
     NotificationsController,
     ProductBrandsController,
     OrgCategoriesController,
@@ -131,6 +134,7 @@ import { SecurityBlocksService } from './security-blocks.service';
   providers: [
     RbacService,
     BrandingService,
+    OrgSettingsService,
     LeadsService,
     CustomersService,
     ContactsService,

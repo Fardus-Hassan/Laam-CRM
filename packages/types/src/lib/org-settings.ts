@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const orgProfileSchema = z.object({
   name: z.string(),
   slug: z.string(),
-  email: z.string().email(),
+  email: z.union([z.string().email(), z.literal('')]),
   phone: z.string(),
   address: z.string(),
   district: z.string(),

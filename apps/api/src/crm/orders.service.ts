@@ -214,8 +214,6 @@ const ACTIVE_COURIER_WORKLOAD_SLUGS = new Set([
 
 const DEFAULT_STATUSES: OrderFormOptionDto[] = [
   { value: 'pending', label: 'Pending' },
-  { value: 'pending_2', label: 'Pending 2' },
-  { value: 'pending_3', label: 'Pending 3' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'hold', label: 'On Hold' },
   { value: 'processing', label: 'Processing' },
@@ -223,6 +221,8 @@ const DEFAULT_STATUSES: OrderFormOptionDto[] = [
   { value: 'delivered', label: 'Delivered' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'pending_return', label: 'Pending Return' },
+  { value: 'returned', label: 'Returned' },
 ];
 
 const DEFAULT_PAYMENT_METHODS: OrderFormOptionDto[] = [
@@ -234,12 +234,9 @@ const DEFAULT_PAYMENT_METHODS: OrderFormOptionDto[] = [
 ];
 
 const DEFAULT_SOURCES: OrderFormOptionDto[] = [
-  { value: 'facebook', label: 'Facebook Ad' },
-  { value: 'campaign', label: 'Facebook Campaign' },
+  { value: 'facebook', label: 'Facebook' },
   { value: 'website', label: 'Website' },
-  { value: 'landing_page', label: 'Landing Page' },
-  { value: 'call', label: 'Inbound Call' },
-  { value: 'ecommerce', label: 'Online Store' },
+  { value: 'call', label: 'Call' },
   { value: 'walk_in', label: 'Walk-in' },
 ];
 
@@ -256,11 +253,8 @@ const DEFAULT_DISTRICTS = [
   'Narayanganj',
 ];
 
-const DEFAULT_ORDER_TAGS = ['VIP', 'Repeat', 'COD Risk', 'New', 'Ramadan', 'Gift Buyer'];
-const DEFAULT_CUSTOMER_TAGS = ['VIP', 'Repeat', 'New', 'Wholesale'];
-
-const DEFAULT_COURIER_NOTE =
-  'পার্সেল খোলা যাবে না — মার্চেন্টকে জানানো ছাড়া খুলবেন না। কাস্টমার কল না ধরলে পার্সেল ক্যান্সেল করবেন না।';
+const DEFAULT_ORDER_TAGS: string[] = [];
+const DEFAULT_CUSTOMER_TAGS: string[] = [];
 
 @Injectable()
 export class OrdersService {
@@ -640,8 +634,11 @@ export class OrdersService {
   }
 
   async ensureFormOptions(organizationId: string): Promise<void> {
-    const count = await this.prisma.orderFormOption.count({ where: { organizationId } });
-    if (count > 0) return;
+    const existing = await this.prisma.orderFormOption.findMany({
+      where: { organizationId },
+      select: { kind: true },
+    });
+    const kinds = new Set(existing.map((row) => row.kind));
 
     const rows: Array<{
       organizationId: string;
@@ -651,70 +648,67 @@ export class OrdersService {
       sortOrder: number;
     }> = [];
 
-    DEFAULT_STATUSES.forEach((o, i) =>
-      rows.push({ organizationId, kind: 'status', value: o.value, label: o.label, sortOrder: i }),
-    );
-    DEFAULT_PAYMENT_METHODS.forEach((o, i) =>
-      rows.push({
-        organizationId,
-        kind: 'payment_method',
-        value: o.value,
-        label: o.label,
-        sortOrder: i,
-      }),
-    );
-    DEFAULT_SOURCES.forEach((o, i) =>
-      rows.push({ organizationId, kind: 'source', value: o.value, label: o.label, sortOrder: i }),
-    );
-    DEFAULT_DISTRICTS.forEach((name, i) =>
-      rows.push({
-        organizationId,
-        kind: 'district',
-        value: name,
-        label: name,
-        sortOrder: i,
-      }),
-    );
-    DEFAULT_ORDER_TAGS.forEach((name, i) =>
-      rows.push({
-        organizationId,
-        kind: 'order_tag',
-        value: name,
-        label: name,
-        sortOrder: i,
-      }),
-    );
-    DEFAULT_CUSTOMER_TAGS.forEach((name, i) =>
-      rows.push({
-        organizationId,
-        kind: 'customer_tag',
-        value: name,
-        label: name,
-        sortOrder: i,
-      }),
-    );
-    rows.push({
-      organizationId,
-      kind: 'default_courier_note',
-      value: 'default',
-      label: DEFAULT_COURIER_NOTE,
-      sortOrder: 0,
-    });
-    rows.push({
-      organizationId,
-      kind: 'default_shipping',
-      value: 'default',
-      label: '120',
-      sortOrder: 0,
-    });
-    rows.push({
-      organizationId,
-      kind: 'customer_create_source',
-      value: '__none__',
-      label: 'Not set',
-      sortOrder: 0,
-    });
+    const addKind = (
+      kind: string,
+      items: Array<{ value: string; label: string }>,
+    ) => {
+      if (kinds.has(kind) || items.length === 0) return;
+      items.forEach((item, index) =>
+        rows.push({
+          organizationId,
+          kind,
+          value: item.value,
+          label: item.label,
+          sortOrder: index,
+        }),
+      );
+    };
 
+    addKind('status', DEFAULT_STATUSES);
+    addKind('payment_method', DEFAULT_PAYMENT_METHODS);
+    addKind('source', DEFAULT_SOURCES);
+    addKind(
+      'district',
+      DEFAULT_DISTRICTS.map((name) => ({ value: name, label: name })),
+    );
+    addKind(
+      'order_tag',
+      DEFAULT_ORDER_TAGS.map((name) => ({ value: name, label: name })),
+    );
+    addKind(
+      'customer_tag',
+      DEFAULT_CUSTOMER_TAGS.map((name) => ({ value: name, label: name })),
+    );
+
+    if (!kinds.has('default_courier_note')) {
+      rows.push({
+        organizationId,
+        kind: 'default_courier_note',
+        value: 'default',
+        label: '',
+        sortOrder: 0,
+      });
+    }
+    if (!kinds.has('default_shipping')) {
+      rows.push({
+        organizationId,
+        kind: 'default_shipping',
+        value: 'default',
+        label: '0',
+        sortOrder: 0,
+      });
+    }
+    if (!kinds.has('customer_create_source')) {
+      rows.push({
+        organizationId,
+        kind: 'customer_create_source',
+        value: '__none__',
+        label: 'Not set',
+        sortOrder: 0,
+      });
+    }
+
+    if (rows.length === 0) return;
     await this.prisma.orderFormOption.createMany({ data: rows });
   }
 
@@ -790,8 +784,8 @@ export class OrdersService {
         .filter((v): v is string => Boolean(v))
         .map((v) => ({ value: v, label: v }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-      defaultCourierNote: noteRow?.label ?? DEFAULT_COURIER_NOTE,
-      defaultShipping: Number(shippingRow?.label ?? 120) || 120,
+      defaultCourierNote: noteRow?.label ?? '',
+      defaultShipping: Number(shippingRow?.label ?? 0) || 0,
       customerCreateSource,
     };
   }
@@ -2086,8 +2080,20 @@ export class OrdersService {
     });
 
     const options = await this.getFormOptions(organizationId);
-    const status = input.status || options.statuses[0]?.value || 'pending';
-    const source = input.source || options.sources[0]?.value || 'call';
+    const inboundWebsite = Boolean(input.websiteStoreId?.trim());
+    const status = input.status?.trim()
+      || (inboundWebsite ? options.statuses[0]?.value || 'pending' : '');
+    if (!status) {
+      throw new BadRequestException('Order status is required');
+    }
+    const source = input.source?.trim()
+      || (inboundWebsite ? options.sources[0]?.value || 'website' : '');
+    if (!source) {
+      throw new BadRequestException('Order source is required');
+    }
+    if (!inboundWebsite && !input.paymentMethod?.trim()) {
+      throw new BadRequestException('Payment method is required');
+    }
     if (!(await this.orgOrderStatuses.isValidStatus(organizationId, status))) {
       throw new BadRequestException(`Invalid order status: ${status}`);
     }
@@ -2161,7 +2167,6 @@ export class OrdersService {
       });
       explicitAssignedAgentName = assignedUser?.name?.trim() || null;
     }
-    const inboundWebsite = Boolean(input.websiteStoreId?.trim());
     const hasRoutingOverride = Boolean(
       input.assignmentMode || input.routingTeamIds?.length || input.routingUserId,
     );
@@ -4373,7 +4378,21 @@ export class OrdersService {
 
   private async nextOrderNumber(organizationId: string): Promise<string> {
     const year = new Date().getFullYear();
-    const prefix = `ORD-${year}-`;
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { settings: true },
+    });
+    const rawPrefix =
+      org?.settings &&
+      typeof org.settings === 'object' &&
+      !Array.isArray(org.settings)
+        ? (org.settings as { orderPrefix?: unknown }).orderPrefix
+        : undefined;
+    const customPrefix =
+      typeof rawPrefix === 'string'
+        ? rawPrefix.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+        : '';
+    const prefix = `${customPrefix || 'ORD'}-${year}-`;
     const latest = await this.prisma.order.findFirst({
       where: { organizationId, orderNumber: { startsWith: prefix } },
       orderBy: { orderNumber: 'desc' },

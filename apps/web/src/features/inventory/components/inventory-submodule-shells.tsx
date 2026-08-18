@@ -256,7 +256,7 @@ export function SuppliersListShell() {
   return (
     <InventoryPageLayout
       title="Suppliers"
-      description="Vendors for honey, dates, packaging, and raw materials."
+      description="Vendors you buy stock from — packaging, raw materials, and finished goods."
       actions={
         <Can permission="inventory.purchase">
           <Button type="button" size="sm" onClick={openCreate}>
@@ -1453,7 +1453,7 @@ export function MixerListShell() {
             <Card className={ORDER_CARD_CLASS}>
               <CardContent className="p-4">
                 <p className="text-center text-sm text-muted-foreground">
-                  No recipes yet — create one for your mix (e.g. honey + kalojira).
+                  No recipes yet — create one to mix ingredients into a finished SKU.
                 </p>
               </CardContent>
             </Card>

@@ -281,7 +281,7 @@ export function CouponsPage() {
                 onChange={(e) =>
                   setDraft({ ...draft, code: e.target.value.toUpperCase() })
                 }
-                placeholder="RAMADAN10"
+                placeholder="WELCOME10"
               />
             </FormField>
             <FormField label="Type">

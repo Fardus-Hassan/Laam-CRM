@@ -259,7 +259,7 @@ export function CreateContactPage() {
                     rows={3}
                     value={draft.notes}
                     onChange={(e) => patch({ notes: e.target.value })}
-                    placeholder="Prefers WhatsApp, bulk order contact, Ramadan buyer, etc."
+                    placeholder="Prefers WhatsApp, bulk buyer, callback after 8pm, etc."
                   />
                 </FormField>
               </CardContent>

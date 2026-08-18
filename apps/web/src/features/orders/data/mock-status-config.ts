@@ -49,41 +49,18 @@ function status(
   };
 }
 
-/** Food business demo seed — admin can extend in Phase 2. */
+/** Core workflow seed — tenants add extra statuses in Settings. */
 export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
   status({
     slug: 'pending',
     label: 'Pending',
-    labelBn: 'পেন্ডিং',
     color: 'hsl(174 58% 42%)',
     group: 'intake',
     parentSlug: 'pendings',
     displayMode: 'sidebar_and_tab',
     isDefault: true,
     sidebarOrder: 10,
-    allowedTransitions: ['pending_2', 'pending_3', 'confirmed', 'hold', 'cancelled'],
-    bulkActions: PENDING_BULK,
-  }),
-  status({
-    slug: 'pending_2',
-    label: 'Pending 2',
-    color: 'hsl(174 48% 38%)',
-    group: 'intake',
-    parentSlug: 'pendings',
-    displayMode: 'sidebar_and_tab',
-    sidebarOrder: 11,
-    allowedTransitions: ['pending', 'pending_3', 'confirmed', 'hold', 'cancelled'],
-    bulkActions: PENDING_BULK,
-  }),
-  status({
-    slug: 'pending_3',
-    label: 'Pending 3',
-    color: 'hsl(174 38% 34%)',
-    group: 'intake',
-    parentSlug: 'pendings',
-    displayMode: 'sidebar_and_tab',
-    sidebarOrder: 12,
-    allowedTransitions: ['pending', 'pending_2', 'confirmed', 'hold', 'cancelled'],
+    allowedTransitions: ['confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
   }),
   status({
@@ -97,15 +74,6 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     bulkActions: CONFIRMED_BULK,
   }),
   status({
-    slug: 'confirmed_2',
-    label: 'Confirmed 2',
-    color: 'hsl(200 50% 40%)',
-    group: 'confirm',
-    displayMode: 'filter_only',
-    allowedTransitions: ['processing', 'in_courier', 'cancelled'],
-    bulkActions: CONFIRMED_BULK,
-  }),
-  status({
     slug: 'hold',
     label: 'Hold',
     color: 'hsl(38 90% 50%)',
@@ -116,21 +84,12 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     bulkActions: PENDING_BULK,
   }),
   status({
-    slug: 'hold_followup',
-    label: 'Hold Followup',
-    color: 'hsl(38 80% 45%)',
-    group: 'confirm',
-    displayMode: 'filter_only',
-    allowedTransitions: ['hold', 'confirmed', 'cancelled'],
-    bulkActions: PENDING_BULK,
-  }),
-  status({
     slug: 'processing',
     label: 'Processing',
     color: 'hsl(260 45% 55%)',
     group: 'fulfillment',
     displayMode: 'filter_only',
-    allowedTransitions: ['in_courier', 'special', 'hold'],
+    allowedTransitions: ['in_courier', 'hold'],
     bulkActions: DEFAULT_BULK,
   }),
   status({
@@ -142,15 +101,6 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     sidebarOrder: 25,
     allowedTransitions: ['delivered', 'pending_return', 'cancelled'],
     bulkActions: [...DEFAULT_BULK, 'update_courier_status'],
-  }),
-  status({
-    slug: 'hand_delivery',
-    label: 'Hand Delivery',
-    color: 'hsl(160 40% 42%)',
-    group: 'delivery',
-    displayMode: 'filter_only',
-    allowedTransitions: ['hand_delivery_completed', 'delivered'],
-    bulkActions: DEFAULT_BULK,
   }),
   status({
     slug: 'delivered',
@@ -200,33 +150,6 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     allowedTransitions: [],
     bulkActions: ['export'],
   }),
-  status({
-    slug: 'return_collection',
-    label: 'Return Collection',
-    color: 'hsl(15 55% 48%)',
-    group: 'returns',
-    displayMode: 'filter_only',
-    allowedTransitions: ['returned', 'pending_return'],
-    bulkActions: DEFAULT_BULK,
-  }),
-  status({
-    slug: 'special',
-    label: 'Special',
-    color: 'hsl(280 45% 55%)',
-    group: 'fulfillment',
-    displayMode: 'filter_only',
-    allowedTransitions: ['processing', 'in_courier'],
-    bulkActions: DEFAULT_BULK,
-  }),
-  status({
-    slug: 'convert',
-    label: 'Convert',
-    color: 'hsl(300 40% 50%)',
-    group: 'confirm',
-    displayMode: 'filter_only',
-    allowedTransitions: ['confirmed', 'cancelled'],
-    bulkActions: PENDING_BULK,
-  }),
 ];
 
 export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
@@ -263,8 +186,7 @@ export const MOCK_ORDER_QUEUE_PAGES: OrderQueuePage[] = [
     // (see getQueueChildStatusSlugs) — not a hardcoded list.
     defaultChildSlug: 'pending',
     title: 'Call confirm',
-    description:
-      'New orders from Facebook, campaigns, website & landing pages — call center confirms COD.',
+    description: 'New orders waiting for confirmation before packing or courier booking.',
     showInNav: true,
   },
   {

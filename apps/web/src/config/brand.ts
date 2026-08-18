@@ -120,14 +120,18 @@ export function mergeBrandFromPublic(
   brand: PublicTenantBrand,
   apiBaseUrl?: string,
 ): BrandConfig {
+  const isPlatform = brand.slug === 'platform';
+  const fallbackLogos = isPlatform
+    ? DEFAULT_BRAND.logos
+    : { light: '', dark: '', favicon: '' };
   return {
     name: brand.name || DEFAULT_BRAND.name,
     logos: {
-      light: resolveLogoUrl(brand.logos.light, DEFAULT_BRAND.logos.light, apiBaseUrl),
-      dark: resolveLogoUrl(brand.logos.dark, DEFAULT_BRAND.logos.dark, apiBaseUrl),
+      light: resolveLogoUrl(brand.logos.light, fallbackLogos.light, apiBaseUrl),
+      dark: resolveLogoUrl(brand.logos.dark, fallbackLogos.dark, apiBaseUrl),
       favicon: resolveLogoUrl(
         brand.logos.favicon,
-        DEFAULT_BRAND.logos.favicon,
+        fallbackLogos.favicon,
         apiBaseUrl,
       ),
     },

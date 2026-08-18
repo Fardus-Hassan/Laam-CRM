@@ -118,13 +118,12 @@ export function createMockOrdersApi(): OrdersApi {
     },
     async getFormOptions() {
       await delay(50);
-      const { DEFAULT_COURIER_NOTE, MOCK_DISTRICTS, MOCK_ORDER_STATUSES, MOCK_ORDER_TAGS, MOCK_PAYMENT_METHODS } =
+      const { DEFAULT_COURIER_NOTE, MOCK_DISTRICTS, MOCK_ORDER_STATUSES, MOCK_ORDER_TAGS, MOCK_PAYMENT_METHODS, MOCK_SOURCES } =
         await import('@/features/orders/data/mock-create-order');
-      const { ORDER_SOURCE_LABELS } = await import('@/features/orders/config/order-status');
       return {
         statuses: MOCK_ORDER_STATUSES,
         paymentMethods: MOCK_PAYMENT_METHODS,
-        sources: Object.entries(ORDER_SOURCE_LABELS).map(([value, label]) => ({ value, label })),
+        sources: MOCK_SOURCES,
         districts: MOCK_DISTRICTS.map((d) => ({ value: d, label: d })),
         orderTags: MOCK_ORDER_TAGS.map((t) => ({ value: t, label: t })),
         customerTags: MOCK_ORDER_TAGS.map((t) => ({ value: t, label: t })),
@@ -137,7 +136,7 @@ export function createMockOrdersApi(): OrdersApi {
           { value: 'Mirpur', label: 'Mirpur' },
         ],
         defaultCourierNote: DEFAULT_COURIER_NOTE,
-        defaultShipping: 120,
+        defaultShipping: 0,
         customerCreateSource: '',
       };
     },

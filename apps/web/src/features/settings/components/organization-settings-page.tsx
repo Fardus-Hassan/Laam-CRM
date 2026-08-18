@@ -3,6 +3,7 @@
 import * as React from 'react';
 import type { OrgProfile } from '@laam/types';
 import { Building2, Save } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
@@ -22,6 +23,7 @@ import { cn } from '@/lib/utils';
 
 export function OrganizationSettingsPage() {
   const [profile, setProfile] = React.useState<OrgProfile | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const { connected, loading: couriersLoading } = useConnectedCouriers();
@@ -30,9 +32,22 @@ export function OrganizationSettingsPage() {
     label: p.label,
   }));
 
-  React.useEffect(() => {
-    void orgSettingsApi.getSettings().then((s) => setProfile(s.profile));
+  const load = React.useCallback(async () => {
+    setLoadError(null);
+    try {
+      const s = await orgSettingsApi.getSettings();
+      setProfile(s.profile);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load organization';
+      setProfile(null);
+      setLoadError(message);
+      toast.error(message);
+    }
   }, []);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
 
   async function handleSave() {
     if (!profile) return;
@@ -42,10 +57,26 @@ export function OrganizationSettingsPage() {
       const updated = await orgSettingsApi.updateProfile(profile);
       setProfile(updated);
       setSaved(true);
+      toast.success('Organization saved');
       setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Save failed');
     } finally {
       setSaving(false);
     }
+  }
+
+  if (loadError && !profile) {
+    return (
+      <PageShell title="Organization" description="Company profile and defaults.">
+        <div className="space-y-3">
+          <p className="text-sm text-destructive">{loadError}</p>
+          <Button type="button" variant="outline" onClick={() => void load()}>
+            Retry
+          </Button>
+        </div>
+      </PageShell>
+    );
   }
 
   if (!profile) {
@@ -73,7 +104,7 @@ export function OrganizationSettingsPage() {
             <FormField label="Business name">
               <FormInput value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
             </FormField>
-            <FormField label="Slug">
+            <FormField label="Slug" hint="Used in the tenant login URL.">
               <FormInput value={profile.slug} onChange={(e) => setProfile({ ...profile, slug: e.target.value })} />
             </FormField>
             <FormField label="Email">
@@ -99,8 +130,8 @@ export function OrganizationSettingsPage() {
             <CardTitle className="text-sm">Order defaults</CardTitle>
           </CardHeader>
           <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'grid gap-4 sm:grid-cols-2')}>
-            <FormField label="Order prefix">
-              <FormInput value={profile.orderPrefix} onChange={(e) => setProfile({ ...profile, orderPrefix: e.target.value })} placeholder="MH" />
+            <FormField label="Order prefix" hint="New orders use PREFIX-YEAR-00001. Leave empty for ORD.">
+              <FormInput value={profile.orderPrefix} onChange={(e) => setProfile({ ...profile, orderPrefix: e.target.value })} placeholder="ORD" />
             </FormField>
             <FormField label="Default courier">
               <select

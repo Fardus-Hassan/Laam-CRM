@@ -167,8 +167,8 @@ export function CreateOrderPage() {
       shippingAddress: form.state.address,
       shippingArea: form.state.district || form.state.pathaoLocation?.city || 'Unknown',
       district: form.state.district,
-      source: form.state.orderSource || 'call',
-      status: form.state.orderStatus || 'pending',
+      source: form.state.orderSource,
+      status: form.state.orderStatus,
       paymentMethod: form.state.paymentMethod,
       paymentStatus:
         form.state.paymentMethod === 'paid'

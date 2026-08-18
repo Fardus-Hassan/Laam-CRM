@@ -84,7 +84,6 @@ const DEFAULT_CUSTOMER_STATUSES: Array<{
   sortOrder: number;
 }> = [
   { slug: 'none', label: 'No status', isSystem: true, sortOrder: 0 },
-  { slug: 'premium', label: 'Premium', isSystem: true, sortOrder: 1 },
 ];
 
 function compareInt(

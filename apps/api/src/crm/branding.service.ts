@@ -99,9 +99,9 @@ export class BrandingService {
       slug: input.slug,
       colors: mergeColors(branding.colors),
       logos: {
-        light: branding.logos?.light || DEFAULT_LOGOS.light,
-        dark: branding.logos?.dark || DEFAULT_LOGOS.dark,
-        favicon: branding.logos?.favicon || DEFAULT_LOGOS.favicon,
+        light: branding.logos?.light || (input.slug === 'platform' ? DEFAULT_LOGOS.light : undefined),
+        dark: branding.logos?.dark || (input.slug === 'platform' ? DEFAULT_LOGOS.dark : undefined),
+        favicon: branding.logos?.favicon || (input.slug === 'platform' ? DEFAULT_LOGOS.favicon : undefined),
       },
     };
   }

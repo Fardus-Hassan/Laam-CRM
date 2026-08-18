@@ -37,8 +37,7 @@ const SYSTEM_QUEUES: Array<Omit<OrderQueuePage, 'id' | 'childStatusSlugs' | 'dis
     sidebarOrder: 10,
     defaultChildSlug: 'pending',
     title: 'Call confirm',
-    description:
-      'New orders from Facebook, campaigns, website & landing pages — call center confirms COD.',
+    description: 'New orders waiting for confirmation before packing or courier booking.',
     showInNav: true,
     isSystem: true,
   },

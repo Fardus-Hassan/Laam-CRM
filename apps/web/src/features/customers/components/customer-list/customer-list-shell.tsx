@@ -278,7 +278,7 @@ export function CustomerListShell() {
                   )}
                   title="Customers with 10 or more orders"
                 >
-                  Premium Customer
+                  10+ orders
                 </button>
               );
             })()}

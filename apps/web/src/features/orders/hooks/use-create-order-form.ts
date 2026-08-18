@@ -34,8 +34,6 @@ type FormAction =
       type: 'hydrate_defaults';
       courierNote: string;
       shipping: number;
-      status: string;
-      paymentMethod: string;
     }
   | {
       type: 'lookup_customer_result';
@@ -127,8 +125,6 @@ function reducer(state: CreateOrderFormState, action: FormAction): CreateOrderFo
         ...state,
         courierNote: state.courierNote || action.courierNote,
         shipping: state.shipping || action.shipping,
-        orderStatus: state.orderStatus || action.status,
-        paymentMethod: state.paymentMethod || action.paymentMethod,
       };
 
     case 'lookup_customer_result': {
@@ -338,8 +334,6 @@ export function useCreateOrderForm() {
           type: 'hydrate_defaults',
           courierNote: merged.defaultCourierNote,
           shipping: merged.defaultShipping,
-          status: merged.statuses[0]?.value ?? 'pending',
-          paymentMethod: merged.paymentMethods[0]?.value ?? 'cod',
         });
       } finally {
         if (!cancelled) setLoadingMeta(false);
@@ -411,8 +405,6 @@ export function useCreateOrderForm() {
       type: 'hydrate_defaults',
       courierNote: options.defaultCourierNote,
       shipping: options.defaultShipping,
-      status: options.statuses[0]?.value ?? 'pending',
-      paymentMethod: options.paymentMethods[0]?.value ?? 'cod',
     });
   }, [options]);
 

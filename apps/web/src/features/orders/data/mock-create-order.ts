@@ -60,14 +60,24 @@ export const MOCK_DISTRICTS = [
   'Narayanganj',
 ];
 
-export const MOCK_ORDER_TAGS = ['VIP', 'Repeat', 'COD Risk', 'New', 'Ramadan', 'Gift Buyer'];
+export const MOCK_ORDER_TAGS: string[] = [];
 
 export const MOCK_ORDER_STATUSES = [
   { value: 'pending', label: 'Pending' },
-  { value: 'pending_2', label: 'Pending 2' },
-  { value: 'pending_3', label: 'Pending 3' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'hold', label: 'On Hold' },
+  { value: 'processing', label: 'Processing' },
+  { value: 'in_courier', label: 'In Courier' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
+export const MOCK_SOURCES = [
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'website', label: 'Website' },
+  { value: 'call', label: 'Call' },
+  { value: 'walk_in', label: 'Walk-in' },
 ];
 
 export const MOCK_PAYMENT_METHODS = [
@@ -75,6 +85,7 @@ export const MOCK_PAYMENT_METHODS = [
   { value: 'bkash', label: 'bKash' },
   { value: 'nagad', label: 'Nagad' },
   { value: 'card', label: 'Card' },
+  { value: 'paid', label: 'Already Paid' },
 ];
 
 /** Active promo codes from coupons module. */
@@ -93,8 +104,7 @@ export function isValidCouponCode(code: string): boolean {
   return code.trim().toUpperCase() === 'SAVE10';
 }
 
-export const DEFAULT_COURIER_NOTE =
-  'পার্সেল খোলা যাবে না — মার্চেন্টকে জানানো ছাড়া খুলবেন না। কাস্টমার কল না ধরলে পার্সেল ক্যান্সেল করবেন না।';
+export const DEFAULT_COURIER_NOTE = '';
 
 function buildCustomerProfiles(): MockCustomerProfile[] {
   const byPhone = new Map<string, MockCustomerProfile>();
