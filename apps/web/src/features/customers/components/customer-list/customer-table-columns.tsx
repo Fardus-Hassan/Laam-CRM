@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/tooltip';
 import { CustomerFollowUpControl } from '@/features/customers/components/shared/customer-follow-up-control';
 import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
+import { customerCreateOrderHref } from '@/features/customers/lib/customer-create-order-href';
 import { formatDate, formatDateTime } from '@/lib/format';
 
 export const CUSTOMER_TABLE_PINNED = {
@@ -334,9 +335,7 @@ export function buildCustomerTableColumns(options?: {
       cell: ({ row }) => (
         <div className="flex flex-col gap-1">
           <Button type="button" size="sm" className="h-7 px-2 text-xs" asChild>
-            <Link
-              href={`/dashboard/orders/new?phone=${encodeURIComponent(row.original.phone)}`}
-            >
+            <Link href={customerCreateOrderHref(row.original.phone)}>
               <ShoppingBag className="size-3" />
               Order
             </Link>

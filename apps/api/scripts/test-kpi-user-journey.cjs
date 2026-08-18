@@ -419,8 +419,8 @@ async function main() {
       'Create-as-confirmed credits immediately',
     );
 
-    console.log('\n[5] Org-default routing (no override)');
-    const routed = await must(
+    console.log('\n[5] CRM manual default (creator, no override)');
+    const creatorAssigned = await must(
       'POST',
       '/crm/orders',
       token,
@@ -429,10 +429,25 @@ async function main() {
         status: 'pending',
       }),
     );
-    createdOrderIds.push(routed.id);
+    createdOrderIds.push(creatorAssigned.id);
     assert(
-      routed.assignedUserId === salesUser.id,
-      'Organization default routing assigns the Settings sales member',
+      creatorAssigned.assignedUserId === admin.id,
+      'CRM manual create without override assigns the logged-in creator, not Settings routing',
+    );
+
+    const agentCreated = await must(
+      'POST',
+      '/crm/orders',
+      salesToken,
+      orderPayload({
+        customerPhone: phone(31),
+        status: 'pending',
+      }),
+    );
+    createdOrderIds.push(agentCreated.id);
+    assert(
+      agentCreated.assignedUserId === salesUser.id,
+      'Sales agent manual create assigns themselves when no override',
     );
 
     // --- 6. Skip-confirm path ---

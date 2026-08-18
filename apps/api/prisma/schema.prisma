@@ -877,7 +877,7 @@ model OrderFormOption {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  kind           String // status | payment_method | source | district | order_tag | customer_tag | default_courier_note | default_shipping
+  kind           String // status | payment_method | source | district | order_tag | customer_tag | default_courier_note | default_shipping | customer_create_source
   value          String
   label          String
   sortOrder      Int          @default(0)

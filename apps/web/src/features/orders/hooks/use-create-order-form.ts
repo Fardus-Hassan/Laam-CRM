@@ -5,7 +5,6 @@ import type { OrderCustomerLookup, OrderFormOptionsResponse } from '@laam/types'
 
 import { couponsApi } from '@/features/coupons/api/coupons-api';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
-import { parseMerchandisingFlags } from '@/features/inventory/lib/product-merchandising';
 import { ordersApi } from '@/features/orders/api/orders-api';
 import {
   calcCreateOrderTotals,
@@ -25,9 +24,6 @@ export type OrderCatalogProduct = {
   name: string;
   sku: string;
   imageUrl: string;
-  isHero?: boolean;
-  isUpsell?: boolean;
-  isCrossSell?: boolean;
   variations: Array<{ id: string; label: string; unitPrice: number }>;
 };
 
@@ -294,20 +290,17 @@ const EMPTY_OPTIONS: OrderFormOptionsResponse = {
   pathaoZones: [],
   defaultCourierNote: '',
   defaultShipping: 0,
+  customerCreateSource: '',
 };
 
 function mapDetailToCatalog(
   d: NonNullable<Awaited<ReturnType<typeof inventoryApi.getProduct>>>,
 ): OrderCatalogProduct {
-  const merch = parseMerchandisingFlags(d.tags);
   return {
     id: d.id,
     name: d.name,
     sku: d.sku,
     imageUrl: d.imageUrl ?? '',
-    isHero: merch.isHero,
-    isUpsell: merch.isUpsell,
-    isCrossSell: merch.isCrossSell,
     variations:
       d.variants.length > 0
         ? d.variants.map((v) => ({

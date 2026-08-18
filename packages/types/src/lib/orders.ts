@@ -547,6 +547,8 @@ export const orderFormOptionsResponseSchema = z.object({
   pathaoZones: z.array(orderFormOptionSchema).default([]),
   defaultCourierNote: z.string(),
   defaultShipping: z.number(),
+  /** Source slug used when Create Order is opened from a customer. Empty = leave blank / last order. */
+  customerCreateSource: z.string().default(''),
 });
 
 export type OrderFormOptionsResponse = z.infer<typeof orderFormOptionsResponseSchema>;

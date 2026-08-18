@@ -3,13 +3,9 @@ import type { OrderSource } from '@laam/types';
 import { getActiveCouponByCode, listCoupons } from '@/features/coupons/data/mock-coupons';
 import { MOCK_INVENTORY_PRODUCTS } from '@/features/inventory/data/mock-inventory';
 import { MOCK_ORDERS } from '@/features/orders/data/mock-orders';
-import {
-  HERO_PRODUCT_ID,
-  isHeroProduct,
-  isUpsellProduct,
-  MOCK_PRODUCTS as SEED_PRODUCTS,
-  type MockProduct,
-  type MockProductVariation,
+import type {
+  MockProduct,
+  MockProductVariation,
 } from '@/features/orders/data/mock-products';
 import type { CustomerLookupStats } from '@/features/orders/lib/create-order-types';
 
@@ -17,17 +13,13 @@ export type { MockProduct, MockProductVariation };
 
 /** Order catalog = live inventory products (single source of truth). */
 export function getOrderCatalogProducts(): MockProduct[] {
-  const seedById = new Map(SEED_PRODUCTS.map((p) => [p.id, p]));
   return MOCK_INVENTORY_PRODUCTS.filter((p) => p.status === 'active')
     .map((p) => {
-      const seed = seedById.get(p.id);
       return {
         id: p.id,
         name: p.name,
         sku: p.sku,
         imageUrl: p.imageUrl ?? '',
-        isHero: seed?.isHero ?? isHeroProduct(p),
-        isUpsell: seed?.isUpsell ?? isUpsellProduct({ id: p.id, isUpsell: seed?.isUpsell, isHero: seed?.isHero }),
         variations:
           p.variants.length > 0
             ? p.variants.map((v) => ({
@@ -38,10 +30,8 @@ export function getOrderCatalogProducts(): MockProduct[] {
             : [{ id: `${p.id}-default`, label: 'Default', unitPrice: p.salePriceMin }],
       };
     })
-    .sort((a, b) => Number(Boolean(b.isHero)) - Number(Boolean(a.isHero)));
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
-
-export { HERO_PRODUCT_ID, isHeroProduct, isUpsellProduct };
 
 /** Snapshot for seed consumers — prefer getOrderCatalogProducts() at runtime. */
 export const MOCK_PRODUCTS = getOrderCatalogProducts();

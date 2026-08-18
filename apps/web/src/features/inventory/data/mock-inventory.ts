@@ -128,13 +128,7 @@ function buildProduct(index: number): InventoryProductDetail {
     salePriceMin: Math.min(...prices),
     salePriceMax: Math.max(...prices),
     costPrice: variants[0].costPrice,
-    tags: base.isHero
-      ? ['Hero', 'Best seller']
-      : base.isUpsell
-        ? ['Upsell']
-        : index % 3 === 0
-          ? ['Campaign']
-          : [],
+    tags: index % 3 === 0 ? ['Campaign'] : [],
     supplierName: SUPPLIER_NAMES[index % SUPPLIER_NAMES.length],
     lastSoldAt: index % 2 === 0 ? `2026-07-0${1 + (index % 2)}T11:00:00.000Z` : undefined,
     updatedAt,

@@ -47,6 +47,7 @@ export type OrdersApi = {
   getOrdersByPhone: (phone: string, excludeOrderId?: string) => Promise<OrderDetail[]>;
   quickSearchOrders: (query: string, limit?: number) => Promise<OrderListRow[]>;
   getFormOptions: () => Promise<OrderFormOptionsResponse>;
+  setCustomerCreateSource: (value: string) => Promise<{ customerCreateSource: string }>;
   getRoutingConfig: () => Promise<OrgRoutingConfig>;
   updateRoutingConfig: (patch: Partial<OrgRoutingConfig>) => Promise<OrgRoutingConfig>;
   lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
@@ -137,7 +138,12 @@ export function createMockOrdersApi(): OrdersApi {
         ],
         defaultCourierNote: DEFAULT_COURIER_NOTE,
         defaultShipping: 120,
+        customerCreateSource: '',
       };
+    },
+    async setCustomerCreateSource(value) {
+      await delay(50);
+      return { customerCreateSource: value };
     },
     async getRoutingConfig() {
       await delay(50);
@@ -349,6 +355,17 @@ export function createHttpOrdersApi(): OrdersApi {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
       return apiRequest<OrderFormOptionsResponse>(`${crmEndpoints.orders}/meta/form-options`);
+    },
+    async setCustomerCreateSource(value: string) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<{ customerCreateSource: string }>(
+        `${crmEndpoints.orders}/meta/customer-create-source`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ value }),
+        },
+      );
     },
     async getRoutingConfig() {
       const { apiRequest } = await import('@/lib/api/client');

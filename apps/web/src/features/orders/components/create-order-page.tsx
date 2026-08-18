@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import type { OrderSource } from '@laam/types';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { leadsApi } from '@/features/leads/api/leads-api';
@@ -103,6 +104,18 @@ export function CreateOrderPage() {
     // Run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const customerSourceApplied = React.useRef(false);
+  const configuredCustomerSource = form.options.customerCreateSource;
+  React.useEffect(() => {
+    if (customerSourceApplied.current) return;
+    if (searchParams.get('from') !== 'customer') return;
+    if (searchParams.get('fromLead')) return;
+    const configured = configuredCustomerSource?.trim();
+    if (!configured) return;
+    form.patch({ orderSource: configured as OrderSource });
+    customerSourceApplied.current = true;
+  }, [configuredCustomerSource, form, searchParams]);
 
   async function handleMobileCheck() {
     form.lookupCustomer();

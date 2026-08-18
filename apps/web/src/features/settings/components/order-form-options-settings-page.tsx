@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Can } from '@/components/auth/can';
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
+import { FormSelect } from '@/components/form/form-select';
 import { FormTextarea } from '@/components/form/form-textarea';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +20,7 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { orderFormOptionsApi, type OrderFormOptionRow } from '@/features/orders/api/order-form-options-api';
+import { ordersApi } from '@/features/orders/api/orders-api';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -41,6 +43,7 @@ export function OrderFormOptionsSettingsPage() {
   const [draft, setDraft] = React.useState({ value: '', label: '' });
   const [courierNote, setCourierNote] = React.useState('');
   const [courierNoteId, setCourierNoteId] = React.useState<string | null>(null);
+  const [customerCreateSource, setCustomerCreateSource] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<OrderFormOptionRow | null>(null);
 
   const isCourierNote = activeKind === 'default_courier_note';
@@ -54,6 +57,10 @@ export function OrderFormOptionsSettingsPage() {
         const note = data[0];
         setCourierNote(note?.label ?? '');
         setCourierNoteId(note?.id ?? null);
+      }
+      if (activeKind === 'source') {
+        const options = await ordersApi.getFormOptions();
+        setCustomerCreateSource(options.customerCreateSource ?? '');
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to load options');
@@ -99,6 +106,23 @@ export function OrderFormOptionsSettingsPage() {
       }
       resetDraft();
       await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Save failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveCustomerCreateSource(next: string) {
+    setBusy(true);
+    try {
+      const saved = await ordersApi.setCustomerCreateSource(next);
+      setCustomerCreateSource(saved.customerCreateSource);
+      toast.success(
+        saved.customerCreateSource
+          ? 'Customer Create Order source saved'
+          : 'Customer Create Order will not auto-set source',
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Save failed');
     } finally {
@@ -153,7 +177,7 @@ export function OrderFormOptionsSettingsPage() {
   return (
     <PageShell
       title="Order form options"
-      description="Manage District, Source, Tags, Payment, Status, and default Courier Note used on Create Order."
+      description="Manage District, Source, Tags, Payment, Status, and default Courier Note used on Create Order. Order Source also controls the default when creating an order from a customer."
     >
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
@@ -192,6 +216,34 @@ export function OrderFormOptionsSettingsPage() {
           </Card>
         ) : (
           <>
+            {activeKind === 'source' ? (
+              <Card className="gap-0 py-0 shadow-none">
+                <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                  <CardTitle className="text-sm">Customer → Create Order</CardTitle>
+                </CardHeader>
+                <CardContent className={cn('space-y-2', ORDER_SECTION_BODY_CLASS)}>
+                  <p className="text-xs text-muted-foreground">
+                    Used when staff click Order on the customer list or create an order from
+                    customer details. Staff can still change it on the form.
+                  </p>
+                  <FormField label="Default order source" hint="Leave as “Ask on form” to keep current behavior.">
+                    <FormSelect
+                      searchable={false}
+                      disabled={busy || loading}
+                      value={customerCreateSource}
+                      onChange={(next) => void handleSaveCustomerCreateSource(next)}
+                      options={[
+                        { value: '', label: 'Ask on form (or last order source)' },
+                        ...rows
+                          .filter((row) => row.isActive)
+                          .map((row) => ({ value: row.value, label: row.label })),
+                      ]}
+                      placeholder="Select source"
+                    />
+                  </FormField>
+                </CardContent>
+              </Card>
+            ) : null}
             <Card className="gap-0 py-0 shadow-none">
               <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
                 <CardTitle className="text-sm">{editingId ? 'Edit option' : 'Add option'}</CardTitle>

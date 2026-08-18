@@ -52,7 +52,7 @@ async function seedSuperAdmin() {
   console.log(`Super admin ready: ${email} (platform login at http://localhost:3000)`);
 }
 
-async function seedCrmDemo() {
+async function seedCrmDemo(organizationId) {
   await prisma.lead.deleteMany();
   await prisma.contact.deleteMany();
   await prisma.company.deleteMany();
@@ -60,24 +60,71 @@ async function seedCrmDemo() {
   await prisma.order.deleteMany();
 
   const leads = [
-    { leadNumber: 'LD-2001', name: 'Rahim Uddin', phone: '01700000001', source: 'facebook', status: 'new', area: 'Dhaka', estimatedValue: 6000, campaignName: 'FB Lead Form' },
-    { leadNumber: 'LD-2002', name: 'Fatema Akter', phone: '01700000002', source: 'call', status: 'contacted', area: 'Dhaka', estimatedValue: 7000, campaignName: 'Inbound' },
+    {
+      organizationId,
+      leadNumber: 'LD-2001',
+      name: 'Rahim Uddin',
+      phone: '01700000001',
+      source: 'facebook',
+      status: 'new',
+      area: 'Dhaka',
+      estimatedValue: 6000,
+      campaignName: 'FB Lead Form',
+    },
+    {
+      organizationId,
+      leadNumber: 'LD-2002',
+      name: 'Fatema Akter',
+      phone: '01700000002',
+      source: 'call',
+      status: 'contacted',
+      area: 'Dhaka',
+      estimatedValue: 7000,
+      campaignName: 'Inbound',
+    },
   ];
 
   await prisma.lead.createMany({ data: leads });
   await prisma.company.createMany({
     data: [
-      { name: 'Akash Traders', industry: 'Retail', status: 'active', contactCount: 3, dealValue: 70000, city: 'Dhaka' },
+      {
+        organizationId,
+        name: 'Akash Traders',
+        industry: 'Retail',
+        status: 'active',
+        contactCount: 3,
+        dealValue: 70000,
+        city: 'Dhaka',
+      },
     ],
   });
   await prisma.deal.createMany({
     data: [
-      { dealNumber: 'DL-3001', title: 'Bulk order', companyName: 'Akash Traders', stage: 'new_lead', amount: 45000, probability: 30 },
+      {
+        organizationId,
+        dealNumber: 'DL-3001',
+        title: 'Bulk order',
+        companyName: 'Akash Traders',
+        stage: 'new_lead',
+        amount: 45000,
+        probability: 30,
+      },
     ],
   });
   await prisma.order.createMany({
     data: [
-      { orderNumber: 'ORD-1001', status: 'pending', customerName: 'Rahim Uddin', customerPhone: '01800000001', source: 'facebook', itemsCount: 2, amount: 6000, paymentStatus: 'cod', shippingArea: 'Gulshan' },
+      {
+        organizationId,
+        orderNumber: 'ORD-1001',
+        status: 'pending',
+        customerName: 'Rahim Uddin',
+        customerPhone: '01800000001',
+        source: 'facebook',
+        itemsCount: 2,
+        amount: 6000,
+        paymentStatus: 'cod',
+        shippingArea: 'Gulshan',
+      },
     ],
   });
 
@@ -429,8 +476,8 @@ async function seedE2eTenant() {
 
 async function main() {
   await seedSuperAdmin();
-  await seedCrmDemo();
-  await seedE2eTenant();
+  const e2eOrgId = await seedE2eTenant();
+  await seedCrmDemo(e2eOrgId);
 
   const tenantOrg = await prisma.organization.findFirst({
     where: { slug: { not: 'platform' } },

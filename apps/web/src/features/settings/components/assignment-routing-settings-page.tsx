@@ -94,7 +94,7 @@ function RoutingRuleCard({
         </FormField>
         <FormField
           label="Team pool"
-          hint="Website ingest and Create Order (organization default) use this pool."
+          hint="Website ingest uses this pool. Manual CRM orders default to the creator unless overridden on Create Order."
         >
           <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
             {teams.map((team) => {
@@ -242,7 +242,7 @@ export function AssignmentRoutingSettingsPage() {
   return (
     <PageShell
       title="Assignment routing"
-      description="Default sales and logistic assignment for website orders, Create Order, and courier booking."
+      description="Default sales assignment for website ingest and logistic assignment at courier booking."
       breadcrumbs={[
         { label: 'Settings', href: '/dashboard/settings' },
         { label: 'Assignment routing' },
@@ -254,7 +254,7 @@ export function AssignmentRoutingSettingsPage() {
         <div className={ORDER_PAGE_GAP}>
           <RoutingRuleCard
             title="Sales (order KPI)"
-            hint="Who gets the order at create / website ingest. Confirm later freezes this person for order count and CS/US."
+            hint="Who gets website / ecommerce orders at ingest. Confirm later freezes this person for order count and CS/US."
             value={orderRouting}
             teams={teams}
             users={users}

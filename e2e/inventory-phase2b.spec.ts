@@ -23,25 +23,64 @@ function authHeaders(token: string) {
   };
 }
 
+async function ensureProduct(
+  request: APIRequestContext,
+  headers: ReturnType<typeof authHeaders>,
+  input: { sku: string; name: string; salePrice: number; costPrice: number; stock: number },
+): Promise<{ id: string; sku: string }> {
+  const listRes = await request.get(
+    `${API}/crm/inventory/products?page=1&pageSize=100&search=${encodeURIComponent(input.sku)}`,
+    { headers },
+  );
+  expect(listRes.ok(), await listRes.text()).toBeTruthy();
+  const listBody = await listRes.json();
+  const existing = (listBody.items as { id: string; sku: string }[]).find((p) => p.sku === input.sku);
+  if (existing) return existing;
+
+  const createRes = await request.post(`${API}/crm/inventory/products`, {
+    headers,
+    data: {
+      name: input.name,
+      sku: input.sku,
+      status: 'active',
+      reorderLevel: 2,
+      variants: [
+        {
+          label: 'Standard',
+          sku: `${input.sku}-STD`,
+          salePrice: input.salePrice,
+          costPrice: input.costPrice,
+          stock: input.stock,
+          reorderLevel: 2,
+        },
+      ],
+    },
+  });
+  expect(createRes.ok(), await createRes.text()).toBeTruthy();
+  const created = await createRes.json();
+  return { id: created.id as string, sku: created.sku as string };
+}
+
 test.describe('Inventory Phase 2b — returns approve + mixer recipes', () => {
   test('approve return and recipe CRUD', async ({ request }) => {
     const token = await login(request);
     const headers = authHeaders(token);
     const stamp = Date.now();
 
-    const productsRes = await request.get(
-      `${API}/crm/inventory/products?page=1&pageSize=20&filter=active`,
-      { headers },
-    );
-    expect(productsRes.ok(), await productsRes.text()).toBeTruthy();
-    const products = await productsRes.json();
-    const honey = (products.items as { id: string; sku: string }[]).find(
-      (p) => p.sku === 'SEED-HONEY-001',
-    );
-    const raw = (products.items as { id: string; sku: string }[]).find(
-      (p) => p.sku === 'SEED-RAW-HONEY',
-    );
-    expect(honey && raw, 'seed products required').toBeTruthy();
+    const honey = await ensureProduct(request, headers, {
+      sku: `E2E-P2B-HONEY-${stamp}`,
+      name: 'E2E P2B Honey',
+      salePrice: 500,
+      costPrice: 320,
+      stock: 20,
+    });
+    const raw = await ensureProduct(request, headers, {
+      sku: `E2E-P2B-RAW-${stamp}`,
+      name: 'E2E P2B Raw Honey',
+      salePrice: 380,
+      costPrice: 250,
+      stock: 30,
+    });
 
     const detailRes = await request.get(`${API}/crm/inventory/products/${honey!.id}`, { headers });
     const detail = await detailRes.json();

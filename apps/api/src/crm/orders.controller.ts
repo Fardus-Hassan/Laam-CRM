@@ -535,6 +535,12 @@ class RoutingConfigDto {
   courierRouting?: RoutingRuleDto;
 }
 
+class CustomerCreateSourceDto {
+  @IsOptional()
+  @IsString()
+  value?: string;
+}
+
 function parseBoolQuery(value?: string): boolean | undefined {
   if (value === 'true' || value === '1') return true;
   if (value === 'false' || value === '0') return false;
@@ -701,6 +707,19 @@ export class OrdersController {
   ) {
     this.orders.requireOrg(user.organizationId);
     return this.orders.updateRoutingConfig(user.organizationId!, body);
+  }
+
+  @Patch('meta/customer-create-source')
+  @RequirePermissions('orders.create', 'settings.manage')
+  @ApiOperation({
+    summary: 'Default order source when creating an order from a customer record',
+  })
+  setCustomerCreateSource(
+    @CurrentUser() user: AuthUserPayload,
+    @Body() body: CustomerCreateSourceDto,
+  ) {
+    this.orders.requireOrg(user.organizationId);
+    return this.orders.setCustomerCreateSource(user.organizationId!, body.value ?? '');
   }
 
   @Get('meta/form-options/manage')

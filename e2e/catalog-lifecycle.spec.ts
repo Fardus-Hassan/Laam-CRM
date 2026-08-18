@@ -36,7 +36,6 @@ test.describe('Catalog recycle lifecycle', () => {
       data: {
         name: 'E2E Lifecycle Honey',
         sku,
-        category: 'honey',
         status: 'active',
         reorderLevel: 5,
         variants: [

@@ -64,6 +64,7 @@ export type OrderFormOptionsResponse = {
   pathaoZones: OrderFormOptionDto[];
   defaultCourierNote: string;
   defaultShipping: number;
+  customerCreateSource: string;
 };
 
 type RoutingScope = 'order' | 'courier';
@@ -706,6 +707,13 @@ export class OrdersService {
       label: '120',
       sortOrder: 0,
     });
+    rows.push({
+      organizationId,
+      kind: 'customer_create_source',
+      value: '__none__',
+      label: 'Not set',
+      sortOrder: 0,
+    });
 
     await this.prisma.orderFormOption.createMany({ data: rows });
   }
@@ -723,6 +731,15 @@ export class OrdersService {
 
     const noteRow = rows.find((r) => r.kind === 'default_courier_note');
     const shippingRow = rows.find((r) => r.kind === 'default_shipping');
+    const customerCreateSourceRow =
+      rows.find((r) => r.kind === 'customer_create_source') ??
+      (await this.prisma.orderFormOption.findFirst({
+        where: { organizationId, kind: 'customer_create_source' },
+      }));
+    const customerCreateSource =
+      !customerCreateSourceRow || customerCreateSourceRow.value === '__none__'
+        ? ''
+        : customerCreateSourceRow.value;
 
     const [districtRows, cityRows, zoneRows] = await Promise.all([
       this.prisma.order.findMany({
@@ -775,7 +792,60 @@ export class OrdersService {
         .sort((a, b) => a.label.localeCompare(b.label)),
       defaultCourierNote: noteRow?.label ?? DEFAULT_COURIER_NOTE,
       defaultShipping: Number(shippingRow?.label ?? 120) || 120,
+      customerCreateSource,
     };
+  }
+
+  async setCustomerCreateSource(
+    organizationId: string,
+    sourceValue: string,
+  ): Promise<{ customerCreateSource: string }> {
+    await this.ensureFormOptions(organizationId);
+    const value = sourceValue.trim();
+    let label = 'Not set';
+    let storedValue = '__none__';
+    if (value) {
+      const source = await this.prisma.orderFormOption.findFirst({
+        where: { organizationId, kind: 'source', value, isActive: true },
+      });
+      if (!source) {
+        throw new BadRequestException('Select an active order source');
+      }
+      storedValue = source.value;
+      label = source.label;
+    }
+
+    const existing = await this.prisma.orderFormOption.findFirst({
+      where: { organizationId, kind: 'customer_create_source' },
+    });
+    if (existing) {
+      await this.prisma.orderFormOption.update({
+        where: { id: existing.id },
+        data: { value: storedValue, label, isActive: true },
+      });
+    } else {
+      await this.prisma.orderFormOption.create({
+        data: {
+          organizationId,
+          kind: 'customer_create_source',
+          value: storedValue,
+          label,
+          sortOrder: 0,
+          isActive: true,
+        },
+      });
+    }
+    return { customerCreateSource: value };
+  }
+
+  private async clearCustomerCreateSourceIfMatches(
+    organizationId: string,
+    sourceValue: string,
+  ): Promise<void> {
+    await this.prisma.orderFormOption.updateMany({
+      where: { organizationId, kind: 'customer_create_source', value: sourceValue },
+      data: { value: '__none__', label: 'Not set' },
+    });
   }
 
   async listFormOptionRows(organizationId: string, kind?: string) {
@@ -800,8 +870,12 @@ export class OrdersService {
     if (!kind || !value || !label) {
       throw new BadRequestException('kind, value, and label are required');
     }
-    if (kind === 'default_courier_note' || kind === 'default_shipping') {
-      throw new BadRequestException('Use update for default courier note / shipping');
+    if (
+      kind === 'default_courier_note' ||
+      kind === 'default_shipping' ||
+      kind === 'customer_create_source'
+    ) {
+      throw new BadRequestException('Use the dedicated setting for this option');
     }
     const maxSort = await this.prisma.orderFormOption.aggregate({
       where: { organizationId, kind },
@@ -899,7 +973,12 @@ export class OrdersService {
       isActive?: boolean;
     } = {};
     if (input.label !== undefined) data.label = input.label.trim();
-    if (input.value !== undefined && existing.kind !== 'default_courier_note' && existing.kind !== 'default_shipping') {
+    if (
+      input.value !== undefined &&
+      existing.kind !== 'default_courier_note' &&
+      existing.kind !== 'default_shipping' &&
+      existing.kind !== 'customer_create_source'
+    ) {
       data.value = input.value.trim().replace(/\s+/g, '_').toLowerCase();
     }
     if (input.sortOrder !== undefined) data.sortOrder = input.sortOrder;
@@ -920,8 +999,15 @@ export class OrdersService {
       where: { id, organizationId },
     });
     if (!existing) throw new NotFoundException('Option not found');
-    if (existing.kind === 'default_courier_note' || existing.kind === 'default_shipping') {
-      throw new BadRequestException('Cannot delete default courier note / shipping');
+    if (
+      existing.kind === 'default_courier_note' ||
+      existing.kind === 'default_shipping' ||
+      existing.kind === 'customer_create_source'
+    ) {
+      throw new BadRequestException('Cannot delete this default setting');
+    }
+    if (existing.kind === 'source') {
+      await this.clearCustomerCreateSourceIfMatches(organizationId, existing.value);
     }
     await this.prisma.orderFormOption.delete({ where: { id } });
     return { ok: true };
@@ -2075,29 +2161,41 @@ export class OrdersService {
       });
       explicitAssignedAgentName = assignedUser?.name?.trim() || null;
     }
-    const routingOverride =
-      input.assignmentMode || input.routingTeamIds?.length || input.routingUserId
-        ? {
-            mode: input.assignmentMode,
-            teamIds: input.routingTeamIds,
-            assigneeUserId: input.routingUserId,
-          }
-        : undefined;
-    const routedSalesAssignee =
-      explicitAssignedUserId || explicitAssignedAgentName
-        ? null
-        : await this.resolveRoutingAssignee(organizationId, 'order', routingOverride);
     const inboundWebsite = Boolean(input.websiteStoreId?.trim());
-    const salesAssignedUserId =
-      explicitAssignedUserId ||
-      routedSalesAssignee?.userId ||
-      (inboundWebsite ? null : actor.userId) ||
-      null;
-    const salesAssignedName =
-      explicitAssignedAgentName ||
-      routedSalesAssignee?.userName ||
-      (inboundWebsite ? null : actor.name) ||
-      null;
+    const hasRoutingOverride = Boolean(
+      input.assignmentMode || input.routingTeamIds?.length || input.routingUserId,
+    );
+    const routingOverride = hasRoutingOverride
+      ? {
+          mode: input.assignmentMode,
+          teamIds: input.routingTeamIds,
+          assigneeUserId: input.routingUserId,
+        }
+      : undefined;
+
+    let salesAssignedUserId: string | null = null;
+    let salesAssignedName: string | null = null;
+
+    if (explicitAssignedUserId || explicitAssignedAgentName) {
+      salesAssignedUserId = explicitAssignedUserId;
+      salesAssignedName = explicitAssignedAgentName;
+    } else if (hasRoutingOverride) {
+      const routed = await this.resolveRoutingAssignee(
+        organizationId,
+        'order',
+        routingOverride,
+      );
+      salesAssignedUserId = routed?.userId ?? null;
+      salesAssignedName = routed?.userName ?? null;
+    } else if (inboundWebsite) {
+      const routed = await this.resolveRoutingAssignee(organizationId, 'order');
+      salesAssignedUserId = routed?.userId ?? null;
+      salesAssignedName = routed?.userName ?? null;
+    } else {
+      // CRM manual create — credit the logged-in creator unless explicitly overridden.
+      salesAssignedUserId = actor.userId ?? null;
+      salesAssignedName = actor.name?.trim() || null;
+    }
     const creditNow = await this.shouldSnapshotOrderCredit(organizationId, status);
 
     const created = await this.prisma.$transaction(async (tx) => {
