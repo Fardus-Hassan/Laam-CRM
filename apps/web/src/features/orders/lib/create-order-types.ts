@@ -60,6 +60,7 @@ export type CreateOrderFormState = {
   selectedVariationId: string;
 
   orderStatus: string;
+  holdFollowUpDate: Date | null;
   paymentMethod: string;
   attachments: Array<{ name: string; url: string }>;
   courierNote: string;
@@ -114,6 +115,7 @@ export type CreateOrderValidationErrors = Partial<
     | 'orderDate'
     | 'orderSource'
     | 'orderStatus'
+    | 'holdFollowUpDate'
     | 'paymentMethod',
     string
   >

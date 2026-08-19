@@ -302,7 +302,17 @@ function appendTimelineEvent(order: OrderDetail, event: Omit<OrderTimelineEvent,
   ];
 }
 
+function normalizeFollowUpDate(value?: string): string | undefined {
+  if (!value?.trim()) return undefined;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00.000Z`;
+}
+
 export function createMockOrder(payload: CreateOrderPayload): OrderDetail {
+  if (payload.status?.trim().toLowerCase() === 'hold' && !payload.followUpDate?.trim()) {
+    throw new Error('followUpDate is required when status is Hold');
+  }
   const index = nextOrderIndex() + getOrderStore().length;
   const lineItems = payload.lineItems.map((line, itemIndex) => ({
     id: `order-new-${index}-line-${itemIndex}`,
@@ -347,6 +357,10 @@ export function createMockOrder(payload: CreateOrderPayload): OrderDetail {
         actorName: payload.assignedAgentName ?? 'Agent',
       },
     ],
+    followUpDueAt:
+      payload.status?.trim().toLowerCase() === 'hold'
+        ? normalizeFollowUpDate(payload.followUpDate)
+        : undefined,
   };
 
   mockOrderStore.unshift(detail);
@@ -371,6 +385,14 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
   }
 
   const current = mockOrderStore[index];
+  if (
+    patch.status &&
+    patch.status !== current.status &&
+    patch.status.trim().toLowerCase() === 'hold' &&
+    !patch.followUpDate?.trim()
+  ) {
+    throw new Error('followUpDate is required when status is Hold');
+  }
   const lineItems = patch.lineItems
     ? patch.lineItems.map((line, itemIndex) => ({
         id: `${current.id}-line-${itemIndex}`,
@@ -439,6 +461,13 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
           }))
         : current.attachments,
     timeline,
+    followUpDueAt: patch.status
+      ? patch.status.trim().toLowerCase() === 'hold'
+        ? (normalizeFollowUpDate(patch.followUpDate) ?? current.followUpDueAt)
+        : undefined
+      : current.status.trim().toLowerCase() === 'hold' && patch.followUpDate
+        ? (normalizeFollowUpDate(patch.followUpDate) ?? current.followUpDueAt)
+        : current.followUpDueAt,
   };
 
   mockOrderStore[index] = updated;
@@ -545,6 +574,13 @@ export function bulkSetFollowUp(orderIds: string[], followUpDate: string): BulkA
 }
 
 export function bulkUpdateMockOrders(payload: OrderBulkActionPayload): BulkActionResult {
+  if (
+    payload.action === 'status_change' &&
+    payload.status?.trim().toLowerCase() === 'hold' &&
+    !payload.followUpDate?.trim()
+  ) {
+    throw new Error('followUpDate is required when status is Hold');
+  }
   let successCount = 0;
   for (const orderId of payload.orderIds) {
     const order = getMockOrderById(orderId);
@@ -595,6 +631,9 @@ export function bulkUpdateMockOrders(payload: OrderBulkActionPayload): BulkActio
     const patch: UpdateOrderPayload = {};
     if (payload.action === 'status_change' && payload.status) {
       patch.status = payload.status;
+      if (payload.followUpDate) {
+        patch.followUpDate = payload.followUpDate;
+      }
     }
     if (payload.action === 'transfer_employee' && payload.employeeName) {
       patch.assignedAgentName = payload.employeeName;

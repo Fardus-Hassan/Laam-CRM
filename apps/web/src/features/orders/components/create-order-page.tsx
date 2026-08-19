@@ -38,6 +38,10 @@ function phoneDigits(phone?: string | null): string {
   return (phone ?? '').replace(/\D/g, '');
 }
 
+function toYmd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export function CreateOrderPage() {
   const searchParams = useSearchParams();
   const form = useCreateOrderForm();
@@ -169,6 +173,10 @@ export function CreateOrderPage() {
       district: form.state.district,
       source: form.state.orderSource,
       status: form.state.orderStatus,
+      followUpDate:
+        form.state.orderStatus.trim().toLowerCase() === 'hold' && form.state.holdFollowUpDate
+          ? toYmd(form.state.holdFollowUpDate)
+          : undefined,
       paymentMethod: form.state.paymentMethod,
       paymentStatus:
         form.state.paymentMethod === 'paid'

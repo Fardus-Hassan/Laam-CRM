@@ -80,7 +80,17 @@ export const MOCK_ORDER_STATUSES: OrderStatusConfig[] = [
     group: 'confirm',
     displayMode: 'sidebar',
     sidebarOrder: 30,
-    allowedTransitions: ['pending', 'confirmed', 'cancelled'],
+    allowedTransitions: ['pending', 'confirmed', 'hold_followup', 'cancelled'],
+    bulkActions: PENDING_BULK,
+  }),
+  status({
+    slug: 'hold_followup',
+    label: 'Hold Followup',
+    color: 'hsl(38 85% 42%)',
+    group: 'confirm',
+    displayMode: 'sidebar',
+    sidebarOrder: 35,
+    allowedTransitions: ['pending', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
   }),
   status({

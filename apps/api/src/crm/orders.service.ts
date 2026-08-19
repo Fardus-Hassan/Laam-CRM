@@ -132,6 +132,7 @@ export type UpdateOrderInput = {
   district?: string;
   source?: string;
   status?: string;
+  followUpDate?: string;
   paymentStatus?: PaymentStatus;
   paymentMethod?: string;
   deliveryCharge?: number;
@@ -198,6 +199,7 @@ const OPEN_ORDER_WORKLOAD_STATUSES = new Set([
   'processing',
   'processing_2',
   'hold',
+  'hold_followup',
   'in_courier',
   'out_for_delivery',
 ]);
@@ -216,6 +218,7 @@ const DEFAULT_STATUSES: OrderFormOptionDto[] = [
   { value: 'pending', label: 'Pending' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'hold', label: 'On Hold' },
+  { value: 'hold_followup', label: 'Hold Followup' },
   { value: 'processing', label: 'Processing' },
   { value: 'in_courier', label: 'In Courier' },
   { value: 'delivered', label: 'Delivered' },
@@ -1195,12 +1198,89 @@ export class OrdersService {
     };
   }
 
+  private assertHoldRequiresFollowUpDate(status: string, followUpDate?: string): void {
+    if (status.trim().toLowerCase() !== 'hold') return;
+    if (!followUpDate?.trim()) {
+      throw new BadRequestException('followUpDate is required when status is Hold');
+    }
+  }
+
+  private parseFollowUpDateOrThrow(followUpDate: string): {
+    scheduleDate: Date;
+    noteLine: string;
+  } {
+    const raw = followUpDate.trim();
+    const parsed = new Date(raw);
+    if (!raw || Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Valid followUpDate required (YYYY-MM-DD)');
+    }
+    return {
+      scheduleDate: new Date(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())),
+      noteLine: `Follow-up due: ${raw.slice(0, 10)}`,
+    };
+  }
+
+  private async upsertOrderFollowUpSchedule(
+    organizationId: string,
+    order: { id: string },
+    followUpDate: string,
+    actor: ActorLabel,
+  ): Promise<void> {
+    const { scheduleDate, noteLine } = this.parseFollowUpDateOrThrow(followUpDate);
+    const fullOrder = await this.prisma.order.findFirst({
+      where: { organizationId, id: order.id },
+      include: { lineItems: true },
+    });
+    if (!fullOrder) return;
+    const existingFu = await this.prisma.followup.findFirst({
+      where: { organizationId, orderId: fullOrder.id },
+    });
+    if (existingFu) {
+      await this.prisma.followup.update({
+        where: { id: existingFu.id },
+        data: {
+          scheduleDate,
+          skipped: false,
+          followupNotes: noteLine,
+        },
+      });
+      return;
+    }
+    await this.followups.createFromOrder(
+      organizationId,
+      {
+        orderId: fullOrder.id,
+        orderNumber: fullOrder.orderNumber,
+        customerName: fullOrder.customerName,
+        phone: fullOrder.customerPhone,
+        address: fullOrder.shippingAddress,
+        district: fullOrder.district ?? undefined,
+        area: fullOrder.shippingArea,
+        source: fullOrder.source,
+        assignedAgentName: fullOrder.assignedAgentName ?? undefined,
+        customerNotes: fullOrder.customerNote ?? undefined,
+        lineItems: fullOrder.lineItems.map((l) => ({
+          productName: l.productName,
+          quantity: l.quantity,
+        })),
+        skipFollowup: false,
+        customerId: fullOrder.customerId ?? undefined,
+      },
+      actor,
+    );
+    await this.prisma.followup.updateMany({
+      where: { organizationId, orderId: fullOrder.id },
+      data: { scheduleDate, followupNotes: noteLine },
+    });
+  }
+
   async bulkAction(
     organizationId: string,
     payload: {
       action: string;
       orderIds: string[];
       status?: string;
+      followUpDate?: string;
       employeeName?: string;
       employeeUserId?: string;
       courier?: string;
@@ -1227,6 +1307,7 @@ export class OrdersService {
       if (warehouseOverride) {
         await this.assertActiveWarehouse(organizationId, warehouseOverride);
       }
+      this.assertHoldRequiresFollowUpDate(status, payload.followUpDate);
       let successCount = 0;
       let failedCount = 0;
       const errors: string[] = [];
@@ -1234,6 +1315,7 @@ export class OrdersService {
         try {
           await this.updateStatus(organizationId, orderId, status, actor, {
             fulfillmentWarehouseId: warehouseOverride,
+            followUpDate: payload.followUpDate,
           });
           successCount += 1;
         } catch (e) {
@@ -2097,6 +2179,7 @@ export class OrdersService {
     if (!(await this.orgOrderStatuses.isValidStatus(organizationId, status))) {
       throw new BadRequestException(`Invalid order status: ${status}`);
     }
+    this.assertHoldRequiresFollowUpDate(status, input.followUpDate);
     if (!options.sources.some((s) => s.value === source)) {
       throw new BadRequestException(`Invalid order source: ${source}`);
     }
@@ -2414,6 +2497,10 @@ export class OrdersService {
       actor,
     );
 
+    if (created.status === 'hold' && input.followUpDate?.trim()) {
+      await this.upsertOrderFollowUpSchedule(organizationId, created, input.followUpDate, actor);
+    }
+
     // Background: cache courier success for this phone (website + manual create).
     // Table stays cache-only; this is the controlled API spend per new/expired phone.
     this.courierPhoneHistory.ensureFresh(organizationId, created.customerPhone);
@@ -2426,7 +2513,7 @@ export class OrdersService {
     idOrNumber: string,
     nextStatus: string | undefined,
     actor: ActorLabel,
-    options?: { fulfillmentWarehouseId?: string },
+    options?: { fulfillmentWarehouseId?: string; followUpDate?: string },
   ): Promise<OrderDetail> {
     if (!nextStatus?.trim()) {
       throw new BadRequestException('status is required');
@@ -2608,6 +2695,16 @@ export class OrdersService {
     void this.automations
       .tryAutoFollowupOnStatusChange(organizationId, updated.id, status)
       .catch(() => undefined);
+
+    if (status === 'hold' && options?.followUpDate?.trim()) {
+      await this.upsertOrderFollowUpSchedule(
+        organizationId,
+        { id: updated.id },
+        options.followUpDate,
+        actor,
+      );
+      return this.getById(organizationId, updated.id);
+    }
 
     return this.toDetailEnriched(organizationId, updated);
   }
@@ -2934,12 +3031,15 @@ export class OrdersService {
       Object.entries(input).every(
         ([key, value]) =>
           key === 'status' ||
+          key === 'followUpDate' ||
           key === 'fulfillmentWarehouseId' ||
           value === undefined,
       );
     if (statusOnly) {
+      this.assertHoldRequiresFollowUpDate(input.status!, input.followUpDate);
       return this.updateStatus(organizationId, existing.id, input.status, actor, {
         fulfillmentWarehouseId: input.fulfillmentWarehouseId ?? undefined,
+        followUpDate: input.followUpDate,
       });
     }
 
@@ -3428,11 +3528,13 @@ export class OrdersService {
     });
 
     if (input.status && input.status !== existing.status) {
+      this.assertHoldRequiresFollowUpDate(input.status, input.followUpDate);
       const detail = await this.updateStatus(
         organizationId,
         updated.id,
         input.status,
         actor,
+        { followUpDate: input.followUpDate },
       );
       await this.orderPayments.ensureForOrder(
         organizationId,
@@ -3446,6 +3548,11 @@ export class OrdersService {
         actor,
       );
       return detail;
+    }
+
+    if (existing.status === 'hold' && input.followUpDate?.trim()) {
+      await this.upsertOrderFollowUpSchedule(organizationId, updated, input.followUpDate, actor);
+      return this.getById(organizationId, updated.id);
     }
 
     await this.orderPayments.ensureForOrder(

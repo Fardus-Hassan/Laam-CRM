@@ -37,6 +37,7 @@ import { CouponsService } from './coupons.service';
 import { FollowupsController } from './followups.controller';
 import { FollowupsService } from './followups.service';
 import { OrdersController } from './orders.controller';
+import { OrderHoldWorkflowService } from './order-hold-workflow.service';
 import { OrdersService } from './orders.service';
 import { PathaoCourierController } from './pathao-courier.controller';
 import { PathaoCourierService } from './pathao-courier.service';
@@ -148,6 +149,7 @@ import { SecurityBlocksService } from './security-blocks.service';
     BillingService,
     IncentiveService,
     OrdersService,
+    OrderHoldWorkflowService,
     PathaoCourierService,
     PathaoSyncService,
     CarrybeeCourierService,

@@ -66,6 +66,7 @@ export function orderDetailToCreateFormPatch(
       subtotal: line.lineTotal,
     })),
     orderStatus: order.status,
+    holdFollowUpDate: order.followUpDueAt ? new Date(order.followUpDueAt) : null,
     paymentMethod: order.paymentMethod ?? 'cod',
     attachments,
     courierNote: order.courierNote ?? '',

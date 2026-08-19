@@ -184,7 +184,7 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleStatusSubmit(
     nextStatus: string,
-    meta?: { fulfillmentWarehouseId?: string },
+    meta?: { fulfillmentWarehouseId?: string; followUpDate?: string },
   ) {
     if (state?.type !== 'status') return;
     if (!nextStatus.trim()) {
@@ -198,6 +198,7 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       ...(meta?.fulfillmentWarehouseId
         ? { fulfillmentWarehouseId: meta.fulfillmentWarehouseId }
         : {}),
+      ...(meta?.followUpDate ? { followUpDate: meta.followUpDate } : {}),
     });
     onSuccess?.();
     onClose();

@@ -66,6 +66,7 @@ export const MOCK_ORDER_STATUSES = [
   { value: 'pending', label: 'Pending' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'hold', label: 'On Hold' },
+  { value: 'hold_followup', label: 'Hold Followup' },
   { value: 'processing', label: 'Processing' },
   { value: 'in_courier', label: 'In Courier' },
   { value: 'delivered', label: 'Delivered' },

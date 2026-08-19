@@ -128,10 +128,11 @@ export function useOrderDetailMutations(order: OrderDetail | null, onUpdated?: (
   }, [order]);
 
   const changeStatus = React.useCallback(
-    async (status: string, fulfillmentWarehouseId?: string) => {
+    async (status: string, fulfillmentWarehouseId?: string, followUpDate?: string) => {
       if (!order) return;
       const updated = await updateOrder(order.id, {
         status: status as OrderDetail['status'],
+        ...(followUpDate ? { followUpDate } : {}),
         ...(fulfillmentWarehouseId
           ? { fulfillmentWarehouseId }
           : order.fulfillmentWarehouseId

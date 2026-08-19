@@ -78,6 +78,7 @@ function createInitialState(): CreateOrderFormState {
     selectedProductId: '',
     selectedVariationId: '',
     orderStatus: '',
+    holdFollowUpDate: null,
     paymentMethod: '',
     attachments: [],
     courierNote: '',
@@ -271,6 +272,9 @@ function validateForm(state: CreateOrderFormState): CreateOrderValidationErrors 
   if (!state.orderDate) errors.orderDate = 'Order date is required';
   if (!state.orderSource) errors.orderSource = 'Order source is required';
   if (!state.orderStatus) errors.orderStatus = 'Order status is required';
+  if (state.orderStatus.trim().toLowerCase() === 'hold' && !state.holdFollowUpDate) {
+    errors.holdFollowUpDate = 'Hold follow-up date is required';
+  }
   if (!state.paymentMethod) errors.paymentMethod = 'Payment method is required';
   return errors;
 }

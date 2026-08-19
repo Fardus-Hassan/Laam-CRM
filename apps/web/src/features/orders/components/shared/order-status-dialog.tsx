@@ -20,6 +20,7 @@ import {
 import { ordersApi } from '@/features/orders/api/orders-api';
 import { ensureOrderStatusOnApi } from '@/features/orders/lib/ensure-order-status-api';
 import { mergeStatusSelectOptions } from '@/features/orders/lib/order-status-hierarchy';
+import { OrderDatePicker } from '@/features/orders/components/create-order/order-date-picker';
 
 function toStatusSlug(raw: string) {
   return raw
@@ -46,7 +47,7 @@ type OrderStatusDialogProps = {
   currentStatus: string;
   onSelect: (
     statusSlug: string,
-    meta?: { fulfillmentWarehouseId?: string },
+    meta?: { fulfillmentWarehouseId?: string; followUpDate?: string },
   ) => void | Promise<void>;
   /** Override dialog title (e.g. bulk: "Change status for 10 orders"). */
   title?: string;
@@ -56,6 +57,8 @@ type OrderStatusDialogProps = {
   fulfillmentWarehouseId?: string;
   /** When true, always show warehouse picker for stock-cut statuses. */
   requireWarehouseForStockCut?: boolean;
+  /** When false, Hold does not prompt for a follow-up date (default: required everywhere). */
+  enableHoldFollowUpDate?: boolean;
 };
 
 export function OrderStatusDialog({
@@ -67,22 +70,26 @@ export function OrderStatusDialog({
   allowSameStatus = false,
   fulfillmentWarehouseId,
   requireWarehouseForStockCut = true,
+  enableHoldFollowUpDate = true,
 }: OrderStatusDialogProps) {
   const [status, setStatus] = React.useState(currentStatus);
   const [warehouseId, setWarehouseId] = React.useState(fulfillmentWarehouseId ?? '');
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [holdFollowUpDate, setHoldFollowUpDate] = React.useState<Date | null>(null);
   const [statusOptions, setStatusOptions] = React.useState<Array<{ value: string; label: string }>>(
     [],
   );
 
   const needsWarehouse =
     requireWarehouseForStockCut && STOCK_CUT_STATUS_SET.has(status);
+  const isHold = enableHoldFollowUpDate && status.trim().toLowerCase() === 'hold';
 
   React.useEffect(() => {
     if (!open) return;
     setStatus(currentStatus);
     setWarehouseId(fulfillmentWarehouseId ?? '');
+    setHoldFollowUpDate(null);
     let cancelled = false;
     setLoading(true);
     void ordersApi
@@ -113,6 +120,18 @@ export function OrderStatusDialog({
     };
   }, [open, currentStatus, fulfillmentWarehouseId]);
 
+  React.useEffect(() => {
+    if (isHold) {
+      setHoldFollowUpDate((current) => current ?? new Date());
+      return;
+    }
+    setHoldFollowUpDate(null);
+  }, [isHold]);
+
+  function toYmd(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
@@ -126,13 +145,20 @@ export function OrderStatusDialog({
         toast.error('Select a fulfillment warehouse before confirming / cutting stock');
         return;
       }
+      if (isHold && !holdFollowUpDate) {
+        toast.error('Select a hold follow-up date');
+        return;
+      }
       const label = selected?.label ?? toStatusLabel(status, slug);
       if (process.env.NEXT_PUBLIC_USE_API === 'true') {
         await ensureOrderStatusOnApi({ value: slug, label });
       }
       await onSelect(
         slug,
-        needsWarehouse ? { fulfillmentWarehouseId: warehouseId.trim() } : undefined,
+        {
+          ...(needsWarehouse ? { fulfillmentWarehouseId: warehouseId.trim() } : {}),
+          ...(isHold && holdFollowUpDate ? { followUpDate: toYmd(holdFollowUpDate) } : {}),
+        },
       );
       onOpenChange(false);
     } catch (error) {
@@ -168,6 +194,13 @@ export function OrderStatusDialog({
               disabled={saving}
             />
           ) : null}
+          {isHold ? (
+            <OrderDatePicker
+              label="Hold follow-up date"
+              value={holdFollowUpDate ?? new Date()}
+              onChange={setHoldFollowUpDate}
+            />
+          ) : null}
         </div>
         <p className="text-xs text-muted-foreground">
           Type to create a custom status — it is registered to your org on update. Confirming cuts
@@ -185,7 +218,8 @@ export function OrderStatusDialog({
               loading ||
               !status.trim() ||
               (!allowSameStatus && status === currentStatus) ||
-              (needsWarehouse && !warehouseId.trim())
+              (needsWarehouse && !warehouseId.trim()) ||
+              (isHold && !holdFollowUpDate)
             }
             onClick={() => void handleSave()}
           >

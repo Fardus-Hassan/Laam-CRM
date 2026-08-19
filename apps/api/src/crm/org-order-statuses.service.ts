@@ -94,7 +94,20 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     sidebarOrder: 30,
     isDefault: false,
     isTerminal: false,
-    allowedTransitions: ['pending', 'confirmed', 'cancelled'],
+    allowedTransitions: ['pending', 'confirmed', 'hold_followup', 'cancelled'],
+    bulkActions: PENDING_BULK,
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'hold_followup',
+    label: 'Hold Followup',
+    color: 'hsl(38 85% 42%)',
+    group: 'confirm',
+    displayMode: 'sidebar',
+    sidebarOrder: 35,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['pending', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
     showInGroupByStatus: true,
   },
@@ -312,6 +325,7 @@ export class OrgOrderStatusesService {
   async ensureSeeded(organizationId: string): Promise<void> {
     const count = await this.prisma.orgOrderStatus.count({ where: { organizationId } });
     if (count > 0) {
+      await this.ensureHoldFollowupStatus(organizationId);
       await this.importMissingFormOptionStatuses(organizationId);
       return;
     }
@@ -345,6 +359,50 @@ export class OrgOrderStatusesService {
     }
 
     await this.importMissingFormOptionStatuses(organizationId);
+  }
+
+  /** Ensure hold_followup exists on orgs seeded before workflow automation. */
+  private async ensureHoldFollowupStatus(organizationId: string): Promise<void> {
+    const existing = await this.prisma.orgOrderStatus.findFirst({
+      where: { organizationId, slug: 'hold_followup' },
+    });
+    if (!existing) {
+      const seed = DEFAULT_ORG_ORDER_STATUSES.find((s) => s.slug === 'hold_followup');
+      if (seed) {
+        await this.prisma.orgOrderStatus.create({
+          data: {
+            organizationId,
+            slug: seed.slug,
+            label: seed.label,
+            color: seed.color,
+            group: seed.group,
+            displayMode: seed.displayMode,
+            sidebarOrder: seed.sidebarOrder ?? null,
+            isTerminal: seed.isTerminal,
+            isDefault: seed.isDefault,
+            isSystem: true,
+            isActive: true,
+            allowedTransitions: seed.allowedTransitions,
+            bulkActions: seed.bulkActions,
+            showInGroupByStatus: seed.showInGroupByStatus,
+            sortOrder: seed.sidebarOrder ?? 35,
+          },
+        });
+        await this.syncFormOption(organizationId, seed.slug, seed.label);
+      }
+    }
+
+    const hold = await this.prisma.orgOrderStatus.findFirst({
+      where: { organizationId, slug: 'hold' },
+    });
+    if (hold && !hold.allowedTransitions.includes('hold_followup')) {
+      await this.prisma.orgOrderStatus.update({
+        where: { id: hold.id },
+        data: {
+          allowedTransitions: [...hold.allowedTransitions, 'hold_followup'],
+        },
+      });
+    }
   }
 
   /** Pull any whitelist-only form-option statuses into OrgOrderStatus as filter_only. */

@@ -97,6 +97,10 @@ class CreateOrderDto {
 
   @IsOptional()
   @IsString()
+  followUpDate?: string;
+
+  @IsOptional()
+  @IsString()
   paymentStatus?: string;
 
   @IsOptional()
@@ -329,6 +333,10 @@ class UpdateOrderDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsString()
+  followUpDate?: string;
 
   @IsOptional()
   @IsString()
@@ -572,6 +580,7 @@ export class OrdersController {
       district: body.district,
       source: body.source as CreateOrderInput['source'],
       status: (body.status ?? 'pending') as CreateOrderInput['status'],
+      followUpDate: body.followUpDate,
       paymentStatus: body.paymentStatus as CreateOrderInput['paymentStatus'],
       paymentMethod: body.paymentMethod,
       deliveryCharge: body.deliveryCharge ?? 0,
@@ -660,6 +669,7 @@ export class OrdersController {
       action?: string;
       orderIds?: string[];
       status?: string;
+      followUpDate?: string;
       employeeName?: string;
       employeeUserId?: string;
       courier?: string;
@@ -677,6 +687,7 @@ export class OrdersController {
         action: body.action ?? 'status_change',
         orderIds: body.orderIds ?? [],
         status: body.status,
+        followUpDate: body.followUpDate,
         employeeName: body.employeeName,
         employeeUserId: body.employeeUserId,
         courier: body.courier,

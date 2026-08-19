@@ -472,6 +472,7 @@ export const createOrderPayloadSchema = z.object({
   district: z.string().optional(),
   source: z.string().min(1),
   status: z.string().default('pending'),
+  followUpDate: z.string().optional(),
   paymentStatus: paymentStatusSchema.optional(),
   paymentMethod: z.string().optional(),
   deliveryCharge: z.number().default(0),
@@ -579,6 +580,7 @@ export const updateOrderPayloadSchema = z.object({
   district: z.string().optional(),
   source: orderSourceSchema.optional(),
   status: orderStatusTypeSchema.optional(),
+  followUpDate: z.string().optional(),
   paymentStatus: paymentStatusSchema.optional(),
   paymentMethod: z.string().optional(),
   deliveryCharge: z.number().optional(),
@@ -657,6 +659,8 @@ export const orderBulkActionPayloadSchema = z.object({
   action: orderBulkActionTypeSchema,
   orderIds: z.array(z.string()).min(1),
   status: orderStatusTypeSchema.optional(),
+  /** Required when bulk status_change target is hold. */
+  followUpDate: z.string().optional(),
   employeeName: z.string().optional(),
   /** Stable assignee id for KPI matching (preferred over name-only). */
   employeeUserId: z.string().optional(),

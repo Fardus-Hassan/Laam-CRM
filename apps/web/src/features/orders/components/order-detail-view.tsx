@@ -50,6 +50,10 @@ const COURIER_TRACKING_STATUSES = new Set([
   'completed',
 ]);
 
+function toYmd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail }) {
   const [order, setOrder] = React.useState(initialOrder);
   const [courierTracking, setCourierTracking] = React.useState<OrderCourierTracking | null>(null);
@@ -192,6 +196,9 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         source: (state.orderSource || undefined) as OrderSource | undefined,
         ...(state.orderStatus && state.orderStatus !== order.status
           ? { status: state.orderStatus as OrderDetail['status'] }
+          : {}),
+        ...(state.orderStatus.trim().toLowerCase() === 'hold' && state.holdFollowUpDate
+          ? { followUpDate: toYmd(state.holdFollowUpDate) }
           : {}),
         paymentMethod: state.paymentMethod || undefined,
         deliveryCharge: state.shipping,
@@ -456,7 +463,7 @@ export function OrderDetailView({ initialOrder }: { initialOrder: OrderDetail })
         currentStatus={order.status}
         fulfillmentWarehouseId={order.fulfillmentWarehouseId}
         onSelect={async (status, meta) => {
-          await changeStatus(status, meta?.fulfillmentWarehouseId);
+          await changeStatus(status, meta?.fulfillmentWarehouseId, meta?.followUpDate);
         }}
       />
     </PageShell>
