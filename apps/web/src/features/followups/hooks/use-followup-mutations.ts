@@ -4,6 +4,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 
 import { followupsApi } from '@/features/followups/api/followups-api';
+import { invalidateFollowupQueryCaches } from '@/features/followups/data/followup-query-cache';
 
 export function useFollowupMutations() {
   const [isLoading, setIsLoading] = React.useState(false);
@@ -14,7 +15,9 @@ export function useFollowupMutations() {
   ) {
     setIsLoading(true);
     try {
-      return await followupsApi.updateFollowup(id, patch);
+      const followup = await followupsApi.updateFollowup(id, patch);
+      invalidateFollowupQueryCaches();
+      return followup;
     } finally {
       setIsLoading(false);
     }
@@ -25,6 +28,7 @@ export function useFollowupMutations() {
     try {
       const result = await followupsApi.bulkAction(payload);
       toast.success(result.message ?? 'Bulk action completed');
+      invalidateFollowupQueryCaches();
       return result;
     } finally {
       setIsLoading(false);

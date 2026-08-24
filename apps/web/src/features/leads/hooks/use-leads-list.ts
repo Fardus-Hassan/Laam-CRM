@@ -1,47 +1,17 @@
 'use client';
 
-import * as React from 'react';
-import type { LeadListQuery, LeadListResponse } from '@laam/types';
+import type { LeadListQuery } from '@laam/types';
 
 import { leadsApi } from '@/features/leads/api/leads-api';
+import { leadListCache } from '@/features/leads/data/lead-query-cache';
+import { useTtlList } from '@/lib/use-ttl-list';
 
 export function useLeadsList(query: LeadListQuery, listVersion = 0) {
-  const [data, setData] = React.useState<LeadListResponse | null>(null);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const queryKey = JSON.stringify(query);
-  const refreshKey = `${queryKey}:${listVersion}`;
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-
-    void leadsApi.listLeads(query).then(
-      (response) => {
-        if (!cancelled) {
-          setData(response);
-          setIsLoading(false);
-        }
-      },
-      () => {
-        if (!cancelled) {
-          setError('Failed to load leads.');
-          setIsLoading(false);
-        }
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
-
-  return {
-    data,
-    isLoading,
-    error,
-    refresh: () => leadsApi.listLeads(query).then(setData),
-  };
+  return useTtlList({
+    query,
+    version: listVersion,
+    cache: leadListCache,
+    fetcher: (q) => leadsApi.listLeads(q),
+    errorMessage: 'Failed to load leads.',
+  });
 }

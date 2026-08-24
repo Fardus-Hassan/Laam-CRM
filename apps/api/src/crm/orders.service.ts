@@ -36,6 +36,7 @@ import { CourierIntegrationsService } from './courier-integrations.service';
 import { CourierPhoneHistoryService } from './courier-phone-history.service';
 import { CustomersService } from './customers.service';
 import { FollowupsService } from './followups.service';
+import { dhakaYmd } from './order-hold-workflow.util';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { LeadsService } from './leads.service';
 import { normalizeBdPhone } from './phone.util';
@@ -2755,11 +2756,13 @@ export class OrdersService {
       .tryAutoFollowupOnStatusChange(organizationId, updated.id, status)
       .catch(() => undefined);
 
-    if (status === 'hold' && options?.followUpDate?.trim()) {
+    if (status === 'hold') {
+      // Courier sync can land on Hold without a date. Always schedule a callback
+      // (today in Dhaka) so Follow-ups Due and Hold → Hold Followup stay honest.
       await this.upsertOrderFollowUpSchedule(
         organizationId,
         { id: updated.id },
-        options.followUpDate,
+        options?.followUpDate?.trim() || dhakaYmd(),
         actor,
       );
       return this.getById(organizationId, updated.id);

@@ -9,40 +9,24 @@ import type { ActorLabel } from '../common/actor.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { OrdersService } from './orders.service';
-
-/** Bangladesh (UTC+6) — day boundaries for hold follow-up automation. */
-const BD_OFFSET_MS = 6 * 60 * 60 * 1000;
-const SCAN_MS = 15 * 60 * 1000;
-const EOD_HOUR_DHAKA = 23;
+import {
+  addDaysToYmd,
+  dhakaYmd,
+  HOLD_SCAN_MS,
+  HOLD_WORKFLOW_LOCK_CLASS,
+  HOLD_WORKFLOW_LOCK_ID,
+  shouldRunEodRevert,
+  utcDateOnlyFromYmd,
+} from './order-hold-workflow.util';
 
 const SYSTEM_ACTOR: ActorLabel = { name: 'Hold workflow' };
-
-function dhakaYmd(now = new Date()): string {
-  const d = new Date(now.getTime() + BD_OFFSET_MS);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-}
-
-function dhakaHour(now = new Date()): number {
-  return new Date(now.getTime() + BD_OFFSET_MS).getUTCHours();
-}
-
-/** Calendar YMD stored as UTC midnight (matches OrdersService.parseFollowUpDateOrThrow). */
-function utcDateOnlyFromYmd(ymd: string): Date {
-  const [y, m, d] = ymd.split('-').map((part) => Number.parseInt(part, 10));
-  return new Date(Date.UTC(y, m - 1, d));
-}
-
-function addDaysToYmd(ymd: string, days: number): string {
-  const base = utcDateOnlyFromYmd(ymd);
-  const next = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
-  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
-}
 
 @Injectable()
 export class OrderHoldWorkflowService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OrderHoldWorkflowService.name);
   private scanTimer: ReturnType<typeof setInterval> | null = null;
   private lastEodYmd: string | null = null;
+  private running = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -53,7 +37,7 @@ export class OrderHoldWorkflowService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     this.scanTimer = setInterval(() => {
       void this.runScheduledTransitions();
-    }, SCAN_MS);
+    }, HOLD_SCAN_MS);
     if (typeof this.scanTimer.unref === 'function') this.scanTimer.unref();
     setTimeout(() => void this.runScheduledTransitions(), 60_000).unref?.();
   }
@@ -65,19 +49,67 @@ export class OrderHoldWorkflowService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Manual trigger (tests / ops) — same path as the background scanner. */
+  /**
+   * Same path as the background scanner.
+   * Multi-instance safe: Postgres transaction advisory lock so only one API
+   * replica promotes/reverts per tick.
+   */
   async runScheduledTransitions(): Promise<{
     promoted: number;
     reverted: number;
   }> {
-    const promoted = await this.promoteDueHoldOrders();
-    let reverted = 0;
-    const ymd = dhakaYmd();
-    if (dhakaHour() >= EOD_HOUR_DHAKA && this.lastEodYmd !== ymd) {
-      reverted = await this.revertUnresolvedHoldFollowup(ymd);
-      this.lastEodYmd = ymd;
+    if (this.running) {
+      return { promoted: 0, reverted: 0 };
     }
-    return { promoted, reverted };
+    this.running = true;
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const locked = await this.tryAcquireJobLock(tx);
+          if (!locked) {
+            return { promoted: 0, reverted: 0 };
+          }
+          const promoted = await this.promoteDueHoldOrders();
+          let reverted = 0;
+          const now = new Date();
+          if (shouldRunEodRevert(now, this.lastEodYmd)) {
+            const ymd = dhakaYmd(now);
+            reverted = await this.revertUnresolvedHoldFollowup(ymd);
+            this.lastEodYmd = ymd;
+          }
+          return { promoted, reverted };
+        },
+        { timeout: 120_000, maxWait: 5_000 },
+      );
+    } catch (err) {
+      this.logger.error(
+        `Hold workflow tick failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { promoted: 0, reverted: 0 };
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async tryAcquireJobLock(tx: {
+    $queryRaw: PrismaService['$queryRaw'];
+  }): Promise<boolean> {
+    try {
+      const rows = await tx.$queryRaw<Array<{ locked: boolean }>>`
+        SELECT pg_try_advisory_xact_lock(
+          ${HOLD_WORKFLOW_LOCK_CLASS},
+          ${HOLD_WORKFLOW_LOCK_ID}
+        ) AS locked
+      `;
+      return Boolean(rows[0]?.locked);
+    } catch (err) {
+      this.logger.warn(
+        `Hold workflow lock unavailable, running without cluster lock: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return true;
+    }
   }
 
   /**
@@ -85,8 +117,6 @@ export class OrderHoldWorkflowService implements OnModuleInit, OnModuleDestroy {
    */
   private async promoteDueHoldOrders(): Promise<number> {
     const todayYmd = dhakaYmd();
-    // Followup.scheduleDate is a DATE stored as UTC midnight for that calendar day.
-    // Due = schedule on/before today's Dhaka calendar date (inclusive).
     const dueOnOrBefore = utcDateOnlyFromYmd(todayYmd);
     let promoted = 0;
 

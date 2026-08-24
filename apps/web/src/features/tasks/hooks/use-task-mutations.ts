@@ -4,6 +4,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 
 import { tasksApi } from '@/features/tasks/api/tasks-api';
+import { invalidateTaskQueryCaches } from '@/features/tasks/data/task-query-cache';
 
 export function useTaskMutations() {
   const [isLoading, setIsLoading] = React.useState(false);
@@ -13,6 +14,7 @@ export function useTaskMutations() {
     try {
       const task = await tasksApi.createTask(payload);
       toast.success(`Task "${task.title}" created`);
+      invalidateTaskQueryCaches();
       return task;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create task');
@@ -25,7 +27,9 @@ export function useTaskMutations() {
   async function updateTask(id: string, patch: Parameters<typeof tasksApi.updateTask>[1]) {
     setIsLoading(true);
     try {
-      return await tasksApi.updateTask(id, patch);
+      const task = await tasksApi.updateTask(id, patch);
+      invalidateTaskQueryCaches();
+      return task;
     } finally {
       setIsLoading(false);
     }
@@ -36,6 +40,7 @@ export function useTaskMutations() {
     try {
       const result = await tasksApi.bulkAction(payload);
       toast.success(result.message ?? 'Bulk action completed');
+      invalidateTaskQueryCaches();
       return result;
     } finally {
       setIsLoading(false);
