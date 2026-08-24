@@ -26,14 +26,16 @@ function dhakaHour(now = new Date()): number {
   return new Date(now.getTime() + BD_OFFSET_MS).getUTCHours();
 }
 
-function startOfDhakaDay(ymd: string): Date {
+/** Calendar YMD stored as UTC midnight (matches OrdersService.parseFollowUpDateOrThrow). */
+function utcDateOnlyFromYmd(ymd: string): Date {
   const [y, m, d] = ymd.split('-').map((part) => Number.parseInt(part, 10));
-  return new Date(Date.UTC(y, m - 1, d) - BD_OFFSET_MS);
+  return new Date(Date.UTC(y, m - 1, d));
 }
 
 function addDaysToYmd(ymd: string, days: number): string {
-  const base = startOfDhakaDay(ymd);
-  return dhakaYmd(new Date(base.getTime() + days * 24 * 60 * 60 * 1000));
+  const base = utcDateOnlyFromYmd(ymd);
+  const next = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
 }
 
 @Injectable()
@@ -83,7 +85,9 @@ export class OrderHoldWorkflowService implements OnModuleInit, OnModuleDestroy {
    */
   private async promoteDueHoldOrders(): Promise<number> {
     const todayYmd = dhakaYmd();
-    const startOfToday = startOfDhakaDay(todayYmd);
+    // Followup.scheduleDate is a DATE stored as UTC midnight for that calendar day.
+    // Due = schedule on/before today's Dhaka calendar date (inclusive).
+    const dueOnOrBefore = utcDateOnlyFromYmd(todayYmd);
     let promoted = 0;
 
     try {
@@ -92,7 +96,7 @@ export class OrderHoldWorkflowService implements OnModuleInit, OnModuleDestroy {
           orderId: { not: null },
           skipped: false,
           followupStatus: { notIn: ['done', 'converted'] },
-          scheduleDate: { lte: startOfToday },
+          scheduleDate: { lte: dueOnOrBefore },
         },
         select: { organizationId: true, orderId: true },
       });

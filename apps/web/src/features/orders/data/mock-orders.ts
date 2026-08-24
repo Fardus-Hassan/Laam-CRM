@@ -462,10 +462,11 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
         : current.attachments,
     timeline,
     followUpDueAt: patch.status
-      ? patch.status.trim().toLowerCase() === 'hold'
+      ? ['hold', 'hold_followup'].includes(patch.status.trim().toLowerCase())
         ? (normalizeFollowUpDate(patch.followUpDate) ?? current.followUpDueAt)
         : undefined
-      : current.status.trim().toLowerCase() === 'hold' && patch.followUpDate
+      : ['hold', 'hold_followup'].includes(current.status.trim().toLowerCase()) &&
+          patch.followUpDate
         ? (normalizeFollowUpDate(patch.followUpDate) ?? current.followUpDueAt)
         : current.followUpDueAt,
   };
@@ -478,6 +479,27 @@ export function updateMockOrder(orderId: string, patch: UpdateOrderPayload): Ord
   }
 
   if (patch.status && patch.status !== current.status) {
+    const next = patch.status.trim().toLowerCase();
+    const prev = current.status.trim().toLowerCase();
+    const holdCallback = new Set(['hold', 'hold_followup']);
+    const closeStatuses = new Set([
+      'confirmed',
+      'processing',
+      'in_courier',
+      'delivered',
+      'completed',
+      'cancelled',
+      'pending_return',
+      'returned',
+    ]);
+    if (!holdCallback.has(next) && (holdCallback.has(prev) || closeStatuses.has(next))) {
+      const outcome = next === 'cancelled' || next === 'returned' ? 'done' : 'converted';
+      void import('@/features/followups/data/mock-followups').then(
+        ({ closeOpenMockFollowupsForOrder }) => {
+          closeOpenMockFollowupsForOrder(updated.id, outcome);
+        },
+      );
+    }
     void import('@/features/ops-spine/domain-events').then(({ onOrderStatusChanged, onOrderPaid }) => {
       onOrderStatusChanged(updated, current.status, updated.status);
       if (patch.paymentStatus === 'paid') {

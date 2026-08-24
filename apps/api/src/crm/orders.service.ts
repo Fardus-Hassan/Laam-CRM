@@ -203,6 +203,27 @@ const OPEN_ORDER_WORKLOAD_STATUSES = new Set([
   'in_courier',
   'out_for_delivery',
 ]);
+
+/** Order still awaiting a scheduled callback — keep linked Followup open. */
+const HOLD_CALLBACK_STATUSES = new Set(['hold', 'hold_followup']);
+
+/**
+ * Statuses that obsolete any open order-linked follow-up
+ * (even if the order was never on Hold — e.g. pending create follow-up).
+ */
+const ORDER_FOLLOWUP_CLOSE_STATUSES = new Set([
+  'confirmed',
+  'processing',
+  'processing_2',
+  'in_courier',
+  'out_for_delivery',
+  'delivered',
+  'completed',
+  'cancelled',
+  'pending_return',
+  'returned',
+]);
+
 const ACTIVE_COURIER_WORKLOAD_SLUGS = new Set([
   'order_placed',
   'pending_pickup',
@@ -1017,13 +1038,17 @@ export class OrdersService {
   private async resolveFollowUpDueOrderIds(
     organizationId: string,
   ): Promise<string[]> {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    // Align with Hold workflow: scheduleDate is UTC date-only; compare to Dhaka today.
+    const BD_OFFSET_MS = 6 * 60 * 60 * 1000;
+    const d = new Date(Date.now() + BD_OFFSET_MS);
+    const todayYmd = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    const [y, m, day] = todayYmd.split('-').map((p) => Number.parseInt(p, 10));
+    const dueOnOrBefore = new Date(Date.UTC(y, m - 1, day));
     const dueFollowups = await this.prisma.followup.findMany({
       where: {
         organizationId,
         orderId: { not: null },
-        scheduleDate: { lte: startOfToday },
+        scheduleDate: { lte: dueOnOrBefore },
         skipped: false,
         followupStatus: { notIn: ['done', 'converted'] },
       },
@@ -1236,14 +1261,22 @@ export class OrdersService {
       where: { organizationId, orderId: fullOrder.id },
     });
     if (existingFu) {
+      // Re-open if previously closed (re-hold after confirm/cancel is valid ops).
       await this.prisma.followup.update({
         where: { id: existingFu.id },
         data: {
           scheduleDate,
           skipped: false,
+          followupStatus: 'pending',
           followupNotes: noteLine,
         },
       });
+      if (fullOrder.customerId) {
+        await this.prisma.customer.updateMany({
+          where: { id: fullOrder.customerId, organizationId },
+          data: { hasFollowUp: true, followUpDue: scheduleDate },
+        });
+      }
       return;
     }
     await this.followups.createFromOrder(
@@ -2689,6 +2722,32 @@ export class OrdersService {
         },
       });
     });
+
+    // Keep Follow-ups Due honest: close open order-linked follow-ups when the
+    // order leaves Hold/Hold Followup or reaches a resolved/progressed status.
+    // Awaited before automations so a status-map rule cannot race a stale open row.
+    // Do not close while staying in hold / hold_followup (callback still owed).
+    if (!HOLD_CALLBACK_STATUSES.has(status)) {
+      const leftHoldCallback = HOLD_CALLBACK_STATUSES.has(prev);
+      const enteredCloseStatus = ORDER_FOLLOWUP_CLOSE_STATUSES.has(status);
+      if (leftHoldCallback || enteredCloseStatus) {
+        const outcome =
+          status === 'cancelled' || status === 'returned' ? 'done' : 'converted';
+        try {
+          await this.followups.closeOpenForOrder(organizationId, updated.id, {
+            outcome,
+            orderStatus: status,
+            actor,
+          });
+        } catch (err) {
+          this.logger.warn(
+            `Follow-up close skipped for ${updated.orderNumber}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+    }
 
     // Best-effort auto SMS / follow-up — never fail the status change
     void this.sms.tryAutoSmsOnStatusChange(organizationId, updated.id, status).catch(() => undefined);

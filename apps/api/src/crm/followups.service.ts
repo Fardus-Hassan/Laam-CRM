@@ -424,6 +424,59 @@ export class FollowupsService implements OnModuleInit, OnModuleDestroy {
     return this.toDetail(row);
   }
 
+  /**
+   * Close open order-linked follow-ups (idempotent).
+   * Industry pattern: when the order leaves the callback queue / is resolved,
+   * linked Follow-ups Due items must leave the open queue.
+   * - converted = progressed (confirmed / courier / delivered…)
+   * - done = ended without conversion (cancelled / returned)
+   */
+  async closeOpenForOrder(
+    organizationId: string,
+    orderId: string,
+    input: {
+      outcome: 'done' | 'converted';
+      orderStatus: string;
+      actor?: ActorLabel;
+    },
+  ): Promise<number> {
+    const open = await this.prisma.followup.findMany({
+      where: {
+        organizationId,
+        orderId,
+        skipped: false,
+        followupStatus: { notIn: ['done', 'converted'] },
+      },
+      select: { id: true },
+    });
+    if (open.length === 0) return 0;
+
+    let closed = 0;
+    for (const row of open) {
+      try {
+        await this.update(
+          organizationId,
+          row.id,
+          { followupStatus: input.outcome },
+          input.actor,
+        );
+        closed += 1;
+      } catch (err) {
+        this.logger.warn(
+          `closeOpenForOrder failed for followup ${row.id} (order ${orderId}): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    if (closed > 0) {
+      this.logger.log(
+        `Closed ${closed} follow-up(s) for order ${orderId} → ${input.outcome} (${input.orderStatus})`,
+      );
+    }
+    return closed;
+  }
+
   async update(
     organizationId: string,
     id: string,
