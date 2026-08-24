@@ -21,9 +21,9 @@ import { TaskListToolbar } from '@/features/tasks/components/task-list/task-list
 import { TaskDetailsModal } from '@/features/tasks/components/task-list/modals/task-details-modal';
 import { TaskNoteModal } from '@/features/tasks/components/task-list/modals/task-note-modal';
 import { TaskSelectionBar } from '@/features/tasks/components/task-list/task-selection-bar';
-import { TaskWorkspaceHeader } from '@/features/tasks/components/task-list/task-workspace-header';
 import { useTaskMutations } from '@/features/tasks/hooks/use-task-mutations';
 import { useTasksList } from '@/features/tasks/hooks/use-tasks-list';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
@@ -42,7 +42,6 @@ export function TaskListShell() {
   const [pageSize, setPageSize] = React.useState(Number(searchParams.get('pageSize') ?? 10));
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [listVersion, setListVersion] = React.useState(0);
-  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
 
   const [noteTarget, setNoteTarget] = React.useState<TaskListItem | null>(null);
   const [noteInitial, setNoteInitial] = React.useState('');
@@ -65,7 +64,7 @@ export function TaskListShell() {
     }
   }, [debouncedSearch, filter, page, pageSize, pathname, router, searchParamsKey]);
 
-  const { data, isLoading, error, refresh } = useTasksList(
+  const { data, isLoading, error } = useTasksList(
     {
       filter: filter === 'all' ? undefined : (filter as 'my_tasks' | 'today' | 'overdue' | 'done'),
       search: debouncedSearch || undefined,
@@ -75,9 +74,9 @@ export function TaskListShell() {
     listVersion,
   );
 
-  React.useEffect(() => {
-    if (data && !isLoading) setLastRefreshedAt(new Date());
-  }, [data, isLoading]);
+  usePageDataRefresh(() => {
+    setListVersion((v) => v + 1);
+  });
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
@@ -94,7 +93,6 @@ export function TaskListShell() {
 
   function handleRefresh() {
     setListVersion((v) => v + 1);
-    void refresh();
   }
 
   function handleClearFilters() {
@@ -130,12 +128,6 @@ export function TaskListShell() {
       description="Calls, confirmations, courier checks, and payment follow-ups for your team."
     >
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
-        <TaskWorkspaceHeader
-          lastRefreshedAt={lastRefreshedAt}
-          isRefreshing={isLoading}
-          onRefresh={handleRefresh}
-        />
-
         <CrmSummaryStrip items={summaryItems} className="sm:grid-cols-2 xl:grid-cols-5" />
 
         {data?.filters ? (

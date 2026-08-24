@@ -18,6 +18,7 @@ import {
 import { failedOrdersApi } from '@/features/orders/api/failed-orders-api';
 import { FAILED_ORDER_WEBSITES } from '@/features/orders/data/mock-failed-orders';
 import { requestOrderNavCountsRefresh } from '@/features/orders/data/order-status-counts-store';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 
 export function FailedOrdersListPage() {
@@ -56,6 +57,10 @@ export function FailedOrdersListPage() {
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  usePageDataRefresh(() => {
+    void load();
+  });
 
   async function handleRetry(row: { id: string }) {
     try {

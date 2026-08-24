@@ -53,15 +53,6 @@ export function LeadListToolbar({
   return (
     <div className={cn('space-y-2', className)}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <FormInput
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search lead ID, name, phone, campaign, agent…"
-            className="pl-9"
-          />
-        </div>
         <Button
           type="button"
           variant={filtersOpen ? 'secondary' : 'outline'}
@@ -72,6 +63,15 @@ export function LeadListToolbar({
           <Filter className="size-4" />
           Filters
         </Button>
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <FormInput
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search lead ID, name, phone, campaign, agent…"
+            className="pl-9"
+          />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">

@@ -44,7 +44,7 @@ export function OrderGroupByStatus({
   );
 
   return (
-    <CollapsibleSection title="Group by Status" defaultOpen>
+    <CollapsibleSection title="Group by Status" defaultOpen={false}>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {tiles.map(({ config, count, unitCount, percent }) => {
           const isActive = activeStatus === config.slug;

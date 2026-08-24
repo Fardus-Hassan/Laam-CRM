@@ -21,10 +21,10 @@ import { ContactDataTable } from '@/features/contacts/components/contact-list/co
 import { ContactNoteModal } from '@/features/contacts/components/contact-list/modals/contact-note-modal';
 import { ContactSegmentChips } from '@/features/contacts/components/contact-list/contact-segment-chips';
 import { ContactSelectionBar } from '@/features/contacts/components/contact-list/contact-selection-bar';
-import { ContactWorkspaceHeader } from '@/features/contacts/components/contact-list/contact-workspace-header';
 import { CONTACT_SOURCE_FILTERS, getContactPageCopy } from '@/features/contacts/config/contact-filters';
 import { useContactMutations } from '@/features/contacts/hooks/use-contact-mutations';
 import { useContactsList } from '@/features/contacts/hooks/use-contacts-list';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
@@ -46,7 +46,6 @@ export function ContactListShell({ source }: ContactListShellProps) {
   const [pageSize, setPageSize] = React.useState(Number(searchParams.get('pageSize') ?? 10));
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [listVersion, setListVersion] = React.useState(0);
-  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const [noteTarget, setNoteTarget] = React.useState<ContactListItem | null>(null);
   const [noteInitial, setNoteInitial] = React.useState('');
 
@@ -70,7 +69,7 @@ export function ContactListShell({ source }: ContactListShellProps) {
     }
   }, [debouncedSearch, page, pageSize, pathname, router, searchParamsKey, segment, source]);
 
-  const { data, isLoading, error, refresh } = useContactsList(
+  const { data, isLoading, error } = useContactsList(
     {
       segment: segment === 'all' ? undefined : segment,
       source: source as ContactListItem['source'] | undefined,
@@ -81,9 +80,9 @@ export function ContactListShell({ source }: ContactListShellProps) {
     listVersion,
   );
 
-  React.useEffect(() => {
-    if (data && !isLoading) setLastRefreshedAt(new Date());
-  }, [data, isLoading]);
+  usePageDataRefresh(() => {
+    setListVersion((v) => v + 1);
+  });
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
@@ -111,7 +110,6 @@ export function ContactListShell({ source }: ContactListShellProps) {
 
   function handleRefresh() {
     setListVersion((v) => v + 1);
-    void refresh();
   }
 
   function handleClearFilters() {
@@ -145,12 +143,6 @@ export function ContactListShell({ source }: ContactListShellProps) {
   return (
     <PageShell title={pageCopy.title} description={pageCopy.description}>
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
-        <ContactWorkspaceHeader
-          lastRefreshedAt={lastRefreshedAt}
-          isRefreshing={isLoading}
-          onRefresh={handleRefresh}
-        />
-
         <CrmPageActions moduleId="contacts" />
 
         <CrmSummaryStrip items={summaryItems} className="sm:grid-cols-2 xl:grid-cols-4" />
