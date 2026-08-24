@@ -19,14 +19,11 @@ const LIVE_INCENTIVE_ROLES = new Set([
 function emptyIncentiveOverlay() {
   const now = new Date();
   const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const next = new Date(Date.UTC(y, m + 1, 5));
   return {
     totalEarned: 0,
     periodLabel: ym,
     breakdown: [] as Array<{ id: string; label: string; amount: number }>,
-    nextPayoutDate: next.toISOString().slice(0, 10),
+    nextPayoutDate: '',
     history: [] as Array<{
       id: string;
       date: string;

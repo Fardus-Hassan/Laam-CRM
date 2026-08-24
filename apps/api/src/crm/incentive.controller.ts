@@ -18,6 +18,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
   MinLength,
   ValidateNested,
@@ -368,6 +369,13 @@ class SalaryDto {
   @IsNumber()
   @Min(1)
   expectedWorkingDays?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  payoutDay?: number;
 }
 
 class ShiftTemplateDto {

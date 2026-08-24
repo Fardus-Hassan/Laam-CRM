@@ -129,6 +129,8 @@ export const incentiveSalaryTemplateSchema = z.object({
   totalBdt: z.number(),
   /** Default working days/month for full-attendance check (PDF). */
   expectedWorkingDays: z.number().optional(),
+  /** Day of month for next payout label (1–28). Omit = not configured. */
+  payoutDay: z.number().int().min(1).max(28).optional(),
   notes: z.string().optional(),
 });
 export type IncentiveSalaryTemplate = z.infer<typeof incentiveSalaryTemplateSchema>;

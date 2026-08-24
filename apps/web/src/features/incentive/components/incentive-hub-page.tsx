@@ -42,6 +42,8 @@ import { useAuth } from '@/features/auth/hooks/use-auth';
 import { incentiveApi } from '@/features/incentive/api/incentive-api';
 import { FormSearchSelect } from '@/components/form/form-search-select';
 import { PlanFormDialog } from '@/features/incentive/components/plan-form-dialog';
+import { IncentiveOpsPanel } from '@/features/incentive/components/incentive-ops-panel';
+import { SalaryFormDialog } from '@/features/incentive/components/salary-form-dialog';
 import {
   ORDER_CARD_CLASS,
   ORDER_PAGE_GAP,
@@ -87,13 +89,17 @@ function formatMetricValue(metricType: IncentiveMetricType, value: number) {
   return metricType === 'return_ratio' ? `${value}%` : String(value);
 }
 
-type HubTab = 'teams' | 'structure' | 'performance';
+type HubTab = 'teams' | 'structure' | 'performance' | 'ops';
 type PeriodMode = 'month' | 'range';
 
 const FILTER_METRICS: Array<{ value: IncentiveMetricType; label: string }> = [
   { value: 'order_count', label: 'Order count' },
   { value: 'cross_sell_count', label: 'Cross-sell / upsell' },
   { value: 'return_ratio', label: 'Return ratio %' },
+  { value: 'recovery_count', label: 'Recovery count' },
+  { value: 'survey_count', label: 'Survey count' },
+  { value: 'channel_activity', label: 'Channel activity' },
+  { value: 'manual', label: 'Manual' },
 ];
 
 export function IncentiveHubPage() {
@@ -118,6 +124,7 @@ export function IncentiveHubPage() {
   const [lockedTeamId, setLockedTeamId] = React.useState<string | undefined>();
   const [planOpen, setPlanOpen] = React.useState(false);
   const [editingPlan, setEditingPlan] = React.useState<IncentivePlan | null>(null);
+  const [salaryOpen, setSalaryOpen] = React.useState(false);
   const [manualDrafts, setManualDrafts] = React.useState<Record<string, string>>({});
 
   const load = React.useCallback(async () => {
@@ -325,6 +332,7 @@ export function IncentiveHubPage() {
                       ['teams', 'Teams'],
                       ['structure', 'Structure'],
                       ['performance', 'Performance'],
+                      ['ops', 'Ops & payroll'],
                     ] as const)
                   : ([
                       ['teams', 'My team'],
@@ -363,12 +371,20 @@ export function IncentiveHubPage() {
                 onClick={() =>
                   void runAction(
                     () => incentiveApi.seedSyncMissing(),
-                    'Users team members synced to KPI',
+                    'Missing seed plans attached; Users team members synced',
                   )
                 }
               >
                 <RefreshCw className="size-4" />
-                Sync members
+                Sync teams & plans
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setSalaryOpen(true)}
+              >
+                Salary template
               </Button>
             </div>
           ) : null}
@@ -480,7 +496,7 @@ export function IncentiveHubPage() {
                 {canManage && periodMode === 'month' ? (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {performance?.periodStatus === 'paid' ? (
-                      <Badge variant="secondary">Month closed</Badge>
+                      <Badge variant="secondary">Month paid</Badge>
                     ) : monthLocked ? (
                       <>
                         <Badge variant="success">Month locked</Badge>
@@ -498,6 +514,41 @@ export function IncentiveHubPage() {
                         >
                           <Unlock className="size-4" />
                           Unlock
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            void runAction(
+                              () => incentiveApi.markPeriodPaid(yearMonth),
+                              'Month marked paid',
+                            )
+                          }
+                        >
+                          Mark paid
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() =>
+                            void runAction(async () => {
+                              const file = await incentiveApi.exportPayrollCsv(yearMonth);
+                              const blob = new Blob([file.csv], {
+                                type: 'text/csv;charset=utf-8',
+                              });
+                              const url = URL.createObjectURL(blob);
+                              const anchor = document.createElement('a');
+                              anchor.href = url;
+                              anchor.download = file.filename;
+                              anchor.click();
+                              URL.revokeObjectURL(url);
+                            }, 'Payroll CSV downloaded')
+                          }
+                        >
+                          Export payroll CSV
                         </Button>
                       </>
                     ) : (
@@ -796,7 +847,11 @@ export function IncentiveHubPage() {
                           </TableCell>
                           <TableCell>
                             {line.matchedSlabLabel ?? '—'}
-                            {line.prorataApplied ? <Badge className="ml-2" variant="secondary">prorata</Badge> : null}
+                            {line.prorataApplied ? (
+                              <Badge className="ml-2" variant="secondary">
+                                last-slab rate
+                              </Badge>
+                            ) : null}
                           </TableCell>
                           <TableCell className="text-right font-medium tabular-nums">
                             {formatCurrency(line.incentiveBdt)}
@@ -948,6 +1003,16 @@ export function IncentiveHubPage() {
             )}
           </div>
         ) : null}
+
+        {tab === 'ops' && canManage ? (
+          <IncentiveOpsPanel
+            yearMonth={yearMonth}
+            onYearMonthChange={setYearMonth}
+            assignments={data?.assignments ?? []}
+            canManage={canManage}
+            onChanged={load}
+          />
+        ) : null}
       </div>
 
       <PlanFormDialog
@@ -967,6 +1032,12 @@ export function IncentiveHubPage() {
           setPlanOpen(false);
           setLockedTeamId(selectedTeamId || undefined);
         }}
+        onSaved={() => void load()}
+      />
+      <SalaryFormDialog
+        open={salaryOpen}
+        initial={data?.salaryTemplate}
+        onClose={() => setSalaryOpen(false)}
         onSaved={() => void load()}
       />
       {confirmDialog}

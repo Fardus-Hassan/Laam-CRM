@@ -9,6 +9,36 @@ export function normalizeAgentKey(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+/** Pick the ops row that belongs to this assignment (ID first, then safe name fallback). */
+export function pickOpsRowForAssignment<
+  T extends {
+    assignmentId?: string | null;
+    userId?: string | null;
+    agentName: string;
+  },
+>(
+  rows: T[],
+  assignment: { id: string; userId?: string | null; agentName: string },
+): T | undefined {
+  const byAssignment = rows.find((row) => row.assignmentId === assignment.id);
+  if (byAssignment) return byAssignment;
+
+  const userId = assignment.userId?.trim();
+  if (userId) {
+    const byUser = rows.find((row) => row.userId === userId);
+    if (byUser) return byUser;
+  }
+
+  const nameKey = normalizeAgentKey(assignment.agentName);
+  if (!nameKey) return undefined;
+  const nameMatches = rows.filter(
+    (row) => normalizeAgentKey(row.agentName) === nameKey,
+  );
+  if (nameMatches.length === 1) return nameMatches[0];
+  // Ambiguous same-name rows: only take an unattached legacy row.
+  return nameMatches.find((row) => !row.assignmentId && !row.userId);
+}
+
 export function assignmentMatchKeys(input: {
   userId?: string | null;
   agentName: string;
@@ -62,7 +92,43 @@ export type StatusActivityLike = {
   orderId: string;
   description: string | null;
   createdAt: Date;
+  /** OrderActivity.type — confirmed/cancelled/status/note */
+  type?: string | null;
 };
+
+/** Prefer configured statuses; empty array means “use defaults”, not “match nothing”. */
+export function statusListOrDefault(
+  configured: string[] | undefined | null,
+  defaults: string[],
+): string[] {
+  if (!configured?.length) return defaults.map((s) => s.toLowerCase());
+  return configured.map((s) => s.toLowerCase());
+}
+
+/**
+ * Parse status from CRM activity rows.
+ * Real status changes write `type: confirmed|cancelled|note` and
+ * `description: "prev → next"` (sometimes with a · suffix).
+ * Legacy / bulk rows may use `type: status` with a bare status slug.
+ */
+export function parseStatusFromActivity(ev: {
+  type?: string | null;
+  description?: string | null;
+}): string | null {
+  const type = (ev.type ?? '').trim().toLowerCase();
+  if (type === 'confirmed' || type === 'cancelled') return type;
+  if (type === 'canceled') return 'cancelled';
+
+  const raw = (ev.description ?? '').trim().toLowerCase();
+  if (!raw) return null;
+
+  const arrow = raw.match(/→\s*([a-z0-9_]+)/);
+  if (arrow?.[1]) return arrow[1];
+
+  // Bare slug (e.g. type=status, description=hold_followup)
+  if (/^[a-z0-9_]+$/.test(raw)) return raw;
+  return null;
+}
 
 /**
  * Count recoveries: order reached a success status in-period after having been
@@ -97,7 +163,7 @@ export function countRecoveries(input: {
     let sawIncomplete = taggedRecovery;
     let recoveredInPeriod = false;
     for (const ev of events) {
-      const status = (ev.description ?? '').trim().toLowerCase();
+      const status = parseStatusFromActivity(ev);
       if (!status) continue;
       if (from.has(status)) sawIncomplete = true;
       const inPeriod =
@@ -116,7 +182,7 @@ export function matchIncentiveSlab(
   slabs: IncentiveSlabLike[],
   actual: number,
   direction: 'higher' | 'lower',
-  prorataAboveTop: boolean,
+  _prorataAboveTop = true,
 ): { slab: IncentiveSlabLike | null; incentiveBdt: number; prorataApplied: boolean } {
   if (!slabs.length) return { slab: null, incentiveBdt: 0, prorataApplied: false };
 
@@ -133,12 +199,11 @@ export function matchIncentiveSlab(
   if (!qualifying.length) {
     return { slab: null, incentiveBdt: 0, prorataApplied: false };
   }
-  const top = sorted[sorted.length - 1]!;
+  // Last crossed slab — extras pay at that slab's per-order rate.
   const best = qualifying[qualifying.length - 1]!;
-
-  if (prorataAboveTop && actual > top.monthlyTarget && top.monthlyTarget > 0) {
-    const incentiveBdt = Math.round((top.incentiveBdt * actual) / top.monthlyTarget);
-    return { slab: top, incentiveBdt, prorataApplied: true };
+  if (actual > best.monthlyTarget && best.monthlyTarget > 0) {
+    const incentiveBdt = Math.round((best.incentiveBdt * actual) / best.monthlyTarget);
+    return { slab: best, incentiveBdt, prorataApplied: true };
   }
 
   return { slab: best, incentiveBdt: best.incentiveBdt, prorataApplied: false };

@@ -54,7 +54,7 @@ export function IncentiveSummaryCard({ data, className }: IncentiveSummaryCardPr
           <span>Next Payout Date</span>
         </div>
         <span className="text-xs font-semibold text-foreground sm:text-sm">
-          {data.nextPayoutDate}
+          {data.nextPayoutDate || 'Not set'}
         </span>
       </div>
     </div>

@@ -1790,8 +1790,8 @@ model IncentiveAttendance {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
-  @@unique([organizationId, agentName, yearMonth])
   @@index([organizationId, yearMonth])
+  @@index([organizationId, userId, yearMonth])
   @@map("IncentiveAttendances")
 }
 
@@ -1809,8 +1809,8 @@ model IncentiveSurveyLog {
   recordedAt     DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  @@unique([organizationId, agentName, yearMonth])
   @@index([organizationId, yearMonth])
+  @@index([organizationId, assignmentId, yearMonth])
   @@map("IncentiveSurveyLogs")
 }
 
@@ -1830,8 +1830,8 @@ model IncentiveChannelLog {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  @@unique([organizationId, agentName, yearMonth, channel])
   @@index([organizationId, yearMonth])
+  @@index([organizationId, assignmentId, yearMonth])
   @@map("IncentiveChannelLogs")
 }
 
@@ -1852,6 +1852,7 @@ model IncentiveSpecialBonus {
 
   @@index([organizationId, yearMonth])
   @@index([organizationId, agentName])
+  @@index([organizationId, assignmentId, yearMonth])
   @@map("IncentiveSpecialBonuses")
 }
 
