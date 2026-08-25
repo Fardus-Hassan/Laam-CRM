@@ -24,6 +24,7 @@ import type {
 } from '@laam/types';
 
 import type { ActorLabel } from '../common/actor.util';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CarrybeeCourierService } from './carrybee-courier.service';
 import type { CarrybeeSyncService } from './carrybee-sync.service';
@@ -389,7 +390,10 @@ export class OrdersService {
     const base = new Map<string, number>();
     for (const m of pool) base.set(m.id, 0);
     for (const row of counts) {
-      const key = scope === 'order' ? row.assignedUserId : row.logisticAssignedUserId;
+      const key =
+        scope === 'order'
+          ? (row as { assignedUserId: string | null }).assignedUserId
+          : (row as { logisticAssignedUserId: string | null }).logisticAssignedUserId;
       if (key) base.set(key, row._count._all);
     }
     if (loadMemo) {
@@ -2438,8 +2442,8 @@ export class OrdersService {
                   unitPrice: l.unitPrice,
                 })),
               }
-            : null,
-          incentiveFlags: null,
+            : Prisma.DbNull,
+          incentiveFlags: Prisma.DbNull,
           clientIp: clientIp ?? null,
           createdByUserId: actor.userId ?? null,
           createdByName: actor.name ?? null,
@@ -3458,7 +3462,12 @@ export class OrdersService {
             input.assignedUserId !== undefined
               ? input.assignedUserId.trim() || null
               : undefined,
-          incentiveFlags: nextIncentiveFlags === undefined ? undefined : nextIncentiveFlags,
+          incentiveFlags:
+            nextIncentiveFlags === undefined
+              ? undefined
+              : nextIncentiveFlags === null
+                ? Prisma.DbNull
+                : nextIncentiveFlags,
           pathaoCity:
             input.pathaoCity !== undefined
               ? input.pathaoCity.trim() || null

@@ -14,6 +14,7 @@ import {
 
 import type { UniversalNavGroup } from '@/features/navigation/types/universal-nav';
 import { getNavBadgeCounts } from '@/features/navigation/api/nav-badges-api';
+import { getNavPurchaseSegments } from '@/features/customers/data/purchase-segments-store';
 import { buildOrdersNav } from '@/features/orders/config/build-orders-nav';
 
 const pv = (...perms: Permission[]) => perms;
@@ -75,9 +76,15 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
             },
             {
               id: 'customers',
-              title: 'Customers',
+              title: 'All Customers',
               url: '/dashboard/customers',
               permissions: pv('companies.view'),
+              children: getNavPurchaseSegments().map((segment) => ({
+                id: `customers-${segment.slug}`,
+                title: segment.label,
+                url: `/dashboard/customers?segment=${encodeURIComponent(segment.slug)}`,
+                permissions: pv('companies.view'),
+              })),
             },
             {
               id: 'contacts',
@@ -338,7 +345,7 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
             },
             {
               id: 'courier',
-              title: 'Courier hub',
+              title: 'Courier Dashboard',
               url: '/dashboard/courier',
               permissions: pv('courier.view'),
               badge: badges.courier,
@@ -473,6 +480,12 @@ export function getUniversalNavRegistry(): UniversalNavGroup[] {
               id: 'settings-customer-statuses',
               title: 'Customer statuses',
               url: '/dashboard/settings/customer-statuses',
+              permissions: ['settings.manage', 'companies.edit'],
+            },
+            {
+              id: 'settings-customer-purchase-segments',
+              title: 'Purchase segments',
+              url: '/dashboard/settings/customer-purchase-segments',
               permissions: ['settings.manage', 'companies.edit'],
             },
             {

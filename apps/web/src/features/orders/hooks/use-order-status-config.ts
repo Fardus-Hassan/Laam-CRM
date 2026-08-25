@@ -8,6 +8,7 @@ import {
 } from '@/features/orders/api/order-status-config-api';
 import { orderQueueConfigApi } from '@/features/orders/api/order-queue-config-api';
 import {
+  clearServerOrderConfigCache,
   getOrderQueuePages,
   getOrderStatuses,
   getServerOrderStatuses,
@@ -20,20 +21,36 @@ const useApi = process.env.NEXT_PUBLIC_USE_API === 'true';
 
 /** Single-flight hydrate so nav + orders page + settings don't triple-fetch. */
 let hydratePromise: Promise<void> | null = null;
+let hydrateOrganizationId: string | null = null;
 
-export function ensureOrderStatusConfigHydrated(): Promise<void> {
+export function resetOrderStatusConfigHydration(organizationId?: string | null): void {
+  hydratePromise = null;
+  hydrateOrganizationId = organizationId ?? null;
+  clearServerOrderConfigCache();
+}
+
+export function ensureOrderStatusConfigHydrated(
+  organizationId?: string | null,
+): Promise<void> {
   if (!useApi) return Promise.resolve();
+
+  if (
+    organizationId &&
+    hydrateOrganizationId &&
+    organizationId !== hydrateOrganizationId
+  ) {
+    resetOrderStatusConfigHydration(organizationId);
+  } else if (organizationId && !hydrateOrganizationId) {
+    hydrateOrganizationId = organizationId;
+  }
+
   if (hydratePromise) return hydratePromise;
 
   hydratePromise = (async () => {
     try {
-      const migrated = await migrateLocalStatusOverridesIfNeeded();
-      if (migrated) {
-        setServerOrderStatuses(migrated);
-      } else {
-        const list = await orderStatusConfigApi.list();
-        setServerOrderStatuses(list);
-      }
+      await migrateLocalStatusOverridesIfNeeded();
+      const list = await orderStatusConfigApi.list();
+      setServerOrderStatuses(list);
       const queues = await orderQueueConfigApi.list();
       setServerOrderQueues(queues);
     } catch {

@@ -39,7 +39,11 @@ class UpdateBrandingDto {
   sidebarNavOrder?: {
     groupIds: string[];
     itemIdsByGroup: Record<string, string[]>;
+    childIdsByItem?: Record<string, string[]>;
   } | null;
+
+  @IsOptional()
+  sidebarNavLayout?: Record<string, unknown> | null;
 }
 
 class UploadLogoDto {
@@ -86,6 +90,7 @@ export class BrandingController {
       colors: body.colors as never,
       logos: body.logos,
       sidebarNavOrder: body.sidebarNavOrder as never,
+      sidebarNavLayout: body.sidebarNavLayout as never,
     });
   }
 

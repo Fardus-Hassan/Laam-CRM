@@ -43,11 +43,11 @@ const SYSTEM_QUEUES: Array<Omit<OrderQueuePage, 'id' | 'childStatusSlugs' | 'dis
   },
   {
     slug: 'followups',
-    label: 'Follow-ups Due',
+    label: 'Followups',
     href: '/dashboard/orders/queues/followups',
     kind: 'list',
     sidebarOrder: 15,
-    title: 'Follow-ups Due',
+    title: 'Followups',
     description:
       'Orders with an open follow-up due today or overdue — call center callback queue.',
     showInNav: true,
@@ -250,24 +250,45 @@ export class OrgOrderQueuesService {
 
   async ensureSeeded(organizationId: string): Promise<void> {
     const count = await this.prisma.orgOrderQueue.count({ where: { organizationId } });
-    if (count > 0) return;
+    if (count === 0) {
+      await this.prisma.orgOrderQueue.createMany({
+        data: SYSTEM_QUEUES.map((queue) => ({
+          organizationId,
+          slug: queue.slug,
+          label: queue.label,
+          description: queue.description,
+          kind: queue.kind,
+          href: queue.href,
+          sidebarOrder: queue.sidebarOrder,
+          showInNav: queue.showInNav,
+          defaultChildSlug: queue.defaultChildSlug ?? null,
+          followUpDue: queue.followUpDue ?? false,
+          isSystem: true,
+          isActive: true,
+        })),
+      });
+      return;
+    }
 
-    await this.prisma.orgOrderQueue.createMany({
-      data: SYSTEM_QUEUES.map((queue) => ({
-        organizationId,
-        slug: queue.slug,
-        label: queue.label,
-        description: queue.description,
-        kind: queue.kind,
-        href: queue.href,
-        sidebarOrder: queue.sidebarOrder,
-        showInNav: queue.showInNav,
-        defaultChildSlug: queue.defaultChildSlug ?? null,
-        followUpDue: queue.followUpDue ?? false,
-        isSystem: true,
-        isActive: true,
-      })),
-    });
+    // Keep system queue labels in sync (e.g. all → All Orders).
+    await this.syncSystemQueueLabels(organizationId);
+  }
+
+  private async syncSystemQueueLabels(organizationId: string): Promise<void> {
+    for (const queue of SYSTEM_QUEUES) {
+      await this.prisma.orgOrderQueue.updateMany({
+        where: { organizationId, slug: queue.slug, isSystem: true },
+        data: {
+          label: queue.label,
+          description: queue.description,
+          href: queue.href,
+          sidebarOrder: queue.sidebarOrder,
+          showInNav: queue.showInNav,
+          defaultChildSlug: queue.defaultChildSlug ?? null,
+          followUpDue: queue.followUpDue ?? false,
+        },
+      });
+    }
   }
 
   private toDto(row: {

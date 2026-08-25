@@ -42,7 +42,7 @@ export function OrderRelatedLinks({ order, className, bodyClassName }: OrderRela
     {
       href: '/dashboard/courier',
       icon: Truck,
-      label: 'Courier hub',
+      label: 'Courier Dashboard',
       hint: 'Submit & track',
     },
     {

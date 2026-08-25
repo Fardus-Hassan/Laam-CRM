@@ -78,11 +78,47 @@ export const sidebarNavOrderSchema = z.object({
 
 export type SidebarNavOrder = z.infer<typeof sidebarNavOrderSchema>;
 
+/**
+ * Fully dynamic sidebar layout (Brand settings).
+ * - Sections / folders: create, rename, reorder
+ * - Registry children: move / hide only (titles stay from registry / order statuses)
+ * - Identity for routes stays on registry leaf ids
+ */
+export const sidebarNavSectionSchema = z.object({
+  id: z.string().min(1),
+  /** Empty label hides the section header in the sidebar. */
+  label: z.string(),
+});
+
+export const sidebarNavFolderSchema = z.object({
+  id: z.string().min(1),
+  sectionId: z.string().min(1),
+  label: z.string().min(1),
+  /** Borrow icon from a registry item id when this is a custom folder. */
+  iconFromId: z.string().min(1).optional(),
+});
+
+export const sidebarNavLayoutSchema = z.object({
+  version: z.literal(1),
+  sections: z.array(sidebarNavSectionSchema),
+  folders: z.array(sidebarNavFolderSchema),
+  /** Ordered registry node ids under each folder. */
+  childrenByFolderId: z.record(z.string(), z.array(z.string().min(1))),
+  /** Hidden registry node ids (sidebar only; deep links still work). */
+  hiddenIds: z.array(z.string().min(1)).default([]),
+});
+
+export type SidebarNavSection = z.infer<typeof sidebarNavSectionSchema>;
+export type SidebarNavFolder = z.infer<typeof sidebarNavFolderSchema>;
+export type SidebarNavLayout = z.infer<typeof sidebarNavLayoutSchema>;
+
 export const organizationBrandingSchema = z.object({
   colors: brandColorsSchema.partial().optional(),
   logos: brandLogosSchema.optional(),
   /** Pass `null` on update to clear a custom sidebar order (reset to defaults). */
   sidebarNavOrder: sidebarNavOrderSchema.nullish(),
+  /** Pass `null` on update to clear custom layout (reset to COO PDF default). */
+  sidebarNavLayout: sidebarNavLayoutSchema.nullish(),
 });
 
 export type OrganizationBranding = z.infer<typeof organizationBrandingSchema>;
@@ -103,6 +139,7 @@ export const publicTenantBrandSchema = z.object({
   }),
   /** Present on authenticated branding GET/PATCH; omitted on public login payloads. */
   sidebarNavOrder: sidebarNavOrderSchema.optional(),
+  sidebarNavLayout: sidebarNavLayoutSchema.optional(),
 });
 
 export type PublicTenantBrand = z.infer<typeof publicTenantBrandSchema>;

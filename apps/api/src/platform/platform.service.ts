@@ -11,6 +11,9 @@ import type { CreateTenantRequest, Tenant, TenantListItem, TenantUser } from '@l
 
 import type { AuthUserPayload } from '../common/decorators';
 import { isEmailMockMode, tenantWebUrl } from '../common/tenant.util';
+import { CustomersService } from '../crm/customers.service';
+import { OrgOrderQueuesService } from '../crm/org-order-queues.service';
+import { OrgOrderStatusesService } from '../crm/org-order-statuses.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -21,6 +24,9 @@ export class PlatformService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
+    private readonly orgOrderStatuses: OrgOrderStatusesService,
+    private readonly orgOrderQueues: OrgOrderQueuesService,
+    private readonly customers: CustomersService,
   ) {}
 
   assertSuperAdmin(user: AuthUserPayload) {
@@ -151,6 +157,13 @@ export class PlatformService {
       where: { id: organization.id },
       data: { status: 'active' },
     });
+
+    // COO PDF default sidebar depends on seeded statuses + queues on first login.
+    await Promise.all([
+      this.orgOrderStatuses.ensureSeeded(organization.id),
+      this.orgOrderQueues.ensureSeeded(organization.id),
+      this.customers.ensureDefaultPurchaseSegments(organization.id),
+    ]);
 
     return {
       tenant: this.toTenant({

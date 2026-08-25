@@ -2611,19 +2611,6 @@ export class IncentiveService {
     return { start, end };
   }
 
-  private monthsOverlapping(start: Date, end: Date): string[] {
-    const months: string[] = [];
-    let cursor = this.startOfMonth(start);
-    const last = this.startOfMonth(end);
-    while (cursor.getTime() <= last.getTime()) {
-      months.push(this.toYearMonth(cursor));
-      cursor = new Date(
-        Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1),
-      );
-    }
-    return months;
-  }
-
   private eachUtcDate(start: Date, end: Date): string[] {
     const dates: string[] = [];
     const cursor = new Date(

@@ -28,6 +28,7 @@ model Organization {
   productBrands      ProductBrand[]
   orgCategories      OrgCategory[]
   orgCustomerStatuses OrgCustomerStatus[]
+  orgCustomerPurchaseSegments OrgCustomerPurchaseSegment[]
   products           Product[]
   productVariants    ProductVariant[]
   stockMovements     InventoryStockMovement[]
@@ -1002,6 +1003,34 @@ model OrgCustomerStatus {
   label          String
   color          String?
   sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  isSystem       Boolean      @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, deletedAt])
+}
+
+/// Org-defined purchase-count buckets for Customers nav + list filters (1x, Loyal…).
+model OrgCustomerPurchaseSegment {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug           String
+  label          String
+  /// eq | gt | gte | lt | lte
+  op             String       @default("eq")
+  threshold      Int
+  /// deliveredCount | orderCount — buyers default to successful deliveries
+  metric         String       @default("deliveredCount")
+  /// sidebar | nested_tab | sidebar_and_tab | filter_only (same idea as order statuses)
+  displayMode    String       @default("sidebar_and_tab")
+  sortOrder      Int          @default(0)
+  /// Legacy/convenience — prefer displayMode; kept in sync on write
+  showInNav      Boolean      @default(true)
   isActive       Boolean      @default(true)
   isSystem       Boolean      @default(false)
   deletedAt      DateTime?

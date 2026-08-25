@@ -67,10 +67,23 @@ function asBranding(value: unknown): OrganizationBranding {
     sidebarNavOrder = undefined;
   }
 
+  let sidebarNavLayout = raw.sidebarNavLayout ?? undefined;
+  if (
+    sidebarNavLayout &&
+    (sidebarNavLayout.version !== 1 ||
+      !Array.isArray(sidebarNavLayout.sections) ||
+      !Array.isArray(sidebarNavLayout.folders) ||
+      typeof sidebarNavLayout.childrenByFolderId !== 'object' ||
+      sidebarNavLayout.childrenByFolderId === null)
+  ) {
+    sidebarNavLayout = undefined;
+  }
+
   return {
     colors: normalizeBrandColorInput(raw.colors) ?? raw.colors,
     logos: logos && Object.keys(logos).length > 0 ? logos : undefined,
     ...(sidebarNavOrder ? { sidebarNavOrder } : {}),
+    ...(sidebarNavLayout ? { sidebarNavLayout } : {}),
   };
 }
 
@@ -144,6 +157,9 @@ export class BrandingService {
       ...(branding.sidebarNavOrder
         ? { sidebarNavOrder: branding.sidebarNavOrder }
         : {}),
+      ...(branding.sidebarNavLayout
+        ? { sidebarNavLayout: branding.sidebarNavLayout }
+        : {}),
     };
   }
 
@@ -163,6 +179,9 @@ export class BrandingService {
       }),
       ...(branding.sidebarNavOrder
         ? { sidebarNavOrder: branding.sidebarNavOrder }
+        : {}),
+      ...(branding.sidebarNavLayout
+        ? { sidebarNavLayout: branding.sidebarNavLayout }
         : {}),
     };
   }
@@ -220,6 +239,14 @@ export class BrandingService {
       next.sidebarNavOrder = current.sidebarNavOrder;
     }
 
+    if (patch.sidebarNavLayout === null) {
+      // cleared — leave undefined (client falls back to PDF default)
+    } else if (patch.sidebarNavLayout !== undefined) {
+      next.sidebarNavLayout = patch.sidebarNavLayout;
+    } else if (current.sidebarNavLayout) {
+      next.sidebarNavLayout = current.sidebarNavLayout;
+    }
+
     const updated = await this.prisma.organization.update({
       where: { id: organizationId },
       data: { branding: next },
@@ -246,6 +273,9 @@ export class BrandingService {
       }),
       ...(branding.sidebarNavOrder
         ? { sidebarNavOrder: branding.sidebarNavOrder }
+        : {}),
+      ...(branding.sidebarNavLayout
+        ? { sidebarNavLayout: branding.sidebarNavLayout }
         : {}),
     };
   }

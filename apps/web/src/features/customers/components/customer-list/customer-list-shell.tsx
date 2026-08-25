@@ -197,8 +197,36 @@ export function CustomerListShell() {
           </div>
         ) : null}
 
+        {data?.purchaseSegments?.length ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Purchase segments
+              </p>
+              <Button type="button" size="sm" variant="ghost" className="h-7 px-2" asChild>
+                <Link href="/dashboard/settings/customer-purchase-segments">
+                  <Settings2 className="size-3.5" />
+                  Manage
+                </Link>
+              </Button>
+            </div>
+            <CustomerSegmentChips
+              segments={[
+                {
+                  id: 'all',
+                  label: 'All',
+                  count: data.segments.find((s) => s.id === 'all')?.count ?? 0,
+                },
+                ...data.purchaseSegments,
+              ]}
+              activeId={segment}
+              mode="segment"
+            />
+          </div>
+        ) : null}
+
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Purchase count</p>
+          <p className="text-xs font-medium text-muted-foreground">Purchase count (quick)</p>
           <div className="flex flex-wrap gap-1.5">
             {PURCHASE_COUNT_PILLS.map((count) => {
               const active =

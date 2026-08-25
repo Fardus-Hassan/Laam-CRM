@@ -313,9 +313,11 @@ export function NavMain() {
     <SidebarContent className="gap-2 px-2 py-3">
       {groups.map((group) => (
         <SidebarGroup key={group.id} className="p-0">
-          <SidebarGroupLabel className="mt-2 px-3 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
-            {group.label}
-          </SidebarGroupLabel>
+          {group.label.trim() ? (
+            <SidebarGroupLabel className="mt-2 px-3 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
+              {group.label}
+            </SidebarGroupLabel>
+          ) : null}
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               {group.items.map((item) => (

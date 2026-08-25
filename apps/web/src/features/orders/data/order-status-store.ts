@@ -96,6 +96,21 @@ export function setServerOrderQueues(queues: OrderQueuePage[]): OrderQueuePage[]
   return queues;
 }
 
+/** Drop in-memory + session caches (call when switching organization). */
+export function clearServerOrderConfigCache(): void {
+  serverStatuses = null;
+  serverQueues = null;
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.removeItem(STATUS_SESSION_CACHE_KEY);
+      sessionStorage.removeItem(QUEUE_SESSION_CACHE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+  emitChanged();
+}
+
 export function getServerOrderStatuses(): OrderStatusConfig[] | null {
   return serverStatuses;
 }

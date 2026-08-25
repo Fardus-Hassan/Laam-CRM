@@ -26,6 +26,7 @@ import { NotificationsController } from './notifications.controller';
 import { ObjectStorageService } from './object-storage.service';
 import { OrgCategoriesController } from './org-categories.controller';
 import { OrgCustomerStatusesController } from './org-customer-statuses.controller';
+import { OrgCustomerPurchaseSegmentsController } from './org-customer-purchase-segments.controller';
 import { OrgSettingsController } from './org-settings.controller';
 import { OrgSettingsService } from './org-settings.service';
 import { OrgOrderStatusesController } from './org-order-statuses.controller';
@@ -116,6 +117,7 @@ import { SecurityBlocksService } from './security-blocks.service';
     ProductBrandsController,
     OrgCategoriesController,
     OrgCustomerStatusesController,
+    OrgCustomerPurchaseSegmentsController,
     OrgOrderStatusesController,
     OrgOrderQueuesController,
     ProductsController,
@@ -182,6 +184,7 @@ import { SecurityBlocksService } from './security-blocks.service';
     ObjectStorageService,
     OrgOrderStatusesService,
     OrgOrderQueuesService,
+    CustomersService,
     BillingService,
   ],
 })

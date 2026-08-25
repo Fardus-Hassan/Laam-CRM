@@ -717,7 +717,22 @@ export class OrdersController {
     @Body() body: RoutingConfigDto,
   ) {
     this.orders.requireOrg(user.organizationId);
-    return this.orders.updateRoutingConfig(user.organizationId!, body);
+    return this.orders.updateRoutingConfig(user.organizationId!, {
+      orderRouting: body.orderRouting
+        ? {
+            mode: body.orderRouting.mode ?? 'auto_split',
+            teamIds: body.orderRouting.teamIds ?? [],
+            assigneeUserId: body.orderRouting.assigneeUserId,
+          }
+        : undefined,
+      courierRouting: body.courierRouting
+        ? {
+            mode: body.courierRouting.mode ?? 'auto_split',
+            teamIds: body.courierRouting.teamIds ?? [],
+            assigneeUserId: body.courierRouting.assigneeUserId,
+          }
+        : undefined,
+    });
   }
 
   @Patch('meta/customer-create-source')

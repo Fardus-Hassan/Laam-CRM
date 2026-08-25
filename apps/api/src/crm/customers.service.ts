@@ -12,8 +12,10 @@ import type {
   CustomerListQuery,
   CustomerListResponse,
   CustomerStatus,
+  OrgCustomerPurchaseSegment,
   OrgCustomerStatus,
   UpdateCustomerPayload,
+  UpsertOrgCustomerPurchaseSegmentPayload,
   UpsertOrgCustomerStatusPayload,
 } from '@laam/types';
 import type { Customer, Prisma } from '@prisma/client';
@@ -84,6 +86,21 @@ const DEFAULT_CUSTOMER_STATUSES: Array<{
   sortOrder: number;
 }> = [
   { slug: 'none', label: 'No status', isSystem: true, sortOrder: 0 },
+];
+
+/** COO PDF default purchase buckets — exact Nx + Loyal (gt max exact). */
+const DEFAULT_PURCHASE_SEGMENTS: Array<{
+  slug: string;
+  label: string;
+  op: CustomerCompareOp;
+  threshold: number;
+  sortOrder: number;
+}> = [
+  { slug: '1x', label: '1x Buyers', op: 'eq', threshold: 1, sortOrder: 10 },
+  { slug: '2x', label: '2x Buyers', op: 'eq', threshold: 2, sortOrder: 20 },
+  { slug: '3x', label: '3x Buyers', op: 'eq', threshold: 3, sortOrder: 30 },
+  { slug: '4x', label: '4x Buyers', op: 'eq', threshold: 4, sortOrder: 40 },
+  { slug: 'loyal', label: 'Loyal Customers', op: 'gt', threshold: 4, sortOrder: 50 },
 ];
 
 function compareInt(
@@ -365,8 +382,13 @@ export class CustomersService {
     }
 
     await this.ensureDefaultStatuses(organizationId);
+    await this.ensureDefaultPurchaseSegments(organizationId);
     const where = await this.buildListWhere(organizationId, query);
     const statusRows = await this.prisma.orgCustomerStatus.findMany({
+      where: { organizationId, deletedAt: null, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    });
+    const purchaseRows = await this.prisma.orgCustomerPurchaseSegment.findMany({
       where: { organizationId, deletedAt: null, isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
     });
@@ -459,6 +481,19 @@ export class CustomersService {
         label: s.label,
         count: statusCounts.get(s.slug) ?? 0,
       })),
+      purchaseSegments: purchaseRows
+        .filter(
+          (segment) =>
+            segment.displayMode === 'nested_tab' ||
+            segment.displayMode === 'sidebar_and_tab',
+        )
+        .map((segment) => ({
+          id: segment.slug,
+          label: segment.label,
+          count: allForSummary.filter((c) =>
+            this.matchesPurchaseSegment(c, segment),
+          ).length,
+        })),
     };
   }
 
@@ -600,6 +635,120 @@ export class CustomersService {
     });
   }
 
+  async listPurchaseSegments(
+    organizationId: string,
+  ): Promise<OrgCustomerPurchaseSegment[]> {
+    await this.ensureDefaultPurchaseSegments(organizationId);
+    const rows = await this.prisma.orgCustomerPurchaseSegment.findMany({
+      where: { organizationId, deletedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    });
+    return rows.map((row) => this.toPurchaseSegment(row));
+  }
+
+  async upsertPurchaseSegment(
+    organizationId: string,
+    input: UpsertOrgCustomerPurchaseSegmentPayload,
+  ): Promise<OrgCustomerPurchaseSegment> {
+    await this.ensureDefaultPurchaseSegments(organizationId);
+    const label = input.label.trim();
+    if (!label) throw new BadRequestException('Label is required');
+    const threshold = input.threshold;
+    if (threshold == null || threshold < 0 || !Number.isFinite(threshold)) {
+      throw new BadRequestException('Threshold must be a non-negative number');
+    }
+    const op = input.op ?? 'eq';
+    const metric = input.metric ?? 'deliveredCount';
+    const displayMode = input.displayMode ?? 'sidebar_and_tab';
+    const showInNav =
+      input.showInNav ??
+      (displayMode === 'sidebar' || displayMode === 'sidebar_and_tab');
+    const slug = (input.slug?.trim() || label)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
+    if (!slug) throw new BadRequestException('Slug is required');
+    if (['all', 'new', 'repeat', 'follow_up', 'high_risk', 'premium'].includes(slug)) {
+      throw new BadRequestException('Reserved segment slug');
+    }
+
+    if (input.id) {
+      const existing = await this.prisma.orgCustomerPurchaseSegment.findFirst({
+        where: { id: input.id, organizationId, deletedAt: null },
+      });
+      if (!existing) throw new NotFoundException('Purchase segment not found');
+      if (existing.isSystem && slug !== existing.slug) {
+        throw new BadRequestException('System segment slugs cannot be changed');
+      }
+      const nextMode = input.displayMode ?? existing.displayMode ?? displayMode;
+      const nextShowInNav =
+        input.showInNav ??
+        (nextMode === 'sidebar' || nextMode === 'sidebar_and_tab');
+      const updated = await this.prisma.orgCustomerPurchaseSegment.update({
+        where: { id: existing.id },
+        data: {
+          label,
+          slug,
+          op,
+          threshold,
+          metric,
+          displayMode: nextMode,
+          sortOrder: input.sortOrder ?? existing.sortOrder,
+          showInNav: nextShowInNav,
+          isActive: input.isActive ?? existing.isActive,
+        },
+      });
+      return this.toPurchaseSegment(updated);
+    }
+
+    const created = await this.prisma.orgCustomerPurchaseSegment.create({
+      data: {
+        organizationId,
+        slug,
+        label,
+        op,
+        threshold,
+        metric,
+        displayMode,
+        sortOrder: input.sortOrder ?? 100,
+        showInNav,
+        isActive: input.isActive ?? true,
+        isSystem: false,
+      },
+    });
+    return this.toPurchaseSegment(created);
+  }
+
+  async setPurchaseSegmentActive(
+    organizationId: string,
+    id: string,
+    isActive: boolean,
+  ): Promise<OrgCustomerPurchaseSegment> {
+    const existing = await this.prisma.orgCustomerPurchaseSegment.findFirst({
+      where: { id, organizationId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Purchase segment not found');
+    const updated = await this.prisma.orgCustomerPurchaseSegment.update({
+      where: { id },
+      data: { isActive },
+    });
+    return this.toPurchaseSegment(updated);
+  }
+
+  async deletePurchaseSegment(organizationId: string, id: string): Promise<void> {
+    const existing = await this.prisma.orgCustomerPurchaseSegment.findFirst({
+      where: { id, organizationId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Purchase segment not found');
+    if (existing.isSystem) {
+      throw new BadRequestException('System purchase segments cannot be deleted');
+    }
+    await this.prisma.orgCustomerPurchaseSegment.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false },
+    });
+  }
+
   private async ensureDefaultStatuses(organizationId: string): Promise<void> {
     const count = await this.prisma.orgCustomerStatus.count({
       where: { organizationId, deletedAt: null },
@@ -616,6 +765,124 @@ export class CustomersService {
       })),
       skipDuplicates: true,
     });
+  }
+
+  async ensureDefaultPurchaseSegments(organizationId: string): Promise<void> {
+    const count = await this.prisma.orgCustomerPurchaseSegment.count({
+      where: { organizationId, deletedAt: null },
+    });
+    if (count > 0) {
+      // Backfill any missing system defaults without touching custom rows.
+      const existing = await this.prisma.orgCustomerPurchaseSegment.findMany({
+        where: { organizationId },
+        select: { slug: true },
+      });
+      const known = new Set(existing.map((row) => row.slug));
+      const missing = DEFAULT_PURCHASE_SEGMENTS.filter((s) => !known.has(s.slug));
+      if (missing.length) {
+        await this.prisma.orgCustomerPurchaseSegment.createMany({
+          data: missing.map((s) => ({
+            organizationId,
+            slug: s.slug,
+            label: s.label,
+            op: s.op,
+            threshold: s.threshold,
+            metric: 'deliveredCount',
+            displayMode: 'sidebar_and_tab',
+            sortOrder: s.sortOrder,
+            showInNav: true,
+            isSystem: true,
+            isActive: true,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      return;
+    }
+    await this.prisma.orgCustomerPurchaseSegment.createMany({
+      data: DEFAULT_PURCHASE_SEGMENTS.map((s) => ({
+        organizationId,
+        slug: s.slug,
+        label: s.label,
+        op: s.op,
+        threshold: s.threshold,
+        metric: 'deliveredCount',
+        displayMode: 'sidebar_and_tab',
+        sortOrder: s.sortOrder,
+        showInNav: true,
+        isSystem: true,
+        isActive: true,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  private toPurchaseSegment(row: {
+    id: string;
+    organizationId: string;
+    slug: string;
+    label: string;
+    op: string;
+    threshold: number;
+    metric: string;
+    displayMode?: string | null;
+    sortOrder: number;
+    showInNav: boolean;
+    isActive: boolean;
+    isSystem: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  }): OrgCustomerPurchaseSegment {
+    const displayMode =
+      row.displayMode === 'sidebar' ||
+      row.displayMode === 'nested_tab' ||
+      row.displayMode === 'filter_only' ||
+      row.displayMode === 'sidebar_and_tab'
+        ? row.displayMode
+        : 'sidebar_and_tab';
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      slug: row.slug,
+      label: row.label,
+      op: row.op as CustomerCompareOp,
+      threshold: row.threshold,
+      metric: row.metric === 'orderCount' ? 'orderCount' : 'deliveredCount',
+      displayMode,
+      sortOrder: row.sortOrder,
+      showInNav:
+        displayMode === 'sidebar' || displayMode === 'sidebar_and_tab'
+          ? true
+          : row.showInNav,
+      isActive: row.isActive,
+      isSystem: row.isSystem,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private matchesPurchaseSegment(
+    customer: { deliveredCount: number; orderCount: number },
+    segment: { op: string; threshold: number; metric: string },
+  ): boolean {
+    const value =
+      segment.metric === 'orderCount'
+        ? customer.orderCount
+        : customer.deliveredCount;
+    switch (segment.op) {
+      case 'eq':
+        return value === segment.threshold;
+      case 'gt':
+        return value > segment.threshold;
+      case 'gte':
+        return value >= segment.threshold;
+      case 'lt':
+        return value < segment.threshold;
+      case 'lte':
+        return value <= segment.threshold;
+      default:
+        return false;
+    }
   }
 
   private async buildListWhere(
@@ -655,6 +922,35 @@ export class CustomersService {
     }
     // Legacy alias
     if (query.segment === 'premium') and.push({ status: 'premium' });
+
+    // Dynamic purchase-count segments (1x / loyal / custom 10x…)
+    if (
+      query.segment &&
+      !['all', 'new', 'repeat', 'follow_up', 'high_risk', 'premium'].includes(
+        query.segment,
+      )
+    ) {
+      await this.ensureDefaultPurchaseSegments(organizationId);
+      const purchase = await this.prisma.orgCustomerPurchaseSegment.findFirst({
+        where: {
+          organizationId,
+          slug: query.segment,
+          deletedAt: null,
+          isActive: true,
+        },
+      });
+      if (purchase) {
+        const field =
+          purchase.metric === 'orderCount' ? 'orderCount' : 'deliveredCount';
+        const filter = compareInt(
+          purchase.op as CustomerCompareOp,
+          purchase.threshold,
+        );
+        if (filter !== undefined) {
+          and.push({ [field]: filter });
+        }
+      }
+    }
 
     if (query.status) and.push({ status: query.status });
     if (query.district?.trim()) {
