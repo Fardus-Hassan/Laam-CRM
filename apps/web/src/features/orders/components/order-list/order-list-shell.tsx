@@ -4,7 +4,6 @@ import * as React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { OrderListRow } from '@laam/types';
 
-import { CrmPageActions } from '@/features/crm/components/crm-page-actions';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { EmptyState } from '@/components/layout/empty-state';
 import { PageShell } from '@/components/layout/page-shell';
@@ -27,12 +26,12 @@ import { OrderNoteModal } from '@/features/orders/components/order-list/modals/o
 import { OrderQueueTabs } from '@/features/orders/components/order-list/order-queue-tabs';
 import { OrderSalesSummaryPanel } from '@/features/orders/components/order-list/order-sales-summary-panel';
 import { OrderSelectionBar } from '@/features/orders/components/order-list/order-selection-bar';
-import { OrderWorkspaceHeader } from '@/features/orders/components/order-list/order-workspace-header';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { useOrderRowsList } from '@/features/orders/hooks/use-order-rows-list';
 import { createOrdersListBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
 import { clampCrmPageSize, CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { formatCurrency } from '@/lib/format';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 import { buildOrderSalesSummaryFromListSummary } from '@laam/types';
 
@@ -57,7 +56,6 @@ export function OrderListShell({ queue }: OrderListShellProps) {
   const [filters, setFilters] = React.useState<OrderFilterValues>(EMPTY_FILTERS);
   const [noteRow, setNoteRow] = React.useState<OrderListRow | null>(null);
   const [listVersion, setListVersion] = React.useState(0);
-  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const { updateNote } = useOrderMutations();
 
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -102,7 +100,7 @@ export function OrderListShell({ queue }: OrderListShellProps) {
     searchParamsKey,
   ]);
 
-  const { data, isLoading, error, refresh } = useOrderRowsList(
+  const { data, isLoading, error } = useOrderRowsList(
     {
       status: queue.statusFilter ?? filters.status,
       search: debouncedSearch || undefined,
@@ -138,11 +136,9 @@ export function OrderListShell({ queue }: OrderListShellProps) {
     listVersion,
   );
 
-  React.useEffect(() => {
-    if (data && !isLoading) {
-      setLastRefreshedAt(new Date());
-    }
-  }, [data, isLoading]);
+  usePageDataRefresh(() => {
+    setListVersion((v) => v + 1);
+  });
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
@@ -179,7 +175,6 @@ export function OrderListShell({ queue }: OrderListShellProps) {
 
   function handleRefresh() {
     setListVersion((v) => v + 1);
-    void refresh();
   }
 
   function handlePageSizeChange(size: number) {
@@ -226,17 +221,6 @@ export function OrderListShell({ queue }: OrderListShellProps) {
       breadcrumbs={createOrdersListBreadcrumbs(queue.title)}
     >
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
-        <OrderWorkspaceHeader
-          queueSlug={queue.queueSlug}
-          title={queue.title}
-          description={queue.description}
-          lastRefreshedAt={lastRefreshedAt}
-          isRefreshing={isLoading}
-          onRefresh={handleRefresh}
-        />
-
-        <CrmPageActions moduleId="orders" />
-
         <CrmSummaryStrip items={summaryItems} />
 
         {queue.showGroupByStatus ? (

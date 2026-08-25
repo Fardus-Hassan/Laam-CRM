@@ -30,16 +30,7 @@ export function ProductListToolbar({
   className,
 }: ProductListToolbarProps) {
   return (
-    <div className={cn('grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,12rem)_minmax(10rem,12rem)]', className)}>
-      <div className="relative min-w-0">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <FormInput
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search name, SKU, supplier, tag…"
-          className="pl-9"
-        />
-      </div>
+    <div className={cn('grid gap-2 sm:grid-cols-[minmax(10rem,12rem)_minmax(10rem,12rem)_minmax(0,1fr)]', className)}>
       <FormSearchSelect
         value={category}
         onChange={onCategoryChange}
@@ -52,6 +43,15 @@ export function ProductListToolbar({
         options={[{ value: '', label: 'All brands' }, ...brandOptions]}
         searchable={false}
       />
+      <div className="relative min-w-0">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <FormInput
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search name, SKU, supplier, tag…"
+          className="pl-9"
+        />
+      </div>
     </div>
   );
 }

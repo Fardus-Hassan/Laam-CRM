@@ -139,7 +139,7 @@ export function CampaignFormDialog({
             <FormInput
               value={draft.name}
               onChange={(e) => patch({ name: e.target.value })}
-              placeholder="e.g. Ramadan Modhu Boost"
+              placeholder="e.g. Summer sale"
             />
           </FormField>
           <div className="grid gap-3 sm:grid-cols-2">

@@ -236,6 +236,84 @@ export function OrderListToolbar({
   return (
     <div className={cn('space-y-2', className)}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex shrink-0 items-center gap-2">
+          <div
+            ref={rootRef}
+            className="relative shrink-0"
+            onMouseEnter={handleHoverEnter}
+            onMouseLeave={handleHoverLeave}
+          >
+            <Button
+              type="button"
+              variant={isOpen ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-8 w-full sm:w-auto"
+              onClick={handleFilterClick}
+              aria-expanded={isOpen}
+              aria-haspopup="dialog"
+            >
+              <Filter className="size-3.5" />
+              Filters
+              {chips.length > 0 ? (
+                <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-xs tabular-nums">
+                  {chips.length}
+                </span>
+              ) : null}
+              {isOpen ? <ChevronUp className="ml-0.5 size-3.5 opacity-70" /> : null}
+            </Button>
+
+            {isOpen ? (
+              <>
+                {/* Mobile backdrop — only when pinned/open on small screens */}
+                <button
+                  type="button"
+                  aria-label="Dismiss filters"
+                  className={cn(
+                    'fixed inset-0 z-40 bg-black/40 sm:hidden',
+                    !pinned && 'pointer-events-none opacity-0',
+                  )}
+                  onClick={closeAll}
+                />
+
+                <div
+                  role="dialog"
+                  aria-label="Advanced filters"
+                  className={cn(
+                    'z-50 animate-in fade-in-0 zoom-in-95 duration-150',
+                    /* Mobile: bottom sheet */
+                    'fixed inset-x-0 bottom-0 max-h-[min(92vh,52rem)] overflow-hidden rounded-t-2xl border border-b-0 bg-background shadow-2xl',
+                    /* Desktop: floating panel; pt bridge keeps hover across the gap */
+                    'sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:max-h-[min(85vh,52rem)]',
+                    'sm:w-[min(64rem,calc(100vw-1.5rem))] sm:border-0 sm:bg-transparent sm:pt-1.5 sm:shadow-none',
+                  )}
+                  onMouseEnter={() => {
+                    // Working inside the panel — stick it open (no hover-dismiss).
+                    if (!pinned) pinPanel();
+                  }}
+                  onPointerDownCapture={() => {
+                    if (!pinned) pinPanel();
+                  }}
+                >
+                  <div className="max-h-[inherit] overflow-hidden sm:rounded-xl sm:border sm:bg-background sm:shadow-2xl">
+                    <OrderFilterPanel
+                      variant="popover"
+                      values={filters}
+                      search={search}
+                      hideStatus={hideStatusFilter}
+                      pinned={pinned}
+                      onChange={onFiltersChange}
+                      onClear={onClearFilters}
+                      onClose={closeAll}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+          {onApplySavedView ? (
+            <OrderSavedViewsMenu onApply={onApplySavedView} className="shrink-0" />
+          ) : null}
+        </div>
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <FormInput
@@ -248,83 +326,6 @@ export function OrderListToolbar({
               'placeholder:text-muted-foreground shadow-none',
             )}
           />
-        </div>
-        {onApplySavedView ? (
-          <OrderSavedViewsMenu onApply={onApplySavedView} className="shrink-0" />
-        ) : null}
-
-        <div
-          ref={rootRef}
-          className="relative shrink-0"
-          onMouseEnter={handleHoverEnter}
-          onMouseLeave={handleHoverLeave}
-        >
-          <Button
-            type="button"
-            variant={isOpen ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-8 w-full sm:w-auto"
-            onClick={handleFilterClick}
-            aria-expanded={isOpen}
-            aria-haspopup="dialog"
-          >
-            <Filter className="size-3.5" />
-            Filters
-            {chips.length > 0 ? (
-              <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-xs tabular-nums">
-                {chips.length}
-              </span>
-            ) : null}
-            {isOpen ? <ChevronUp className="ml-0.5 size-3.5 opacity-70" /> : null}
-          </Button>
-
-          {isOpen ? (
-            <>
-              {/* Mobile backdrop — only when pinned/open on small screens */}
-              <button
-                type="button"
-                aria-label="Dismiss filters"
-                className={cn(
-                  'fixed inset-0 z-40 bg-black/40 sm:hidden',
-                  !pinned && 'pointer-events-none opacity-0',
-                )}
-                onClick={closeAll}
-              />
-
-              <div
-                role="dialog"
-                aria-label="Advanced filters"
-                className={cn(
-                  'z-50 animate-in fade-in-0 zoom-in-95 duration-150',
-                  /* Mobile: bottom sheet */
-                  'fixed inset-x-0 bottom-0 max-h-[min(92vh,52rem)] overflow-hidden rounded-t-2xl border border-b-0 bg-background shadow-2xl',
-                  /* Desktop: floating panel; pt bridge keeps hover across the gap */
-                  'sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:max-h-[min(85vh,52rem)]',
-                  'sm:w-[min(64rem,calc(100vw-1.5rem))] sm:border-0 sm:bg-transparent sm:pt-1.5 sm:shadow-none',
-                )}
-                onMouseEnter={() => {
-                  // Working inside the panel — stick it open (no hover-dismiss).
-                  if (!pinned) pinPanel();
-                }}
-                onPointerDownCapture={() => {
-                  if (!pinned) pinPanel();
-                }}
-              >
-                <div className="max-h-[inherit] overflow-hidden sm:rounded-xl sm:border sm:bg-background sm:shadow-2xl">
-                  <OrderFilterPanel
-                    variant="popover"
-                    values={filters}
-                    search={search}
-                    hideStatus={hideStatusFilter}
-                    pinned={pinned}
-                    onChange={onFiltersChange}
-                    onClear={onClearFilters}
-                    onClose={closeAll}
-                  />
-                </div>
-              </div>
-            </>
-          ) : null}
         </div>
       </div>
 

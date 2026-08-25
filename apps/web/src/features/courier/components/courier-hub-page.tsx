@@ -149,7 +149,7 @@ export function CourierHubPage() {
 
   return (
     <PageShell
-      title="Courier Hub"
+      title="Courier Dashboard"
       description="Courier accounts, bulk submit, and live tracking inbox."
     >
       <div className={ORDER_PAGE_GAP}>

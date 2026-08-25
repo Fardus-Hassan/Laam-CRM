@@ -3,31 +3,24 @@
 import * as React from 'react';
 import Link from 'next/link';
 import type {
-  IncentiveChannel,
-  IncentiveHrStatus,
+  IncentiveDailyPoint,
   IncentiveMetricType,
-  IncentiveOpsMonth,
   IncentiveOverview,
   IncentivePerformanceReport,
-  IncentivePeriodRun,
   IncentivePlan,
-  IncentiveShiftTemplate,
   IncentiveTeam,
-  IncentiveWarning,
 } from '@laam/types';
 import {
-  Check,
-  Download,
   Edit2,
+  Lock,
   Plus,
   RefreshCw,
   Save,
-  Sparkles,
   Trash2,
-  Upload,
-  WalletCards,
+  Unlock,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { DateRange } from 'react-day-picker';
 
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { PageShell } from '@/components/layout/page-shell';
@@ -35,7 +28,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -48,8 +40,9 @@ import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { usePermissions } from '@/features/auth/hooks/use-permissions';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 import { incentiveApi } from '@/features/incentive/api/incentive-api';
-import { AssignmentFormDialog } from '@/features/incentive/components/assignment-form-dialog';
+import { FormSearchSelect } from '@/components/form/form-search-select';
 import { PlanFormDialog } from '@/features/incentive/components/plan-form-dialog';
+import { IncentiveOpsPanel } from '@/features/incentive/components/incentive-ops-panel';
 import { SalaryFormDialog } from '@/features/incentive/components/salary-form-dialog';
 import {
   ORDER_CARD_CLASS,
@@ -57,8 +50,10 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { formatCurrency, formatDateTime } from '@/lib/format';
-import { downloadCsv, downloadTextFile } from '@/lib/export-csv';
+import { formatCurrency } from '@/lib/format';
+import { ExportMenu } from '@/components/export-menu';
+import { DateRangePicker } from '@/components/date-range/date-range-picker';
+import { rangeFromISO, toISODateRange } from '@/lib/date-range';
 import { cn } from '@/lib/utils';
 
 const METRIC_LABELS: Record<IncentiveMetricType, string> = {
@@ -71,158 +66,41 @@ const METRIC_LABELS: Record<IncentiveMetricType, string> = {
   manual: 'Manual',
 };
 
-const WARNING_LABELS: Record<Exclude<IncentiveWarning, 'none'>, string> = {
-  below_target: 'Below target',
-  below_daily_entry: 'Below daily entry',
-  above_return_cap: 'Above return cap',
-  manual_missing: 'Manual actual missing',
-  final_warning: 'Final warning',
-  terminated: 'Terminated',
-};
-
-const DEFAULT_SHIFTS: IncentiveShiftTemplate[] = [
-  { id: 'morning', name: 'Morning', startTime: '09:00', endTime: '18:00', reportingTime: '08:50' },
-  { id: 'evening', name: 'Evening', startTime: '13:00', endTime: '22:00', reportingTime: '12:50' },
-  { id: 'night', name: 'Night', startTime: '22:00', endTime: '07:00', reportingTime: '21:50' },
-];
-
 function currentYearMonth() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-type HubTab = 'teams' | 'structure' | 'performance' | 'payout';
-
-const HR_LABELS: Record<IncentiveHrStatus, string> = {
-  active: 'Active',
-  warning: 'Warning',
-  final_warning: 'Final warning',
-  terminated: 'Terminated',
-};
-
-const CHANNEL_LABELS: Record<IncentiveChannel, string> = {
-  call: 'Call',
-  facebook_comment: 'Facebook comments',
-  messenger: 'Messenger',
-  whatsapp: 'WhatsApp',
-};
-
-function parseCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i]!;
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if (ch === ',' && !inQuotes) {
-      cells.push(current.trim());
-      current = '';
-      continue;
-    }
-    current += ch;
-  }
-  cells.push(current.trim());
-  return cells;
+function isoToday() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function parseAttendanceCsv(text: string): Array<{
-  agentName: string;
-  presentDays: number;
-  workingDays: number;
-  lateCount: number;
-  earlyLeaveCount: number;
-  unapprovedAbsence: number;
-}> {
-  const lines = text
-    .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length < 2) return [];
-  const headers = parseCsvLine(lines[0]!).map((h) => h.toLowerCase().replace(/\s+/g, ''));
-  const idx = (names: string[]) => headers.findIndex((h) => names.includes(h));
-  const agentIdx = idx(['agentname', 'agent', 'name']);
-  const presentIdx = idx(['presentdays', 'present']);
-  const workingIdx = idx(['workingdays', 'working']);
-  const lateIdx = idx(['latecount', 'late']);
-  const earlyIdx = idx(['earlyleavecount', 'earlyleave']);
-  const absentIdx = idx(['unapprovedabsence', 'absence', 'absent']);
-  if (agentIdx < 0 || presentIdx < 0 || workingIdx < 0) {
-    throw new Error(
-      'CSV needs agentName, presentDays, workingDays columns (optional: lateCount, earlyLeaveCount, unapprovedAbsence)',
-    );
-  }
-  const rows = [];
-  for (const line of lines.slice(1)) {
-    const cells = parseCsvLine(line);
-    const agentName = cells[agentIdx]?.trim() ?? '';
-    if (!agentName) continue;
-    const presentDays = Number(cells[presentIdx] ?? 0);
-    const workingDays = Number(cells[workingIdx] ?? 0);
-    if (!Number.isFinite(presentDays) || !Number.isFinite(workingDays) || workingDays < 1) {
-      continue;
-    }
-    rows.push({
-      agentName,
-      presentDays,
-      workingDays,
-      lateCount: Number(cells[lateIdx] ?? 0) || 0,
-      earlyLeaveCount: Number(cells[earlyIdx] ?? 0) || 0,
-      unapprovedAbsence: Number(cells[absentIdx] ?? 0) || 0,
-    });
-  }
-  return rows;
+function monthWindow(yearMonth: string): { from: string; to: string } {
+  const [year, month] = yearMonth.split('-').map(Number);
+  const last = new Date(year, month, 0).getDate();
+  const from = `${yearMonth}-01`;
+  const monthEnd = `${yearMonth}-${String(last).padStart(2, '0')}`;
+  const today = isoToday();
+  return { from, to: monthEnd < today ? monthEnd : today };
 }
 
-function OpsTableCard({
-  title,
-  headers,
-  rows,
-}: {
-  title: string;
-  headers: string[];
-  rows: React.ReactNode[][];
-}) {
-  return (
-    <Card className={ORDER_CARD_CLASS}>
-      <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-        <CardTitle className="text-base">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className={ORDER_SECTION_BODY_CLASS}>
-        {!rows.length ? (
-          <p className="text-sm text-muted-foreground">No entries for this month.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {headers.map((header) => (
-                  <TableHead key={header}>{header}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row, rowIndex) => (
-                <TableRow key={rowIndex}>
-                  {row.map((cell, cellIndex) => (
-                    <TableCell key={cellIndex}>{cell}</TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
-  );
+function formatMetricValue(metricType: IncentiveMetricType, value: number) {
+  return metricType === 'return_ratio' ? `${value}%` : String(value);
 }
+
+type HubTab = 'teams' | 'structure' | 'performance' | 'ops';
+type PeriodMode = 'month' | 'range';
+
+const FILTER_METRICS: Array<{ value: IncentiveMetricType; label: string }> = [
+  { value: 'order_count', label: 'Order count' },
+  { value: 'cross_sell_count', label: 'Cross-sell / upsell' },
+  { value: 'return_ratio', label: 'Return ratio %' },
+  { value: 'recovery_count', label: 'Recovery count' },
+  { value: 'survey_count', label: 'Survey count' },
+  { value: 'channel_activity', label: 'Channel activity' },
+  { value: 'manual', label: 'Manual' },
+];
 
 export function IncentiveHubPage() {
   const { confirm, confirmDialog } = useConfirmDialog();
@@ -231,49 +109,37 @@ export function IncentiveHubPage() {
   const canManage = can('incentive.manage');
   const [data, setData] = React.useState<IncentiveOverview | null>(null);
   const [performance, setPerformance] = React.useState<IncentivePerformanceReport | null>(null);
-  const [periods, setPeriods] = React.useState<IncentivePeriodRun[]>([]);
-  const [ops, setOps] = React.useState<IncentiveOpsMonth | null>(null);
   const [yearMonth, setYearMonth] = React.useState(currentYearMonth);
+  const [periodMode, setPeriodMode] = React.useState<PeriodMode>('month');
+  const [dateFrom, setDateFrom] = React.useState('');
+  const [dateTo, setDateTo] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [tab, setTab] = React.useState<HubTab>(
     canManage || user?.role === 'team_leader' ? 'teams' : 'performance',
   );
   const [selectedTeamId, setSelectedTeamId] = React.useState('');
+  const [selectedMemberId, setSelectedMemberId] = React.useState('');
+  const [selectedMetric, setSelectedMetric] = React.useState<IncentiveMetricType | ''>('');
   const [lockedTeamId, setLockedTeamId] = React.useState<string | undefined>();
-  const attendanceFileRef = React.useRef<HTMLInputElement>(null);
   const [planOpen, setPlanOpen] = React.useState(false);
   const [editingPlan, setEditingPlan] = React.useState<IncentivePlan | null>(null);
-  const [assignOpen, setAssignOpen] = React.useState(false);
-  const [editingAssignment, setEditingAssignment] = React.useState<
-    IncentiveOverview['assignments'][number] | null
-  >(null);
   const [salaryOpen, setSalaryOpen] = React.useState(false);
   const [manualDrafts, setManualDrafts] = React.useState<Record<string, string>>({});
-  const [shiftDrafts, setShiftDrafts] = React.useState<IncentiveShiftTemplate[]>([]);
-  const [opsAgent, setOpsAgent] = React.useState('');
-  const [opsAssignmentId, setOpsAssignmentId] = React.useState('');
-  const [opsValue, setOpsValue] = React.useState('');
-  const [opsSecondaryValue, setOpsSecondaryValue] = React.useState('');
-  const [opsChannel, setOpsChannel] = React.useState<IncentiveChannel>('call');
-  const [opsReason, setOpsReason] = React.useState('');
-
-  const selectedPeriod = periods.find((period) => period.yearMonth === yearMonth) ?? null;
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [overview, report, periodRows, opsMonth] = await Promise.all([
+      const [overview, report] = await Promise.all([
         incentiveApi.getOverview(),
-        incentiveApi.getPerformance(yearMonth),
-        incentiveApi.listPeriods(),
-        incentiveApi.getOps(yearMonth),
+        incentiveApi.getPerformance(
+          periodMode === 'range' && dateFrom && dateTo
+            ? { yearMonth, from: dateFrom, to: dateTo }
+            : { yearMonth },
+        ),
       ]);
       setData(overview);
       setPerformance(report);
-      setPeriods(periodRows);
-      setOps(opsMonth);
-      setShiftDrafts(overview.shiftTemplates ?? []);
       setManualDrafts(
         Object.fromEntries(
           report.lines
@@ -286,7 +152,7 @@ export function IncentiveHubPage() {
     } finally {
       setLoading(false);
     }
-  }, [yearMonth]);
+  }, [yearMonth, periodMode, dateFrom, dateTo]);
 
   React.useEffect(() => {
     void load();
@@ -305,15 +171,16 @@ export function IncentiveHubPage() {
     }
   }
 
-  function openStructureForTeam(team: IncentiveTeam) {
+  function openStructureForTeam(team: IncentiveTeam, create = false) {
     setSelectedTeamId(team.id);
     setLockedTeamId(team.id);
-    const plan =
-      data?.plans.find((row) => row.id === team.planId || row.teamId === team.id) ??
-      null;
-    setEditingPlan(plan);
+    const plansForTeam = (data?.plans ?? []).filter(
+      (row) => row.teamId === team.id || row.id === team.planId,
+    );
+    const plan = plansForTeam[0] ?? null;
+    setEditingPlan(create ? null : plan);
     setTab('structure');
-    if (canManage) setPlanOpen(true);
+    if (canManage && (create || !team.hasStructure)) setPlanOpen(true);
   }
 
   function openPerformanceForTeam(team: IncentiveTeam) {
@@ -321,61 +188,23 @@ export function IncentiveHubPage() {
     setTab('performance');
   }
 
-  async function handleAttendanceCsv(file: File) {
-    setBusy(true);
-    try {
-      const text = await file.text();
-      const rows = parseAttendanceCsv(text);
-      if (!rows.length) {
-        throw new Error('No valid attendance rows found in CSV');
-      }
-      for (const row of rows) {
-        await incentiveApi.upsertAttendance({
-          agentName: row.agentName,
-          yearMonth,
-          presentDays: row.presentDays,
-          workingDays: row.workingDays,
-          lateCount: row.lateCount,
-          earlyLeaveCount: row.earlyLeaveCount,
-          unapprovedAbsence: row.unapprovedAbsence,
-        });
-      }
-      toast.success(`Imported attendance for ${rows.length} agent(s)`);
-      await load();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Attendance import failed');
-    } finally {
-      setBusy(false);
-      if (attendanceFileRef.current) attendanceFileRef.current.value = '';
-    }
-  }
-
-  async function handlePayrollExport() {
-    setBusy(true);
-    try {
-      const pack = await incentiveApi.exportPayrollCsv(yearMonth);
-      downloadTextFile(pack.filename, pack.csv);
-      toast.success('Payroll CSV downloaded');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Payroll export failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleDeletePlan(plan: IncentivePlan) {
     const ok = await confirm({
-      title: `Delete plan “${plan.name}”?`,
-      description: 'This incentive plan will be permanently removed.',
-      confirmLabel: 'Delete',
+      title: `Archive “${plan.name}”?`,
+      description:
+        'History stays. The metric slot frees so you can add a new structure for this team.',
+      confirmLabel: 'Archive',
       destructive: true,
     });
     if (!ok) return;
-    await runAction(() => incentiveApi.deletePlan(plan.id), 'Plan deleted');
+    await runAction(() => incentiveApi.deletePlan(plan.id), 'KPI structure archived');
   }
 
-  async function handleDeleteAssignment(id: string) {
-    await runAction(() => incentiveApi.deleteAssignment(id), 'Assignment removed');
+  async function handleRestorePlan(plan: IncentivePlan) {
+    await runAction(
+      () => incentiveApi.updatePlan(plan.id, { isActive: true }),
+      'KPI structure restored',
+    );
   }
 
   async function saveManualActual(assignmentId: string) {
@@ -387,20 +216,6 @@ export function IncentiveHubPage() {
     await runAction(
       () => incentiveApi.upsertManualActual({ assignmentId, yearMonth, actualValue }),
       'Manual actual saved',
-    );
-  }
-
-  async function saveShifts() {
-    if (shiftDrafts.some((shift) => !shift.name.trim() || !shift.startTime || !shift.endTime)) {
-      toast.error('Each shift needs a name, start, and end time');
-      return;
-    }
-    await runAction(() => incentiveApi.upsertShifts({ shifts: shiftDrafts }), 'Shifts saved');
-  }
-
-  function patchShift(index: number, patch: Partial<IncentiveShiftTemplate>) {
-    setShiftDrafts((current) =>
-      current.map((shift, rowIndex) => (rowIndex === index ? { ...shift, ...patch } : shift)),
     );
   }
 
@@ -428,7 +243,10 @@ export function IncentiveHubPage() {
 
   const visiblePerformanceLines = (performance?.lines ?? []).filter((line) => {
     if (!isOwnAgent(line)) return false;
+    if (selectedMemberId && line.assignmentId !== selectedMemberId) return false;
+    if (selectedMetric && line.metricType !== selectedMetric) return false;
     if (!selectedTeamId) return true;
+    if (line.orgTeamId === selectedTeamId) return true;
     const plan = (data?.plans ?? []).find((row) => row.id === line.planId);
     if (plan?.teamId === selectedTeamId) return true;
     const team = (data?.teams ?? []).find((row) => row.id === selectedTeamId);
@@ -447,73 +265,52 @@ export function IncentiveHubPage() {
     if (!selectedTeamId) return true;
     return plan.teamId === selectedTeamId || plan.id === selectedTeam?.planId;
   });
-  const visiblePayoutLines = (selectedPeriod?.lines ?? []).filter((line) =>
-    isOwnAgent(line),
-  );
-  const visibleAssignments = (data?.assignments ?? []).filter((row) =>
-    isOwnAgent(row),
-  );
+  const monthLocked =
+    performance?.periodStatus === 'approved' || performance?.periodStatus === 'paid';
+  const memberOptions = (data?.assignments ?? []).filter((assignment) => {
+    if (!selectedTeamId) return true;
+    const plan = (data?.plans ?? []).find((row) => row.id === assignment.planId);
+    return plan?.teamId === selectedTeamId || assignment.teamName === selectedTeam?.name;
+  });
+  const visibleDaily = (performance?.daily ?? []).filter((point) => {
+    if (!isOwnAgent(point)) return false;
+    if (selectedMemberId && point.assignmentId !== selectedMemberId) return false;
+    if (selectedMetric && point.metricType !== selectedMetric) return false;
+    if (!selectedTeamId) return true;
+    if (point.orgTeamId === selectedTeamId) return true;
+    const plan = (data?.plans ?? []).find((row) => row.id === point.planId);
+    if (plan?.teamId === selectedTeamId) return true;
+    const team = (data?.teams ?? []).find((row) => row.id === selectedTeamId);
+    return Boolean(team && point.teamName === team.name);
+  });
+  const rangeMode = periodMode === 'range' && Boolean(dateFrom && dateTo);
+  const dailyByDate = React.useMemo(() => {
+    const grouped = new Map<string, IncentiveDailyPoint[]>();
+    for (const point of visibleDaily) {
+      const rows = grouped.get(point.date) ?? [];
+      rows.push(point);
+      grouped.set(point.date, rows);
+    }
+    return [...grouped.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [visibleDaily]);
 
-  function selectOpsAgent(assignmentId: string) {
-    const assignment = data?.assignments.find((row) => row.id === assignmentId);
-    setOpsAssignmentId(assignmentId);
-    setOpsAgent(assignment?.agentName ?? '');
+  function clearPerformanceFilters() {
+    setSelectedTeamId('');
+    setSelectedMemberId('');
+    setSelectedMetric('');
+    setPeriodMode('month');
+    setDateFrom('');
+    setDateTo('');
+    setYearMonth(currentYearMonth());
   }
 
-  async function saveOps(kind: 'attendance' | 'survey' | 'channel' | 'bonus') {
-    if (!opsAgent.trim()) {
-      toast.error('Select or enter an agent');
-      return;
-    }
-    const value = Number(opsValue);
-    if (!Number.isFinite(value)) {
-      toast.error('Enter a valid value');
-      return;
-    }
-    const assignment = data?.assignments.find((row) => row.id === opsAssignmentId);
-    const action =
-      kind === 'attendance'
-        ? () =>
-            incentiveApi.upsertAttendance({
-              yearMonth,
-              agentName: opsAgent.trim(),
-              userId: assignment?.userId,
-              presentDays: value,
-              workingDays: Number(opsSecondaryValue) || 26,
-            })
-        : kind === 'survey'
-          ? () =>
-              incentiveApi.upsertSurvey({
-                yearMonth,
-                agentName: opsAgent.trim(),
-                assignmentId: opsAssignmentId || null,
-                surveyCount: value,
-              })
-          : kind === 'channel'
-            ? () =>
-                incentiveApi.upsertChannel({
-                  yearMonth,
-                  agentName: opsAgent.trim(),
-                  assignmentId: opsAssignmentId || null,
-                  channel: opsChannel,
-                  activityCount: value,
-                })
-            : () =>
-                incentiveApi.createSpecialBonus({
-                  yearMonth,
-                  agentName: opsAgent.trim(),
-                  assignmentId: opsAssignmentId || null,
-                  amountBdt: value,
-                  reason: opsReason.trim(),
-                });
-    if (kind === 'bonus' && !opsReason.trim()) {
-      toast.error('Bonus reason is required');
-      return;
-    }
-    await runAction(action, `${kind === 'bonus' ? 'Special bonus' : kind} saved`);
-    setOpsValue('');
-    setOpsSecondaryValue('');
-    setOpsReason('');
+  function applyDateRange(range: DateRange | undefined) {
+    const iso = toISODateRange(range);
+    if (!iso) return;
+    setDateFrom(iso.from);
+    setDateTo(iso.to);
+    setYearMonth(iso.to.slice(0, 7));
+    setPeriodMode('range');
   }
 
   return (
@@ -521,8 +318,8 @@ export function IncentiveHubPage() {
       title="Incentive & KPI"
       description={
         canManage
-          ? 'KPI structure and performance for Users-page teams. Numbers lock after payout approval.'
-          : 'Your monthly target, live incentive, and payout status. Numbers lock after admin approval.'
+          ? 'KPI structure and live performance for Users-page teams. Filter by team, member, month, or date range.'
+          : 'Your monthly target and live progress. Filter by month or date range.'
       }
     >
       <div className={cn('flex flex-col', ORDER_PAGE_GAP)}>
@@ -535,13 +332,12 @@ export function IncentiveHubPage() {
                       ['teams', 'Teams'],
                       ['structure', 'Structure'],
                       ['performance', 'Performance'],
-                      ['payout', 'Payout'],
+                      ['ops', 'Ops & payroll'],
                     ] as const)
                   : ([
                       ['teams', 'My team'],
                       ['structure', 'My structure'],
                       ['performance', 'My performance'],
-                      ['payout', 'My payout'],
                     ] as const)
               )
             ).map(([id, label]) => (
@@ -566,21 +362,7 @@ export function IncentiveHubPage() {
                 <Button type="button" size="sm" variant="outline" asChild>
                   <Link href="/dashboard/users?view=team">Create teams in Users</Link>
                 </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() =>
-                    void runAction(
-                      () => incentiveApi.seedDefaults(),
-                      'PDF KPI structure applied to matching Users teams',
-                    )
-                  }
-                >
-                  <Sparkles className="size-4" />
-                  Apply PDF structure
-                </Button>
-              )}
+              ) : null}
               <Button
                 type="button"
                 size="sm"
@@ -589,12 +371,20 @@ export function IncentiveHubPage() {
                 onClick={() =>
                   void runAction(
                     () => incentiveApi.seedSyncMissing(),
-                    'Users team members synced to KPI',
+                    'Missing seed plans attached; Users team members synced',
                   )
                 }
               >
                 <RefreshCw className="size-4" />
-                Sync members
+                Sync teams & plans
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setSalaryOpen(true)}
+              >
+                Salary template
               </Button>
             </div>
           ) : null}
@@ -606,8 +396,8 @@ export function IncentiveHubPage() {
             { id: 'plans', label: 'KPI structures', value: String(data?.planCount ?? '—') },
             { id: 'assignments', label: 'Agents on KPI', value: String(data?.assignmentCount ?? '—') },
             {
-              id: 'payout',
-              label: selectedPeriod ? 'Locked payout' : 'Live estimate',
+              id: 'estimate',
+              label: 'Incentive estimate',
               value: performance ? formatCurrency(performance.totalIncentiveBdt) : '—',
             },
           ]}
@@ -618,7 +408,7 @@ export function IncentiveHubPage() {
             <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
               <CardTitle className="text-base">Users teams</CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                Teams come from the Users page. Set KPI structure here, then view this month’s result.
+                Teams come from the Users page. Set KPI structure here, then view performance.
               </p>
             </CardHeader>
             <CardContent className={ORDER_SECTION_BODY_CLASS}>
@@ -630,7 +420,7 @@ export function IncentiveHubPage() {
                   <Link className="underline" href="/dashboard/users?view=team">
                     Create teams in Users
                   </Link>
-                  , then apply PDF structure.
+                  .
                 </p>
               ) : (
                 <Table>
@@ -648,9 +438,17 @@ export function IncentiveHubPage() {
                         <TableCell className="font-medium">{team.name}</TableCell>
                         <TableCell>{team.memberCount ?? '—'}</TableCell>
                         <TableCell>
-                          <Badge variant={team.hasStructure ? 'success' : 'secondary'}>
-                            {team.hasStructure ? 'Set' : 'Not set'}
-                          </Badge>
+                          <div className="flex flex-wrap gap-1">
+                            {(team.metricTypes ?? []).length ? (
+                              (team.metricTypes ?? []).map((metric) => (
+                                <Badge key={metric} variant="success">
+                                  {METRIC_LABELS[metric]}
+                                </Badge>
+                              ))
+                            ) : (
+                              <Badge variant="secondary">Not set</Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
@@ -669,7 +467,7 @@ export function IncentiveHubPage() {
                               size="sm"
                               onClick={() => openPerformanceForTeam(team)}
                             >
-                              This month
+                              Performance
                             </Button>
                           </div>
                         </TableCell>
@@ -684,18 +482,190 @@ export function IncentiveHubPage() {
 
         {tab === 'performance' ? (
           <div className="space-y-3">
-            {selectedTeam ? (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <Badge variant="secondary">{selectedTeam.name}</Badge>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedTeamId('')}>
-                  All teams
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+                <CardTitle className="text-base">Filters</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Team, member, metric, and month or a custom date range. Daily rows show what happened on each date; month totals stay below.
+                  {monthLocked && !rangeMode
+                    ? ' This month is locked — member totals are the snapshot.'
+                    : monthLocked && rangeMode
+                      ? ' Month is locked; date-range rows are still live.'
+                      : ''}
+                </p>
+                {canManage && periodMode === 'month' ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {performance?.periodStatus === 'paid' ? (
+                      <Badge variant="secondary">Month paid</Badge>
+                    ) : monthLocked ? (
+                      <>
+                        <Badge variant="success">Month locked</Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() =>
+                            void runAction(
+                              () => incentiveApi.unlockMonth(yearMonth),
+                              'Month unlocked — totals are live again',
+                            )
+                          }
+                        >
+                          <Unlock className="size-4" />
+                          Unlock
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            void runAction(
+                              () => incentiveApi.markPeriodPaid(yearMonth),
+                              'Month marked paid',
+                            )
+                          }
+                        >
+                          Mark paid
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() =>
+                            void runAction(async () => {
+                              const file = await incentiveApi.exportPayrollCsv(yearMonth);
+                              const blob = new Blob([file.csv], {
+                                type: 'text/csv;charset=utf-8',
+                              });
+                              const url = URL.createObjectURL(blob);
+                              const anchor = document.createElement('a');
+                              anchor.href = url;
+                              anchor.download = file.filename;
+                              anchor.click();
+                              URL.revokeObjectURL(url);
+                            }, 'Payroll CSV downloaded')
+                          }
+                        >
+                          Export payroll CSV
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() =>
+                          void runAction(
+                            () => incentiveApi.lockMonth(yearMonth),
+                            'Month locked',
+                          )
+                        }
+                      >
+                        <Lock className="size-4" />
+                        Lock month
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
+              </CardHeader>
+              <CardContent
+                className={cn(
+                  ORDER_SECTION_BODY_CLASS,
+                  'grid gap-2 sm:grid-cols-2 lg:grid-cols-6',
+                )}
+              >
+                <FormSearchSelect
+                  portal
+                  searchable={false}
+                  value={periodMode}
+                  onChange={(next) => {
+                    const mode = next as PeriodMode;
+                    setPeriodMode(mode);
+                    if (mode === 'range') {
+                      const window = monthWindow(yearMonth);
+                      setDateFrom(window.from);
+                      setDateTo(window.to);
+                    } else {
+                      setDateFrom('');
+                      setDateTo('');
+                    }
+                  }}
+                  options={[
+                    { value: 'month', label: 'By month' },
+                    { value: 'range', label: 'Date range' },
+                  ]}
+                />
+                {periodMode === 'month' ? (
+                  <Input
+                    type="month"
+                    value={yearMonth}
+                    onChange={(event) => setYearMonth(event.target.value)}
+                  />
+                ) : (
+                  <DateRangePicker
+                    className="w-full"
+                    allowAllTime={false}
+                    value={rangeFromISO(dateFrom, dateTo)}
+                    onChange={applyDateRange}
+                    placeholder="Pick dates"
+                  />
+                )}
+                <FormSearchSelect
+                  portal
+                  value={selectedTeamId}
+                  onChange={(teamId) => {
+                    setSelectedTeamId(teamId);
+                    setSelectedMemberId('');
+                  }}
+                  options={[
+                    { value: '', label: 'All teams' },
+                    ...(data?.teams ?? []).map((team) => ({
+                      value: team.id,
+                      label: team.name,
+                    })),
+                  ]}
+                  placeholder="All teams"
+                />
+                <FormSearchSelect
+                  portal
+                  value={selectedMemberId}
+                  onChange={setSelectedMemberId}
+                  options={[
+                    { value: '', label: 'All members' },
+                    ...memberOptions.map((assignment) => ({
+                      value: assignment.id,
+                      label: assignment.agentName,
+                    })),
+                  ]}
+                  placeholder={memberOptions.length ? 'All members' : 'No members'}
+                />
+                <FormSearchSelect
+                  portal
+                  searchable={false}
+                  value={selectedMetric}
+                  onChange={(metric) =>
+                    setSelectedMetric(metric as IncentiveMetricType | '')
+                  }
+                  options={[
+                    { value: '', label: 'All metrics' },
+                    ...FILTER_METRICS,
+                  ]}
+                  placeholder="All metrics"
+                />
+                <Button type="button" variant="outline" onClick={clearPerformanceFilters}>
+                  Clear filters
                 </Button>
-              </div>
-            ) : null}
+              </CardContent>
+            </Card>
+
             {visibleRollups.length ? (
               <Card className={ORDER_CARD_CLASS}>
                 <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-                  <CardTitle className="text-base">Team target vs actual</CardTitle>
+                  <CardTitle className="text-base">
+                    Overall {yearMonth} · team progress
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'grid gap-2 sm:grid-cols-2 lg:grid-cols-3')}>
                   {visibleRollups.map((rollup) => (
@@ -715,72 +685,114 @@ export function IncentiveHubPage() {
                 </CardContent>
               </Card>
             ) : null}
+
             <Card className={ORDER_CARD_CLASS}>
               <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-center gap-3')}>
-                <CardTitle className="flex-1 text-base">Monthly performance</CardTitle>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!visiblePerformanceLines.length}
-                  onClick={() =>
-                    downloadCsv(
-                      `incentive-performance-${yearMonth}.csv`,
-                      [
-                        'Agent',
-                        'Plan',
-                        'Metric',
-                        'Actual',
-                        'Slab',
-                        'HR status',
-                        'Incentive',
-                        'Attendance bonus',
-                        'Special bonus',
-                        'Total pay',
-                      ],
-                      visiblePerformanceLines.map((line) => [
-                        line.agentName,
-                        line.planName,
-                        METRIC_LABELS[line.metricType],
-                        line.actualValue,
-                        line.matchedSlabLabel,
-                        line.hrStatus ? HR_LABELS[line.hrStatus] : '',
-                        line.incentiveBdt,
-                        line.attendanceBonusBdt,
-                        line.specialBonusBdt,
-                        line.totalPayBdt,
-                      ]),
-                    )
-                  }
-                >
-                  <Download className="size-4" />
-                  CSV
-                </Button>
-                <Input
-                  type="month"
-                  className="w-40"
-                  value={yearMonth}
-                  onChange={(event) => setYearMonth(event.target.value)}
+                <div className="flex-1">
+                  <CardTitle className="text-base">Daily progress</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {rangeMode
+                      ? `${dateFrom} → ${dateTo}`
+                      : `Each day in ${yearMonth} with counted activity`}
+                  </p>
+                </div>
+                <ExportMenu
+                  filename={`incentive-daily-${performance?.periodStart ?? yearMonth}`}
+                  headers={['Date', 'Team', 'Member', 'Metric', 'Actual', 'Daily target']}
+                  rows={visibleDaily.map((point) => [
+                    point.date,
+                    point.teamName ?? '',
+                    point.agentName,
+                    METRIC_LABELS[point.metricType],
+                    point.actualValue,
+                    point.dailyTarget ?? '',
+                  ])}
+                />
+              </CardHeader>
+              <CardContent className={ORDER_SECTION_BODY_CLASS}>
+                {loading ? (
+                  <p className="text-sm text-muted-foreground">Loading…</p>
+                ) : !dailyByDate.length ? (
+                  <p className="text-sm text-muted-foreground">
+                    No daily activity in this filter. Order confirm, CS/US, and return events show up here.
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Team</TableHead>
+                        <TableHead>Member</TableHead>
+                        <TableHead>Metric</TableHead>
+                        <TableHead className="text-right">Actual</TableHead>
+                        <TableHead className="text-right">Daily target</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dailyByDate.flatMap(([date, points]) =>
+                        points.map((point, index) => (
+                          <TableRow key={`${point.assignmentId}-${point.date}-${index}`}>
+                            <TableCell className="tabular-nums">{index === 0 ? date : ''}</TableCell>
+                            <TableCell>{point.teamName ?? '—'}</TableCell>
+                            <TableCell className="font-medium">{point.agentName}</TableCell>
+                            <TableCell>{METRIC_LABELS[point.metricType]}</TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatMetricValue(point.metricType, point.actualValue)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {point.dailyTarget ?? '—'}
+                            </TableCell>
+                          </TableRow>
+                        )),
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className={ORDER_CARD_CLASS}>
+              <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-center gap-3')}>
+                <CardTitle className="flex-1 text-base">
+                  {rangeMode ? `Members · ${yearMonth} month vs selected dates` : `Members · ${yearMonth}`}
+                </CardTitle>
+                <ExportMenu
+                  filename={`incentive-performance-${yearMonth}`}
+                  headers={[
+                    'Agent',
+                    'Plan',
+                    'Metric',
+                    ...(rangeMode ? ['In range'] : []),
+                    'Month actual',
+                    'Slab',
+                    'Incentive',
+                  ]}
+                  rows={visiblePerformanceLines.map((line) => [
+                    line.agentName,
+                    line.planName,
+                    METRIC_LABELS[line.metricType],
+                    ...(rangeMode ? [line.rangeActualValue ?? ''] : []),
+                    line.actualValue,
+                    line.matchedSlabLabel,
+                    line.incentiveBdt,
+                  ])}
                 />
               </CardHeader>
               <CardContent className={ORDER_SECTION_BODY_CLASS}>
                 {loading ? (
                   <p className="text-sm text-muted-foreground">Loading…</p>
                 ) : !visiblePerformanceLines.length ? (
-                  <p className="text-sm text-muted-foreground">No active assignments for this month.</p>
+                  <p className="text-sm text-muted-foreground">No matching agents for this filter.</p>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Agent / warning</TableHead>
+                        <TableHead>Agent</TableHead>
                         <TableHead>Plan</TableHead>
-                        <TableHead>Actual</TableHead>
+                        {rangeMode ? <TableHead>In range</TableHead> : null}
+                        <TableHead>Month actual</TableHead>
                         <TableHead>Slab</TableHead>
-                        <TableHead>HR</TableHead>
                         <TableHead className="text-right">Incentive</TableHead>
-                        <TableHead className="text-right">Attendance</TableHead>
-                        <TableHead className="text-right">Special</TableHead>
-                        <TableHead className="text-right">Total pay</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -788,16 +800,6 @@ export function IncentiveHubPage() {
                         <TableRow key={line.assignmentId}>
                           <TableCell>
                             <p className="font-medium">{line.agentName}</p>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {line.warning && line.warning !== 'none' ? (
-                                <Badge variant={line.warning === 'final_warning' ? 'destructive' : 'secondary'}>
-                                  {WARNING_LABELS[line.warning]}
-                                </Badge>
-                              ) : null}
-                              {(line.consecutiveMissMonths ?? 0) > 0 ? (
-                                <Badge variant="outline">{line.consecutiveMissMonths} consecutive miss</Badge>
-                              ) : null}
-                            </div>
                           </TableCell>
                           <TableCell>
                             <div>{line.planName}</div>
@@ -805,8 +807,16 @@ export function IncentiveHubPage() {
                               {line.teamName ?? 'No team'} · {METRIC_LABELS[line.metricType]}
                             </div>
                           </TableCell>
+                          {rangeMode ? (
+                            <TableCell className="tabular-nums">
+                              {formatMetricValue(
+                                line.metricType,
+                                line.rangeActualValue ?? 0,
+                              )}
+                            </TableCell>
+                          ) : null}
                           <TableCell>
-                            {line.metricType === 'manual' && canManage && !selectedPeriod ? (
+                            {line.metricType === 'manual' && canManage ? (
                               <div className="flex min-w-36 items-center gap-1">
                                 <Input
                                   type="number"
@@ -831,47 +841,20 @@ export function IncentiveHubPage() {
                               </div>
                             ) : (
                               <span className="tabular-nums">
-                                {line.metricType === 'return_ratio' ? `${line.actualValue}%` : line.actualValue}
+                                {formatMetricValue(line.metricType, line.actualValue)}
                               </span>
                             )}
                           </TableCell>
                           <TableCell>
                             {line.matchedSlabLabel ?? '—'}
-                            {line.prorataApplied ? <Badge className="ml-2" variant="secondary">prorata</Badge> : null}
-                          </TableCell>
-                          <TableCell>
-                            {line.hrStatus ? (
-                              <Badge
-                                variant={
-                                  line.hrStatus === 'terminated'
-                                    ? 'destructive'
-                                    : line.hrStatus === 'active'
-                                      ? 'success'
-                                      : 'secondary'
-                                }
-                              >
-                                {HR_LABELS[line.hrStatus]}
+                            {line.prorataApplied ? (
+                              <Badge className="ml-2" variant="secondary">
+                                last-slab rate
                               </Badge>
-                            ) : (
-                              '—'
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCurrency(line.incentiveBdt)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCurrency(line.attendanceBonusBdt ?? 0)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCurrency(line.specialBonusBdt ?? 0)}
+                            ) : null}
                           </TableCell>
                           <TableCell className="text-right font-medium tabular-nums">
-                            {formatCurrency(
-                              line.totalPayBdt ??
-                                line.incentiveBdt +
-                                  (line.attendanceBonusBdt ?? 0) +
-                                  (line.specialBonusBdt ?? 0),
-                            )}
+                            {formatCurrency(line.incentiveBdt)}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -880,215 +863,6 @@ export function IncentiveHubPage() {
                 )}
               </CardContent>
             </Card>
-          </div>
-        ) : null}
-
-        {tab === 'structure' && canManage ? (
-          <div className="space-y-3">
-            <Card className={ORDER_CARD_CLASS}>
-              <CardHeader
-                className={cn(
-                  ORDER_SECTION_HEADER_CLASS,
-                  'flex flex-row flex-wrap items-center gap-2',
-                )}
-              >
-                <div className="flex-1">
-                  <CardTitle className="text-base">Monthly operations</CardTitle>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Attendance, survey, channel, and exceptional bonus inputs.
-                  </p>
-                </div>
-                <Input
-                  type="month"
-                  className="w-40"
-                  value={yearMonth}
-                  onChange={(event) => setYearMonth(event.target.value)}
-                />
-              </CardHeader>
-              {canManage ? (
-                <CardContent
-                  className={cn(
-                    ORDER_SECTION_BODY_CLASS,
-                    'grid gap-2 border-t pt-3 md:grid-cols-6',
-                  )}
-                >
-                  <select
-                    className="h-9 rounded-md border bg-background px-3 text-sm md:col-span-2"
-                    value={opsAssignmentId}
-                    onChange={(event) => selectOpsAgent(event.target.value)}
-                  >
-                    <option value="">Select assigned agent</option>
-                    {(data?.assignments ?? []).map((assignment) => (
-                      <option key={assignment.id} value={assignment.id}>
-                        {assignment.agentName} · {assignment.planName}
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    placeholder="Agent name"
-                    value={opsAgent}
-                    onChange={(event) => setOpsAgent(event.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    min={0}
-                    placeholder="Value / amount"
-                    value={opsValue}
-                    onChange={(event) => setOpsValue(event.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    min={1}
-                    placeholder="Working days"
-                    value={opsSecondaryValue}
-                    onChange={(event) => setOpsSecondaryValue(event.target.value)}
-                  />
-                  <Button type="button" disabled={busy} onClick={() => void saveOps('attendance')}>
-                    Save attendance
-                  </Button>
-                  <input
-                    ref={attendanceFileRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) void handleAttendanceCsv(file);
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => attendanceFileRef.current?.click()}
-                  >
-                    <Upload className="size-4" />
-                    Import CSV
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void saveOps('survey')}
-                  >
-                    Save survey
-                  </Button>
-                  <select
-                    className="h-9 rounded-md border bg-background px-3 text-sm"
-                    value={opsChannel}
-                    onChange={(event) => setOpsChannel(event.target.value as IncentiveChannel)}
-                  >
-                    {Object.entries(CHANNEL_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void saveOps('channel')}
-                  >
-                    Save channel
-                  </Button>
-                  <Input
-                    className="md:col-span-2"
-                    placeholder="Special bonus reason"
-                    value={opsReason}
-                    onChange={(event) => setOpsReason(event.target.value)}
-                  />
-                  <Button type="button" disabled={busy} onClick={() => void saveOps('bonus')}>
-                    Add special bonus
-                  </Button>
-                </CardContent>
-              ) : null}
-            </Card>
-
-            <div className="grid gap-3 xl:grid-cols-2">
-              <OpsTableCard
-                title="Attendance"
-                headers={['Agent', 'Present / working', 'Late', 'Eligible']}
-                rows={(ops?.attendance ?? [])
-                  .filter((row) => isOwnAgent(row))
-                  .map((row) => [
-                    row.agentName,
-                    `${row.presentDays} / ${row.workingDays}`,
-                    row.lateCount,
-                    row.attendanceBonusEligible ? 'Yes' : 'No',
-                  ])}
-              />
-              <OpsTableCard
-                title="Surveys"
-                headers={['Agent', 'Count', 'Note']}
-                rows={(ops?.surveys ?? [])
-                  .filter((row) => isOwnAgent(row))
-                  .map((row) => [row.agentName, row.surveyCount, row.note ?? '—'])}
-              />
-              <OpsTableCard
-                title="Channel activity"
-                headers={['Agent', 'Channel', 'Count']}
-                rows={(ops?.channels ?? [])
-                  .filter((row) => isOwnAgent(row))
-                  .map((row) => [
-                    row.agentName,
-                    CHANNEL_LABELS[row.channel],
-                    row.activityCount,
-                  ])}
-              />
-              <Card className={ORDER_CARD_CLASS}>
-                <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
-                  <CardTitle className="text-base">Special bonuses</CardTitle>
-                </CardHeader>
-                <CardContent className={ORDER_SECTION_BODY_CLASS}>
-                  {!ops?.specialBonuses.length ? (
-                    <p className="text-sm text-muted-foreground">No entries for this month.</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Agent</TableHead>
-                          <TableHead>Reason</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          {canManage ? <TableHead /> : null}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {ops.specialBonuses
-                          .filter((row) => isOwnAgent(row))
-                          .map((row) => (
-                            <TableRow key={row.id}>
-                              <TableCell className="font-medium">{row.agentName}</TableCell>
-                              <TableCell>{row.reason}</TableCell>
-                              <TableCell className="text-right">
-                                {formatCurrency(row.amountBdt)}
-                              </TableCell>
-                              {canManage ? (
-                                <TableCell className="text-right">
-                                  <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="ghost"
-                                    disabled={busy}
-                                    onClick={() =>
-                                      void runAction(
-                                        () => incentiveApi.deleteSpecialBonus(row.id),
-                                        'Special bonus deleted',
-                                      )
-                                    }
-                                  >
-                                    <Trash2 className="size-4" />
-                                  </Button>
-                                </TableCell>
-                              ) : null}
-                            </TableRow>
-                          ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
           </div>
         ) : null}
 
@@ -1102,29 +876,46 @@ export function IncentiveHubPage() {
                     Metric, daily/monthly targets, and incentive slabs for one Users team.
                   </p>
                 </div>
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                <FormSearchSelect
+                  portal
+                  className="w-56"
                   value={selectedTeamId}
-                  onChange={(event) => {
-                    setSelectedTeamId(event.target.value);
-                    setLockedTeamId(event.target.value || undefined);
+                  onChange={(teamId) => {
+                    setSelectedTeamId(teamId);
+                    setLockedTeamId(teamId || undefined);
                   }}
-                >
-                  <option value="">All teams</option>
-                  {(data?.teams ?? []).map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
-                {canManage && selectedTeam ? (
+                  options={[
+                    { value: '', label: 'All teams' },
+                    ...(data?.teams ?? []).map((team) => ({
+                      value: team.id,
+                      label: team.name,
+                    })),
+                  ]}
+                  placeholder="All teams"
+                />
+                {canManage && selectedTeam && !(selectedTeam.metricTypes ?? []).length ? (
                   <Button
                     type="button"
                     size="sm"
-                    onClick={() => openStructureForTeam(selectedTeam)}
+                    onClick={() => openStructureForTeam(selectedTeam, true)}
                   >
                     <Plus className="size-4" />
-                    {selectedTeam.hasStructure ? 'Edit structure' : 'Set structure'}
+                    Set structure
+                  </Button>
+                ) : null}
+                {canManage &&
+                selectedTeam &&
+                FILTER_METRICS.some(
+                  (metric) => !(selectedTeam.metricTypes ?? []).includes(metric.value),
+                ) &&
+                (selectedTeam.metricTypes ?? []).length > 0 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => openStructureForTeam(selectedTeam, true)}
+                  >
+                    <Plus className="size-4" />
+                    Add metric
                   </Button>
                 ) : null}
               </CardHeader>
@@ -1133,7 +924,7 @@ export function IncentiveHubPage() {
               <p className="text-sm text-muted-foreground">
                 {selectedTeam
                   ? 'No KPI structure for this team yet. Set metric and slabs.'
-                  : 'Select a Users team, or apply the PDF template to matching names.'}
+                  : 'Select a Users team, then set metric and slabs.'}
               </p>
             ) : (
               structurePlans.map((plan) => (
@@ -1144,26 +935,40 @@ export function IncentiveHubPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {plan.teamName ?? 'No team'} · {METRIC_LABELS[plan.metricType]}
                       {plan.teamMonthlyTarget != null ? ` · team target ${plan.teamMonthlyTarget}` : ''}
+                      {plan.isActive ? '' : ' · archived'}
                     </p>
                   </div>
                   {canManage ? (
                     <div className="flex gap-1">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => {
-                          setLockedTeamId(plan.teamId ?? undefined);
-                          setSelectedTeamId(plan.teamId ?? '');
-                          setEditingPlan(plan);
-                          setPlanOpen(true);
-                        }}
-                      >
-                        <Edit2 className="size-4" />
-                      </Button>
-                      <Button type="button" size="icon" variant="ghost" onClick={() => void handleDeletePlan(plan)}>
-                        <Trash2 className="size-4" />
-                      </Button>
+                      {plan.isActive ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setLockedTeamId(plan.teamId ?? undefined);
+                              setSelectedTeamId(plan.teamId ?? '');
+                              setEditingPlan(plan);
+                              setPlanOpen(true);
+                            }}
+                          >
+                            <Edit2 className="size-4" />
+                          </Button>
+                          <Button type="button" size="icon" variant="ghost" onClick={() => void handleDeletePlan(plan)}>
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleRestorePlan(plan)}
+                        >
+                          Restore
+                        </Button>
+                      )}
                     </div>
                   ) : null}
                 </CardHeader>
@@ -1199,388 +1004,14 @@ export function IncentiveHubPage() {
           </div>
         ) : null}
 
-        {false ? (
-          <Card className={ORDER_CARD_CLASS}>
-            <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'pt-4')}>
-              {!visibleAssignments.length ? (
-                <p className="text-sm text-muted-foreground">No agents assigned.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Agent</TableHead>
-                      <TableHead>Plan</TableHead>
-                      <TableHead>Shift</TableHead>
-                      <TableHead>Starts</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>HR</TableHead>
-                      <TableHead />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleAssignments.map((assignment) => (
-                      <TableRow key={assignment.id}>
-                        <TableCell className="font-medium">{assignment.agentName}</TableCell>
-                        <TableCell>{assignment.planName}</TableCell>
-                        <TableCell className="capitalize">{assignment.shift ?? '—'}</TableCell>
-                        <TableCell>{assignment.startsOn}</TableCell>
-                        <TableCell>
-                          <Badge variant={assignment.isActive ? 'success' : 'secondary'}>
-                            {assignment.isActive ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              assignment.hrStatus === 'terminated'
-                                ? 'destructive'
-                                : assignment.hrStatus === 'active' || !assignment.hrStatus
-                                  ? 'success'
-                                  : 'secondary'
-                            }
-                          >
-                            {HR_LABELS[assignment.hrStatus ?? 'active']}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {canManage ? (
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => {
-                                  setEditingAssignment(assignment);
-                                  setAssignOpen(true);
-                                }}
-                              >
-                                <Edit2 className="size-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => void handleDeleteAssignment(assignment.id)}
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </div>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {tab === 'structure' && canManage ? (
-          <div className="grid gap-3 lg:grid-cols-2">
-            <Card className={ORDER_CARD_CLASS}>
-              <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-center justify-between')}>
-                <CardTitle className="text-base">Salary reference</CardTitle>
-                {canManage ? (
-                  <Button type="button" size="sm" variant="outline" onClick={() => setSalaryOpen(true)}>
-                    <Edit2 className="size-3.5" />
-                    Edit
-                  </Button>
-                ) : null}
-              </CardHeader>
-              <CardContent className={ORDER_SECTION_BODY_CLASS}>
-                {!data?.salaryTemplate ? (
-                  <p className="text-sm text-muted-foreground">No salary reference configured.</p>
-                ) : (
-                  <Table>
-                    <TableBody>
-                      {[
-                        ['Basic', data.salaryTemplate.basicBdt],
-                        ['House rent', data.salaryTemplate.houseRentBdt],
-                        ['Medical', data.salaryTemplate.medicalBdt],
-                        ['Conveyance', data.salaryTemplate.conveyanceBdt],
-                        ['Gross', data.salaryTemplate.grossBdt],
-                        ['Attendance bonus', data.salaryTemplate.attendanceBonusBdt],
-                        ['Lunch & snacks', data.salaryTemplate.lunchBdt],
-                        ['Total', data.salaryTemplate.totalBdt],
-                      ].map(([label, amount]) => (
-                        <TableRow key={String(label)}>
-                          <TableCell>{label}</TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(Number(amount))}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-            <Card className={ORDER_CARD_CLASS}>
-              <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row items-center justify-between')}>
-                <CardTitle className="text-base">Duty shifts</CardTitle>
-                {canManage ? (
-                  <div className="flex gap-2">
-                    {!shiftDrafts.length ? (
-                      <Button type="button" size="sm" variant="outline" onClick={() => setShiftDrafts(DEFAULT_SHIFTS)}>
-                        Seed defaults
-                      </Button>
-                    ) : null}
-                    <Button type="button" size="sm" disabled={busy} onClick={() => void saveShifts()}>
-                      <Save className="size-3.5" />
-                      Save
-                    </Button>
-                  </div>
-                ) : null}
-              </CardHeader>
-              <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-2')}>
-                {!shiftDrafts.length ? (
-                  <p className="text-sm text-muted-foreground">No shift templates configured.</p>
-                ) : (
-                  shiftDrafts.map((shift, index) => (
-                    <div key={shift.id} className="grid grid-cols-[1fr_6rem_6rem_auto] items-end gap-2 rounded-md border p-2">
-                      <div>
-                        <Label className="text-xs">Name</Label>
-                        <Input
-                          className="mt-1 h-8"
-                          value={shift.name}
-                          disabled={!canManage}
-                          onChange={(event) => patchShift(index, { name: event.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Start</Label>
-                        <Input
-                          type="time"
-                          className="mt-1 h-8"
-                          value={shift.startTime}
-                          disabled={!canManage}
-                          onChange={(event) => patchShift(index, { startTime: event.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">End</Label>
-                        <Input
-                          type="time"
-                          className="mt-1 h-8"
-                          value={shift.endTime}
-                          disabled={!canManage}
-                          onChange={(event) => patchShift(index, { endTime: event.target.value })}
-                        />
-                      </div>
-                      {canManage ? (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setShiftDrafts((current) => current.filter((_, row) => row !== index))}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
-
-        {tab === 'payout' ? (
-          <Card className={ORDER_CARD_CLASS}>
-            <CardHeader className={cn(ORDER_SECTION_HEADER_CLASS, 'flex flex-row flex-wrap items-center gap-2')}>
-              <div className="flex-1">
-                <CardTitle className="text-base">Monthly payout run</CardTitle>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Generate → approve → export payroll CSV → mark paid. CRM locks numbers; finance pays outside.
-                </p>
-              </div>
-              <Input type="month" className="w-40" value={yearMonth} onChange={(event) => setYearMonth(event.target.value)} />
-              {selectedPeriod ? <Badge variant="secondary" className="capitalize">{selectedPeriod.status}</Badge> : null}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!visiblePayoutLines.length}
-                onClick={() =>
-                  downloadCsv(
-                    `incentive-payout-${yearMonth}.csv`,
-                    [
-                      'Agent',
-                      'Plan',
-                      'Actual',
-                      'Slab',
-                      'HR status',
-                      'Incentive',
-                      'Attendance bonus',
-                      'Special bonus',
-                      'Total pay',
-                    ],
-                    visiblePayoutLines.map((line) => [
-                      line.agentName,
-                      line.planName,
-                      line.actualValue,
-                      line.matchedSlabLabel,
-                      line.hrStatus ? HR_LABELS[line.hrStatus] : '',
-                      line.incentiveBdt,
-                      line.attendanceBonusBdt,
-                      line.specialBonusBdt,
-                      line.totalPayBdt,
-                    ]),
-                  )
-                }
-              >
-                <Download className="size-4" />
-                Snapshot CSV
-              </Button>
-              {canManage &&
-              selectedPeriod &&
-              (selectedPeriod.status === 'approved' || selectedPeriod.status === 'paid') ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void handlePayrollExport()}
-                >
-                  <Download className="size-4" />
-                  Payroll CSV
-                </Button>
-              ) : null}
-              {canManage && (!selectedPeriod || selectedPeriod.status === 'draft') ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={selectedPeriod ? 'outline' : 'default'}
-                  disabled={busy}
-                  onClick={() => void runAction(() => incentiveApi.generatePeriod(yearMonth), 'Payout period generated')}
-                >
-                  <WalletCards className="size-4" />
-                  {selectedPeriod ? 'Regenerate' : 'Generate'}
-                </Button>
-              ) : null}
-              {canManage && selectedPeriod?.status === 'draft' ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void runAction(() => incentiveApi.approvePeriod(yearMonth), 'Payout approved')}
-                >
-                  <Check className="size-4" />
-                  Approve
-                </Button>
-              ) : null}
-              {canManage && selectedPeriod?.status === 'approved' ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void runAction(() => incentiveApi.markPeriodPaid(yearMonth), 'Payout marked paid')}
-                >
-                  Mark paid
-                </Button>
-              ) : null}
-            </CardHeader>
-            <CardContent className={ORDER_SECTION_BODY_CLASS}>
-              {periods.length ? (
-                <div className="mb-4 flex flex-wrap items-center gap-2 border-b pb-3">
-                  <span className="text-xs font-medium text-muted-foreground">Period history</span>
-                  {periods.map((period) => (
-                    <button
-                      key={period.id}
-                      type="button"
-                      onClick={() => setYearMonth(period.yearMonth)}
-                      className={cn(
-                        'rounded-md border px-2 py-1 text-xs',
-                        period.yearMonth === yearMonth
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'hover:bg-muted',
-                      )}
-                    >
-                      {period.yearMonth} · {period.status}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {!selectedPeriod ? (
-                <p className="text-sm text-muted-foreground">
-                  No locked payout for {yearMonth}. Current live estimate is{' '}
-                  {formatCurrency(performance?.totalIncentiveBdt ?? 0)}.
-                </p>
-              ) : (
-                <>
-                  <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-                    <span>Calculated {formatDateTime(selectedPeriod.calculatedAt)}</span>
-                    {selectedPeriod.approvedByName ? <span>Approved by {selectedPeriod.approvedByName}</span> : null}
-                    {selectedPeriod.paidByName ? <span>Paid by {selectedPeriod.paidByName}</span> : null}
-                  </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Agent</TableHead>
-                        <TableHead>Plan</TableHead>
-                        <TableHead className="text-right">Actual</TableHead>
-                        <TableHead>Slab</TableHead>
-                        <TableHead>HR</TableHead>
-                        <TableHead className="text-right">Incentive</TableHead>
-                        <TableHead className="text-right">Attendance</TableHead>
-                        <TableHead className="text-right">Special</TableHead>
-                        <TableHead className="text-right">Total pay</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {visiblePayoutLines.map((line) => (
-                        <TableRow key={line.id}>
-                          <TableCell className="font-medium">{line.agentName}</TableCell>
-                          <TableCell>{line.planName}</TableCell>
-                          <TableCell className="text-right">{line.actualValue}</TableCell>
-                          <TableCell>{line.matchedSlabLabel ?? '—'}</TableCell>
-                          <TableCell>
-                            {line.hrStatus ? (
-                              <Badge
-                                variant={
-                                  line.hrStatus === 'terminated'
-                                    ? 'destructive'
-                                    : line.hrStatus === 'active'
-                                      ? 'success'
-                                      : 'secondary'
-                                }
-                              >
-                                {HR_LABELS[line.hrStatus]}
-                              </Badge>
-                            ) : (
-                              '—'
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(line.incentiveBdt)}</TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(line.attendanceBonusBdt ?? 0)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(line.specialBonusBdt ?? 0)}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCurrency(
-                              line.totalPayBdt ??
-                                line.incentiveBdt +
-                                  (line.attendanceBonusBdt ?? 0) +
-                                  (line.specialBonusBdt ?? 0),
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      <TableRow>
-                        <TableCell colSpan={8} className="font-medium">Total</TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {formatCurrency(
-                            selectedPeriod.totalPayBdt ?? selectedPeriod.totalIncentiveBdt,
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </>
-              )}
-            </CardContent>
-          </Card>
+        {tab === 'ops' && canManage ? (
+          <IncentiveOpsPanel
+            yearMonth={yearMonth}
+            onYearMonthChange={setYearMonth}
+            assignments={data?.assignments ?? []}
+            canManage={canManage}
+            onChanged={load}
+          />
         ) : null}
       </div>
 
@@ -1589,19 +1020,17 @@ export function IncentiveHubPage() {
         initial={editingPlan}
         teams={data?.teams ?? []}
         lockedTeamId={lockedTeamId}
+        occupiedMetrics={(data?.plans ?? [])
+          .filter(
+            (plan) =>
+              plan.isActive &&
+              plan.teamId === (lockedTeamId || selectedTeamId) &&
+              plan.id !== editingPlan?.id,
+          )
+          .map((plan) => plan.metricType)}
         onClose={() => {
           setPlanOpen(false);
           setLockedTeamId(selectedTeamId || undefined);
-        }}
-        onSaved={() => void load()}
-      />
-      <AssignmentFormDialog
-        open={assignOpen}
-        initial={editingAssignment}
-        plans={data?.plans ?? []}
-        onClose={() => {
-          setAssignOpen(false);
-          setEditingAssignment(null);
         }}
         onSaved={() => void load()}
       />

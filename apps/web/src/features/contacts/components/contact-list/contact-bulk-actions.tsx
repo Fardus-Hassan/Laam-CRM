@@ -15,6 +15,7 @@ import {
   type ContactBulkActionId,
 } from '@/features/contacts/config/contact-bulk-actions';
 import { useContactMutations } from '@/features/contacts/hooks/use-contact-mutations';
+import { downloadCsvAndExcel } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 type ContactBulkActionsProps = {
@@ -47,31 +48,22 @@ export function ContactBulkActions({
           toast.error('No rows to export');
           return;
         }
-        const header =
-          'ID,Name,Phone,Type,Organization,Orders,Courier Rate,Source,Tags\n';
-        const body = selectedRows
-          .map((row) =>
-            [
-              row.contactNumber ?? row.id,
-              `"${row.name}"`,
-              row.phone,
-              row.contactType,
-              `"${row.organizationName ?? ''}"`,
-              row.orderCount ?? '',
-              row.courierScore?.rate ?? '',
-              row.source,
-              `"${row.tags.join('; ')}"`,
-            ].join(','),
-          )
-          .join('\n');
-        const blob = new Blob([header + body], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `contacts-export-${Date.now()}.csv`;
-        anchor.click();
-        URL.revokeObjectURL(url);
-        toast.success(`Exported ${selectedRows.length} contact(s)`);
+        downloadCsvAndExcel(
+          `contacts-export-${Date.now()}`,
+          ['ID', 'Name', 'Phone', 'Type', 'Organization', 'Orders', 'Courier Rate', 'Source', 'Tags'],
+          selectedRows.map((row) => [
+            row.contactNumber ?? row.id,
+            row.name,
+            row.phone,
+            row.contactType,
+            row.organizationName ?? '',
+            row.orderCount ?? '',
+            row.courierScore?.rate ?? '',
+            row.source,
+            row.tags.join('; '),
+          ]),
+        );
+        toast.success(`Exported ${selectedRows.length} contact(s) as CSV and Excel`);
         onSuccess?.();
       },
     });

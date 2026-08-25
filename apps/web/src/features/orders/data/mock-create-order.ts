@@ -3,13 +3,9 @@ import type { OrderSource } from '@laam/types';
 import { getActiveCouponByCode, listCoupons } from '@/features/coupons/data/mock-coupons';
 import { MOCK_INVENTORY_PRODUCTS } from '@/features/inventory/data/mock-inventory';
 import { MOCK_ORDERS } from '@/features/orders/data/mock-orders';
-import {
-  HERO_PRODUCT_ID,
-  isHeroProduct,
-  isUpsellProduct,
-  MOCK_PRODUCTS as SEED_PRODUCTS,
-  type MockProduct,
-  type MockProductVariation,
+import type {
+  MockProduct,
+  MockProductVariation,
 } from '@/features/orders/data/mock-products';
 import type { CustomerLookupStats } from '@/features/orders/lib/create-order-types';
 
@@ -17,17 +13,13 @@ export type { MockProduct, MockProductVariation };
 
 /** Order catalog = live inventory products (single source of truth). */
 export function getOrderCatalogProducts(): MockProduct[] {
-  const seedById = new Map(SEED_PRODUCTS.map((p) => [p.id, p]));
   return MOCK_INVENTORY_PRODUCTS.filter((p) => p.status === 'active')
     .map((p) => {
-      const seed = seedById.get(p.id);
       return {
         id: p.id,
         name: p.name,
         sku: p.sku,
         imageUrl: p.imageUrl ?? '',
-        isHero: seed?.isHero ?? isHeroProduct(p),
-        isUpsell: seed?.isUpsell ?? isUpsellProduct({ id: p.id, isUpsell: seed?.isUpsell, isHero: seed?.isHero }),
         variations:
           p.variants.length > 0
             ? p.variants.map((v) => ({
@@ -38,10 +30,8 @@ export function getOrderCatalogProducts(): MockProduct[] {
             : [{ id: `${p.id}-default`, label: 'Default', unitPrice: p.salePriceMin }],
       };
     })
-    .sort((a, b) => Number(Boolean(b.isHero)) - Number(Boolean(a.isHero)));
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
-
-export { HERO_PRODUCT_ID, isHeroProduct, isUpsellProduct };
 
 /** Snapshot for seed consumers — prefer getOrderCatalogProducts() at runtime. */
 export const MOCK_PRODUCTS = getOrderCatalogProducts();
@@ -70,14 +60,25 @@ export const MOCK_DISTRICTS = [
   'Narayanganj',
 ];
 
-export const MOCK_ORDER_TAGS = ['VIP', 'Repeat', 'COD Risk', 'New', 'Ramadan', 'Gift Buyer'];
+export const MOCK_ORDER_TAGS: string[] = [];
 
 export const MOCK_ORDER_STATUSES = [
   { value: 'pending', label: 'Pending' },
-  { value: 'pending_2', label: 'Pending 2' },
-  { value: 'pending_3', label: 'Pending 3' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'hold', label: 'On Hold' },
+  { value: 'hold_followup', label: 'Hold Followup' },
+  { value: 'processing', label: 'Processing' },
+  { value: 'in_courier', label: 'In Courier' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
+export const MOCK_SOURCES = [
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'website', label: 'Website' },
+  { value: 'call', label: 'Call' },
+  { value: 'walk_in', label: 'Walk-in' },
 ];
 
 export const MOCK_PAYMENT_METHODS = [
@@ -85,6 +86,7 @@ export const MOCK_PAYMENT_METHODS = [
   { value: 'bkash', label: 'bKash' },
   { value: 'nagad', label: 'Nagad' },
   { value: 'card', label: 'Card' },
+  { value: 'paid', label: 'Already Paid' },
 ];
 
 /** Active promo codes from coupons module. */
@@ -103,8 +105,7 @@ export function isValidCouponCode(code: string): boolean {
   return code.trim().toUpperCase() === 'SAVE10';
 }
 
-export const DEFAULT_COURIER_NOTE =
-  'পার্সেল খোলা যাবে না — মার্চেন্টকে জানানো ছাড়া খুলবেন না। কাস্টমার কল না ধরলে পার্সেল ক্যান্সেল করবেন না।';
+export const DEFAULT_COURIER_NOTE = '';
 
 function buildCustomerProfiles(): MockCustomerProfile[] {
   const byPhone = new Map<string, MockCustomerProfile>();

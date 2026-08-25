@@ -26,6 +26,9 @@ import { NotificationsController } from './notifications.controller';
 import { ObjectStorageService } from './object-storage.service';
 import { OrgCategoriesController } from './org-categories.controller';
 import { OrgCustomerStatusesController } from './org-customer-statuses.controller';
+import { OrgCustomerPurchaseSegmentsController } from './org-customer-purchase-segments.controller';
+import { OrgSettingsController } from './org-settings.controller';
+import { OrgSettingsService } from './org-settings.service';
 import { OrgOrderStatusesController } from './org-order-statuses.controller';
 import { OrgOrderStatusesService } from './org-order-statuses.service';
 import { OrgOrderQueuesController } from './org-order-queues.controller';
@@ -35,6 +38,7 @@ import { CouponsService } from './coupons.service';
 import { FollowupsController } from './followups.controller';
 import { FollowupsService } from './followups.service';
 import { OrdersController } from './orders.controller';
+import { OrderHoldWorkflowService } from './order-hold-workflow.service';
 import { OrdersService } from './orders.service';
 import { PathaoCourierController } from './pathao-courier.controller';
 import { PathaoCourierService } from './pathao-courier.service';
@@ -108,10 +112,12 @@ import { SecurityBlocksService } from './security-blocks.service';
     FollowupsController,
     RbacController,
     BrandingController,
+    OrgSettingsController,
     NotificationsController,
     ProductBrandsController,
     OrgCategoriesController,
     OrgCustomerStatusesController,
+    OrgCustomerPurchaseSegmentsController,
     OrgOrderStatusesController,
     OrgOrderQueuesController,
     ProductsController,
@@ -131,6 +137,7 @@ import { SecurityBlocksService } from './security-blocks.service';
   providers: [
     RbacService,
     BrandingService,
+    OrgSettingsService,
     LeadsService,
     CustomersService,
     ContactsService,
@@ -144,6 +151,7 @@ import { SecurityBlocksService } from './security-blocks.service';
     BillingService,
     IncentiveService,
     OrdersService,
+    OrderHoldWorkflowService,
     PathaoCourierService,
     PathaoSyncService,
     CarrybeeCourierService,
@@ -176,6 +184,7 @@ import { SecurityBlocksService } from './security-blocks.service';
     ObjectStorageService,
     OrgOrderStatusesService,
     OrgOrderQueuesService,
+    CustomersService,
     BillingService,
   ],
 })

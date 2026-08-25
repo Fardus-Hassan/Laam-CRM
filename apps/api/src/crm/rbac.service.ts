@@ -21,14 +21,7 @@ import type {
   UserRole,
 } from '@laam/types';
 
-import {
-  getPermissionsForRole,
-  isValidPermission,
-} from '../common/effective-permissions';
-import {
-  dashboardTemplateForSystemRole,
-  seedDefaultPermissionPresets,
-} from '../common/default-permission-presets';
+import { isValidPermission } from '../common/effective-permissions';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantWebUrl } from '../common/tenant.util';
@@ -87,6 +80,16 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: 'Viewer',
 };
 
+/** Old auto-seeded catalog — never recreated; drop leftover rows so delete stays gone. */
+const LEGACY_SEEDED_PRESET_NAMES = [
+  'Sales Agent',
+  'Team Leader',
+  'Sales Head',
+  'Marketing Head',
+  'CEO / Executive',
+  'Org Admin',
+];
+
 function normalizePermissions(values: string[] | undefined): Permission[] {
   if (!values?.length) {
     return [];
@@ -123,7 +126,7 @@ export class RbacService {
   async listUsers(organizationId: string): Promise<TenantUser[]> {
     const rows = await this.prisma.user.findMany({
       where: { organizationId },
-      include: { invitedBy: { select: { id: true, name: true } } },
+      include: { invitedBy: { select: { id: true, name: true, email: true } } },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map((row) => this.toTenantUser(row));
@@ -174,7 +177,7 @@ export class RbacService {
         permissionGrants: normalizePermissions(input.permissionGrants),
         permissionDenies: normalizePermissions(input.permissionDenies),
       },
-      include: { invitedBy: { select: { id: true, name: true } } },
+      include: { invitedBy: { select: { id: true, name: true, email: true } } },
     });
 
     const loginUrl = `${tenantWebUrl(org.slug)}/login`;
@@ -219,7 +222,7 @@ export class RbacService {
     const user = await this.prisma.user.findFirst({
       where: { id: userId, organizationId },
       include: {
-        invitedBy: { select: { id: true, name: true } },
+        invitedBy: { select: { id: true, name: true, email: true } },
         customRole: { select: { name: true } },
       },
     });
@@ -238,7 +241,7 @@ export class RbacService {
         inviteTempPassword: tempPassword,
       },
       include: {
-        invitedBy: { select: { id: true, name: true } },
+        invitedBy: { select: { id: true, name: true, email: true } },
         customRole: { select: { name: true } },
       },
     });
@@ -321,7 +324,7 @@ export class RbacService {
             : normalizePermissions(patch.permissionDenies),
         teamId: patch.teamId === undefined ? undefined : patch.teamId,
       },
-      include: { invitedBy: { select: { id: true, name: true } } },
+      include: { invitedBy: { select: { id: true, name: true, email: true } } },
     });
 
     return this.toTenantUser(updated);
@@ -336,7 +339,7 @@ export class RbacService {
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { status },
-      include: { invitedBy: { select: { id: true, name: true } } },
+      include: { invitedBy: { select: { id: true, name: true, email: true } } },
     });
 
     const verb = status === 'suspended' ? 'suspended' : 'reactivated';
@@ -453,25 +456,11 @@ export class RbacService {
   }
 
   async listRoles(organizationId: string): Promise<CustomRole[]> {
-    const systemRoles: CustomRole[] = TENANT_ROLES.map((role) => ({
-      id: `system:${role}`,
-      organizationId,
-      name: ROLE_LABELS[role] ?? role,
-      description: `System role — ${ROLE_LABELS[role] ?? role}`,
-      permissions: [...getPermissionsForRole(role)],
-      dashboardTemplate: dashboardTemplateForSystemRole(role),
-      isSystem: true,
-    }));
-
     const custom = await this.prisma.customRole.findMany({
       where: { organizationId },
       orderBy: { name: 'asc' },
     });
-
-    return [
-      ...systemRoles,
-      ...custom.map((row) => this.toCustomRole(row)),
-    ];
+    return custom.map((row) => this.toCustomRole(row));
   }
 
   async createRole(
@@ -584,7 +573,12 @@ export class RbacService {
   }
 
   async listPresets(organizationId: string): Promise<PermissionPreset[]> {
-    await seedDefaultPermissionPresets(this.prisma, organizationId);
+    await this.prisma.permissionPreset.deleteMany({
+      where: {
+        organizationId,
+        name: { in: LEGACY_SEEDED_PRESET_NAMES },
+      },
+    });
     const rows = await this.prisma.permissionPreset.findMany({
       where: { organizationId },
       orderBy: { name: 'asc' },
@@ -862,29 +856,13 @@ export class RbacService {
 
     await this.prisma.user.update({
       where: { id: leaderUserId },
-      data: {
-        teamId,
-        systemRole:
-          leader.systemRole === 'org_admin' || leader.systemRole === 'sales_manager'
-            ? leader.systemRole
-            : 'team_leader',
-      },
+      data: { teamId },
     });
 
     for (const memberId of memberIds) {
-      const member = await this.prisma.user.findUnique({ where: { id: memberId } });
-      if (!member) {
-        continue;
-      }
       await this.prisma.user.update({
         where: { id: memberId },
-        data: {
-          teamId,
-          systemRole:
-            member.systemRole === 'team_leader' || member.systemRole === 'sales_rep'
-              ? 'sales_rep'
-              : member.systemRole,
-        },
+        data: { teamId },
       });
     }
   }
@@ -948,7 +926,7 @@ export class RbacService {
     teamId: string | null;
     lastSeenAt: Date | null;
     invitedByUserId?: string | null;
-    invitedBy?: { id: string; name: string } | null;
+    invitedBy?: { id: string; name: string; email?: string } | null;
   }): TenantUser {
     return {
       id: row.id,

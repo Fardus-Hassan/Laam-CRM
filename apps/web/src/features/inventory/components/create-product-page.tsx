@@ -25,14 +25,9 @@ import { PageShell } from '@/components/layout/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { InventorySubNav } from '@/features/inventory/components/inventory-sub-nav';
-import { MerchandisingFlagsField } from '@/features/inventory/components/merchandising-flags-field';
 import {
   PRODUCT_STATUS_LABELS,
 } from '@/features/inventory/config/product-filters';
-import {
-  mergeMerchandisingTags,
-  type MerchandisingFlags,
-} from '@/features/inventory/lib/product-merchandising';
 import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import { productBrandsApi } from '@/features/settings/api/product-brands-api';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
@@ -282,11 +277,6 @@ export function CreateProductPage() {
     supplierName: '',
     reorderLevel: 5,
     notes: '',
-    merchandising: {
-      isHero: false,
-      isUpsell: false,
-      isCrossSell: false,
-    } as MerchandisingFlags,
     variants: [emptyVariant('SKU')],
   });
 
@@ -366,7 +356,7 @@ export function CreateProductPage() {
         supplierName: draft.supplierName || undefined,
         reorderLevel: draft.reorderLevel,
         notes: draft.notes.trim() || undefined,
-        tags: mergeMerchandisingTags([], draft.merchandising),
+        tags: [],
         variants: draft.variants.map((v) => ({
           id: v.id,
           label: v.label.trim() || 'Standard',
@@ -519,11 +509,6 @@ export function CreateProductPage() {
                   placeholder="Shelf life, storage, packing tips…"
                 />
               </FormField>
-
-              <MerchandisingFlagsField
-                value={draft.merchandising}
-                onChange={(merchandising) => patch({ merchandising })}
-              />
             </CardContent>
           </Card>
 

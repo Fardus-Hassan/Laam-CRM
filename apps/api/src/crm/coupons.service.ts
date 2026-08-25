@@ -14,33 +14,6 @@ export type CouponValidateResult = {
   coupon?: Coupon;
 };
 
-const SEED_COUPONS: Array<CreateCouponPayload & { isActive?: boolean }> = [
-  {
-    code: 'RAMADAN10',
-    type: 'percent',
-    value: 10,
-    minOrderBdt: 1000,
-    maxDiscountBdt: 500,
-    usageLimit: 200,
-    expiresAt: '2026-12-31',
-    description: 'Ramadan special 10% off',
-  },
-  {
-    code: 'FIRST100',
-    type: 'fixed',
-    value: 100,
-    minOrderBdt: 800,
-    usageLimit: 500,
-    description: 'First order ৳100 off',
-  },
-  {
-    code: 'COMBO50',
-    type: 'fixed',
-    value: 50,
-    description: 'Combo pack discount',
-  },
-];
-
 @Injectable()
 export class CouponsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -73,27 +46,7 @@ export class CouponsService {
     };
   }
 
-  private async ensureSeed(organizationId: string): Promise<void> {
-    const count = await this.prisma.coupon.count({ where: { organizationId } });
-    if (count > 0) return;
-    await this.prisma.coupon.createMany({
-      data: SEED_COUPONS.map((c) => ({
-        organizationId,
-        code: c.code.toUpperCase(),
-        type: c.type,
-        value: c.value,
-        minOrderBdt: c.minOrderBdt ?? null,
-        maxDiscountBdt: c.maxDiscountBdt ?? null,
-        usageLimit: c.usageLimit ?? null,
-        expiresAt: c.expiresAt ? new Date(c.expiresAt) : null,
-        description: c.description ?? null,
-        isActive: true,
-      })),
-    });
-  }
-
   async list(organizationId: string): Promise<Coupon[]> {
-    await this.ensureSeed(organizationId);
     const rows = await this.prisma.coupon.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
@@ -220,7 +173,6 @@ export class CouponsService {
     code: string,
     orderSubtotal: number,
   ): Promise<CouponValidateResult> {
-    await this.ensureSeed(organizationId);
     const normalized = code.trim().toUpperCase();
     if (!normalized) {
       return { valid: false, discount: 0, message: 'Coupon code is required' };

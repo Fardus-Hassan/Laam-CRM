@@ -57,6 +57,12 @@ const SETTINGS_LINKS = [
     icon: Tags,
   },
   {
+    title: 'Assignment routing',
+    description: 'Default sales and logistic teams for website orders, create order, and courier book.',
+    href: '/dashboard/settings/assignment-routing',
+    icon: GitBranch,
+  },
+  {
     title: 'SMS Templates',
     description: 'Bulk SMS message templates for order notifications.',
     href: '/dashboard/settings/sms-templates',

@@ -303,6 +303,22 @@ export function updateMockFollowup(
   return updated;
 }
 
+/** Close open order-linked mock follow-ups (parity with API closeOpenForOrder). */
+export function closeOpenMockFollowupsForOrder(
+  orderId: string,
+  outcome: 'done' | 'converted',
+): number {
+  let closed = 0;
+  for (const item of MOCK_FOLLOWUPS) {
+    if (item.id !== `followup-ord-${orderId}`) continue;
+    if (item.skipped) continue;
+    if (item.followupStatus === 'done' || item.followupStatus === 'converted') continue;
+    updateMockFollowup(item.id, { followupStatus: outcome });
+    closed += 1;
+  }
+  return closed;
+}
+
 export function bulkUpdateMockFollowups(payload: {
   followupIds: string[];
   scheduleDate?: string;

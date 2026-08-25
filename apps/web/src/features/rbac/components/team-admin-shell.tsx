@@ -6,8 +6,6 @@ import { useSearchParams } from 'next/navigation';
 import type {
   CreateTenantUserRequest,
   OrgTeam,
-  Permission,
-  PermissionPreset,
   TenantUser,
 } from '@laam/types';
 import { ROLE_LABELS } from '@laam/types';
@@ -17,13 +15,12 @@ import {
   Phone,
   Plus,
   Search,
-  UserCog,
   Users,
   UsersRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { PermissionMatrix } from '@/features/rbac/components/permission-matrix';
+import { FormSearchSelect } from '@/components/form/form-search-select';
 import { InviteUserDialog } from '@/features/rbac/components/invite-user-dialog';
 import { TeamsAdminPanel } from '@/features/rbac/components/teams-admin-panel';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
@@ -33,7 +30,6 @@ import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogBody,
@@ -80,21 +76,17 @@ export function TeamAdminShell() {
   const searchParams = useSearchParams();
   const focusMembers = searchParams.get('view') === 'team';
 
-  const { organization, user: sessionUser, switchRole, canSwitchRole } = useAuth();
+  const { organization, user: sessionUser } = useAuth();
   const organizationId = organization?.id;
 
   const [users, setUsers] = React.useState<TenantUser[]>([]);
   const [teams, setTeams] = React.useState<OrgTeam[]>([]);
   const [roles, setRoles] = React.useState<Awaited<ReturnType<typeof rbacApi.listRoles>>>([]);
-  const [presets, setPresets] = React.useState<PermissionPreset[]>([]);
-  const [selectedId, setSelectedId] = React.useState('');
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [search, setSearch] = React.useState('');
   const [teamFilter, setTeamFilter] = React.useState('');
   const [roleFilter, setRoleFilter] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState('');
-  const [extraGrants, setExtraGrants] = React.useState<Permission[]>([]);
-  const [extraDenies, setExtraDenies] = React.useState<Permission[]>([]);
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [bulkRoleId, setBulkRoleId] = React.useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
@@ -102,26 +94,16 @@ export function TeamAdminShell() {
     focusMembers ? 'members' : 'members',
   );
 
-  const selected = users.find((user) => user.id === selectedId);
-
   const refresh = React.useCallback(async () => {
     if (!organizationId) return;
-    const [nextUsers, nextRoles, nextTeams, nextPresets] = await Promise.all([
+    const [nextUsers, nextRoles, nextTeams] = await Promise.all([
       rbacApi.listUsers(organizationId),
       rbacApi.listRoles(organizationId),
       rbacApi.listTeams(organizationId),
-      rbacApi.listCustomPresets(organizationId),
     ]);
     setUsers(nextUsers);
     setRoles(nextRoles);
     setTeams(nextTeams);
-    setPresets(nextPresets);
-    setSelectedId((current) => {
-      if (current && nextUsers.some((user) => user.id === current)) {
-        return current;
-      }
-      return nextUsers[0]?.id ?? '';
-    });
     setSelectedIds((current) => current.filter((id) => nextUsers.some((user) => user.id === id)));
   }, [organizationId]);
 
@@ -135,13 +117,6 @@ export function TeamAdminShell() {
   }, [refresh]);
 
   React.useEffect(() => {
-    if (selected) {
-      setExtraGrants([...selected.permissionGrants]);
-      setExtraDenies([...selected.permissionDenies]);
-    }
-  }, [selected]);
-
-  React.useEffect(() => {
     if (focusMembers) {
       setTab('members');
     }
@@ -151,18 +126,12 @@ export function TeamAdminShell() {
     if (teamFilter && user.teamId !== teamFilter) {
       return false;
     }
-    if (roleFilter) {
-      if (user.customRoleId === roleFilter) {
-        // ok
-      } else if (
-        roleFilter.startsWith('system:') &&
-        user.systemRole === roleFilter.slice('system:'.length) &&
-        !user.customRoleId
-      ) {
-        // ok
-      } else {
+    if (roleFilter === '__none__') {
+      if (user.customRoleId) {
         return false;
       }
+    } else if (roleFilter && user.customRoleId !== roleFilter) {
+      return false;
     }
     if (statusFilter && user.status !== statusFilter) {
       return false;
@@ -199,26 +168,10 @@ export function TeamAdminShell() {
     );
   }
 
-  async function handleSaveOverrides() {
-    if (!organizationId || !selected) return;
-    try {
-      await rbacApi.updateUserAcl(organizationId, selected.id, {
-        customRoleId: selected.customRoleId,
-        permissionGrants: extraGrants,
-        permissionDenies: extraDenies,
-      });
-      toast.success('Access overrides saved');
-      await refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not save overrides');
-    }
-  }
-
   async function handleInvite(input: CreateTenantUserRequest) {
     if (!organizationId) return;
     const created = await rbacApi.createUser(organizationId, input);
     await refresh();
-    setSelectedId(created.id);
     toast.success(`Invited ${created.name}`);
   }
 
@@ -263,7 +216,7 @@ export function TeamAdminShell() {
     <>
       <div className={ORDER_PAGE_GAP}>
         <p className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          Invite any role, apply presets, override permissions, and manage users in bulk.{' '}
+          Invite users, assign a custom role, then put them on a team.{' '}
           <Link href="/dashboard/settings/roles" className="font-medium text-primary hover:underline">
             Manage roles
           </Link>
@@ -309,6 +262,7 @@ export function TeamAdminShell() {
             organizationId={organizationId}
             users={users}
             teams={teams}
+            roles={roles}
             onChanged={refresh}
           />
         ) : null}
@@ -326,18 +280,20 @@ export function TeamAdminShell() {
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {selectedIds.length > 0 ? (
                     <>
-                      <select
-                        className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                        value={bulkRoleId}
-                        onChange={(event) => setBulkRoleId(event.target.value)}
-                      >
-                        <option value="">Change role…</option>
-                        {roles.map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="w-44">
+                        <FormSearchSelect
+                          value={bulkRoleId}
+                          onChange={setBulkRoleId}
+                          placeholder="Change role…"
+                          searchPlaceholder="Search roles…"
+                          options={[
+                            { value: '', label: 'Change role…' },
+                            ...roles
+                              .filter((role) => !role.isSystem)
+                              .map((role) => ({ value: role.id, label: role.name })),
+                          ]}
+                        />
+                      </div>
                       <Button
                         type="button"
                         size="sm"
@@ -392,40 +348,45 @@ export function TeamAdminShell() {
                       onChange={(e) => setSearch(e.target.value)}
                     />
                   </div>
-                  <select
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                    value={teamFilter}
-                    onChange={(event) => setTeamFilter(event.target.value)}
-                  >
-                    <option value="">All teams</option>
-                    {teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                    value={roleFilter}
-                    onChange={(event) => setRoleFilter(event.target.value)}
-                  >
-                    <option value="">All roles</option>
-                    {roles.map((role) => (
-                      <option key={role.id} value={role.id}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value)}
-                  >
-                    <option value="">All statuses</option>
-                    <option value="active">Active</option>
-                    <option value="invited">Invited</option>
-                    <option value="suspended">Suspended</option>
-                  </select>
+                  <div className="w-44">
+                    <FormSearchSelect
+                      value={teamFilter}
+                      onChange={setTeamFilter}
+                      placeholder="All teams"
+                      searchPlaceholder="Search teams…"
+                      options={[
+                        { value: '', label: 'All teams' },
+                        ...teams.map((team) => ({ value: team.id, label: team.name })),
+                      ]}
+                    />
+                  </div>
+                  <div className="w-44">
+                    <FormSearchSelect
+                      value={roleFilter}
+                      onChange={setRoleFilter}
+                      placeholder="All roles"
+                      searchPlaceholder="Search roles…"
+                      options={[
+                        { value: '', label: 'All roles' },
+                        { value: '__none__', label: 'No custom role' },
+                        ...roles.map((role) => ({ value: role.id, label: role.name })),
+                      ]}
+                    />
+                  </div>
+                  <div className="w-40">
+                    <FormSearchSelect
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      placeholder="All statuses"
+                      searchable={false}
+                      options={[
+                        { value: '', label: 'All statuses' },
+                        { value: 'active', label: 'Active' },
+                        { value: 'invited', label: 'Invited' },
+                        { value: 'suspended', label: 'Suspended' },
+                      ]}
+                    />
+                  </div>
                 </div>
                 <Table>
                   <TableHeader>
@@ -444,16 +405,13 @@ export function TeamAdminShell() {
                       <TableHead>Status</TableHead>
                       <TableHead>Invited by</TableHead>
                       <TableHead>Last seen</TableHead>
+                      <TableHead className="w-28"> </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.map((user) => (
-                      <TableRow
-                        key={user.id}
-                        className={cn('cursor-pointer', selectedId === user.id && 'bg-primary/5')}
-                        onClick={() => setSelectedId(user.id)}
-                      >
-                        <TableCell onClick={(event) => event.stopPropagation()}>
+                      <TableRow key={user.id}>
+                        <TableCell>
                           <input
                             type="checkbox"
                             checked={selectedIds.includes(user.id)}
@@ -497,7 +455,16 @@ export function TeamAdminShell() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {user.invitedBy?.name ?? '—'}
+                          {user.invitedBy ? (
+                            <div>
+                              <p className="text-sm">{user.invitedBy.name}</p>
+                              {user.invitedBy.email ? (
+                                <p className="text-xs text-muted-foreground">{user.invitedBy.email}</p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            '—'
+                          )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {user.lastSeenAt ? (
@@ -509,11 +476,25 @@ export function TeamAdminShell() {
                             '—'
                           )}
                         </TableCell>
+                        <TableCell>
+                          {user.status === 'invited' ? (
+                            <Can permission={['users.manage', 'users.invite']}>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void handleResendInvite(user.id)}
+                              >
+                                Resend
+                              </Button>
+                            </Can>
+                          ) : null}
+                        </TableCell>
                       </TableRow>
                     ))}
                     {filtered.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                        <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
                           No users match this filter.
                         </TableCell>
                       </TableRow>
@@ -522,95 +503,6 @@ export function TeamAdminShell() {
                 </Table>
               </CardContent>
             </Card>
-
-            {selected ? (
-              <Card className={ORDER_CARD_CLASS}>
-                <CardHeader
-                  className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}
-                >
-                  <div className="flex items-center gap-2">
-                    <UserCog className="size-4 text-primary" />
-                    <CardTitle className="text-sm">Access — {selected.name}</CardTitle>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {selected.status === 'invited' ? (
-                      <Can permission={['users.manage', 'users.invite']}>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void handleResendInvite(selected.id)}
-                        >
-                          <Mail className="size-4" />
-                          Resend invite
-                        </Button>
-                      </Can>
-                    ) : null}
-                    <Can permission="users.manage">
-                      <Button type="button" size="sm" onClick={() => void handleSaveOverrides()}>
-                        Save overrides
-                      </Button>
-                    </Can>
-                  </div>
-                </CardHeader>
-                <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-6')}>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Role</Label>
-                      <select
-                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                        value={selected.customRoleId ?? `system:${selected.systemRole}`}
-                        onChange={(event) =>
-                          setUsers((current) =>
-                            current.map((user) =>
-                              user.id === selected.id
-                                ? {
-                                    ...user,
-                                    customRoleId: event.target.value || undefined,
-                                    systemRole: event.target.value.startsWith('system:')
-                                      ? (event.target.value.slice('system:'.length) as TenantUser['systemRole'])
-                                      : user.systemRole,
-                                  }
-                                : user,
-                            ),
-                          )
-                        }
-                      >
-                        {roles.map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {canSwitchRole ? (
-                      <div className="space-y-2">
-                        <Label>Demo: preview as role</Label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => void switchRole(selected.systemRole)}
-                        >
-                          Switch to {ROLE_LABELS[selected.systemRole]}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div>
-                    <h3 className="mb-2 text-sm font-semibold">Extra grants</h3>
-                    <PermissionMatrix value={extraGrants} onChange={setExtraGrants} />
-                  </div>
-
-                  <div>
-                    <h3 className="mb-2 text-sm font-semibold">Explicit denies</h3>
-                    <PermissionMatrix value={extraDenies} onChange={setExtraDenies} />
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
           </>
         ) : null}
       </div>
@@ -619,7 +511,6 @@ export function TeamAdminShell() {
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         roles={roles}
-        presets={presets}
         onSubmit={handleInvite}
       />
 

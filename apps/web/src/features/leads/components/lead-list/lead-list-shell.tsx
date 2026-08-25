@@ -27,12 +27,12 @@ import {
 import { LeadNoteModal } from '@/features/leads/components/lead-list/modals/lead-note-modal';
 import { LeadPipelinePanel } from '@/features/leads/components/lead-list/lead-pipeline-panel';
 import { LeadSelectionBar } from '@/features/leads/components/lead-list/lead-selection-bar';
-import { LeadWorkspaceHeader } from '@/features/leads/components/lead-list/lead-workspace-header';
 import { useLeadMutations } from '@/features/leads/hooks/use-lead-mutations';
 import { useLeadPipeline } from '@/features/leads/hooks/use-lead-pipeline';
 import { useLeadsList } from '@/features/leads/hooks/use-leads-list';
 import { navigateToConvertLead } from '@/features/leads/lib/lead-convert';
 import { createLeadsListBreadcrumbs } from '@/features/leads/lib/lead-breadcrumbs';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
@@ -59,7 +59,6 @@ export function LeadListShell({ context }: LeadListShellProps) {
   });
   const [filtersOpen, setFiltersOpen] = React.useState(Boolean(searchParams.get('agent')));
   const [listVersion, setListVersion] = React.useState(0);
-  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const [noteTarget, setNoteTarget] = React.useState<LeadListItem | null>(null);
   const [noteInitial, setNoteInitial] = React.useState('');
 
@@ -128,7 +127,7 @@ export function LeadListShell({ context }: LeadListShellProps) {
     listVersion,
   );
 
-  const { data, isLoading, error, refresh } = useLeadsList(
+  const { data, isLoading, error } = useLeadsList(
     {
       status: context.statusFilter,
       source: sourceFilter,
@@ -140,11 +139,9 @@ export function LeadListShell({ context }: LeadListShellProps) {
     listVersion,
   );
 
-  React.useEffect(() => {
-    if (data && !isLoading) {
-      setLastRefreshedAt(new Date());
-    }
-  }, [data, isLoading]);
+  usePageDataRefresh(() => {
+    setListVersion((v) => v + 1);
+  });
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
@@ -167,7 +164,6 @@ export function LeadListShell({ context }: LeadListShellProps) {
 
   function handleRefresh() {
     setListVersion((v) => v + 1);
-    void refresh();
   }
 
   function handleClearFilters() {
@@ -211,14 +207,6 @@ export function LeadListShell({ context }: LeadListShellProps) {
       breadcrumbs={createLeadsListBreadcrumbs(context.title)}
     >
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
-        <LeadWorkspaceHeader
-          title={context.title}
-          description={context.description}
-          lastRefreshedAt={lastRefreshedAt}
-          isRefreshing={isLoading}
-          onRefresh={handleRefresh}
-        />
-
         <CrmPageActions moduleId="leads" />
 
         <CrmSummaryStrip items={summaryItems} className="sm:grid-cols-3" />

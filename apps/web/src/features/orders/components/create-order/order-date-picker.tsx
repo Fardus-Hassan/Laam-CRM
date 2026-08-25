@@ -20,13 +20,14 @@ type OrderDatePickerProps = {
   value: Date;
   onChange: (date: Date) => void;
   error?: string;
+  label?: string;
 };
 
-export function OrderDatePicker({ value, onChange, error }: OrderDatePickerProps) {
+export function OrderDatePicker({ value, onChange, error, label = 'Date' }: OrderDatePickerProps) {
   const [open, setOpen] = React.useState(false);
 
   return (
-    <FormField label="Date" required error={error}>
+    <FormField label={label} required error={error}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button

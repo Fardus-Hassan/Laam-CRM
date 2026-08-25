@@ -56,50 +56,26 @@ const CONFIRMED_BULK: BulkActionId[] = [
   ...PENDING_BULK,
 ];
 
-/** Matches web seed defaults — first-time org bootstrap only. */
+/**
+ * Default statuses for a new org (COO PDF sidebar + core workflow).
+ * Sidebar placement is controlled by Brand `sidebarNavLayout` — not every
+ * `displayMode: sidebar` status is in the PDF default folders.
+ */
 const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
+  // —— Core workflow (Available pool unless org places them) ——
   {
     slug: 'pending',
     label: 'Pending',
-    labelBn: 'পেন্ডিং',
     color: 'hsl(174 58% 42%)',
     group: 'intake',
     parentSlug: 'pendings',
     displayMode: 'sidebar_and_tab',
     isDefault: true,
     isTerminal: false,
-    allowedTransitions: ['pending_2', 'pending_3', 'confirmed', 'hold', 'cancelled'],
+    allowedTransitions: ['confirmed', 'hold', 'cancelled', 'variation_1'],
     bulkActions: PENDING_BULK,
     showInGroupByStatus: true,
     sidebarOrder: 10,
-  },
-  {
-    slug: 'pending_2',
-    label: 'Pending 2',
-    color: 'hsl(174 48% 38%)',
-    group: 'intake',
-    parentSlug: 'pendings',
-    displayMode: 'sidebar_and_tab',
-    isDefault: false,
-    isTerminal: false,
-    allowedTransitions: ['pending', 'pending_3', 'confirmed', 'hold', 'cancelled'],
-    bulkActions: PENDING_BULK,
-    showInGroupByStatus: true,
-    sidebarOrder: 11,
-  },
-  {
-    slug: 'pending_3',
-    label: 'Pending 3',
-    color: 'hsl(174 38% 34%)',
-    group: 'intake',
-    parentSlug: 'pendings',
-    displayMode: 'sidebar_and_tab',
-    sidebarOrder: 12,
-    isDefault: false,
-    isTerminal: false,
-    allowedTransitions: ['pending', 'pending_2', 'confirmed', 'hold', 'cancelled'],
-    bulkActions: PENDING_BULK,
-    showInGroupByStatus: true,
   },
   {
     slug: 'confirmed',
@@ -114,53 +90,189 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     bulkActions: CONFIRMED_BULK,
     showInGroupByStatus: true,
   },
+  // —— Pending Orders (PDF) ——
   {
-    slug: 'confirmed_2',
-    label: 'Confirmed 2',
-    color: 'hsl(200 50% 40%)',
-    group: 'confirm',
-    displayMode: 'filter_only',
+    slug: 'processing',
+    label: 'Processing',
+    color: 'hsl(260 45% 55%)',
+    group: 'fulfillment',
+    displayMode: 'sidebar',
+    sidebarOrder: 40,
     isDefault: false,
     isTerminal: false,
-    allowedTransitions: ['processing', 'in_courier', 'cancelled'],
-    bulkActions: CONFIRMED_BULK,
+    allowedTransitions: ['in_courier', 'hold', 'variation_1'],
+    bulkActions: DEFAULT_BULK,
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'incomplete',
+    label: 'Incomplete Orders',
+    color: 'hsl(25 70% 48%)',
+    group: 'intake',
+    displayMode: 'sidebar',
+    sidebarOrder: 41,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['pending', 'processing', 'hold', 'cancelled'],
+    bulkActions: PENDING_BULK,
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'good_but_no_response',
+    label: 'Good But No Response',
+    color: 'hsl(190 45% 45%)',
+    group: 'intake',
+    displayMode: 'sidebar',
+    sidebarOrder: 42,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['pending', 'confirmed', 'hold', 'cancelled'],
+    bulkActions: PENDING_BULK,
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'no_response',
+    label: 'No Response',
+    color: 'hsl(210 25% 50%)',
+    group: 'intake',
+    displayMode: 'sidebar',
+    sidebarOrder: 43,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['pending', 'hold', 'cancelled'],
+    bulkActions: PENDING_BULK,
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'advanced_payment',
+    label: 'Advanced Payment',
+    color: 'hsl(160 50% 40%)',
+    group: 'intake',
+    displayMode: 'sidebar',
+    sidebarOrder: 44,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['confirmed', 'processing', 'hold', 'cancelled'],
+    bulkActions: PENDING_BULK,
     showInGroupByStatus: true,
   },
   {
     slug: 'hold',
-    label: 'Hold',
+    label: 'On Hold',
     color: 'hsl(38 90% 50%)',
     group: 'confirm',
     displayMode: 'sidebar',
-    sidebarOrder: 30,
+    sidebarOrder: 45,
     isDefault: false,
     isTerminal: false,
-    allowedTransitions: ['pending', 'confirmed', 'cancelled'],
+    allowedTransitions: ['pending', 'confirmed', 'hold_followup', 'cancelled'],
     bulkActions: PENDING_BULK,
     showInGroupByStatus: true,
   },
   {
     slug: 'hold_followup',
     label: 'Hold Followup',
-    color: 'hsl(38 80% 45%)',
+    color: 'hsl(38 85% 42%)',
     group: 'confirm',
-    displayMode: 'filter_only',
+    displayMode: 'sidebar',
+    sidebarOrder: 46,
     isDefault: false,
     isTerminal: false,
-    allowedTransitions: ['hold', 'confirmed', 'cancelled'],
+    allowedTransitions: ['pending', 'confirmed', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
     showInGroupByStatus: true,
   },
   {
-    slug: 'processing',
-    label: 'Processing',
-    color: 'hsl(260 45% 55%)',
-    group: 'fulfillment',
-    displayMode: 'filter_only',
+    slug: 'pre_order',
+    label: 'Pre Order',
+    color: 'hsl(280 40% 50%)',
+    group: 'intake',
+    displayMode: 'sidebar',
+    sidebarOrder: 47,
     isDefault: false,
     isTerminal: false,
-    allowedTransitions: ['in_courier', 'special', 'hold'],
-    bulkActions: DEFAULT_BULK,
+    allowedTransitions: ['pending', 'confirmed', 'processing', 'cancelled'],
+    bulkActions: PENDING_BULK,
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'cancelled',
+    label: 'Cancelled',
+    color: 'hsl(0 60% 50%)',
+    group: 'terminal',
+    displayMode: 'sidebar',
+    sidebarOrder: 48,
+    isDefault: false,
+    isTerminal: true,
+    allowedTransitions: [],
+    bulkActions: ['export'],
+    showInGroupByStatus: true,
+  },
+  // —— Confirmed Orders (PDF): Variation queues (ordinary — not confirm stock-cut) ——
+  {
+    slug: 'variation_1',
+    label: 'Variation 1',
+    color: 'hsl(200 55% 48%)',
+    group: 'special',
+    displayMode: 'sidebar',
+    sidebarOrder: 50,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['processing', 'in_courier', 'hold', 'cancelled', 'variation_2'],
+    bulkActions: CONFIRMED_BULK,
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'variation_2',
+    label: 'Variation 2',
+    color: 'hsl(200 50% 42%)',
+    group: 'special',
+    displayMode: 'sidebar',
+    sidebarOrder: 51,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['processing', 'in_courier', 'hold', 'cancelled', 'variation_3'],
+    bulkActions: CONFIRMED_BULK,
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'variation_3',
+    label: 'Variation 3',
+    color: 'hsl(200 45% 38%)',
+    group: 'special',
+    displayMode: 'sidebar',
+    sidebarOrder: 52,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['processing', 'in_courier', 'hold', 'cancelled'],
+    bulkActions: CONFIRMED_BULK,
+    showInGroupByStatus: true,
+  },
+  // —— Courier & Delivery (PDF) ——
+  {
+    slug: 'rts_pathao',
+    label: 'RTS to Pathao',
+    color: 'hsl(330 55% 48%)',
+    group: 'returns',
+    displayMode: 'sidebar',
+    sidebarOrder: 60,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['in_courier', 'returned', 'pending_return'],
+    bulkActions: [...DEFAULT_BULK, 'update_courier_status'],
+    showInGroupByStatus: true,
+  },
+  {
+    slug: 'rts_carrybee',
+    label: 'RTS to CarryBee',
+    color: 'hsl(330 50% 44%)',
+    group: 'returns',
+    displayMode: 'sidebar',
+    sidebarOrder: 61,
+    isDefault: false,
+    isTerminal: false,
+    allowedTransitions: ['in_courier', 'returned', 'pending_return'],
+    bulkActions: [...DEFAULT_BULK, 'update_courier_status'],
     showInGroupByStatus: true,
   },
   {
@@ -169,23 +281,11 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     color: 'hsl(220 55% 50%)',
     group: 'fulfillment',
     displayMode: 'sidebar',
-    sidebarOrder: 25,
+    sidebarOrder: 62,
     isDefault: false,
     isTerminal: false,
-    allowedTransitions: ['delivered', 'pending_return', 'cancelled'],
+    allowedTransitions: ['delivered', 'partial_delivered', 'pending_return', 'cancelled'],
     bulkActions: [...DEFAULT_BULK, 'update_courier_status'],
-    showInGroupByStatus: true,
-  },
-  {
-    slug: 'hand_delivery',
-    label: 'Hand Delivery',
-    color: 'hsl(160 40% 42%)',
-    group: 'delivery',
-    displayMode: 'filter_only',
-    isDefault: false,
-    isTerminal: false,
-    allowedTransitions: ['hand_delivery_completed', 'delivered'],
-    bulkActions: DEFAULT_BULK,
     showInGroupByStatus: true,
   },
   {
@@ -193,7 +293,8 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     label: 'Delivered',
     color: 'hsl(142 50% 40%)',
     group: 'delivery',
-    displayMode: 'filter_only',
+    displayMode: 'sidebar',
+    sidebarOrder: 63,
     isDefault: false,
     isTerminal: false,
     allowedTransitions: ['completed', 'pending_return'],
@@ -201,35 +302,25 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     showInGroupByStatus: true,
   },
   {
-    slug: 'completed',
-    label: 'Completed',
-    color: 'hsl(142 60% 35%)',
-    group: 'terminal',
-    displayMode: 'filter_only',
+    slug: 'partial_delivered',
+    label: 'Partial Delivered',
+    color: 'hsl(142 40% 45%)',
+    group: 'delivery',
+    displayMode: 'sidebar',
+    sidebarOrder: 64,
     isDefault: false,
-    isTerminal: true,
-    allowedTransitions: [],
+    isTerminal: false,
+    allowedTransitions: ['delivered', 'pending_return', 'completed'],
     bulkActions: ['export', 'print_info'],
     showInGroupByStatus: true,
   },
   {
-    slug: 'cancelled',
-    label: 'Canceled',
-    color: 'hsl(0 60% 50%)',
-    group: 'terminal',
-    displayMode: 'filter_only',
-    isDefault: false,
-    isTerminal: true,
-    allowedTransitions: [],
-    bulkActions: ['export'],
-    showInGroupByStatus: true,
-  },
-  {
     slug: 'pending_return',
-    label: 'Pending Return',
+    label: 'Pending Returned',
     color: 'hsl(15 70% 50%)',
     group: 'returns',
-    displayMode: 'filter_only',
+    displayMode: 'sidebar',
+    sidebarOrder: 65,
     isDefault: false,
     isTerminal: false,
     allowedTransitions: ['returned', 'completed'],
@@ -241,7 +332,8 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     label: 'Returned',
     color: 'hsl(15 60% 45%)',
     group: 'returns',
-    displayMode: 'filter_only',
+    displayMode: 'sidebar',
+    sidebarOrder: 66,
     isDefault: false,
     isTerminal: true,
     allowedTransitions: [],
@@ -249,39 +341,16 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     showInGroupByStatus: true,
   },
   {
-    slug: 'return_collection',
-    label: 'Return Collection',
-    color: 'hsl(15 55% 48%)',
-    group: 'returns',
-    displayMode: 'filter_only',
+    slug: 'completed',
+    label: 'Completed',
+    color: 'hsl(142 60% 35%)',
+    group: 'terminal',
+    displayMode: 'sidebar',
+    sidebarOrder: 70,
     isDefault: false,
-    isTerminal: false,
-    allowedTransitions: ['returned', 'pending_return'],
-    bulkActions: DEFAULT_BULK,
-    showInGroupByStatus: true,
-  },
-  {
-    slug: 'special',
-    label: 'Special',
-    color: 'hsl(280 45% 55%)',
-    group: 'fulfillment',
-    displayMode: 'filter_only',
-    isDefault: false,
-    isTerminal: false,
-    allowedTransitions: ['processing', 'in_courier'],
-    bulkActions: DEFAULT_BULK,
-    showInGroupByStatus: true,
-  },
-  {
-    slug: 'convert',
-    label: 'Convert',
-    color: 'hsl(300 40% 50%)',
-    group: 'confirm',
-    displayMode: 'filter_only',
-    isDefault: false,
-    isTerminal: false,
-    allowedTransitions: ['confirmed', 'cancelled'],
-    bulkActions: PENDING_BULK,
+    isTerminal: true,
+    allowedTransitions: [],
+    bulkActions: ['export', 'print_info'],
     showInGroupByStatus: true,
   },
 ];
@@ -321,6 +390,17 @@ export class OrgOrderStatusesService {
       select: { id: true },
     });
     return Boolean(row);
+  }
+
+  async getStatusMeta(
+    organizationId: string,
+    slug: string,
+  ): Promise<{ slug: string; group: string } | null> {
+    await this.ensureSeeded(organizationId);
+    return this.prisma.orgOrderStatus.findFirst({
+      where: { organizationId, slug: slug.trim().toLowerCase() },
+      select: { slug: true, group: true },
+    });
   }
 
   async upsert(
@@ -402,6 +482,9 @@ export class OrgOrderStatusesService {
   async ensureSeeded(organizationId: string): Promise<void> {
     const count = await this.prisma.orgOrderStatus.count({ where: { organizationId } });
     if (count > 0) {
+      await this.ensureHoldFollowupStatus(organizationId);
+      await this.ensureMissingDefaultStatuses(organizationId);
+      await this.syncSystemStatusLabels(organizationId);
       await this.importMissingFormOptionStatuses(organizationId);
       return;
     }
@@ -435,6 +518,105 @@ export class OrgOrderStatusesService {
     }
 
     await this.importMissingFormOptionStatuses(organizationId);
+  }
+
+  /** Keep COO PDF labels in sync for system-seeded statuses (label only — don't reset displayMode). */
+  private async syncSystemStatusLabels(organizationId: string): Promise<void> {
+    for (const status of DEFAULT_ORG_ORDER_STATUSES) {
+      const updated = await this.prisma.orgOrderStatus.updateMany({
+        where: { organizationId, slug: status.slug, isSystem: true },
+        data: {
+          label: status.label,
+        },
+      });
+      if (updated.count > 0) {
+        await this.syncFormOption(organizationId, status.slug, status.label);
+      }
+    }
+  }
+
+  /** Add any DEFAULT seed slugs missing on older orgs (does not overwrite existing). */
+  private async ensureMissingDefaultStatuses(organizationId: string): Promise<void> {
+    const existing = await this.prisma.orgOrderStatus.findMany({
+      where: { organizationId },
+      select: { slug: true },
+    });
+    const known = new Set(existing.map((row) => row.slug));
+    const missing = DEFAULT_ORG_ORDER_STATUSES.filter((status) => !known.has(status.slug));
+    if (!missing.length) return;
+
+    await this.prisma.orgOrderStatus.createMany({
+      data: missing.map((status, index) => ({
+        organizationId,
+        slug: status.slug,
+        label: status.label,
+        labelBn: status.labelBn ?? null,
+        color: status.color,
+        group: status.group,
+        parentSlug: status.parentSlug ?? null,
+        displayMode: status.displayMode,
+        showInSidebar: status.showInSidebar ?? null,
+        showInNestedTabs: status.showInNestedTabs ?? null,
+        sidebarOrder: status.sidebarOrder ?? null,
+        isTerminal: status.isTerminal,
+        isDefault: status.isDefault,
+        isSystem: true,
+        isActive: true,
+        allowedTransitions: status.allowedTransitions,
+        bulkActions: status.bulkActions,
+        showInGroupByStatus: status.showInGroupByStatus,
+        sortOrder: status.sidebarOrder ?? 100 + index,
+      })),
+      skipDuplicates: true,
+    });
+
+    for (const status of missing) {
+      await this.syncFormOption(organizationId, status.slug, status.label);
+    }
+  }
+
+  /** Ensure hold_followup exists on orgs seeded before workflow automation. */
+  private async ensureHoldFollowupStatus(organizationId: string): Promise<void> {
+    const existing = await this.prisma.orgOrderStatus.findFirst({
+      where: { organizationId, slug: 'hold_followup' },
+    });
+    if (!existing) {
+      const seed = DEFAULT_ORG_ORDER_STATUSES.find((s) => s.slug === 'hold_followup');
+      if (seed) {
+        await this.prisma.orgOrderStatus.create({
+          data: {
+            organizationId,
+            slug: seed.slug,
+            label: seed.label,
+            color: seed.color,
+            group: seed.group,
+            displayMode: seed.displayMode,
+            sidebarOrder: seed.sidebarOrder ?? null,
+            isTerminal: seed.isTerminal,
+            isDefault: seed.isDefault,
+            isSystem: true,
+            isActive: true,
+            allowedTransitions: seed.allowedTransitions,
+            bulkActions: seed.bulkActions,
+            showInGroupByStatus: seed.showInGroupByStatus,
+            sortOrder: seed.sidebarOrder ?? 35,
+          },
+        });
+        await this.syncFormOption(organizationId, seed.slug, seed.label);
+      }
+    }
+
+    const hold = await this.prisma.orgOrderStatus.findFirst({
+      where: { organizationId, slug: 'hold' },
+    });
+    if (hold && !hold.allowedTransitions.includes('hold_followup')) {
+      await this.prisma.orgOrderStatus.update({
+        where: { id: hold.id },
+        data: {
+          allowedTransitions: [...hold.allowedTransitions, 'hold_followup'],
+        },
+      });
+    }
   }
 
   /** Pull any whitelist-only form-option statuses into OrgOrderStatus as filter_only. */

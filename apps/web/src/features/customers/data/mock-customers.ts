@@ -7,6 +7,7 @@ import type {
   CustomerStatus,
 } from '@laam/types';
 
+import { MOCK_PURCHASE_SEGMENTS } from '@/features/customers/data/mock-purchase-segments';
 import { MOCK_PRODUCTS } from '@/features/orders/data/mock-products';
 
 const MOCK_SEGMENTS: Array<{ id: string; label: string; match: (c: CustomerDetail) => boolean }> = [
@@ -212,9 +213,13 @@ export function getMockCustomerById(id: string): CustomerDetail | undefined {
 
 function matchesSegment(customer: CustomerDetail, segmentId?: string): boolean {
   if (!segmentId || segmentId === 'all') return true;
-  const segment = MOCK_SEGMENTS.find((s) => s.id === segmentId);
-  if (!segment) return true;
-  return segment.match(customer);
+  const behavioral = MOCK_SEGMENTS.find((s) => s.id === segmentId);
+  if (behavioral) return behavioral.match(customer);
+  const purchase = MOCK_PURCHASE_SEGMENTS.find((s) => s.slug === segmentId);
+  if (!purchase) return true;
+  const value =
+    purchase.metric === 'orderCount' ? customer.orderCount : customer.deliveredCount;
+  return compareOp(value, purchase.op, purchase.threshold);
 }
 
 function compareOp(n: number, op: string | undefined, v: number): boolean {
@@ -349,6 +354,15 @@ export function filterMockCustomers(query: CustomerListQuery): CustomerListRespo
       withFollowUpCount,
     },
     segments: getCustomerSegmentCounts(),
+    purchaseSegments: MOCK_PURCHASE_SEGMENTS.filter(
+      (s) =>
+        s.isActive &&
+        (s.displayMode === 'nested_tab' || s.displayMode === 'sidebar_and_tab'),
+    ).map((segment) => ({
+      id: segment.slug,
+      label: segment.label,
+      count: store.filter((c) => matchesSegment(c, segment.slug)).length,
+    })),
     statuses: [
       {
         id: 'none',

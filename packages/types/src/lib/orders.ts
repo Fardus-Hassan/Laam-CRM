@@ -63,6 +63,9 @@ export const orderListItemSchema = z.object({
   assignedAgentName: z.string().optional(),
   /** Stable CRM user id for assignee (incentive KPI). */
   assignedUserId: z.string().optional(),
+  /** Courier workload assignee (logistic team split). */
+  logisticAssignedUserId: z.string().optional(),
+  logisticAssignedAgentName: z.string().optional(),
   shippingArea: z.string(),
   createdAt: z.string(),
   /** Last order field update. */
@@ -216,6 +219,17 @@ export const orderDetailSchema = orderListItemSchema.extend({
   clientIp: z.string().optional(),
   /** Stable CRM user id for assignee (incentive KPI). */
   assignedUserId: z.string().optional(),
+  /** Snapshot when order KPI credit was locked. */
+  orderCreditUserId: z.string().optional(),
+  orderCreditAgentName: z.string().optional(),
+  orderCreditedAt: z.string().optional(),
+  /** Cross-sell / upsell flags derived from inbound snapshot compare. */
+  incentiveFlags: z
+    .object({
+      crossSell: z.boolean().optional(),
+      upsell: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export type OrderDetail = z.infer<typeof orderDetailSchema>;
@@ -458,6 +472,7 @@ export const createOrderPayloadSchema = z.object({
   district: z.string().optional(),
   source: z.string().min(1),
   status: z.string().default('pending'),
+  followUpDate: z.string().optional(),
   paymentStatus: paymentStatusSchema.optional(),
   paymentMethod: z.string().optional(),
   deliveryCharge: z.number().default(0),
@@ -469,6 +484,9 @@ export const createOrderPayloadSchema = z.object({
   packingNote: z.string().optional(),
   assignedAgentName: z.string().optional(),
   assignedUserId: z.string().optional(),
+  assignmentMode: z.enum(['auto_split', 'specific_member']).optional(),
+  routingTeamIds: z.array(z.string()).optional(),
+  routingUserId: z.string().optional(),
   skipFollowup: z.boolean().optional(),
   couponCode: z.string().optional(),
   paidAmount: z.number().nonnegative().optional(),
@@ -530,6 +548,8 @@ export const orderFormOptionsResponseSchema = z.object({
   pathaoZones: z.array(orderFormOptionSchema).default([]),
   defaultCourierNote: z.string(),
   defaultShipping: z.number(),
+  /** Source slug used when Create Order is opened from a customer. Empty = leave blank / last order. */
+  customerCreateSource: z.string().default(''),
 });
 
 export type OrderFormOptionsResponse = z.infer<typeof orderFormOptionsResponseSchema>;
@@ -560,6 +580,7 @@ export const updateOrderPayloadSchema = z.object({
   district: z.string().optional(),
   source: orderSourceSchema.optional(),
   status: orderStatusTypeSchema.optional(),
+  followUpDate: z.string().optional(),
   paymentStatus: paymentStatusSchema.optional(),
   paymentMethod: z.string().optional(),
   deliveryCharge: z.number().optional(),
@@ -638,6 +659,8 @@ export const orderBulkActionPayloadSchema = z.object({
   action: orderBulkActionTypeSchema,
   orderIds: z.array(z.string()).min(1),
   status: orderStatusTypeSchema.optional(),
+  /** Required when bulk status_change target is hold. */
+  followUpDate: z.string().optional(),
   employeeName: z.string().optional(),
   /** Stable assignee id for KPI matching (preferred over name-only). */
   employeeUserId: z.string().optional(),
@@ -651,6 +674,12 @@ export const orderBulkActionPayloadSchema = z.object({
    * when remote cancel API fails (force local clear).
    */
   confirmRemoteCancelled: z.boolean().optional(),
+  /** Assignment mode for order/courier routing override. */
+  assignmentMode: z.enum(['auto_split', 'specific_member']).optional(),
+  /** Team pool for auto split / validation of specific member. */
+  routingTeamIds: z.array(z.string()).optional(),
+  /** Explicit member under the selected team pool. */
+  routingUserId: z.string().optional(),
 });
 
 export type OrderBulkActionPayload = z.infer<typeof orderBulkActionPayloadSchema>;
@@ -662,6 +691,22 @@ export const bulkActionResultSchema = z.object({
 });
 
 export type BulkActionResult = z.infer<typeof bulkActionResultSchema>;
+
+export const orgRoutingModeSchema = z.enum(['auto_split', 'specific_member']);
+export type OrgRoutingMode = z.infer<typeof orgRoutingModeSchema>;
+
+export const orgRoutingRuleSchema = z.object({
+  mode: orgRoutingModeSchema,
+  teamIds: z.array(z.string()),
+  assigneeUserId: z.string().optional(),
+});
+export type OrgRoutingRule = z.infer<typeof orgRoutingRuleSchema>;
+
+export const orgRoutingConfigSchema = z.object({
+  orderRouting: orgRoutingRuleSchema,
+  courierRouting: orgRoutingRuleSchema,
+});
+export type OrgRoutingConfig = z.infer<typeof orgRoutingConfigSchema>;
 
 export const orderPaymentStatusSchema = z.enum(['pending', 'collected', 'reconciled']);
 

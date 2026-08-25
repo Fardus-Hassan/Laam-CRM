@@ -124,7 +124,7 @@ export const CRM_MODULES = {
   },
   courier: {
     id: 'courier',
-    title: 'Courier Hub',
+    title: 'Courier Dashboard',
     description: 'Courier accounts, bulk submit, and tracking inbox.',
     permissions: ['courier.view', 'courier.manage'],
     apiPath: '/crm/courier',

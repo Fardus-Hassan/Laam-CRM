@@ -422,7 +422,7 @@ export function OrderActionBar({
           <Button type="button" size="sm" variant="outline" className="h-8" asChild>
             <Link href="/dashboard/courier">
               <Truck className="size-3.5" />
-              Courier hub
+              Courier Dashboard
             </Link>
           </Button>
 

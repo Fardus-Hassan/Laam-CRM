@@ -53,13 +53,7 @@ const STATUS_OPTIONS = (Object.keys(FOLLOWUP_STATUS_LABELS) as FollowupStatus[])
   (value) => ({ value, label: FOLLOWUP_STATUS_LABELS[value] }),
 );
 
-const TAG_OPTIONS = [
-  { value: 'VIP', label: 'VIP' },
-  { value: 'Ramadan', label: 'Ramadan' },
-  { value: 'Modhu', label: 'Modhu' },
-  { value: 'Khejur', label: 'Khejur' },
-  { value: 'Repeat', label: 'Repeat' },
-];
+const TAG_OPTIONS = [{ value: '', label: 'No tag' }];
 
 export function FollowupBulkModals({ state, onClose, onSuccess }: FollowupBulkModalsProps) {
   const { bulkAction, isLoading } = useFollowupMutations();

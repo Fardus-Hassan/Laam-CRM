@@ -15,6 +15,7 @@ import {
   type TaskBulkActionId,
 } from '@/features/tasks/config/task-bulk-actions';
 import { useTaskMutations } from '@/features/tasks/hooks/use-task-mutations';
+import { downloadCsvAndExcel } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 type TaskBulkActionsProps = {
@@ -47,30 +48,22 @@ export function TaskBulkActions({
           toast.error('No rows to export');
           return;
         }
-        const header = 'Title,Type,Status,Priority,Due,Customer,Phone,Assigned,Related\n';
-        const body = selectedRows
-          .map((row) =>
-            [
-              `"${row.title}"`,
-              row.taskType,
-              row.status,
-              row.priority,
-              row.dueDate ?? '',
-              `"${row.customerName ?? ''}"`,
-              row.customerPhone ?? '',
-              row.assignedAgentName ?? '',
-              `"${row.relatedLabel ?? ''}"`,
-            ].join(','),
-          )
-          .join('\n');
-        const blob = new Blob([header + body], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `tasks-export-${Date.now()}.csv`;
-        anchor.click();
-        URL.revokeObjectURL(url);
-        toast.success(`Exported ${selectedRows.length} task(s)`);
+        downloadCsvAndExcel(
+          `tasks-export-${Date.now()}`,
+          ['Title', 'Type', 'Status', 'Priority', 'Due', 'Customer', 'Phone', 'Assigned', 'Related'],
+          selectedRows.map((row) => [
+            row.title,
+            row.taskType,
+            row.status,
+            row.priority,
+            row.dueDate ?? '',
+            row.customerName ?? '',
+            row.customerPhone ?? '',
+            row.assignedAgentName ?? '',
+            row.relatedLabel ?? '',
+          ]),
+        );
+        toast.success(`Exported ${selectedRows.length} task(s) as CSV and Excel`);
         onSuccess?.();
       },
     });

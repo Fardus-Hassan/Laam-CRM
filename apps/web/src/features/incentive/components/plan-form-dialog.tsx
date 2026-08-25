@@ -26,21 +26,14 @@ import {
 import { incentiveApi } from '@/features/incentive/api/incentive-api';
 import { useOrderStatusConfig } from '@/features/orders/hooks/use-order-status-config';
 
-const METRICS: Array<{ value: IncentiveMetricType; label: string }> = [
+const CORE_METRICS: Array<{ value: IncentiveMetricType; label: string }> = [
   { value: 'order_count', label: 'Order count' },
-  { value: 'cross_sell_count', label: 'Cross-sell count' },
+  { value: 'cross_sell_count', label: 'Cross-sell / upsell' },
   { value: 'return_ratio', label: 'Return ratio %' },
   { value: 'recovery_count', label: 'Recovery count' },
   { value: 'survey_count', label: 'Survey count' },
   { value: 'channel_activity', label: 'Channel activity' },
   { value: 'manual', label: 'Manual' },
-];
-
-const CHANNELS = [
-  { slug: 'call', label: 'Call' },
-  { slug: 'facebook_comment', label: 'Facebook comments' },
-  { slug: 'messenger', label: 'Messenger' },
-  { slug: 'whatsapp', label: 'WhatsApp' },
 ];
 
 type SlabDraft = {
@@ -78,6 +71,7 @@ type Draft = {
   entryDailyTarget: string;
   maxAgentReturnRatioPct: string;
   channels: string[];
+  recoveryFromStatuses: string[];
 };
 
 function toDraft(plan?: IncentivePlan | null): Draft {
@@ -85,7 +79,7 @@ function toDraft(plan?: IncentivePlan | null): Draft {
     name: plan?.name ?? '',
     teamId: plan?.teamId ?? '',
     metricType: plan?.metricType ?? 'order_count',
-    prorataAboveTop: plan?.prorataAboveTop ?? false,
+    prorataAboveTop: true,
     teamMonthlyTarget:
       plan?.teamMonthlyTarget == null ? '' : String(plan.teamMonthlyTarget),
     slabs:
@@ -111,6 +105,7 @@ function toDraft(plan?: IncentivePlan | null): Draft {
         ? ''
         : String(plan.metricConfig.maxAgentReturnRatioPct),
     channels: plan?.metricConfig?.channels ?? [],
+    recoveryFromStatuses: plan?.metricConfig?.recoveryFromStatuses ?? [],
   };
 }
 
@@ -152,6 +147,7 @@ export function PlanFormDialog({
   initial,
   teams,
   lockedTeamId,
+  occupiedMetrics = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -159,24 +155,33 @@ export function PlanFormDialog({
   initial?: IncentivePlan | null;
   teams: IncentiveTeam[];
   lockedTeamId?: string;
+  occupiedMetrics?: IncentiveMetricType[];
 }) {
   const { statuses } = useOrderStatusConfig();
   const [draft, setDraft] = React.useState<Draft>(() => toDraft(initial));
   const [saving, setSaving] = React.useState(false);
   const editing = Boolean(initial);
+  const metricOptions = CORE_METRICS.filter(
+    (metric) =>
+      metric.value === draft.metricType || !occupiedMetrics.includes(metric.value),
+  );
 
   React.useEffect(() => {
     if (!open) return;
     const next = toDraft(initial);
     if (lockedTeamId) {
       next.teamId = lockedTeamId;
-      if (!initial) {
-        const teamName = teams.find((team) => team.id === lockedTeamId)?.name;
-        next.name = teamName ? `${teamName} KPI` : next.name;
-      }
+    }
+    if (!initial) {
+      const firstFree =
+        CORE_METRICS.find((metric) => !occupiedMetrics.includes(metric.value)) ??
+        CORE_METRICS[0]!;
+      next.metricType = firstFree.value;
+      const teamName = teams.find((team) => team.id === (lockedTeamId || next.teamId))?.name;
+      next.name = teamName ? `${teamName} · ${firstFree.label}` : firstFree.label;
     }
     setDraft(next);
-  }, [initial, open, lockedTeamId, teams]);
+  }, [initial, open, lockedTeamId, teams, occupiedMetrics]);
 
   function patch(values: Partial<Draft>) {
     setDraft((current) => ({ ...current, ...values }));
@@ -227,16 +232,27 @@ export function PlanFormDialog({
     }
 
     const metricConfig: IncentiveMetricConfig = {
-      includeStatuses: draft.includeStatuses,
-      excludeStatuses: draft.excludeStatuses,
+      ...(draft.includeStatuses.length ? { includeStatuses: draft.includeStatuses } : {}),
+      ...(draft.excludeStatuses.length ? { excludeStatuses: draft.excludeStatuses } : {}),
       ...(draft.metricType === 'cross_sell_count'
         ? { minItems: Math.max(1, Number(draft.minItems) || 2) }
         : {}),
       ...(draft.metricType === 'return_ratio'
         ? {
             direction: 'lower' as const,
-            deliveredStatuses: draft.deliveredStatuses,
-            returnedStatuses: draft.returnedStatuses,
+            ...(draft.deliveredStatuses.length
+              ? { deliveredStatuses: draft.deliveredStatuses }
+              : {}),
+            ...(draft.returnedStatuses.length
+              ? { returnedStatuses: draft.returnedStatuses }
+              : {}),
+          }
+        : {}),
+      ...(draft.metricType === 'recovery_count'
+        ? {
+            ...(draft.recoveryFromStatuses.length
+              ? { recoveryFromStatuses: draft.recoveryFromStatuses }
+              : {}),
           }
         : {}),
       ...(draft.entryDailyTarget
@@ -254,7 +270,8 @@ export function PlanFormDialog({
       teamId: draft.teamId || null,
       metricType: draft.metricType,
       metricConfig,
-      prorataAboveTop: draft.prorataAboveTop,
+      // Always last-crossed-slab rate for extras (checkbox removed from UI).
+      prorataAboveTop: true,
       teamMonthlyTarget: draft.teamMonthlyTarget
         ? Number(draft.teamMonthlyTarget)
         : null,
@@ -292,22 +309,21 @@ export function PlanFormDialog({
             <FormField label="Name" required>
               <FormInput value={draft.name} onChange={(e) => patch({ name: e.target.value })} />
             </FormField>
-            <FormField label="Team" required>
-              <FormSearchSelect
-                value={draft.teamId}
-                onChange={(teamId) => patch({ teamId })}
-                options={teams.map((team) => ({ value: team.id, label: team.name }))}
-                searchable={false}
-                disabled={Boolean(lockedTeamId)}
-              />
-            </FormField>
             <FormField label="Metric">
               <FormSearchSelect
                 value={draft.metricType}
-                onChange={(metricType) =>
-                  patch({ metricType: metricType as IncentiveMetricType })
-                }
-                options={METRICS}
+                onChange={(metricType) => {
+                  const next = metricType as IncentiveMetricType;
+                  const label = CORE_METRICS.find((metric) => metric.value === next)?.label;
+                  const teamName = teams.find((team) => team.id === draft.teamId)?.name;
+                  patch({
+                    metricType: next,
+                    ...(!editing && teamName && label
+                      ? { name: `${teamName} · ${label}` }
+                      : {}),
+                  });
+                }}
+                options={metricOptions}
                 searchable={false}
               />
             </FormField>
@@ -330,58 +346,77 @@ export function PlanFormDialog({
               />
             </FormField>
           ) : null}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <FormField label="Entry daily target" hint="Optional first-warning threshold">
-              <FormInput
-                type="number"
-                min={0}
-                value={draft.entryDailyTarget}
-                onChange={(e) => patch({ entryDailyTarget: e.target.value })}
-              />
-            </FormField>
-            <FormField label="Maximum agent return ratio %" hint="Optional eligibility cap">
-              <FormInput
-                type="number"
-                min={0}
-                step="0.01"
-                value={draft.maxAgentReturnRatioPct}
-                onChange={(e) => patch({ maxAgentReturnRatioPct: e.target.value })}
-              />
-            </FormField>
-          </div>
-          {draft.metricType === 'channel_activity' ? (
-            <FormField label="Included channels">
-              <StatusChecks
-                statuses={CHANNELS}
-                values={draft.channels}
-                onChange={(channels) => patch({ channels })}
-              />
-            </FormField>
+          {draft.metricType === 'order_count' ||
+          draft.metricType === 'cross_sell_count' ||
+          draft.metricType === 'recovery_count' ? (
+            <>
+              {draft.metricType !== 'recovery_count' ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField label="Entry daily target" hint="Optional first-warning threshold">
+                    <FormInput
+                      type="number"
+                      min={0}
+                      value={draft.entryDailyTarget}
+                      onChange={(e) => patch({ entryDailyTarget: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Maximum agent return ratio %" hint="Optional eligibility cap">
+                    <FormInput
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={draft.maxAgentReturnRatioPct}
+                      onChange={(e) => patch({ maxAgentReturnRatioPct: e.target.value })}
+                    />
+                  </FormField>
+                </div>
+              ) : null}
+              <FormField
+                label={
+                  draft.metricType === 'recovery_count'
+                    ? 'Success statuses (recovered to)'
+                    : 'Include order statuses'
+                }
+                hint="Leave all unchecked to use CRM defaults"
+              >
+                <StatusChecks
+                  statuses={statuses}
+                  values={draft.includeStatuses}
+                  onChange={(includeStatuses) => patch({ includeStatuses })}
+                />
+              </FormField>
+              {draft.metricType === 'recovery_count' ? (
+                <FormField
+                  label="Recovery-from statuses"
+                  hint="Leave unchecked for pending / hold / incomplete defaults"
+                >
+                  <StatusChecks
+                    statuses={statuses}
+                    values={draft.recoveryFromStatuses}
+                    onChange={(recoveryFromStatuses) => patch({ recoveryFromStatuses })}
+                  />
+                </FormField>
+              ) : (
+                <FormField label="Exclude order statuses">
+                  <StatusChecks
+                    statuses={statuses}
+                    values={draft.excludeStatuses}
+                    onChange={(excludeStatuses) => patch({ excludeStatuses })}
+                  />
+                </FormField>
+              )}
+            </>
           ) : null}
-          <FormField label="Include order statuses">
-            <StatusChecks
-              statuses={statuses}
-              values={draft.includeStatuses}
-              onChange={(includeStatuses) => patch({ includeStatuses })}
-            />
-          </FormField>
-          <FormField label="Exclude order statuses">
-            <StatusChecks
-              statuses={statuses}
-              values={draft.excludeStatuses}
-              onChange={(excludeStatuses) => patch({ excludeStatuses })}
-            />
-          </FormField>
           {draft.metricType === 'return_ratio' ? (
             <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Delivered statuses">
+              <FormField label="Delivered statuses" hint="Leave unchecked for defaults">
                 <StatusChecks
                   statuses={statuses}
                   values={draft.deliveredStatuses}
                   onChange={(deliveredStatuses) => patch({ deliveredStatuses })}
                 />
               </FormField>
-              <FormField label="Returned statuses">
+              <FormField label="Returned statuses" hint="Leave unchecked for defaults">
                 <StatusChecks
                   statuses={statuses}
                   values={draft.returnedStatuses}
@@ -457,14 +492,6 @@ export function PlanFormDialog({
               ))}
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={draft.prorataAboveTop}
-              onChange={(e) => patch({ prorataAboveTop: e.target.checked })}
-            />
-            Prorata payout above the top slab
-          </label>
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>

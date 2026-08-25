@@ -20,13 +20,13 @@ import { ProductDataTable } from '@/features/inventory/components/product-list/p
 import { ProductFilterChips } from '@/features/inventory/components/product-list/product-filter-chips';
 import { ProductListToolbar } from '@/features/inventory/components/product-list/product-list-toolbar';
 import { ProductSelectionBar } from '@/features/inventory/components/product-list/product-selection-bar';
-import { ProductWorkspaceHeader } from '@/features/inventory/components/product-list/product-workspace-header';
 import { useProductMutations } from '@/features/inventory/hooks/use-product-mutations';
 import { useProductsList } from '@/features/inventory/hooks/use-products-list';
 import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import { productBrandsApi } from '@/features/settings/api/product-brands-api';
 import { ActiveFilterChips } from '@/components/filters/active-filter-chips';
 import { formatCurrency } from '@/lib/format';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
@@ -46,7 +46,6 @@ export function ProductListShell() {
   const [pageSize, setPageSize] = React.useState(Number(searchParams.get('pageSize') ?? 10));
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [listVersion, setListVersion] = React.useState(0);
-  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const [brandOptions, setBrandOptions] = React.useState<{ value: string; label: string }[]>([]);
   const categoryOptions = useOrgCategoryOptions('product');
 
@@ -81,7 +80,7 @@ export function ProductListShell() {
     }
   }, [brandId, category, debouncedSearch, filter, page, pageSize, pathname, router, searchParamsKey]);
 
-  const { data, isLoading, error, refresh } = useProductsList(
+  const { data, isLoading, error } = useProductsList(
     {
       filter: filter === 'all' ? undefined : (filter as 'low_stock' | 'out_of_stock' | 'active' | 'inactive'),
       category: category || undefined,
@@ -93,9 +92,9 @@ export function ProductListShell() {
     listVersion,
   );
 
-  React.useEffect(() => {
-    if (data && !isLoading) setLastRefreshedAt(new Date());
-  }, [data, isLoading]);
+  usePageDataRefresh(() => {
+    setListVersion((v) => v + 1);
+  });
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
@@ -112,7 +111,6 @@ export function ProductListShell() {
 
   function handleRefresh() {
     setListVersion((v) => v + 1);
-    void refresh();
   }
 
   function handleClearFilters() {
@@ -179,11 +177,6 @@ export function ProductListShell() {
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
         <InventorySubNav />
         <CrmPageActions moduleId="inventory" />
-        <ProductWorkspaceHeader
-          lastRefreshedAt={lastRefreshedAt}
-          isRefreshing={isLoading}
-          onRefresh={handleRefresh}
-        />
         <CrmSummaryStrip items={summaryItems} className="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" />
         {data?.filters ? <ProductFilterChips filters={data.filters} activeFilterId={filter} /> : null}
         <ProductListToolbar

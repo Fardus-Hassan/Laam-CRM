@@ -157,6 +157,8 @@ export const customerListResponseSchema = z.object({
   segments: z.array(customerSegmentCountSchema),
   /** Admin statuses with live counts (for pills). */
   statuses: z.array(customerSegmentCountSchema).default([]),
+  /** Purchase-count segments (1x / 2x / Loyal…) with live counts. */
+  purchaseSegments: z.array(customerSegmentCountSchema).default([]),
 });
 
 export type CustomerListResponse = z.infer<typeof customerListResponseSchema>;

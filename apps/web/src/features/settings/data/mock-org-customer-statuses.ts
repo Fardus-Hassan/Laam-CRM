@@ -11,14 +11,6 @@ let store: OrgCustomerStatus[] = [
     isActive: true,
     isSystem: true,
   },
-  {
-    id: 'mock-premium',
-    slug: 'premium',
-    label: 'Premium',
-    sortOrder: 1,
-    isActive: true,
-    isSystem: true,
-  },
 ];
 
 export function createMockOrgCustomerStatusesApi(): OrgCustomerStatusesApi {

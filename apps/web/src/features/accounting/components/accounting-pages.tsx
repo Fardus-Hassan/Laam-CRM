@@ -49,7 +49,7 @@ import type { AccountType, ChartOfAccount } from '@laam/types';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDragToScroll } from '@/hooks/use-drag-to-scroll';
-import { downloadCsv } from '@/lib/export-csv';
+import { ExportMenu } from '@/components/export-menu';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -267,19 +267,15 @@ export function ReceivablesPage() {
     refresh();
   }
 
-  function handleExport() {
-    downloadCsv(
-      'receivables.csv',
-      ['Customer', 'Phone', 'Order', 'Amount', 'Due', 'Status', 'Collected'],
-      items.map((r) => [r.customerName, r.customerPhone ?? '', r.orderNumber, r.amount, r.dueDate, r.status, r.collectedAmount]),
-    );
-  }
-
   return (
     <ReportPageShell title="Accounts receivable" description="Money customers owe you — COD pending, partial payments.">
       <div className="flex justify-end">
         <Can permission="accounting.export">
-          <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+          <ExportMenu
+            filename="receivables"
+            headers={['Customer', 'Phone', 'Order', 'Amount', 'Due', 'Status', 'Collected']}
+            rows={items.map((r) => [r.customerName, r.customerPhone ?? '', r.orderNumber, r.amount, r.dueDate, r.status, r.collectedAmount])}
+          />
         </Can>
       </div>
       <SimpleTable
@@ -316,19 +312,15 @@ export function PayablesPage() {
     refresh();
   }
 
-  function handleExport() {
-    downloadCsv(
-      'payables.csv',
-      ['Supplier', 'Reference', 'Amount', 'Due', 'Status', 'Paid'],
-      items.map((p) => [p.supplierName, p.reference, p.amount, p.dueDate, p.status, p.paidAmount]),
-    );
-  }
-
   return (
     <ReportPageShell title="Accounts payable" description="Money you owe suppliers — purchase orders, courier bills.">
       <div className="flex justify-end">
         <Can permission="accounting.export">
-          <Button type="button" size="sm" variant="outline" onClick={handleExport}>Export CSV</Button>
+          <ExportMenu
+            filename="payables"
+            headers={['Supplier', 'Reference', 'Amount', 'Due', 'Status', 'Paid']}
+            rows={items.map((p) => [p.supplierName, p.reference, p.amount, p.dueDate, p.status, p.paidAmount])}
+          />
         </Can>
       </div>
       <SimpleTable

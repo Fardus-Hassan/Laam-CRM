@@ -210,6 +210,7 @@ export const agentIncentiveSummarySchema = z.object({
   totalEarned: z.number(),
   periodLabel: z.string(),
   breakdown: z.array(incentiveLineItemSchema),
+  /** ISO date, or empty when org has not set payoutDay. */
   nextPayoutDate: z.string(),
 });
 export type AgentIncentiveSummary = z.infer<typeof agentIncentiveSummarySchema>;

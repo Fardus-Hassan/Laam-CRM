@@ -208,7 +208,7 @@ export function BulkPrintPage() {
 
   async function handleBulkStatusChange(
     status: string,
-    meta?: { fulfillmentWarehouseId?: string },
+    meta?: { fulfillmentWarehouseId?: string; followUpDate?: string },
   ) {
     const orderIds = orders.map((o) => o.id);
     if (orderIds.length === 0) return;
@@ -219,6 +219,7 @@ export function BulkPrintPage() {
       ...(meta?.fulfillmentWarehouseId
         ? { fulfillmentWarehouseId: meta.fulfillmentWarehouseId }
         : {}),
+      ...(meta?.followUpDate ? { followUpDate: meta.followUpDate } : {}),
     });
     setOrders((prev) => prev.map((o) => ({ ...o, status: status as OrderDetail['status'] })));
   }

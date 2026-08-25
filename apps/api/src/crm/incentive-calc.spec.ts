@@ -5,6 +5,9 @@ import {
   nextHrStatus,
   applyReturnRatioCap,
   countRecoveries,
+  parseStatusFromActivity,
+  pickOpsRowForAssignment,
+  statusListOrDefault,
 } from './incentive-calc';
 
 describe('matchIncentiveSlab', () => {
@@ -20,32 +23,42 @@ describe('matchIncentiveSlab', () => {
     { id: 'r8', label: '≤8%', monthlyTarget: 8, incentiveBdt: 500 },
   ];
 
-  it('picks highest qualifying slab for order count', () => {
-    const m = matchIncentiveSlab(orderSlabs, 300, 'higher', false);
+  it('picks highest qualifying slab for exact hit', () => {
+    const m = matchIncentiveSlab(orderSlabs, 260, 'higher');
     expect(m.slab?.id).toBe('b');
     expect(m.incentiveBdt).toBe(3000);
+    expect(m.prorataApplied).toBe(false);
   });
 
-  it('applies prorata above top slab', () => {
-    const m = matchIncentiveSlab(orderSlabs, 780, 'higher', true);
+  it('pays last-crossed slab rate for extras between slabs', () => {
+    // 450: last crossed 260@3000 → 3000 * 450/260
+    const m = matchIncentiveSlab(orderSlabs, 450, 'higher');
+    expect(m.slab?.id).toBe('b');
+    expect(m.prorataApplied).toBe(true);
+    expect(m.incentiveBdt).toBe(Math.round((3000 * 450) / 260));
+  });
+
+  it('pays last-crossed (top) slab rate above top', () => {
+    const m = matchIncentiveSlab(orderSlabs, 780, 'higher');
+    expect(m.slab?.id).toBe('c');
     expect(m.prorataApplied).toBe(true);
     expect(m.incentiveBdt).toBe(Math.round((7000 * 780) / 520));
   });
 
   it('picks tightest return-ratio slab (lower is better)', () => {
-    const m = matchIncentiveSlab(returnSlabs, 4.5, 'lower', false);
+    const m = matchIncentiveSlab(returnSlabs, 4.5, 'lower');
     expect(m.slab?.id).toBe('r5');
     expect(m.incentiveBdt).toBe(2000);
   });
 
   it('pays zero when below all higher targets', () => {
-    const m = matchIncentiveSlab(orderSlabs, 100, 'higher', false);
+    const m = matchIncentiveSlab(orderSlabs, 100, 'higher');
     expect(m.slab).toBeNull();
     expect(m.incentiveBdt).toBe(0);
   });
 
   it('pays zero when return ratio exceeds all slabs', () => {
-    const m = matchIncentiveSlab(returnSlabs, 12, 'lower', false);
+    const m = matchIncentiveSlab(returnSlabs, 12, 'lower');
     expect(m.slab).toBeNull();
     expect(m.incentiveBdt).toBe(0);
   });
@@ -194,6 +207,31 @@ describe('countRecoveries', () => {
     expect(n).toBe(1);
   });
 
+  it('parses real CRM status activity arrows (prev → next)', () => {
+    const n = countRecoveries({
+      orderIds: ['o1'],
+      activities: [
+        {
+          orderId: 'o1',
+          type: 'note',
+          description: 'pending → hold',
+          createdAt: new Date('2026-08-04T10:00:00.000Z'),
+        },
+        {
+          orderId: 'o1',
+          type: 'confirmed',
+          description: 'hold → confirmed · stock from warehouse',
+          createdAt: new Date('2026-08-10T10:00:00.000Z'),
+        },
+      ],
+      successStatuses: ['confirmed', 'delivered'],
+      recoveryFromStatuses: ['pending', 'hold', 'hold_followup'],
+      periodStart,
+      periodEnd,
+    });
+    expect(n).toBe(1);
+  });
+
   it('counts tag-based recovery without prior incomplete activity', () => {
     const n = countRecoveries({
       orderIds: ['o3'],
@@ -211,5 +249,77 @@ describe('countRecoveries', () => {
       orderTagsById: new Map([['o3', 'recovery']]),
     });
     expect(n).toBe(1);
+  });
+});
+
+describe('statusListOrDefault', () => {
+  it('uses defaults for undefined or empty arrays', () => {
+    expect(statusListOrDefault(undefined, ['confirmed'])).toEqual(['confirmed']);
+    expect(statusListOrDefault([], ['confirmed', 'delivered'])).toEqual([
+      'confirmed',
+      'delivered',
+    ]);
+  });
+
+  it('keeps non-empty configured lists', () => {
+    expect(statusListOrDefault(['In_Courier'], ['confirmed'])).toEqual([
+      'in_courier',
+    ]);
+  });
+});
+
+describe('parseStatusFromActivity', () => {
+  it('reads confirmed/cancelled types and arrow descriptions', () => {
+    expect(parseStatusFromActivity({ type: 'confirmed', description: 'x → y' })).toBe(
+      'confirmed',
+    );
+    expect(
+      parseStatusFromActivity({
+        type: 'note',
+        description: 'hold → in_courier · stock from warehouse',
+      }),
+    ).toBe('in_courier');
+    expect(
+      parseStatusFromActivity({ type: 'status', description: 'hold_followup' }),
+    ).toBe('hold_followup');
+  });
+});
+
+describe('pickOpsRowForAssignment', () => {
+  it('prefers assignmentId over same display name', () => {
+    const rows = [
+      { id: '1', agentName: 'Rahim', assignmentId: 'a1' },
+      { id: '2', agentName: 'Rahim', assignmentId: 'a2' },
+    ];
+    expect(
+      pickOpsRowForAssignment(rows, { id: 'a2', agentName: 'Rahim' })?.id,
+    ).toBe('2');
+  });
+
+  it('falls back to unique name only when unambiguous', () => {
+    const rows = [
+      { id: '1', agentName: 'Rahim', assignmentId: null },
+      { id: '2', agentName: 'Karim', assignmentId: null },
+    ];
+    expect(
+      pickOpsRowForAssignment(rows, { id: 'x', agentName: 'Rahim' })?.id,
+    ).toBe('1');
+  });
+
+  it('refuses ambiguous same-name legacy rows', () => {
+    const rows = [
+      { id: '1', agentName: 'Rahim', assignmentId: 'other' },
+      { id: '2', agentName: 'Rahim', assignmentId: null },
+    ];
+    expect(
+      pickOpsRowForAssignment(rows, { id: 'mine', agentName: 'Rahim' })?.id,
+    ).toBe('2');
+    const bothLinked = [
+      { id: '1', agentName: 'Rahim', assignmentId: 'a1' },
+      { id: '2', agentName: 'Rahim', assignmentId: 'a2' },
+    ];
+    expect(
+      pickOpsRowForAssignment(bothLinked, { id: 'mine', agentName: 'Rahim' }),
+    ).toBeUndefined();
   });
 });

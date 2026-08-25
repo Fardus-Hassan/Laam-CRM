@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { BulkActionId, OrderListRow, TenantUser } from '@laam/types';
+import type { BulkActionId, OrgTeam, OrderListRow, TenantUser } from '@laam/types';
 import { toast } from 'sonner';
 
 import { FormField } from '@/components/form/form-field';
@@ -17,11 +17,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { FulfillmentWarehouseSelect } from '@/features/orders/components/shared/fulfillment-warehouse-select';
-import { exportOrdersToCsv } from '@/features/orders/lib/export-orders-csv';
+import { exportOrdersTable } from '@/features/orders/lib/export-orders-csv';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { OrderStatusDialog } from '@/features/orders/components/shared/order-status-dialog';
 import { orderSmsApi, smsSettingsApi } from '@/features/settings/api/sms-settings-api';
 import { rbacApi } from '@/features/rbac/api/rbac-api';
+import { ordersApi } from '@/features/orders/api/orders-api';
 
 type BulkModalState =
   | { type: 'sms'; orderIds: string[] }
@@ -49,11 +50,18 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
   const [smsSending, setSmsSending] = React.useState(false);
   const [employee, setEmployee] = React.useState('');
   const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
+  const [teams, setTeams] = React.useState<OrgTeam[]>([]);
   const [followUpDate, setFollowUpDate] = React.useState('');
   const [courierWarehouseId, setCourierWarehouseId] = React.useState('');
+  const [courierMode, setCourierMode] = React.useState<'auto_split' | 'specific_member'>('auto_split');
+  const [courierTeamIds, setCourierTeamIds] = React.useState<string[]>([]);
+  const [courierMemberId, setCourierMemberId] = React.useState('');
 
   React.useEffect(() => {
-    if (state?.type === 'courier') setCourierWarehouseId('');
+    if (state?.type === 'courier') {
+      setCourierWarehouseId('');
+      setCourierMemberId('');
+    }
   }, [state]);
 
   React.useEffect(() => {
@@ -71,6 +79,38 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       cancelled = true;
     };
   }, [state?.type]);
+
+  React.useEffect(() => {
+    if (state?.type !== 'courier') return;
+    let cancelled = false;
+    void Promise.all([rbacApi.listTeams(''), rbacApi.listUsers(''), ordersApi.getRoutingConfig()])
+      .then(([orgTeams, users, cfg]) => {
+        if (cancelled) return;
+        setTeams(orgTeams);
+        setTeamUsers(users.filter((u) => u.status === 'active'));
+        setCourierMode(cfg.courierRouting.mode);
+        setCourierTeamIds(cfg.courierRouting.teamIds);
+        setCourierMemberId(cfg.courierRouting.assigneeUserId ?? '');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTeams([]);
+        setTeamUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state?.type]);
+
+  const courierMemberOptions = React.useMemo(() => {
+    if (courierTeamIds.length === 0) return [];
+    return teamUsers
+      .filter((u) => u.teamId && courierTeamIds.includes(u.teamId))
+      .map((u) => ({
+        value: u.id,
+        label: u.email ? `${u.name} · ${u.email}` : u.name,
+      }));
+  }, [courierTeamIds, teamUsers]);
 
   React.useEffect(() => {
     if (state?.type !== 'sms') return;
@@ -144,7 +184,7 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleStatusSubmit(
     nextStatus: string,
-    meta?: { fulfillmentWarehouseId?: string },
+    meta?: { fulfillmentWarehouseId?: string; followUpDate?: string },
   ) {
     if (state?.type !== 'status') return;
     if (!nextStatus.trim()) {
@@ -158,6 +198,7 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       ...(meta?.fulfillmentWarehouseId
         ? { fulfillmentWarehouseId: meta.fulfillmentWarehouseId }
         : {}),
+      ...(meta?.followUpDate ? { followUpDate: meta.followUpDate } : {}),
     });
     onSuccess?.();
     onClose();
@@ -180,6 +221,9 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
         orderIds: state.orderIds,
         courier,
         fulfillmentWarehouseId: courierWarehouseId.trim(),
+        assignmentMode: courierMode,
+        routingTeamIds: courierTeamIds,
+        routingUserId: courierMode === 'specific_member' ? courierMemberId : undefined,
       });
       onSuccess?.();
       onClose();
@@ -220,13 +264,13 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
     onClose();
   }
 
-  function handleExport() {
+  function handleExport(format: 'csv' | 'excel') {
     if (state?.type !== 'export') return;
     if (selectedRows.length === 0) {
       toast.error('No row data available for export');
       return;
     }
-    exportOrdersToCsv(selectedRows);
+    exportOrdersTable(selectedRows, format);
     toast.success(`Exported ${selectedRows.length} order(s)`);
     onClose();
   }
@@ -297,6 +341,59 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
               onChange={setCourierWarehouseId}
               disabled={isLoading}
             />
+            <FormField label="Routing mode">
+              <FormSearchSelect
+                value={courierMode}
+                onChange={(v) =>
+                  setCourierMode(v === 'specific_member' ? 'specific_member' : 'auto_split')
+                }
+                searchable={false}
+                options={[
+                  { value: 'auto_split', label: 'Auto split selected team members' },
+                  { value: 'specific_member', label: 'Assign specific member' },
+                ]}
+              />
+            </FormField>
+            <FormField label="Team pool (one or more)">
+              <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+                {teams.map((team) => {
+                  const checked = courierTeamIds.includes(team.id);
+                  return (
+                    <label
+                      key={team.id}
+                      className="flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted/40"
+                    >
+                      <input
+                        type="checkbox"
+                        className="size-4"
+                        checked={checked}
+                        onChange={() =>
+                          setCourierTeamIds((current) =>
+                            checked
+                              ? current.filter((id) => id !== team.id)
+                              : [...current, team.id],
+                          )
+                        }
+                      />
+                      <span>{team.name}</span>
+                    </label>
+                  );
+                })}
+                {teams.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No teams found.</p>
+                ) : null}
+              </div>
+            </FormField>
+            {courierMode === 'specific_member' ? (
+              <FormField label="Specific member">
+                <FormSearchSelect
+                  value={courierMemberId}
+                  onChange={setCourierMemberId}
+                  options={courierMemberOptions}
+                  placeholder="Select member"
+                />
+              </FormField>
+            ) : null}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
@@ -305,7 +402,12 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <Button
               type="button"
               onClick={() => void handleCourierSubmit()}
-              disabled={isLoading || !courierWarehouseId.trim()}
+              disabled={
+                isLoading ||
+                !courierWarehouseId.trim() ||
+                courierTeamIds.length === 0 ||
+                (courierMode === 'specific_member' && !courierMemberId)
+              }
             >
               Confirm submit
             </Button>
@@ -372,15 +474,18 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <DialogTitle>Export orders</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Download CSV with order number, customer, amount, payment, and address for{' '}
+            Download CSV or Excel with order number, customer, amount, payment, and address for{' '}
             {state.type === 'export' ? state.orderIds.length : 0} selected order(s).
           </p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleExport}>
-              Download CSV
+            <Button type="button" variant="outline" onClick={() => handleExport('csv')}>
+              CSV
+            </Button>
+            <Button type="button" onClick={() => handleExport('excel')}>
+              Excel
             </Button>
           </DialogFooter>
         </DialogContent>

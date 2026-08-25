@@ -10,8 +10,10 @@ import { randomBytes } from 'node:crypto';
 import type { CreateTenantRequest, Tenant, TenantListItem, TenantUser } from '@laam/types';
 
 import type { AuthUserPayload } from '../common/decorators';
-import { seedDefaultPermissionPresets } from '../common/default-permission-presets';
 import { isEmailMockMode, tenantWebUrl } from '../common/tenant.util';
+import { CustomersService } from '../crm/customers.service';
+import { OrgOrderQueuesService } from '../crm/org-order-queues.service';
+import { OrgOrderStatusesService } from '../crm/org-order-statuses.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -22,6 +24,9 @@ export class PlatformService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
+    private readonly orgOrderStatuses: OrgOrderStatusesService,
+    private readonly orgOrderQueues: OrgOrderQueuesService,
+    private readonly customers: CustomersService,
   ) {}
 
   assertSuperAdmin(user: AuthUserPayload) {
@@ -128,8 +133,6 @@ export class PlatformService {
       },
     });
 
-    await seedDefaultPermissionPresets(this.prisma, organization.id);
-
     const owner = await this.createOrgAdminUser({
       organizationId: organization.id,
       name: input.owner.name.trim(),
@@ -154,6 +157,13 @@ export class PlatformService {
       where: { id: organization.id },
       data: { status: 'active' },
     });
+
+    // COO PDF default sidebar depends on seeded statuses + queues on first login.
+    await Promise.all([
+      this.orgOrderStatuses.ensureSeeded(organization.id),
+      this.orgOrderQueues.ensureSeeded(organization.id),
+      this.customers.ensureDefaultPurchaseSegments(organization.id),
+    ]);
 
     return {
       tenant: this.toTenant({

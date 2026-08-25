@@ -69,6 +69,7 @@ export function getEmptyIncentiveOverview(seeded = false): IncentiveOverview {
         memberCount: 3,
         planId: 'mock-plan-ts',
         hasStructure: true,
+        metricTypes: ['order_count'],
       },
       {
         id: 'mock-logistic',
@@ -81,6 +82,7 @@ export function getEmptyIncentiveOverview(seeded = false): IncentiveOverview {
         memberCount: 2,
         planId: 'mock-plan-log',
         hasStructure: true,
+        metricTypes: ['return_ratio'],
       },
     ],
     plans: [

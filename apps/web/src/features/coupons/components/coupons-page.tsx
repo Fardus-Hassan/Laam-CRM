@@ -33,8 +33,8 @@ import {
   ORDER_PAGE_GAP,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { ExportMenu } from '@/components/export-menu';
 import { formatCurrency } from '@/lib/format';
-import { downloadCsv } from '@/lib/export-csv';
 
 const EMPTY_DRAFT: CreateCouponPayload = {
   code: '',
@@ -138,20 +138,18 @@ export function CouponsPage() {
     }
   }
 
-  function handleExport() {
-    downloadCsv(
-      'coupons.csv',
-      ['Code', 'Type', 'Value', 'Usage', 'Active', 'Expires'],
-      coupons.map((c) => [
-        c.code,
-        c.type,
-        c.value,
-        `${c.usageCount}${c.usageLimit ? `/${c.usageLimit}` : ''}`,
-        c.isActive ? 'yes' : 'no',
-        c.expiresAt ?? '',
-      ]),
-    );
-  }
+  const couponExport = {
+    filename: 'coupons',
+    headers: ['Code', 'Type', 'Value', 'Usage', 'Active', 'Expires'],
+    rows: coupons.map((c) => [
+      c.code,
+      c.type,
+      c.value,
+      `${c.usageCount}${c.usageLimit ? `/${c.usageLimit}` : ''}`,
+      c.isActive ? 'yes' : 'no',
+      c.expiresAt ?? '',
+    ]),
+  };
 
   const activeCount = coupons.filter((c) => c.isActive).length;
   const totalRedemptions = coupons.reduce((s, c) => s + c.usageCount, 0);
@@ -171,9 +169,11 @@ export function CouponsPage() {
             <span>{totalRedemptions} redemptions</span>
           </div>
           <div className="flex gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={handleExport}>
-              Export CSV
-            </Button>
+            <ExportMenu
+              filename={couponExport.filename}
+              headers={couponExport.headers}
+              rows={couponExport.rows}
+            />
             <Can permission="coupons.manage">
               <Button type="button" size="sm" onClick={openCreate}>
                 <Plus className="size-4" />
@@ -281,7 +281,7 @@ export function CouponsPage() {
                 onChange={(e) =>
                   setDraft({ ...draft, code: e.target.value.toUpperCase() })
                 }
-                placeholder="RAMADAN10"
+                placeholder="WELCOME10"
               />
             </FormField>
             <FormField label="Type">

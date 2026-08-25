@@ -22,9 +22,9 @@ import { FollowupDetailsModal } from '@/features/followups/components/followup-l
 import { FollowupNoteModal } from '@/features/followups/components/followup-list/modals/followup-note-modal';
 import { FollowupQueueTabs } from '@/features/followups/components/followup-list/followup-queue-tabs';
 import { FollowupSelectionBar } from '@/features/followups/components/followup-list/followup-selection-bar';
-import { FollowupWorkspaceHeader } from '@/features/followups/components/followup-list/followup-workspace-header';
 import { useFollowupMutations } from '@/features/followups/hooks/use-followup-mutations';
 import { useFollowupsList } from '@/features/followups/hooks/use-followups-list';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 
@@ -50,7 +50,6 @@ export function FollowupListShell() {
   const [pageSize, setPageSize] = React.useState(Number(searchParams.get('pageSize') ?? 10));
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [listVersion, setListVersion] = React.useState(0);
-  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
 
   const [noteTarget, setNoteTarget] = React.useState<{
     row: FollowupListItem;
@@ -77,7 +76,7 @@ export function FollowupListShell() {
     }
   }, [debouncedSearch, filter, page, pageSize, pathname, queue, router, searchParamsKey]);
 
-  const { data, isLoading, error, refresh } = useFollowupsList(
+  const { data, isLoading, error } = useFollowupsList(
     {
       queue,
       filter: filter === 'all' ? undefined : (filter as 'today' | 'no_status'),
@@ -88,9 +87,9 @@ export function FollowupListShell() {
     listVersion,
   );
 
-  React.useEffect(() => {
-    if (data && !isLoading) setLastRefreshedAt(new Date());
-  }, [data, isLoading]);
+  usePageDataRefresh(() => {
+    setListVersion((v) => v + 1);
+  });
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
@@ -118,7 +117,6 @@ export function FollowupListShell() {
 
   function handleRefresh() {
     setListVersion((v) => v + 1);
-    void refresh();
   }
 
   function handleClearFilters() {
@@ -164,12 +162,6 @@ export function FollowupListShell() {
       description="Customer callbacks — schedule, call, and convert to repeat orders."
     >
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
-        <FollowupWorkspaceHeader
-          lastRefreshedAt={lastRefreshedAt}
-          isRefreshing={isLoading}
-          onRefresh={handleRefresh}
-        />
-
         <FollowupQueueTabs activeQueue={queue} counts={queueCounts} filter={filter} />
 
         <CrmSummaryStrip items={summaryItems} className="sm:grid-cols-2 xl:grid-cols-4" />

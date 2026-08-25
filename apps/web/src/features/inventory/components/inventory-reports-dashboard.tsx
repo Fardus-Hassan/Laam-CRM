@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   BarChart3,
-  Download,
   Package,
   RefreshCw,
   RotateCcw,
@@ -35,7 +34,8 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { downloadCsv } from '@/lib/export-csv';
+import { ExportMenu } from '@/components/export-menu';
+import { downloadTable, type TableExportFormat } from '@/lib/export-csv';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { rangeFromISO, toISODateRange } from '@/lib/date-range';
 import { cn } from '@/lib/utils';
@@ -80,7 +80,7 @@ export function InventoryReportsDashboard() {
     setAppliedTo(iso?.to ?? '');
   }
 
-  function exportCsv() {
+  function exportReport(format: TableExportFormat) {
     if (!data) return;
     const rows: (string | number)[][] = [
       ...data.recent.purchases.map((p) => [
@@ -133,7 +133,7 @@ export function InventoryReportsDashboard() {
       appliedFrom || appliedTo
         ? `${appliedFrom || 'start'}_${appliedTo || 'end'}`
         : new Date().toISOString().slice(0, 10);
-    downloadCsv(`inventory-report-${suffix}.csv`, [
+    downloadTable(`inventory-report-${suffix}`, [
       'Type',
       'Reference',
       'Product/Supplier',
@@ -141,8 +141,8 @@ export function InventoryReportsDashboard() {
       'Amount',
       'Status',
       'Date',
-    ], rows);
-    toast.success('Report exported');
+    ], rows, format);
+    toast.success(format === 'excel' ? 'Excel exported' : 'CSV exported');
   }
 
   return (
@@ -161,10 +161,13 @@ export function InventoryReportsDashboard() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Can permission="inventory.export">
-              <Button type="button" size="sm" variant="outline" onClick={exportCsv} disabled={!data}>
-                <Download className="size-3.5" />
-                Export CSV
-              </Button>
+              <ExportMenu
+                filename="inventory-report"
+                headers={[]}
+                rows={[[]]}
+                disabled={!data}
+                onExport={(format) => exportReport(format)}
+              />
             </Can>
             <Button type="button" size="sm" variant="outline" onClick={() => load()} disabled={loading}>
               <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />

@@ -30,10 +30,10 @@ import { CustomerListToolbar } from '@/features/customers/components/customer-li
 import { CustomerNoteModal } from '@/features/customers/components/customer-list/modals/customer-note-modal';
 import { CustomerSegmentChips } from '@/features/customers/components/customer-list/customer-segment-chips';
 import { CustomerSelectionBar } from '@/features/customers/components/customer-list/customer-selection-bar';
-import { CustomerWorkspaceHeader } from '@/features/customers/components/customer-list/customer-workspace-header';
 import { useCustomerMutations } from '@/features/customers/hooks/use-customer-mutations';
 import { useCustomersList } from '@/features/customers/hooks/use-customers-list';
 import { formatCurrency } from '@/lib/format';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { Settings2 } from 'lucide-react';
@@ -52,7 +52,6 @@ export function CustomerListShell() {
   const [pageSize, setPageSize] = React.useState(Number(searchParams.get('pageSize') ?? 10));
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [listVersion, setListVersion] = React.useState(0);
-  const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const [noteTarget, setNoteTarget] = React.useState<CustomerListItem | null>(null);
   const [filters, setFilters] = React.useState<CustomerFilterValues>(() => emptyCustomerFilters());
 
@@ -76,7 +75,7 @@ export function CustomerListShell() {
     }
   }, [debouncedSearch, page, pageSize, pathname, router, searchParamsKey, segment]);
 
-  const { data, isLoading, error, refresh } = useCustomersList(
+  const { data, isLoading, error } = useCustomersList(
     {
       segment: segment === 'all' ? undefined : segment,
       status: statusFilter || undefined,
@@ -88,9 +87,9 @@ export function CustomerListShell() {
     listVersion,
   );
 
-  React.useEffect(() => {
-    if (data && !isLoading) setLastRefreshedAt(new Date());
-  }, [data, isLoading]);
+  usePageDataRefresh(() => {
+    setListVersion((v) => v + 1);
+  });
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
@@ -118,7 +117,6 @@ export function CustomerListShell() {
 
   function handleRefresh() {
     setListVersion((v) => v + 1);
-    void refresh();
   }
 
   function handleClearFilters() {
@@ -142,7 +140,7 @@ export function CustomerListShell() {
         pageSize: 5000,
         ...filterQuery,
       });
-      toast.success('Export started');
+      toast.success('CSV and Excel export started');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Export failed');
     }
@@ -169,12 +167,6 @@ export function CustomerListShell() {
       description="Everyday modhu & khejur buyers — mobile-first list with orders and courier score."
     >
       <div className={cn(ORDER_PAGE_GAP, 'min-w-0')}>
-        <CustomerWorkspaceHeader
-          lastRefreshedAt={lastRefreshedAt}
-          isRefreshing={isLoading}
-          onRefresh={handleRefresh}
-        />
-
         <CrmPageActions moduleId="companies" />
 
         <CrmSummaryStrip items={summaryItems} className="sm:grid-cols-2 xl:grid-cols-4" />
@@ -205,8 +197,36 @@ export function CustomerListShell() {
           </div>
         ) : null}
 
+        {data?.purchaseSegments?.length ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Purchase segments
+              </p>
+              <Button type="button" size="sm" variant="ghost" className="h-7 px-2" asChild>
+                <Link href="/dashboard/settings/customer-purchase-segments">
+                  <Settings2 className="size-3.5" />
+                  Manage
+                </Link>
+              </Button>
+            </div>
+            <CustomerSegmentChips
+              segments={[
+                {
+                  id: 'all',
+                  label: 'All',
+                  count: data.segments.find((s) => s.id === 'all')?.count ?? 0,
+                },
+                ...data.purchaseSegments,
+              ]}
+              activeId={segment}
+              mode="segment"
+            />
+          </div>
+        ) : null}
+
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Purchase count</p>
+          <p className="text-xs font-medium text-muted-foreground">Purchase count (quick)</p>
           <div className="flex flex-wrap gap-1.5">
             {PURCHASE_COUNT_PILLS.map((count) => {
               const active =
@@ -278,7 +298,7 @@ export function CustomerListShell() {
                   )}
                   title="Customers with 10 or more orders"
                 >
-                  Premium Customer
+                  10+ orders
                 </button>
               );
             })()}

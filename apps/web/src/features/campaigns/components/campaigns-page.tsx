@@ -29,8 +29,8 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { ExportMenu } from '@/components/export-menu';
 import { formatCurrency } from '@/lib/format';
-import { downloadCsv } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'secondary'> = {
@@ -68,24 +68,23 @@ export function CampaignsPage({ initialTab = 'active' }: CampaignsPageProps) {
     void load();
   }, [load]);
 
-  function handleExport() {
-    if (!data) return;
-    downloadCsv(
-      'campaigns.csv',
-      ['Name', 'Status', 'Platform', 'Spend', 'Budget', 'Revenue', 'ROAS', 'Leads', 'Orders'],
-      data.campaigns.map((c) => [
-        c.name,
-        c.status,
-        c.platform,
-        c.spendBdt,
-        c.budgetBdt,
-        c.revenueBdt,
-        c.roas,
-        c.leads,
-        c.orders,
-      ]),
-    );
-  }
+  const campaignExport = data
+    ? {
+        filename: 'campaigns',
+        headers: ['Name', 'Status', 'Platform', 'Spend', 'Budget', 'Revenue', 'ROAS', 'Leads', 'Orders'],
+        rows: data.campaigns.map((c) => [
+          c.name,
+          c.status,
+          c.platform,
+          c.spendBdt,
+          c.budgetBdt,
+          c.revenueBdt,
+          c.roas,
+          c.leads,
+          c.orders,
+        ]),
+      }
+    : null;
 
   return (
     <PageShell
@@ -115,9 +114,13 @@ export function CampaignsPage({ initialTab = 'active' }: CampaignsPageProps) {
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={handleExport}>
-              Export CSV
-            </Button>
+            {campaignExport ? (
+              <ExportMenu
+                filename={campaignExport.filename}
+                headers={campaignExport.headers}
+                rows={campaignExport.rows}
+              />
+            ) : null}
             <Button type="button" size="sm" variant="outline" asChild>
               <Link href="/dashboard/reports?view=marketing">Meta Ads report</Link>
             </Button>

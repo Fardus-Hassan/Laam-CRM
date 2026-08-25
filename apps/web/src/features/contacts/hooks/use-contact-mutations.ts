@@ -4,6 +4,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 
 import { contactsApi } from '@/features/contacts/api/contacts-api';
+import { invalidateContactQueryCaches } from '@/features/contacts/data/contact-query-cache';
 
 export function useContactMutations() {
   const [isLoading, setIsLoading] = React.useState(false);
@@ -13,6 +14,7 @@ export function useContactMutations() {
     try {
       const contact = await contactsApi.createContact(payload);
       toast.success(`${contact.name} added to contacts`);
+      invalidateContactQueryCaches();
       return contact;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create contact');
@@ -28,7 +30,9 @@ export function useContactMutations() {
   ) {
     setIsLoading(true);
     try {
-      return await contactsApi.updateContact(id, patch);
+      const contact = await contactsApi.updateContact(id, patch);
+      invalidateContactQueryCaches();
+      return contact;
     } finally {
       setIsLoading(false);
     }
@@ -37,7 +41,9 @@ export function useContactMutations() {
   async function bulkAction(payload: Parameters<typeof contactsApi.bulkAction>[0]) {
     setIsLoading(true);
     try {
-      return await contactsApi.bulkAction(payload);
+      const result = await contactsApi.bulkAction(payload);
+      invalidateContactQueryCaches();
+      return result;
     } finally {
       setIsLoading(false);
     }

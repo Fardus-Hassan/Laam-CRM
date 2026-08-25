@@ -4,6 +4,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
+import { invalidateProductQueryCaches } from '@/features/inventory/data/product-query-cache';
 
 export function useProductMutations() {
   const [isLoading, setIsLoading] = React.useState(false);
@@ -13,6 +14,7 @@ export function useProductMutations() {
     try {
       const product = await inventoryApi.createProduct(payload);
       toast.success(`Product "${product.name}" created`);
+      invalidateProductQueryCaches();
       return product;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create product');
@@ -25,7 +27,9 @@ export function useProductMutations() {
   async function updateProduct(id: string, patch: Parameters<typeof inventoryApi.updateProduct>[1]) {
     setIsLoading(true);
     try {
-      return await inventoryApi.updateProduct(id, patch);
+      const product = await inventoryApi.updateProduct(id, patch);
+      invalidateProductQueryCaches();
+      return product;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update product');
       throw error;
@@ -39,6 +43,7 @@ export function useProductMutations() {
     try {
       await inventoryApi.deleteProduct(id);
       toast.success('Product archived');
+      invalidateProductQueryCaches();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to archive product');
       throw error;
@@ -52,6 +57,7 @@ export function useProductMutations() {
     try {
       await inventoryApi.deleteProduct(id, { hard: true });
       toast.success('Product permanently deleted');
+      invalidateProductQueryCaches();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to permanently delete product');
       throw error;
@@ -65,6 +71,7 @@ export function useProductMutations() {
     try {
       const product = await inventoryApi.restoreProduct(id);
       toast.success('Product restored');
+      invalidateProductQueryCaches();
       return product;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to restore product');
@@ -82,6 +89,7 @@ export function useProductMutations() {
     try {
       const product = await inventoryApi.adjustStock(productId, payload);
       toast.success('Stock adjusted');
+      invalidateProductQueryCaches();
       return product;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to adjust stock');
@@ -96,6 +104,7 @@ export function useProductMutations() {
     try {
       const product = await inventoryApi.uploadProductImage(productId, file);
       toast.success('Product image uploaded');
+      invalidateProductQueryCaches();
       return product;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to upload product image');
@@ -110,6 +119,7 @@ export function useProductMutations() {
     try {
       const result = await inventoryApi.bulkProductAction(payload);
       toast.success(result.message ?? 'Bulk action completed');
+      invalidateProductQueryCaches();
       return result;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Bulk action failed');
@@ -124,6 +134,7 @@ export function useProductMutations() {
     try {
       await inventoryApi.createAdjustment(payload);
       toast.success('Stock adjusted');
+      invalidateProductQueryCaches();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to adjust stock');
       throw error;

@@ -49,12 +49,6 @@ const STATUS_OPTIONS = (
 
 const TAG_OPTIONS = [
   { value: '', label: 'No tag' },
-  { value: 'VIP', label: 'VIP' },
-  { value: 'Ramadan', label: 'Ramadan' },
-  { value: 'Modhu', label: 'Modhu' },
-  { value: 'Khejur', label: 'Khejur' },
-  { value: 'Repeat', label: 'Repeat' },
-  { value: 'Gift Buyer', label: 'Gift Buyer' },
 ];
 
 export function buildFollowupTableColumns(options?: {

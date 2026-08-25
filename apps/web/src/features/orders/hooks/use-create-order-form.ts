@@ -5,7 +5,6 @@ import type { OrderCustomerLookup, OrderFormOptionsResponse } from '@laam/types'
 
 import { couponsApi } from '@/features/coupons/api/coupons-api';
 import { inventoryApi } from '@/features/inventory/api/inventory-api';
-import { parseMerchandisingFlags } from '@/features/inventory/lib/product-merchandising';
 import { ordersApi } from '@/features/orders/api/orders-api';
 import {
   calcCreateOrderTotals,
@@ -25,9 +24,6 @@ export type OrderCatalogProduct = {
   name: string;
   sku: string;
   imageUrl: string;
-  isHero?: boolean;
-  isUpsell?: boolean;
-  isCrossSell?: boolean;
   variations: Array<{ id: string; label: string; unitPrice: number }>;
 };
 
@@ -38,8 +34,6 @@ type FormAction =
       type: 'hydrate_defaults';
       courierNote: string;
       shipping: number;
-      status: string;
-      paymentMethod: string;
     }
   | {
       type: 'lookup_customer_result';
@@ -84,6 +78,7 @@ function createInitialState(): CreateOrderFormState {
     selectedProductId: '',
     selectedVariationId: '',
     orderStatus: '',
+    holdFollowUpDate: null,
     paymentMethod: '',
     attachments: [],
     courierNote: '',
@@ -106,6 +101,9 @@ function createInitialState(): CreateOrderFormState {
     couponApplied: false,
     couponDiscountAmount: 0,
     skipFollowup: false,
+    salesAssignMode: '',
+    salesTeamIds: [],
+    salesUserId: '',
     catalogSearch: '',
     catalogCategory: '',
   };
@@ -128,8 +126,6 @@ function reducer(state: CreateOrderFormState, action: FormAction): CreateOrderFo
         ...state,
         courierNote: state.courierNote || action.courierNote,
         shipping: state.shipping || action.shipping,
-        orderStatus: state.orderStatus || action.status,
-        paymentMethod: state.paymentMethod || action.paymentMethod,
       };
 
     case 'lookup_customer_result': {
@@ -276,6 +272,9 @@ function validateForm(state: CreateOrderFormState): CreateOrderValidationErrors 
   if (!state.orderDate) errors.orderDate = 'Order date is required';
   if (!state.orderSource) errors.orderSource = 'Order source is required';
   if (!state.orderStatus) errors.orderStatus = 'Order status is required';
+  if (state.orderStatus.trim().toLowerCase() === 'hold' && !state.holdFollowUpDate) {
+    errors.holdFollowUpDate = 'Hold follow-up date is required';
+  }
   if (!state.paymentMethod) errors.paymentMethod = 'Payment method is required';
   return errors;
 }
@@ -291,20 +290,17 @@ const EMPTY_OPTIONS: OrderFormOptionsResponse = {
   pathaoZones: [],
   defaultCourierNote: '',
   defaultShipping: 0,
+  customerCreateSource: '',
 };
 
 function mapDetailToCatalog(
   d: NonNullable<Awaited<ReturnType<typeof inventoryApi.getProduct>>>,
 ): OrderCatalogProduct {
-  const merch = parseMerchandisingFlags(d.tags);
   return {
     id: d.id,
     name: d.name,
     sku: d.sku,
     imageUrl: d.imageUrl ?? '',
-    isHero: merch.isHero,
-    isUpsell: merch.isUpsell,
-    isCrossSell: merch.isCrossSell,
     variations:
       d.variants.length > 0
         ? d.variants.map((v) => ({
@@ -342,8 +338,6 @@ export function useCreateOrderForm() {
           type: 'hydrate_defaults',
           courierNote: merged.defaultCourierNote,
           shipping: merged.defaultShipping,
-          status: merged.statuses[0]?.value ?? 'pending',
-          paymentMethod: merged.paymentMethods[0]?.value ?? 'cod',
         });
       } finally {
         if (!cancelled) setLoadingMeta(false);
@@ -415,8 +409,6 @@ export function useCreateOrderForm() {
       type: 'hydrate_defaults',
       courierNote: options.defaultCourierNote,
       shipping: options.defaultShipping,
-      status: options.statuses[0]?.value ?? 'pending',
-      paymentMethod: options.paymentMethods[0]?.value ?? 'cod',
     });
   }, [options]);
 

@@ -112,13 +112,10 @@ export function createMockCustomersApi(): CustomersApi {
           [row.customerNumber, `"${row.name}"`, row.phone, row.orderCount, row.status].join(','),
         )
         .join('\n');
-      const blob = new Blob([header + body], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `customers-export-${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const { downloadCsvText } = await import('@/lib/export-csv');
+      const name = `customers-export-${Date.now()}`;
+      downloadCsvText(name, header + body, 'csv');
+      downloadCsvText(name, header + body, 'excel');
     },
     async getCustomer(id) {
       await delay(80);
@@ -200,13 +197,11 @@ export function createHttpCustomersApi(): CustomersApi {
         },
       });
       if (!res.ok) throw new Error('Export failed');
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = objectUrl;
-      a.download = `customers-export-${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(objectUrl);
+      const csv = await res.text();
+      const { downloadCsvText } = await import('@/lib/export-csv');
+      const name = `customers-export-${Date.now()}`;
+      downloadCsvText(name, csv, 'csv');
+      downloadCsvText(name, csv, 'excel');
     },
     async getCustomer(id) {
       const { apiRequest } = await import('@/lib/api/client');

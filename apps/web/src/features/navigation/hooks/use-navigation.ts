@@ -10,6 +10,7 @@ import {
   sortNavChildrenByFavorites,
 } from '@/features/orders/lib/order-queue-favorites';
 import { ORDER_STATUSES_CHANGED } from '@/features/orders/data/order-status-store';
+import { PURCHASE_SEGMENTS_CHANGED } from '@/features/customers/data/purchase-segments-store';
 import {
   ORDER_NAV_COUNTS_REFRESH,
   ORDER_STATUS_COUNTS_CHANGED,
@@ -17,11 +18,20 @@ import {
 } from '@/features/orders/data/order-status-counts-store';
 import { NAV_BADGES_CHANGED } from '@/features/navigation/data/nav-badges-store';
 import {
+  SIDEBAR_NAV_LAYOUT_CHANGED,
   SIDEBAR_NAV_ORDER_CHANGED,
+  getLiveSidebarNavLayout,
   getLiveSidebarNavOrder,
+  setLiveSidebarNavLayout,
   setLiveSidebarNavOrder,
 } from '@/features/navigation/data/sidebar-nav-order-store';
 import { applySidebarNavOrder } from '@/features/navigation/lib/apply-sidebar-nav-order';
+import {
+  applySidebarNavLayout,
+  buildDefaultSidebarNavLayout,
+  normalizeSidebarNavLayout,
+} from '@/features/navigation/lib/sidebar-nav-layout';
+import { getUniversalNavRegistry } from '@/features/navigation/config/universal-nav-registry';
 import { isPlatformHost } from '@/lib/tenant';
 
 const STATUS_COUNTS_POLL_MS = 30_000;
@@ -41,12 +51,16 @@ export function useNavigation() {
     window.addEventListener(ORDER_STATUS_COUNTS_CHANGED, refresh);
     window.addEventListener(NAV_BADGES_CHANGED, refresh);
     window.addEventListener(SIDEBAR_NAV_ORDER_CHANGED, refresh);
+    window.addEventListener(SIDEBAR_NAV_LAYOUT_CHANGED, refresh);
+    window.addEventListener(PURCHASE_SEGMENTS_CHANGED, refresh);
     return () => {
       window.removeEventListener(ORDER_QUEUE_FAVORITES_CHANGED, refresh);
       window.removeEventListener(ORDER_STATUSES_CHANGED, refresh);
       window.removeEventListener(ORDER_STATUS_COUNTS_CHANGED, refresh);
       window.removeEventListener(NAV_BADGES_CHANGED, refresh);
       window.removeEventListener(SIDEBAR_NAV_ORDER_CHANGED, refresh);
+      window.removeEventListener(SIDEBAR_NAV_LAYOUT_CHANGED, refresh);
+      window.removeEventListener(PURCHASE_SEGMENTS_CHANGED, refresh);
     };
   }, []);
 
@@ -54,10 +68,22 @@ export function useNavigation() {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
     if (!permissions.includes('orders.view') && !permissions.includes('settings.view')) return;
 
-    void import('@/features/orders/hooks/use-order-status-config').then(({ ensureOrderStatusConfigHydrated }) =>
-      ensureOrderStatusConfigHydrated(),
+    void import('@/features/orders/hooks/use-order-status-config').then(
+      ({ ensureOrderStatusConfigHydrated }) =>
+        ensureOrderStatusConfigHydrated(user?.organizationId),
     );
-  }, [permissions]);
+  }, [permissions, user?.organizationId]);
+
+  React.useEffect(() => {
+    if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
+    if (!permissions.includes('companies.view') && !permissions.includes('settings.view')) {
+      return;
+    }
+    void import('@/features/customers/hooks/use-purchase-segments').then(
+      ({ ensurePurchaseSegmentsHydrated }) =>
+        ensurePurchaseSegmentsHydrated(user?.organizationId),
+    );
+  }, [permissions, user?.organizationId]);
 
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
@@ -110,7 +136,7 @@ export function useNavigation() {
       window.removeEventListener('focus', onVisibleOrFocus);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
     };
-  }, [permissions]);
+  }, [permissions, user?.organizationId]);
 
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
@@ -156,48 +182,68 @@ export function useNavigation() {
       window.removeEventListener('focus', onVisibleOrFocus);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
     };
-  }, [permissions]);
+  }, [permissions, user?.organizationId]);
 
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
 
     let cancelled = false;
+    // Reset layout while switching org so previous tenant layout doesn't flash.
+    setLiveSidebarNavLayout(null);
+    setLiveSidebarNavOrder(null);
+
     void (async () => {
       try {
         const { brandingApi } = await import('@/features/brand/api/branding-api');
         const data = await brandingApi.get();
         if (!cancelled) {
           setLiveSidebarNavOrder(data.sidebarNavOrder ?? null);
+          setLiveSidebarNavLayout(data.sidebarNavLayout ?? null);
         }
       } catch {
-        // Keep default registry order until branding loads
+        // Keep PDF default until branding loads
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.organizationId]);
 
   return React.useMemo(() => {
     const includePlatform = user?.role === 'super_admin' && isPlatformHost();
-    const groups = applySidebarNavOrder(
-      filterNavigation(permissions, { includePlatform }),
-      getLiveSidebarNavOrder(),
-    );
+    const filtered = filterNavigation(permissions, { includePlatform });
+    const defaults = buildDefaultSidebarNavLayout(getUniversalNavRegistry());
+    const savedLayout = getLiveSidebarNavLayout();
+    const layout = normalizeSidebarNavLayout(savedLayout, defaults);
+    const groups = applySidebarNavLayout(filtered, layout);
+    const ordered =
+      savedLayout == null && getLiveSidebarNavOrder()
+        ? applySidebarNavOrder(groups, getLiveSidebarNavOrder())
+        : groups;
+
+    // Favorites reorder only when org customized layout — keep COO PDF order for defaults.
+    if (savedLayout == null) {
+      return ordered;
+    }
+
     const favorites = loadOrderQueueFavorites();
 
-    return groups.map((group) => ({
+    return ordered.map((group) => ({
       ...group,
       items: group.items.map((item) => {
-        if (item.id !== 'orders' || !item.children?.length) {
-          return item;
-        }
+        if (!item.children?.length) return item;
+        const hasOrderChild = item.children.some(
+          (child) =>
+            child.id.startsWith('orders-') ||
+            child.id.startsWith('orders-status-'),
+        );
+        if (!hasOrderChild) return item;
         return {
           ...item,
           children: sortNavChildrenByFavorites(item.children, favorites),
         };
       }),
     }));
-  }, [permissions, navVersion, user?.role]);
+  }, [permissions, navVersion, user?.role, user?.organizationId]);
 }

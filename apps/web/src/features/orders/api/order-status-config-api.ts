@@ -3,11 +3,9 @@ import type { OrderStatusConfig, UpsertOrderStatusConfigPayload } from '@laam/ty
 import {
   appendOrderStatus,
   getOrderStatuses as getLocalStatuses,
-  loadOrderStatusOverrides,
   saveOrderStatusOverrides,
   upsertOrderStatusOverride,
 } from '@/features/orders/data/order-status-store';
-import { MOCK_ORDER_STATUSES } from '@/features/orders/data/mock-status-config';
 import { apiRequest } from '@/lib/api/client';
 
 export type OrderStatusConfigApi = {
@@ -102,25 +100,16 @@ export const orderStatusConfigApi: OrderStatusConfigApi = useHttpApi
 
 const MIGRATION_FLAG = 'laam-order-status-migrated-to-api';
 
-/** Push localStorage overrides to org DB once, then clear local overrides. */
+/**
+ * One-time cleanup of legacy browser overrides.
+ * Do NOT push local overrides into the current org — that poisoned new tenants
+ * with another org's status set. Seed + API remain source of truth.
+ */
 export async function migrateLocalStatusOverridesIfNeeded(): Promise<OrderStatusConfig[] | null> {
   if (!useHttpApi || typeof window === 'undefined') return null;
   if (localStorage.getItem(MIGRATION_FLAG) === '1') return null;
 
-  const overrides = loadOrderStatusOverrides();
-  if (overrides.length === 0) {
-    localStorage.setItem(MIGRATION_FLAG, '1');
-    return null;
-  }
-
-  const merged = new Map(MOCK_ORDER_STATUSES.map((status) => [status.slug, status]));
-  for (const status of overrides) {
-    merged.set(status.slug, status);
-  }
-
-  const statuses = [...merged.values()].map(({ id: _id, ...rest }) => rest);
-  const saved = await orderStatusConfigApi.replaceMany(statuses);
   saveOrderStatusOverrides([]);
   localStorage.setItem(MIGRATION_FLAG, '1');
-  return saved;
+  return null;
 }

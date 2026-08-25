@@ -85,7 +85,7 @@ export function CustomerStatusesSettingsPage() {
   return (
     <PageShell
       title="Customer statuses"
-      description="Admin-defined pills for the Customers list (Premium, SMS Hub, campaign tags, etc.)."
+      description="Statuses you add here show as pills on the Customers list."
     >
       <div className="mb-3 text-sm">
         <Link href="/dashboard/customers" className="text-primary hover:underline">
@@ -103,7 +103,7 @@ export function CustomerStatusesSettingsPage() {
               <FormInput
                 value={draft.label}
                 onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
-                placeholder="e.g. Premium customer"
+                placeholder="e.g. Wholesale"
               />
             </FormField>
             <FormField label="Slug (optional)">

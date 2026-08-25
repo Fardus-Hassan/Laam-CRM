@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import type { OrderSource } from '@laam/types';
 
 import { PageShell } from '@/components/layout/page-shell';
 import { leadsApi } from '@/features/leads/api/leads-api';
@@ -14,6 +15,7 @@ import {
 } from '@/features/leads/data/mock-leads';
 import { mapLeadPrefillToOrderLineItems } from '@/features/leads/lib/lead-order-prefill';
 import { CreateOrderOtherSection } from '@/features/orders/components/create-order/create-order-other-section';
+import { CreateOrderAssignmentSection } from '@/features/orders/components/create-order/create-order-assignment-section';
 import { CreateOrderStepIndicator } from '@/features/orders/components/create-order/create-order-step-indicator';
 import {
   ORDER_PAGE_GAP,
@@ -34,6 +36,10 @@ import { Button } from '@/components/ui/button';
 
 function phoneDigits(phone?: string | null): string {
   return (phone ?? '').replace(/\D/g, '');
+}
+
+function toYmd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 export function CreateOrderPage() {
@@ -103,6 +109,18 @@ export function CreateOrderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const customerSourceApplied = React.useRef(false);
+  const configuredCustomerSource = form.options.customerCreateSource;
+  React.useEffect(() => {
+    if (customerSourceApplied.current) return;
+    if (searchParams.get('from') !== 'customer') return;
+    if (searchParams.get('fromLead')) return;
+    const configured = configuredCustomerSource?.trim();
+    if (!configured) return;
+    form.patch({ orderSource: configured as OrderSource });
+    customerSourceApplied.current = true;
+  }, [configuredCustomerSource, form, searchParams]);
+
   async function handleMobileCheck() {
     form.lookupCustomer();
     if (!form.state.mobile.trim()) return;
@@ -136,6 +154,15 @@ export function CreateOrderPage() {
       discount: line.discount,
     }));
 
+    if (form.state.salesAssignMode === 'auto_split' && form.state.salesTeamIds.length === 0) {
+      toast.error('Select at least one sales team for auto split');
+      return;
+    }
+    if (form.state.salesAssignMode === 'specific_member' && !form.state.salesUserId) {
+      toast.error('Select a sales member');
+      return;
+    }
+
     await createOrder({
       customerName: form.state.name,
       customerPhone: form.state.mobile,
@@ -144,8 +171,12 @@ export function CreateOrderPage() {
       shippingAddress: form.state.address,
       shippingArea: form.state.district || form.state.pathaoLocation?.city || 'Unknown',
       district: form.state.district,
-      source: form.state.orderSource || 'call',
-      status: form.state.orderStatus || 'pending',
+      source: form.state.orderSource,
+      status: form.state.orderStatus,
+      followUpDate:
+        form.state.orderStatus.trim().toLowerCase() === 'hold' && form.state.holdFollowUpDate
+          ? toYmd(form.state.holdFollowUpDate)
+          : undefined,
       paymentMethod: form.state.paymentMethod,
       paymentStatus:
         form.state.paymentMethod === 'paid'
@@ -162,6 +193,19 @@ export function CreateOrderPage() {
       courierNote: form.state.courierNote || undefined,
       packingNote: form.state.packingNote || undefined,
       skipFollowup: form.state.skipFollowup,
+      ...(form.state.salesAssignMode === 'specific_member'
+        ? {
+            assignedUserId: form.state.salesUserId,
+            assignmentMode: 'specific_member' as const,
+            routingTeamIds: form.state.salesTeamIds.length ? form.state.salesTeamIds : undefined,
+            routingUserId: form.state.salesUserId,
+          }
+        : form.state.salesAssignMode === 'auto_split'
+          ? {
+              assignmentMode: 'auto_split' as const,
+              routingTeamIds: form.state.salesTeamIds,
+            }
+          : {}),
       couponCode: form.state.couponApplied ? form.state.couponCode : undefined,
       leadId: leadPrefillId ?? undefined,
       customerTag: form.state.customerTag || undefined,
@@ -246,6 +290,9 @@ export function CreateOrderPage() {
           <div className="space-y-4 pb-24 xl:pb-0">
             <div id="create-order-customer" onBlur={handleMobileCheck} className="scroll-mt-24">
               <CustomerBlock mode="create" form={form} />
+            </div>
+            <div id="create-order-assignment" className="scroll-mt-24">
+              <CreateOrderAssignmentSection form={form} />
             </div>
             <div id="create-order-products" className="scroll-mt-24">
               <ProductPicker mode="create" form={form} />

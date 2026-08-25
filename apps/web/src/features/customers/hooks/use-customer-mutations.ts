@@ -5,6 +5,7 @@ import type { CustomerStatus } from '@laam/types';
 import { toast } from 'sonner';
 
 import { customersApi } from '@/features/customers/api/customers-api';
+import { invalidateCustomerQueryCaches } from '@/features/customers/data/customer-query-cache';
 
 export function useCustomerMutations() {
   const [isLoading, setIsLoading] = React.useState(false);
@@ -15,6 +16,7 @@ export function useCustomerMutations() {
       try {
         const customer = await customersApi.updateCustomer(customerId, patch);
         toast.success('Customer updated');
+        invalidateCustomerQueryCaches();
         return customer;
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Update failed');
@@ -32,6 +34,7 @@ export function useCustomerMutations() {
       try {
         const result = await customersApi.bulkAction(payload);
         toast.success(result.message ?? `Updated ${result.successCount} customer(s)`);
+        invalidateCustomerQueryCaches();
         return result;
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Bulk action failed');

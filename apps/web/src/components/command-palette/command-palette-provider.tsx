@@ -53,7 +53,7 @@ const NAV_ACTIONS = [
   { id: 'tasks', label: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
   { id: 'inventory', label: 'Inventory — Products', href: '/dashboard/inventory/products', icon: Package },
   { id: 'accounting', label: 'Accounting overview', href: '/dashboard/accounting/overview', icon: Wallet },
-  { id: 'courier', label: 'Courier Hub', href: '/dashboard/courier', icon: Truck },
+  { id: 'courier', label: 'Courier Dashboard', href: '/dashboard/courier', icon: Truck },
   { id: 'support', label: 'Support tickets', href: '/dashboard/support', icon: MessageSquare },
   { id: 'coupons', label: 'Coupons', href: '/dashboard/coupons', icon: Tag },
   { id: 'reports', label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },

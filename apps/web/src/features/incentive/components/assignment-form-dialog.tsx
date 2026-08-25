@@ -135,19 +135,6 @@ export function AssignmentFormDialog({
               placeholder="Select plan"
             />
           </FormField>
-          <FormField label="Shift">
-            <FormSearchSelect
-              value={shift}
-              onChange={setShift}
-              options={[
-                { value: '', label: 'No shift' },
-                { value: 'morning', label: 'Morning' },
-                { value: 'evening', label: 'Evening' },
-                { value: 'night', label: 'Night' },
-              ]}
-              searchable={false}
-            />
-          </FormField>
           {initial ? (
             <FormField label="HR status">
               <FormSearchSelect

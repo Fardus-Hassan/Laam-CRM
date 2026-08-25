@@ -51,7 +51,8 @@ import {
   ORDER_SECTION_BODY_CLASS,
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
-import { downloadCsv } from '@/lib/export-csv';
+import { ExportMenu } from '@/components/export-menu';
+import type { TableCell } from '@/lib/export-csv';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { useConfirmDialog } from '@/components/ui/use-confirm-dialog';
 import { cn } from '@/lib/utils';
@@ -63,13 +64,13 @@ function InventoryPageLayout({
   title,
   description,
   children,
-  onExport,
+  exportTable,
   actions,
 }: {
   title: string;
   description: string;
   children: React.ReactNode;
-  onExport?: () => void;
+  exportTable?: { filename: string; headers: string[]; rows: TableCell[][] };
   actions?: React.ReactNode;
 }) {
   return (
@@ -81,14 +82,16 @@ function InventoryPageLayout({
             <h2 className="text-base font-semibold tracking-tight">{title}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
           </div>
-          {(actions || onExport) ? (
+          {(actions || exportTable) ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
               {actions}
-              {onExport ? (
+              {exportTable ? (
                 <Can permission="inventory.export">
-                  <Button type="button" size="sm" variant="outline" onClick={onExport}>
-                    Export CSV
-                  </Button>
+                  <ExportMenu
+                    filename={exportTable.filename}
+                    headers={exportTable.headers}
+                    rows={exportTable.rows}
+                  />
                 </Can>
               ) : null}
             </div>
@@ -253,7 +256,7 @@ export function SuppliersListShell() {
   return (
     <InventoryPageLayout
       title="Suppliers"
-      description="Vendors for honey, dates, packaging, and raw materials."
+      description="Vendors you buy stock from — packaging, raw materials, and finished goods."
       actions={
         <Can permission="inventory.purchase">
           <Button type="button" size="sm" onClick={openCreate}>
@@ -262,13 +265,11 @@ export function SuppliersListShell() {
           </Button>
         </Can>
       }
-      onExport={() =>
-        downloadCsv(
-          'suppliers.csv',
-          ['Name', 'Contact', 'Phone', 'Balance', 'Products', 'Status'],
-          items.map((s) => [s.name, s.contactPerson ?? '', s.phone, s.balance, s.productCount, s.status]),
-        )
-      }
+      exportTable={{
+        filename: 'suppliers',
+        headers: ['Name', 'Contact', 'Phone', 'Balance', 'Products', 'Status'],
+        rows: items.map((s) => [s.name, s.contactPerson ?? '', s.phone, s.balance, s.productCount, s.status]),
+      }}
     >
       <SearchField value={search} onChange={setSearch} placeholder="Search supplier…" />
       <InventoryResponsiveList
@@ -474,21 +475,19 @@ export function PurchaseListShell() {
           </Link>
         </Button>
       }
-      onExport={() =>
-        downloadCsv(
-          'purchases.csv',
-          ['PO', 'Supplier', 'Date', 'Items', 'Amount', 'Payment', 'Stock'],
-          (data?.items ?? []).map((p) => [
-            p.purchaseNumber,
-            p.supplierName,
-            p.purchaseDate,
-            p.itemCount,
-            p.totalAmount,
-            p.paymentStatus,
-            p.stockStatus,
-          ]),
-        )
-      }
+      exportTable={{
+        filename: 'purchases',
+        headers: ['PO', 'Supplier', 'Date', 'Items', 'Amount', 'Payment', 'Stock'],
+        rows: (data?.items ?? []).map((p) => [
+          p.purchaseNumber,
+          p.supplierName,
+          p.purchaseDate,
+          p.itemCount,
+          p.totalAmount,
+          p.paymentStatus,
+          p.stockStatus,
+        ]),
+      }}
     >
       <CrmSummaryStrip
         items={[
@@ -1454,7 +1453,7 @@ export function MixerListShell() {
             <Card className={ORDER_CARD_CLASS}>
               <CardContent className="p-4">
                 <p className="text-center text-sm text-muted-foreground">
-                  No recipes yet — create one for your mix (e.g. honey + kalojira).
+                  No recipes yet — create one to mix ingredients into a finished SKU.
                 </p>
               </CardContent>
             </Card>

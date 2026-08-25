@@ -21,6 +21,7 @@ import {
   ORDER_STICKY_MAX_H_CLASS,
   ORDER_STICKY_TOP_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
+import { OrderDatePicker } from '@/features/orders/components/create-order/order-date-picker';
 import { ProductCatalogPanel } from '@/features/orders/components/create-order/product-catalog-panel';
 
 type CreateOrderProductsSectionProps = {
@@ -210,12 +211,28 @@ export function CreateOrderProductsSection({
               <FormSelect
                 id="orderStatus"
                 value={state.orderStatus}
-                onChange={(orderStatus) => patch({ orderStatus })}
+                onChange={(orderStatus) =>
+                  patch({
+                    orderStatus,
+                    holdFollowUpDate:
+                      orderStatus.trim().toLowerCase() === 'hold'
+                        ? (state.holdFollowUpDate ?? new Date())
+                        : null,
+                  })
+                }
                 options={options.statuses}
                 placeholder="Select status"
                 searchPlaceholder="Search status…"
               />
             </FormField>
+            {state.orderStatus.trim().toLowerCase() === 'hold' ? (
+              <OrderDatePicker
+                label="Hold follow-up date"
+                value={state.holdFollowUpDate ?? new Date()}
+                onChange={(date) => patch({ holdFollowUpDate: date })}
+                error={errors.holdFollowUpDate}
+              />
+            ) : null}
             <FormField label="Payment Method" htmlFor="paymentMethod" required>
               <FormSelect
                 id="paymentMethod"

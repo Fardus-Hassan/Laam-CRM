@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import type { AccountingFilterCount, CreateIncomePayload } from '@laam/types';
-import { Download, Plus, RefreshCw, Search } from 'lucide-react';
+import { Plus, RefreshCw, Search } from 'lucide-react';
 
 import { FormField } from '@/components/form/form-field';
 import { FormInput } from '@/components/form/form-input';
@@ -36,7 +36,7 @@ import { useTransactionList } from '@/features/accounting/hooks/use-transaction-
 import { useOrgCategoryOptions } from '@/features/settings/hooks/use-org-categories';
 import type { TransactionListResponse } from '@laam/types';
 import type { TransactionListQuery } from '@laam/types';
-import { downloadCsv } from '@/lib/export-csv';
+import { ExportMenu } from '@/components/export-menu';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
@@ -135,31 +135,19 @@ export function TransactionListShell({
               <span className="hidden sm:inline">Refresh</span>
             </Button>
             <Can permission="accounting.export">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 shrink-0"
-                onClick={() => {
-                  const rows = data?.items ?? [];
-                  downloadCsv(
-                    `${mode}-export.csv`,
-                    ['Date', 'Description', 'Category', 'Amount', 'Method', 'Account'],
-                    rows.map((r) => [
-                      r.date,
-                      r.description,
-                      r.category,
-                      r.amount,
-                      r.paymentMethod,
-                      r.accountName,
-                    ]),
-                  );
-                }}
+              <ExportMenu
+                filename={`${mode}-export`}
+                headers={['Date', 'Description', 'Category', 'Amount', 'Method', 'Account']}
+                rows={(data?.items ?? []).map((r) => [
+                  r.date,
+                  r.description,
+                  r.category,
+                  r.amount,
+                  r.paymentMethod,
+                  r.accountName,
+                ])}
                 disabled={!data?.items.length}
-              >
-                <Download className="size-3.5" />
-                <span className="hidden sm:inline">Export</span>
-              </Button>
+              />
             </Can>
             {mode !== 'ledger' && createLabel ? (
               <Button type="button" size="sm" className="h-8 shrink-0" onClick={() => setCreateOpen(true)}>

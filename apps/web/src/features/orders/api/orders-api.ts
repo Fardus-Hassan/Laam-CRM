@@ -3,6 +3,7 @@ import type {
   CreateOrderPayload,
   DuplicateCheckQuery,
   DuplicateCheckResult,
+  OrgRoutingConfig,
   OrderBulkActionPayload,
   OrderCourierTracking,
   OrderCustomerLookup,
@@ -46,6 +47,9 @@ export type OrdersApi = {
   getOrdersByPhone: (phone: string, excludeOrderId?: string) => Promise<OrderDetail[]>;
   quickSearchOrders: (query: string, limit?: number) => Promise<OrderListRow[]>;
   getFormOptions: () => Promise<OrderFormOptionsResponse>;
+  setCustomerCreateSource: (value: string) => Promise<{ customerCreateSource: string }>;
+  getRoutingConfig: () => Promise<OrgRoutingConfig>;
+  updateRoutingConfig: (patch: Partial<OrgRoutingConfig>) => Promise<OrgRoutingConfig>;
   lookupCustomer: (phone: string) => Promise<OrderCustomerLookup | null>;
   deleteOrder: (id: string) => Promise<void>;
   cancelCourier: (id: string, reason?: string) => Promise<OrderDetail>;
@@ -114,13 +118,12 @@ export function createMockOrdersApi(): OrdersApi {
     },
     async getFormOptions() {
       await delay(50);
-      const { DEFAULT_COURIER_NOTE, MOCK_DISTRICTS, MOCK_ORDER_STATUSES, MOCK_ORDER_TAGS, MOCK_PAYMENT_METHODS } =
+      const { DEFAULT_COURIER_NOTE, MOCK_DISTRICTS, MOCK_ORDER_STATUSES, MOCK_ORDER_TAGS, MOCK_PAYMENT_METHODS, MOCK_SOURCES } =
         await import('@/features/orders/data/mock-create-order');
-      const { ORDER_SOURCE_LABELS } = await import('@/features/orders/config/order-status');
       return {
         statuses: MOCK_ORDER_STATUSES,
         paymentMethods: MOCK_PAYMENT_METHODS,
-        sources: Object.entries(ORDER_SOURCE_LABELS).map(([value, label]) => ({ value, label })),
+        sources: MOCK_SOURCES,
         districts: MOCK_DISTRICTS.map((d) => ({ value: d, label: d })),
         orderTags: MOCK_ORDER_TAGS.map((t) => ({ value: t, label: t })),
         customerTags: MOCK_ORDER_TAGS.map((t) => ({ value: t, label: t })),
@@ -133,7 +136,34 @@ export function createMockOrdersApi(): OrdersApi {
           { value: 'Mirpur', label: 'Mirpur' },
         ],
         defaultCourierNote: DEFAULT_COURIER_NOTE,
-        defaultShipping: 120,
+        defaultShipping: 0,
+        customerCreateSource: '',
+      };
+    },
+    async setCustomerCreateSource(value) {
+      await delay(50);
+      return { customerCreateSource: value };
+    },
+    async getRoutingConfig() {
+      await delay(50);
+      return {
+        orderRouting: { mode: 'auto_split', teamIds: [] },
+        courierRouting: { mode: 'auto_split', teamIds: [] },
+      };
+    },
+    async updateRoutingConfig(patch) {
+      await delay(50);
+      return {
+        orderRouting: {
+          mode: patch.orderRouting?.mode ?? 'auto_split',
+          teamIds: patch.orderRouting?.teamIds ?? [],
+          assigneeUserId: patch.orderRouting?.assigneeUserId,
+        },
+        courierRouting: {
+          mode: patch.courierRouting?.mode ?? 'auto_split',
+          teamIds: patch.courierRouting?.teamIds ?? [],
+          assigneeUserId: patch.courierRouting?.assigneeUserId,
+        },
       };
     },
     async lookupCustomer(phone) {
@@ -324,6 +354,30 @@ export function createHttpOrdersApi(): OrdersApi {
       const { apiRequest } = await import('@/lib/api/client');
       const { crmEndpoints } = await import('@/lib/api/endpoints');
       return apiRequest<OrderFormOptionsResponse>(`${crmEndpoints.orders}/meta/form-options`);
+    },
+    async setCustomerCreateSource(value: string) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<{ customerCreateSource: string }>(
+        `${crmEndpoints.orders}/meta/customer-create-source`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ value }),
+        },
+      );
+    },
+    async getRoutingConfig() {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<OrgRoutingConfig>(`${crmEndpoints.orders}/meta/routing-config`);
+    },
+    async updateRoutingConfig(patch) {
+      const { apiRequest } = await import('@/lib/api/client');
+      const { crmEndpoints } = await import('@/lib/api/endpoints');
+      return apiRequest<OrgRoutingConfig>(`${crmEndpoints.orders}/meta/routing-config`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
     },
     async lookupCustomer(phone) {
       const { apiRequest } = await import('@/lib/api/client');

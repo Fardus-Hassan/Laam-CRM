@@ -5,6 +5,7 @@ import type { LeadStatus } from '@laam/types';
 import { toast } from 'sonner';
 
 import { leadsApi } from '@/features/leads/api/leads-api';
+import { invalidateLeadQueryCaches } from '@/features/leads/data/lead-query-cache';
 
 export function useLeadMutations() {
   const [isLoading, setIsLoading] = React.useState(false);
@@ -14,6 +15,7 @@ export function useLeadMutations() {
     try {
       const lead = await leadsApi.createLead(payload);
       toast.success(`Lead ${lead.leadNumber} created`);
+      invalidateLeadQueryCaches();
       return lead;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create lead');
@@ -29,6 +31,7 @@ export function useLeadMutations() {
       try {
         const lead = await leadsApi.updateLead(leadId, patch);
         toast.success('Lead updated');
+        invalidateLeadQueryCaches();
         return lead;
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to update lead');
@@ -46,6 +49,7 @@ export function useLeadMutations() {
       try {
         const result = await leadsApi.bulkAction(payload);
         toast.success(result.message ?? `Updated ${result.successCount} lead(s)`);
+        invalidateLeadQueryCaches();
         return result;
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Bulk action failed');

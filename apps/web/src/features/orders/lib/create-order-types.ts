@@ -60,6 +60,7 @@ export type CreateOrderFormState = {
   selectedVariationId: string;
 
   orderStatus: string;
+  holdFollowUpDate: Date | null;
   paymentMethod: string;
   attachments: Array<{ name: string; url: string }>;
   courierNote: string;
@@ -86,6 +87,10 @@ export type CreateOrderFormState = {
   couponDiscountAmount: number;
   skipFollowup: boolean;
 
+  salesAssignMode: '' | 'auto_split' | 'specific_member';
+  salesTeamIds: string[];
+  salesUserId: string;
+
   catalogSearch: string;
   catalogCategory: string;
 };
@@ -110,6 +115,7 @@ export type CreateOrderValidationErrors = Partial<
     | 'orderDate'
     | 'orderSource'
     | 'orderStatus'
+    | 'holdFollowUpDate'
     | 'paymentMethod',
     string
   >

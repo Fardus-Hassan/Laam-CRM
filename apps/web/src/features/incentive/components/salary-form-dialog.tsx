@@ -29,7 +29,7 @@ const FIELDS = [
 ] as const;
 
 type AmountKey = (typeof FIELDS)[number][0];
-type Draft = Record<AmountKey, string> & { notes: string };
+type Draft = Record<AmountKey, string> & { notes: string; payoutDay: string };
 
 function toDraft(initial?: IncentiveSalaryTemplate | null): Draft {
   return {
@@ -42,6 +42,7 @@ function toDraft(initial?: IncentiveSalaryTemplate | null): Draft {
     lunchBdt: String(initial?.lunchBdt ?? 0),
     totalBdt: String(initial?.totalBdt ?? 0),
     notes: initial?.notes ?? '',
+    payoutDay: initial?.payoutDay == null ? '' : String(initial.payoutDay),
   };
 }
 
@@ -71,11 +72,21 @@ export function SalaryFormDialog({
       toast.error('Salary amounts must be valid positive numbers');
       return;
     }
+    const payoutDayRaw = draft.payoutDay.trim();
+    const payoutDay = payoutDayRaw ? Number(payoutDayRaw) : undefined;
+    if (
+      payoutDay != null &&
+      (!Number.isInteger(payoutDay) || payoutDay < 1 || payoutDay > 28)
+    ) {
+      toast.error('Payout day must be between 1 and 28');
+      return;
+    }
     setSaving(true);
     try {
       await incentiveApi.upsertSalary({
         ...amounts,
         notes: draft.notes.trim() || undefined,
+        ...(payoutDay != null ? { payoutDay } : {}),
       });
       toast.success('Salary reference saved');
       onSaved();
@@ -106,6 +117,21 @@ export function SalaryFormDialog({
               />
             </FormField>
           ))}
+          <FormField
+            label="Payout day"
+            hint="Day of next month shown on agent dashboard (1–28). Leave blank to hide."
+          >
+            <FormInput
+              type="number"
+              min={1}
+              max={28}
+              value={draft.payoutDay}
+              onChange={(e) =>
+                setDraft((current) => ({ ...current, payoutDay: e.target.value }))
+              }
+              placeholder="e.g. 5"
+            />
+          </FormField>
           <FormField label="Notes" className="sm:col-span-2">
             <FormTextarea
               rows={3}

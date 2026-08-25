@@ -40,6 +40,7 @@ import { CustomerStatusBadge } from '@/features/customers/components/shared/cust
 import { CustomerStatusDialog } from '@/features/customers/components/shared/customer-status-dialog';
 import { formatCustomerDate } from '@/features/customers/components/customer-list/customer-table-columns';
 import { useCustomerDetailMutations } from '@/features/customers/hooks/use-customer-mutations';
+import { customerCreateOrderHref } from '@/features/customers/lib/customer-create-order-href';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -84,7 +85,7 @@ export function CustomerDetailView({
 
   const phoneDigits = customer.phone.replace(/\D/g, '');
   const successRate = customer.courierScore?.rate;
-  const newOrderHref = `/dashboard/orders/new?phone=${encodeURIComponent(customer.phone)}`;
+  const newOrderHref = customerCreateOrderHref(customer.phone);
 
   return (
     <PageShell

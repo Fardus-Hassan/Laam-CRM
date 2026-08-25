@@ -16,6 +16,8 @@ model Organization {
   phone              String?
   // Tenant brand colors + light/dark logo URLs
   branding           Json?
+  /// Org profile extras: email, address, district, website, timezone, currency, orderPrefix, defaultCourier
+  settings           Json?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   users              User[]
@@ -26,6 +28,7 @@ model Organization {
   productBrands      ProductBrand[]
   orgCategories      OrgCategory[]
   orgCustomerStatuses OrgCustomerStatus[]
+  orgCustomerPurchaseSegments OrgCustomerPurchaseSegment[]
   products           Product[]
   productVariants    ProductVariant[]
   stockMovements     InventoryStockMovement[]
@@ -73,6 +76,7 @@ model Organization {
   incentivePlans           IncentivePlan[]
   incentiveAssignments     IncentiveAssignment[]
   incentiveOrgSettings     IncentiveOrgSettings?
+  routingConfig            OrgRoutingConfig?
   incentiveManualActuals   IncentiveManualActual[]
   incentivePeriodRuns      IncentivePeriodRun[]
   incentiveAttendances     IncentiveAttendance[]
@@ -497,6 +501,17 @@ model Order {
   assignedAgentName  String?
   /// Stable assignee for KPI / incentive (preferred over assignedAgentName).
   assignedUserId     String?
+  /// Logistic assignee used for courier workload split and return-ratio KPI.
+  logisticAssignedUserId String?
+  logisticAssignedAgentName String?
+  /// Snapshot of sales assignee when order KPI is credited (anti-gaming).
+  orderCreditUserId  String?
+  orderCreditAgentName String?
+  orderCreditedAt    DateTime?
+  /// Snapshot of original inbound cart for CS/US checks.
+  inboundOriginalSnapshot Json?
+  /// Derived incentive flags (cross_sell / upsell metadata).
+  incentiveFlags     Json?
   shippingArea       String
   shippingAddress    String?
   district           String?
@@ -581,6 +596,25 @@ model Order {
   @@index([organizationId, clientIp])
   @@index([organizationId, assignedAgentName])
   @@index([organizationId, assignedUserId])
+  @@index([organizationId, logisticAssignedUserId])
+  @@index([organizationId, orderCreditUserId])
+}
+
+/// Org-level routing defaults for order and courier assignment.
+model OrgRoutingConfig {
+  id                 String       @id @default(cuid())
+  organizationId     String       @unique
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderMode          String       @default("auto_split")
+  orderTeamIds       String[]     @default([])
+  orderAssigneeUserId String?
+  courierMode        String       @default("auto_split")
+  courierTeamIds     String[]     @default([])
+  courierAssigneeUserId String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 /// Org-level blocklist: IP or mobile — blocked callers cannot place orders.
@@ -846,7 +880,7 @@ model OrderFormOption {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  kind           String // status | payment_method | source | district | order_tag | customer_tag | default_courier_note | default_shipping
+  kind           String // status | payment_method | source | district | order_tag | customer_tag | default_courier_note | default_shipping | customer_create_source
   value          String
   label          String
   sortOrder      Int          @default(0)
@@ -969,6 +1003,34 @@ model OrgCustomerStatus {
   label          String
   color          String?
   sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  isSystem       Boolean      @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@index([organizationId, deletedAt])
+}
+
+/// Org-defined purchase-count buckets for Customers nav + list filters (1x, Loyal…).
+model OrgCustomerPurchaseSegment {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slug           String
+  label          String
+  /// eq | gt | gte | lt | lte
+  op             String       @default("eq")
+  threshold      Int
+  /// deliveredCount | orderCount — buyers default to successful deliveries
+  metric         String       @default("deliveredCount")
+  /// sidebar | nested_tab | sidebar_and_tab | filter_only (same idea as order statuses)
+  displayMode    String       @default("sidebar_and_tab")
+  sortOrder      Int          @default(0)
+  /// Legacy/convenience — prefer displayMode; kept in sync on write
+  showInNav      Boolean      @default(true)
   isActive       Boolean      @default(true)
   isSystem       Boolean      @default(false)
   deletedAt      DateTime?
@@ -1618,6 +1680,7 @@ model IncentivePlan {
   @@index([organizationId, isActive])
   @@index([organizationId, teamId])
   @@index([organizationId, orgTeamId])
+  @@index([organizationId, orgTeamId, metricType])
   @@map("IncentivePlans")
 }
 
@@ -1756,8 +1819,8 @@ model IncentiveAttendance {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
-  @@unique([organizationId, agentName, yearMonth])
   @@index([organizationId, yearMonth])
+  @@index([organizationId, userId, yearMonth])
   @@map("IncentiveAttendances")
 }
 
@@ -1775,8 +1838,8 @@ model IncentiveSurveyLog {
   recordedAt     DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  @@unique([organizationId, agentName, yearMonth])
   @@index([organizationId, yearMonth])
+  @@index([organizationId, assignmentId, yearMonth])
   @@map("IncentiveSurveyLogs")
 }
 
@@ -1796,8 +1859,8 @@ model IncentiveChannelLog {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  @@unique([organizationId, agentName, yearMonth, channel])
   @@index([organizationId, yearMonth])
+  @@index([organizationId, assignmentId, yearMonth])
   @@map("IncentiveChannelLogs")
 }
 
@@ -1818,6 +1881,7 @@ model IncentiveSpecialBonus {
 
   @@index([organizationId, yearMonth])
   @@index([organizationId, agentName])
+  @@index([organizationId, assignmentId, yearMonth])
   @@map("IncentiveSpecialBonuses")
 }
 

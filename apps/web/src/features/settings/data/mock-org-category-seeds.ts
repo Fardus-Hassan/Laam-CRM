@@ -6,12 +6,6 @@ import {
 } from '@/features/accounting/config/accounting-filters';
 
 const PRODUCT_CATEGORY_SEEDS: Record<string, string> = {
-  honey: 'Honey',
-  dates: 'Dates',
-  combo: 'Combo',
-  gift: 'Gift box',
-  raw_material: 'Raw material',
-  packaging: 'Packaging',
   other: 'Other',
 };
 
@@ -35,7 +29,7 @@ function seedCategory(
 
 export const SEED_ORG_CATEGORIES: OrgCategory[] = [
   ...(Object.entries(PRODUCT_CATEGORY_SEEDS) as [string, string][]).map(
-    ([slug, label], index) => seedCategory('product', slug, label, index),
+    ([slug, label], index) => seedCategory('product', slug, label, index, slug === 'other'),
   ),
   ...INCOME_CATEGORIES.map((item, index) =>
     seedCategory(

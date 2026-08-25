@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { CourierScoreCell } from '@/features/customers/components/shared/courier-score-cell';
 import { CustomerFollowUpControl } from '@/features/customers/components/shared/customer-follow-up-control';
 import { CustomerStatusSelect } from '@/features/customers/components/shared/customer-status-select';
+import { customerCreateOrderHref } from '@/features/customers/lib/customer-create-order-href';
 import { formatCustomerDate } from '@/features/customers/components/customer-list/customer-table-columns';
 import { formatCurrency } from '@/lib/format';
 
@@ -105,7 +106,7 @@ export function CustomerTableMobileCard({
               Note
             </Button>
             <Button type="button" size="sm" className="h-7 px-2" asChild>
-              <Link href={`/dashboard/orders/new?phone=${encodeURIComponent(row.phone)}`}>
+              <Link href={customerCreateOrderHref(row.phone)}>
                 <ShoppingBag className="size-3.5" />
                 Order
               </Link>

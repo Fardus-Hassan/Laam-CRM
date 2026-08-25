@@ -10,6 +10,8 @@ import type {
   CreateOrderPayload,
   CourierShopStats,
   DuplicateCheckResult,
+  OrgRoutingConfig,
+  OrgRoutingMode,
   OrderCourierStats,
   OrderCourierTracking,
   OrderDetail,
@@ -22,6 +24,7 @@ import type {
 } from '@laam/types';
 
 import type { ActorLabel } from '../common/actor.util';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CarrybeeCourierService } from './carrybee-courier.service';
 import type { CarrybeeSyncService } from './carrybee-sync.service';
@@ -34,6 +37,7 @@ import { CourierIntegrationsService } from './courier-integrations.service';
 import { CourierPhoneHistoryService } from './courier-phone-history.service';
 import { CustomersService } from './customers.service';
 import { FollowupsService } from './followups.service';
+import { dhakaYmd } from './order-hold-workflow.util';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { LeadsService } from './leads.service';
 import { normalizeBdPhone } from './phone.util';
@@ -62,6 +66,17 @@ export type OrderFormOptionsResponse = {
   pathaoZones: OrderFormOptionDto[];
   defaultCourierNote: string;
   defaultShipping: number;
+  customerCreateSource: string;
+};
+
+type RoutingScope = 'order' | 'courier';
+
+type AssignmentMode = OrgRoutingMode;
+
+type RoutingOverrideInput = {
+  mode?: AssignmentMode;
+  teamIds?: string[];
+  assigneeUserId?: string;
 };
 
 export type CreateOrderInput = CreateOrderPayload & {
@@ -119,6 +134,7 @@ export type UpdateOrderInput = {
   district?: string;
   source?: string;
   status?: string;
+  followUpDate?: string;
   paymentStatus?: PaymentStatus;
   paymentMethod?: string;
   deliveryCharge?: number;
@@ -176,17 +192,63 @@ const STOCK_KEEP_DEDUCTED_STATUSES = new Set(['delivered', 'completed']);
 /** Customer return completed — restock inventory (manual approve = move to this status). */
 const STOCK_RETURN_RESTOCK_STATUSES = new Set(['returned']);
 
+const ROUTING_MODES: AssignmentMode[] = ['auto_split', 'specific_member'];
+const OPEN_ORDER_WORKLOAD_STATUSES = new Set([
+  'pending',
+  'pending_2',
+  'pending_3',
+  'confirmed',
+  'processing',
+  'processing_2',
+  'hold',
+  'hold_followup',
+  'in_courier',
+  'out_for_delivery',
+]);
+
+/** Order still awaiting a scheduled callback — keep linked Followup open. */
+const HOLD_CALLBACK_STATUSES = new Set(['hold', 'hold_followup']);
+
+/**
+ * Statuses that obsolete any open order-linked follow-up
+ * (even if the order was never on Hold — e.g. pending create follow-up).
+ */
+const ORDER_FOLLOWUP_CLOSE_STATUSES = new Set([
+  'confirmed',
+  'processing',
+  'processing_2',
+  'in_courier',
+  'out_for_delivery',
+  'delivered',
+  'completed',
+  'cancelled',
+  'pending_return',
+  'returned',
+]);
+
+const ACTIVE_COURIER_WORKLOAD_SLUGS = new Set([
+  'order_placed',
+  'pending_pickup',
+  'picked_up',
+  'in_transit',
+  'on_hold',
+  'partial_delivered',
+  'rescheduled',
+  'approved_by_shop',
+]);
+
 const DEFAULT_STATUSES: OrderFormOptionDto[] = [
   { value: 'pending', label: 'Pending' },
-  { value: 'pending_2', label: 'Pending 2' },
-  { value: 'pending_3', label: 'Pending 3' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'hold', label: 'On Hold' },
+  { value: 'hold_followup', label: 'Hold Followup' },
   { value: 'processing', label: 'Processing' },
   { value: 'in_courier', label: 'In Courier' },
   { value: 'delivered', label: 'Delivered' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'pending_return', label: 'Pending Return' },
+  { value: 'returned', label: 'Returned' },
 ];
 
 const DEFAULT_PAYMENT_METHODS: OrderFormOptionDto[] = [
@@ -198,12 +260,9 @@ const DEFAULT_PAYMENT_METHODS: OrderFormOptionDto[] = [
 ];
 
 const DEFAULT_SOURCES: OrderFormOptionDto[] = [
-  { value: 'facebook', label: 'Facebook Ad' },
-  { value: 'campaign', label: 'Facebook Campaign' },
+  { value: 'facebook', label: 'Facebook' },
   { value: 'website', label: 'Website' },
-  { value: 'landing_page', label: 'Landing Page' },
-  { value: 'call', label: 'Inbound Call' },
-  { value: 'ecommerce', label: 'Online Store' },
+  { value: 'call', label: 'Call' },
   { value: 'walk_in', label: 'Walk-in' },
 ];
 
@@ -220,11 +279,8 @@ const DEFAULT_DISTRICTS = [
   'Narayanganj',
 ];
 
-const DEFAULT_ORDER_TAGS = ['VIP', 'Repeat', 'COD Risk', 'New', 'Ramadan', 'Gift Buyer'];
-const DEFAULT_CUSTOMER_TAGS = ['VIP', 'Repeat', 'New', 'Wholesale'];
-
-const DEFAULT_COURIER_NOTE =
-  'পার্সেল খোলা যাবে না — মার্চেন্টকে জানানো ছাড়া খুলবেন না। কাস্টমার কল না ধরলে পার্সেল ক্যান্সেল করবেন না।';
+const DEFAULT_ORDER_TAGS: string[] = [];
+const DEFAULT_CUSTOMER_TAGS: string[] = [];
 
 @Injectable()
 export class OrdersService {
@@ -258,9 +314,360 @@ export class OrdersService {
     }
   }
 
+  private normalizeRoutingMode(value: string | null | undefined): AssignmentMode {
+    if (value === 'specific_member') return 'specific_member';
+    return 'auto_split';
+  }
+
+  private async getOrCreateRoutingConfig(organizationId: string) {
+    const existing = await this.prisma.orgRoutingConfig.findUnique({
+      where: { organizationId },
+    });
+    if (existing) return existing;
+    return this.prisma.orgRoutingConfig.create({
+      data: {
+        organizationId,
+        orderMode: 'auto_split',
+        orderTeamIds: [],
+        courierMode: 'auto_split',
+        courierTeamIds: [],
+      },
+    });
+  }
+
+  private normalizeTeamIds(values: string[] | undefined): string[] {
+    return [...new Set((values ?? []).map((v) => v.trim()).filter(Boolean))];
+  }
+
+  private async resolveTeamMemberPool(
+    organizationId: string,
+    teamIds: string[],
+  ): Promise<Array<{ id: string; name: string; teamId: string | null }>> {
+    const normalized = this.normalizeTeamIds(teamIds);
+    if (!normalized.length) return [];
+    const members = await this.prisma.user.findMany({
+      where: {
+        organizationId,
+        teamId: { in: normalized },
+        status: 'active',
+      },
+      select: { id: true, name: true, teamId: true },
+    });
+    return members;
+  }
+
+  private async resolveLeastLoadUser(
+    organizationId: string,
+    scope: RoutingScope,
+    pool: Array<{ id: string; name: string; teamId: string | null }>,
+    loadMemo?: Map<string, number>,
+  ): Promise<{ userId: string; userName: string } | null> {
+    if (!pool.length) return null;
+    const ids = pool.map((m) => m.id);
+    const counts =
+      scope === 'order'
+        ? await this.prisma.order.groupBy({
+            by: ['assignedUserId'],
+            where: {
+              organizationId,
+              deletedAt: null,
+              assignedUserId: { in: ids },
+              status: { in: [...OPEN_ORDER_WORKLOAD_STATUSES] },
+            },
+            _count: { _all: true },
+          })
+        : await this.prisma.order.groupBy({
+            by: ['logisticAssignedUserId'],
+            where: {
+              organizationId,
+              deletedAt: null,
+              logisticAssignedUserId: { in: ids },
+              courierStatusSlug: { in: [...ACTIVE_COURIER_WORKLOAD_SLUGS] },
+            },
+            _count: { _all: true },
+          });
+
+    const base = new Map<string, number>();
+    for (const m of pool) base.set(m.id, 0);
+    for (const row of counts) {
+      const key =
+        scope === 'order'
+          ? (row as { assignedUserId: string | null }).assignedUserId
+          : (row as { logisticAssignedUserId: string | null }).logisticAssignedUserId;
+      if (key) base.set(key, row._count._all);
+    }
+    if (loadMemo) {
+      for (const [id, delta] of loadMemo.entries()) {
+        base.set(id, (base.get(id) ?? 0) + delta);
+      }
+    }
+    const sorted = [...pool].sort((a, b) => {
+      const diff = (base.get(a.id) ?? 0) - (base.get(b.id) ?? 0);
+      if (diff !== 0) return diff;
+      return a.name.localeCompare(b.name);
+    });
+    const pick = sorted[0];
+    if (!pick) return null;
+    return { userId: pick.id, userName: pick.name };
+  }
+
+  async getRoutingConfig(organizationId: string): Promise<OrgRoutingConfig> {
+    const cfg = await this.getOrCreateRoutingConfig(organizationId);
+    return {
+      orderRouting: {
+        mode: this.normalizeRoutingMode(cfg.orderMode),
+        teamIds: cfg.orderTeamIds ?? [],
+        assigneeUserId: cfg.orderAssigneeUserId ?? undefined,
+      },
+      courierRouting: {
+        mode: this.normalizeRoutingMode(cfg.courierMode),
+        teamIds: cfg.courierTeamIds ?? [],
+        assigneeUserId: cfg.courierAssigneeUserId ?? undefined,
+      },
+    };
+  }
+
+  async updateRoutingConfig(
+    organizationId: string,
+    input: Partial<OrgRoutingConfig>,
+  ): Promise<OrgRoutingConfig> {
+    const current = await this.getOrCreateRoutingConfig(organizationId);
+    const nextOrderMode = this.normalizeRoutingMode(
+      input.orderRouting?.mode ?? current.orderMode,
+    );
+    const nextCourierMode = this.normalizeRoutingMode(
+      input.courierRouting?.mode ?? current.courierMode,
+    );
+    const nextOrderTeams = this.normalizeTeamIds(
+      input.orderRouting?.teamIds ?? current.orderTeamIds,
+    );
+    const nextCourierTeams = this.normalizeTeamIds(
+      input.courierRouting?.teamIds ?? current.courierTeamIds,
+    );
+
+    if (!ROUTING_MODES.includes(nextOrderMode) || !ROUTING_MODES.includes(nextCourierMode)) {
+      throw new BadRequestException('Invalid routing mode');
+    }
+
+    const validateMember = async (
+      teamIds: string[],
+      userId: string | null | undefined,
+      label: string,
+    ) => {
+      if (!userId) return null;
+      const user = await this.prisma.user.findFirst({
+        where: {
+          organizationId,
+          id: userId,
+          status: 'active',
+        },
+        select: { id: true, teamId: true },
+      });
+      if (!user) throw new BadRequestException(`${label} assignee not found`);
+      if (teamIds.length && (!user.teamId || !teamIds.includes(user.teamId))) {
+        throw new BadRequestException(`${label} assignee must be a member of selected team(s)`);
+      }
+      return user.id;
+    };
+
+    const orderAssigneeUserId = await validateMember(
+      nextOrderTeams,
+      input.orderRouting?.assigneeUserId ?? current.orderAssigneeUserId,
+      'Order routing',
+    );
+    const courierAssigneeUserId = await validateMember(
+      nextCourierTeams,
+      input.courierRouting?.assigneeUserId ?? current.courierAssigneeUserId,
+      'Courier routing',
+    );
+
+    await this.prisma.orgRoutingConfig.update({
+      where: { organizationId },
+      data: {
+        orderMode: nextOrderMode,
+        orderTeamIds: nextOrderTeams,
+        orderAssigneeUserId,
+        courierMode: nextCourierMode,
+        courierTeamIds: nextCourierTeams,
+        courierAssigneeUserId,
+      },
+    });
+    return this.getRoutingConfig(organizationId);
+  }
+
+  private async resolveRoutingAssignee(
+    organizationId: string,
+    scope: RoutingScope,
+    override?: RoutingOverrideInput,
+    loadMemo?: Map<string, number>,
+  ): Promise<{ userId: string; userName: string } | null> {
+    const cfg = await this.getOrCreateRoutingConfig(organizationId);
+    const configuredMode = scope === 'order' ? cfg.orderMode : cfg.courierMode;
+    const configuredTeamIds = scope === 'order' ? cfg.orderTeamIds : cfg.courierTeamIds;
+    const configuredUserId =
+      scope === 'order' ? cfg.orderAssigneeUserId : cfg.courierAssigneeUserId;
+
+    const mode = this.normalizeRoutingMode(override?.mode ?? configuredMode);
+    const teamIds = this.normalizeTeamIds(override?.teamIds ?? configuredTeamIds);
+    const explicitUserId = override?.assigneeUserId?.trim() || configuredUserId || null;
+
+    const pool = await this.resolveTeamMemberPool(organizationId, teamIds);
+    if (mode === 'specific_member') {
+      if (!explicitUserId) return null;
+      const match = pool.find((u) => u.id === explicitUserId);
+      if (match) return { userId: match.id, userName: match.name };
+      const user = await this.prisma.user.findFirst({
+        where: { id: explicitUserId, organizationId, status: 'active' },
+        select: { id: true, name: true },
+      });
+      if (!user) return null;
+      return { userId: user.id, userName: user.name };
+    }
+    const pick = await this.resolveLeastLoadUser(organizationId, scope, pool, loadMemo);
+    return pick;
+  }
+
+  /** First confirm/fulfillment status freezes sales KPI credit. Hold/pending/cancel never credit. */
+  private async shouldSnapshotOrderCredit(
+    organizationId: string,
+    status: string,
+  ): Promise<boolean> {
+    const slug = status.trim().toLowerCase();
+    if (!slug) return false;
+    const blocked = new Set([
+      'pending',
+      'pending_2',
+      'pending_3',
+      'hold',
+      'hold_followup',
+      'cancelled',
+      'canceled',
+      'failed',
+      'duplicate',
+      'returned',
+      'pending_return',
+    ]);
+    if (blocked.has(slug) || slug.includes('hold')) return false;
+    if (slug.startsWith('confirmed')) return true;
+    const fulfillment = new Set([
+      'processing',
+      'in_courier',
+      'delivered',
+      'completed',
+      'hand_delivery_completed',
+    ]);
+    if (fulfillment.has(slug)) return true;
+    const meta = await this.orgOrderStatuses.getStatusMeta(organizationId, slug);
+    if (!meta) return false;
+    if (meta.group === 'confirm') return true;
+    if (meta.group === 'fulfillment' || meta.group === 'delivery') return true;
+    return false;
+  }
+
+  private async logisticFieldsForBook(
+    organizationId: string,
+    existing: {
+      logisticAssignedUserId: string | null;
+      logisticAssignedAgentName: string | null;
+    },
+    override?: RoutingOverrideInput,
+    loadMemo?: Map<string, number>,
+  ): Promise<{
+    logisticAssignedUserId?: string;
+    logisticAssignedAgentName?: string;
+  }> {
+    if (existing.logisticAssignedUserId || existing.logisticAssignedAgentName?.trim()) {
+      return {};
+    }
+    const pick = await this.resolveRoutingAssignee(
+      organizationId,
+      'courier',
+      override,
+      loadMemo,
+    );
+    if (!pick) return {};
+    if (loadMemo) {
+      loadMemo.set(pick.userId, (loadMemo.get(pick.userId) ?? 0) + 1);
+    }
+    return {
+      logisticAssignedUserId: pick.userId,
+      logisticAssignedAgentName: pick.userName,
+    };
+  }
+
+  private deriveInboundIncentiveFlags(input: {
+    source: string;
+    snapshot: unknown;
+    nextLines: Array<{
+      productId: string | null;
+      variantId: string | null;
+      sku: string | null;
+      quantity: number;
+      unitPrice: number;
+    }>;
+    nextAmount: number;
+  }): { crossSell: boolean; upsell: boolean } | null {
+    const source = (input.source || '').toLowerCase();
+    if (source !== 'website' && source !== 'ecommerce') return null;
+    const snap = input.snapshot as
+      | {
+          amount?: number;
+          lines?: Array<{
+            productId?: string | null;
+            variantId?: string | null;
+            sku?: string | null;
+            quantity?: number;
+          }>;
+        }
+      | null
+      | undefined;
+    if (!snap?.lines?.length || !Number.isFinite(snap.amount ?? NaN)) return null;
+
+    const originalAmount = Number(snap.amount ?? 0);
+    if (!(input.nextAmount > originalAmount)) {
+      return { crossSell: false, upsell: false };
+    }
+
+    const normalizeKey = (line: {
+      productId?: string | null;
+      variantId?: string | null;
+      sku?: string | null;
+    }) => {
+      if (line.variantId) return `v:${line.variantId}`;
+      if (line.productId) return `p:${line.productId}`;
+      const sku = line.sku?.trim().toLowerCase();
+      return sku ? `s:${sku}` : '';
+    };
+
+    const originalMap = new Map<string, number>();
+    for (const line of snap.lines) {
+      const key = normalizeKey(line);
+      if (!key) continue;
+      originalMap.set(key, (originalMap.get(key) ?? 0) + Math.max(0, Number(line.quantity ?? 0)));
+    }
+    const nextMap = new Map<string, number>();
+    for (const line of input.nextLines) {
+      const key = normalizeKey(line);
+      if (!key) continue;
+      nextMap.set(key, (nextMap.get(key) ?? 0) + Math.max(0, Number(line.quantity ?? 0)));
+    }
+
+    let crossSell = false;
+    let upsell = false;
+    for (const [key, qty] of nextMap.entries()) {
+      const originalQty = originalMap.get(key) ?? 0;
+      if (originalQty === 0 && qty > 0) crossSell = true;
+      if (qty > originalQty) upsell = true;
+    }
+    return { crossSell, upsell };
+  }
+
   async ensureFormOptions(organizationId: string): Promise<void> {
-    const count = await this.prisma.orderFormOption.count({ where: { organizationId } });
-    if (count > 0) return;
+    const existing = await this.prisma.orderFormOption.findMany({
+      where: { organizationId },
+      select: { kind: true },
+    });
+    const kinds = new Set(existing.map((row) => row.kind));
 
     const rows: Array<{
       organizationId: string;
@@ -270,63 +677,67 @@ export class OrdersService {
       sortOrder: number;
     }> = [];
 
-    DEFAULT_STATUSES.forEach((o, i) =>
-      rows.push({ organizationId, kind: 'status', value: o.value, label: o.label, sortOrder: i }),
-    );
-    DEFAULT_PAYMENT_METHODS.forEach((o, i) =>
-      rows.push({
-        organizationId,
-        kind: 'payment_method',
-        value: o.value,
-        label: o.label,
-        sortOrder: i,
-      }),
-    );
-    DEFAULT_SOURCES.forEach((o, i) =>
-      rows.push({ organizationId, kind: 'source', value: o.value, label: o.label, sortOrder: i }),
-    );
-    DEFAULT_DISTRICTS.forEach((name, i) =>
-      rows.push({
-        organizationId,
-        kind: 'district',
-        value: name,
-        label: name,
-        sortOrder: i,
-      }),
-    );
-    DEFAULT_ORDER_TAGS.forEach((name, i) =>
-      rows.push({
-        organizationId,
-        kind: 'order_tag',
-        value: name,
-        label: name,
-        sortOrder: i,
-      }),
-    );
-    DEFAULT_CUSTOMER_TAGS.forEach((name, i) =>
-      rows.push({
-        organizationId,
-        kind: 'customer_tag',
-        value: name,
-        label: name,
-        sortOrder: i,
-      }),
-    );
-    rows.push({
-      organizationId,
-      kind: 'default_courier_note',
-      value: 'default',
-      label: DEFAULT_COURIER_NOTE,
-      sortOrder: 0,
-    });
-    rows.push({
-      organizationId,
-      kind: 'default_shipping',
-      value: 'default',
-      label: '120',
-      sortOrder: 0,
-    });
+    const addKind = (
+      kind: string,
+      items: Array<{ value: string; label: string }>,
+    ) => {
+      if (kinds.has(kind) || items.length === 0) return;
+      items.forEach((item, index) =>
+        rows.push({
+          organizationId,
+          kind,
+          value: item.value,
+          label: item.label,
+          sortOrder: index,
+        }),
+      );
+    };
 
+    addKind('status', DEFAULT_STATUSES);
+    addKind('payment_method', DEFAULT_PAYMENT_METHODS);
+    addKind('source', DEFAULT_SOURCES);
+    addKind(
+      'district',
+      DEFAULT_DISTRICTS.map((name) => ({ value: name, label: name })),
+    );
+    addKind(
+      'order_tag',
+      DEFAULT_ORDER_TAGS.map((name) => ({ value: name, label: name })),
+    );
+    addKind(
+      'customer_tag',
+      DEFAULT_CUSTOMER_TAGS.map((name) => ({ value: name, label: name })),
+    );
+
+    if (!kinds.has('default_courier_note')) {
+      rows.push({
+        organizationId,
+        kind: 'default_courier_note',
+        value: 'default',
+        label: '',
+        sortOrder: 0,
+      });
+    }
+    if (!kinds.has('default_shipping')) {
+      rows.push({
+        organizationId,
+        kind: 'default_shipping',
+        value: 'default',
+        label: '0',
+        sortOrder: 0,
+      });
+    }
+    if (!kinds.has('customer_create_source')) {
+      rows.push({
+        organizationId,
+        kind: 'customer_create_source',
+        value: '__none__',
+        label: 'Not set',
+        sortOrder: 0,
+      });
+    }
+
+    if (rows.length === 0) return;
     await this.prisma.orderFormOption.createMany({ data: rows });
   }
 
@@ -343,6 +754,15 @@ export class OrdersService {
 
     const noteRow = rows.find((r) => r.kind === 'default_courier_note');
     const shippingRow = rows.find((r) => r.kind === 'default_shipping');
+    const customerCreateSourceRow =
+      rows.find((r) => r.kind === 'customer_create_source') ??
+      (await this.prisma.orderFormOption.findFirst({
+        where: { organizationId, kind: 'customer_create_source' },
+      }));
+    const customerCreateSource =
+      !customerCreateSourceRow || customerCreateSourceRow.value === '__none__'
+        ? ''
+        : customerCreateSourceRow.value;
 
     const [districtRows, cityRows, zoneRows] = await Promise.all([
       this.prisma.order.findMany({
@@ -393,9 +813,62 @@ export class OrdersService {
         .filter((v): v is string => Boolean(v))
         .map((v) => ({ value: v, label: v }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-      defaultCourierNote: noteRow?.label ?? DEFAULT_COURIER_NOTE,
-      defaultShipping: Number(shippingRow?.label ?? 120) || 120,
+      defaultCourierNote: noteRow?.label ?? '',
+      defaultShipping: Number(shippingRow?.label ?? 0) || 0,
+      customerCreateSource,
     };
+  }
+
+  async setCustomerCreateSource(
+    organizationId: string,
+    sourceValue: string,
+  ): Promise<{ customerCreateSource: string }> {
+    await this.ensureFormOptions(organizationId);
+    const value = sourceValue.trim();
+    let label = 'Not set';
+    let storedValue = '__none__';
+    if (value) {
+      const source = await this.prisma.orderFormOption.findFirst({
+        where: { organizationId, kind: 'source', value, isActive: true },
+      });
+      if (!source) {
+        throw new BadRequestException('Select an active order source');
+      }
+      storedValue = source.value;
+      label = source.label;
+    }
+
+    const existing = await this.prisma.orderFormOption.findFirst({
+      where: { organizationId, kind: 'customer_create_source' },
+    });
+    if (existing) {
+      await this.prisma.orderFormOption.update({
+        where: { id: existing.id },
+        data: { value: storedValue, label, isActive: true },
+      });
+    } else {
+      await this.prisma.orderFormOption.create({
+        data: {
+          organizationId,
+          kind: 'customer_create_source',
+          value: storedValue,
+          label,
+          sortOrder: 0,
+          isActive: true,
+        },
+      });
+    }
+    return { customerCreateSource: value };
+  }
+
+  private async clearCustomerCreateSourceIfMatches(
+    organizationId: string,
+    sourceValue: string,
+  ): Promise<void> {
+    await this.prisma.orderFormOption.updateMany({
+      where: { organizationId, kind: 'customer_create_source', value: sourceValue },
+      data: { value: '__none__', label: 'Not set' },
+    });
   }
 
   async listFormOptionRows(organizationId: string, kind?: string) {
@@ -420,8 +893,12 @@ export class OrdersService {
     if (!kind || !value || !label) {
       throw new BadRequestException('kind, value, and label are required');
     }
-    if (kind === 'default_courier_note' || kind === 'default_shipping') {
-      throw new BadRequestException('Use update for default courier note / shipping');
+    if (
+      kind === 'default_courier_note' ||
+      kind === 'default_shipping' ||
+      kind === 'customer_create_source'
+    ) {
+      throw new BadRequestException('Use the dedicated setting for this option');
     }
     const maxSort = await this.prisma.orderFormOption.aggregate({
       where: { organizationId, kind },
@@ -519,7 +996,12 @@ export class OrdersService {
       isActive?: boolean;
     } = {};
     if (input.label !== undefined) data.label = input.label.trim();
-    if (input.value !== undefined && existing.kind !== 'default_courier_note' && existing.kind !== 'default_shipping') {
+    if (
+      input.value !== undefined &&
+      existing.kind !== 'default_courier_note' &&
+      existing.kind !== 'default_shipping' &&
+      existing.kind !== 'customer_create_source'
+    ) {
       data.value = input.value.trim().replace(/\s+/g, '_').toLowerCase();
     }
     if (input.sortOrder !== undefined) data.sortOrder = input.sortOrder;
@@ -540,8 +1022,15 @@ export class OrdersService {
       where: { id, organizationId },
     });
     if (!existing) throw new NotFoundException('Option not found');
-    if (existing.kind === 'default_courier_note' || existing.kind === 'default_shipping') {
-      throw new BadRequestException('Cannot delete default courier note / shipping');
+    if (
+      existing.kind === 'default_courier_note' ||
+      existing.kind === 'default_shipping' ||
+      existing.kind === 'customer_create_source'
+    ) {
+      throw new BadRequestException('Cannot delete this default setting');
+    }
+    if (existing.kind === 'source') {
+      await this.clearCustomerCreateSourceIfMatches(organizationId, existing.value);
     }
     await this.prisma.orderFormOption.delete({ where: { id } });
     return { ok: true };
@@ -554,13 +1043,17 @@ export class OrdersService {
   private async resolveFollowUpDueOrderIds(
     organizationId: string,
   ): Promise<string[]> {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    // Align with Hold workflow: scheduleDate is UTC date-only; compare to Dhaka today.
+    const BD_OFFSET_MS = 6 * 60 * 60 * 1000;
+    const d = new Date(Date.now() + BD_OFFSET_MS);
+    const todayYmd = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    const [y, m, day] = todayYmd.split('-').map((p) => Number.parseInt(p, 10));
+    const dueOnOrBefore = new Date(Date.UTC(y, m - 1, day));
     const dueFollowups = await this.prisma.followup.findMany({
       where: {
         organizationId,
         orderId: { not: null },
-        scheduleDate: { lte: startOfToday },
+        scheduleDate: { lte: dueOnOrBefore },
         skipped: false,
         followupStatus: { notIn: ['done', 'converted'] },
       },
@@ -735,17 +1228,105 @@ export class OrdersService {
     };
   }
 
+  private assertHoldRequiresFollowUpDate(status: string, followUpDate?: string): void {
+    if (status.trim().toLowerCase() !== 'hold') return;
+    if (!followUpDate?.trim()) {
+      throw new BadRequestException('followUpDate is required when status is Hold');
+    }
+  }
+
+  private parseFollowUpDateOrThrow(followUpDate: string): {
+    scheduleDate: Date;
+    noteLine: string;
+  } {
+    const raw = followUpDate.trim();
+    const parsed = new Date(raw);
+    if (!raw || Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Valid followUpDate required (YYYY-MM-DD)');
+    }
+    return {
+      scheduleDate: new Date(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())),
+      noteLine: `Follow-up due: ${raw.slice(0, 10)}`,
+    };
+  }
+
+  private async upsertOrderFollowUpSchedule(
+    organizationId: string,
+    order: { id: string },
+    followUpDate: string,
+    actor: ActorLabel,
+  ): Promise<void> {
+    const { scheduleDate, noteLine } = this.parseFollowUpDateOrThrow(followUpDate);
+    const fullOrder = await this.prisma.order.findFirst({
+      where: { organizationId, id: order.id },
+      include: { lineItems: true },
+    });
+    if (!fullOrder) return;
+    const existingFu = await this.prisma.followup.findFirst({
+      where: { organizationId, orderId: fullOrder.id },
+    });
+    if (existingFu) {
+      // Re-open if previously closed (re-hold after confirm/cancel is valid ops).
+      await this.prisma.followup.update({
+        where: { id: existingFu.id },
+        data: {
+          scheduleDate,
+          skipped: false,
+          followupStatus: 'pending',
+          followupNotes: noteLine,
+        },
+      });
+      if (fullOrder.customerId) {
+        await this.prisma.customer.updateMany({
+          where: { id: fullOrder.customerId, organizationId },
+          data: { hasFollowUp: true, followUpDue: scheduleDate },
+        });
+      }
+      return;
+    }
+    await this.followups.createFromOrder(
+      organizationId,
+      {
+        orderId: fullOrder.id,
+        orderNumber: fullOrder.orderNumber,
+        customerName: fullOrder.customerName,
+        phone: fullOrder.customerPhone,
+        address: fullOrder.shippingAddress,
+        district: fullOrder.district ?? undefined,
+        area: fullOrder.shippingArea,
+        source: fullOrder.source,
+        assignedAgentName: fullOrder.assignedAgentName ?? undefined,
+        customerNotes: fullOrder.customerNote ?? undefined,
+        lineItems: fullOrder.lineItems.map((l) => ({
+          productName: l.productName,
+          quantity: l.quantity,
+        })),
+        skipFollowup: false,
+        customerId: fullOrder.customerId ?? undefined,
+      },
+      actor,
+    );
+    await this.prisma.followup.updateMany({
+      where: { organizationId, orderId: fullOrder.id },
+      data: { scheduleDate, followupNotes: noteLine },
+    });
+  }
+
   async bulkAction(
     organizationId: string,
     payload: {
       action: string;
       orderIds: string[];
       status?: string;
+      followUpDate?: string;
       employeeName?: string;
       employeeUserId?: string;
       courier?: string;
       fulfillmentWarehouseId?: string;
       confirmRemoteCancelled?: boolean;
+      assignmentMode?: AssignmentMode;
+      routingTeamIds?: string[];
+      routingUserId?: string;
     },
     actor: ActorLabel,
   ): Promise<{ successCount: number; failedCount: number; message: string }> {
@@ -764,6 +1345,7 @@ export class OrdersService {
       if (warehouseOverride) {
         await this.assertActiveWarehouse(organizationId, warehouseOverride);
       }
+      this.assertHoldRequiresFollowUpDate(status, payload.followUpDate);
       let successCount = 0;
       let failedCount = 0;
       const errors: string[] = [];
@@ -771,6 +1353,7 @@ export class OrdersService {
         try {
           await this.updateStatus(organizationId, orderId, status, actor, {
             fulfillmentWarehouseId: warehouseOverride,
+            followUpDate: payload.followUpDate,
           });
           successCount += 1;
         } catch (e) {
@@ -827,6 +1410,7 @@ export class OrdersService {
       let successCount = 0;
       let failedCount = 0;
       const errors: string[] = [];
+      const loadMemo = new Map<string, number>();
       for (const orderId of ids) {
         try {
           const existing = await this.prisma.order.findFirst({
@@ -862,10 +1446,27 @@ export class OrdersService {
               data: { fulfillmentWarehouseId: warehouseId },
             });
           }
+          const courierOverride = {
+            mode: payload.assignmentMode,
+            teamIds: payload.routingTeamIds,
+            assigneeUserId: payload.routingUserId,
+          };
           if (courier === 'pathao') {
-            await this.bookWithPathao(organizationId, orderId, actor);
+            await this.bookWithPathao(
+              organizationId,
+              orderId,
+              actor,
+              courierOverride,
+              loadMemo,
+            );
           } else {
-            await this.bookWithCarrybee(organizationId, orderId, actor);
+            await this.bookWithCarrybee(
+              organizationId,
+              orderId,
+              actor,
+              courierOverride,
+              loadMemo,
+            );
           }
           successCount += 1;
         } catch (e) {
@@ -1599,11 +2200,24 @@ export class OrdersService {
     });
 
     const options = await this.getFormOptions(organizationId);
-    const status = input.status || options.statuses[0]?.value || 'pending';
-    const source = input.source || options.sources[0]?.value || 'call';
+    const inboundWebsite = Boolean(input.websiteStoreId?.trim());
+    const status = input.status?.trim()
+      || (inboundWebsite ? options.statuses[0]?.value || 'pending' : '');
+    if (!status) {
+      throw new BadRequestException('Order status is required');
+    }
+    const source = input.source?.trim()
+      || (inboundWebsite ? options.sources[0]?.value || 'website' : '');
+    if (!source) {
+      throw new BadRequestException('Order source is required');
+    }
+    if (!inboundWebsite && !input.paymentMethod?.trim()) {
+      throw new BadRequestException('Payment method is required');
+    }
     if (!(await this.orgOrderStatuses.isValidStatus(organizationId, status))) {
       throw new BadRequestException(`Invalid order status: ${status}`);
     }
+    this.assertHoldRequiresFollowUpDate(status, input.followUpDate);
     if (!options.sources.some((s) => s.value === source)) {
       throw new BadRequestException(`Invalid order source: ${source}`);
     }
@@ -1665,6 +2279,50 @@ export class OrdersService {
       input.shippingArea?.trim() ||
       input.pathaoCity?.trim() ||
       'Unknown';
+    const explicitAssignedUserId = input.assignedUserId?.trim() || null;
+    let explicitAssignedAgentName = input.assignedAgentName?.trim() || null;
+    if (explicitAssignedUserId && !explicitAssignedAgentName) {
+      const assignedUser = await this.prisma.user.findFirst({
+        where: { id: explicitAssignedUserId, organizationId },
+        select: { name: true },
+      });
+      explicitAssignedAgentName = assignedUser?.name?.trim() || null;
+    }
+    const hasRoutingOverride = Boolean(
+      input.assignmentMode || input.routingTeamIds?.length || input.routingUserId,
+    );
+    const routingOverride = hasRoutingOverride
+      ? {
+          mode: input.assignmentMode,
+          teamIds: input.routingTeamIds,
+          assigneeUserId: input.routingUserId,
+        }
+      : undefined;
+
+    let salesAssignedUserId: string | null = null;
+    let salesAssignedName: string | null = null;
+
+    if (explicitAssignedUserId || explicitAssignedAgentName) {
+      salesAssignedUserId = explicitAssignedUserId;
+      salesAssignedName = explicitAssignedAgentName;
+    } else if (hasRoutingOverride) {
+      const routed = await this.resolveRoutingAssignee(
+        organizationId,
+        'order',
+        routingOverride,
+      );
+      salesAssignedUserId = routed?.userId ?? null;
+      salesAssignedName = routed?.userName ?? null;
+    } else if (inboundWebsite) {
+      const routed = await this.resolveRoutingAssignee(organizationId, 'order');
+      salesAssignedUserId = routed?.userId ?? null;
+      salesAssignedName = routed?.userName ?? null;
+    } else {
+      // CRM manual create — credit the logged-in creator unless explicitly overridden.
+      salesAssignedUserId = actor.userId ?? null;
+      salesAssignedName = actor.name?.trim() || null;
+    }
+    const creditNow = await this.shouldSnapshotOrderCredit(organizationId, status);
 
     const created = await this.prisma.$transaction(async (tx) => {
       const customer = await this.customers.ensureFromOrder(
@@ -1678,7 +2336,7 @@ export class OrdersService {
           area: shippingArea,
           address: input.shippingAddress.trim(),
           source,
-          assignedAgentName: input.assignedAgentName?.trim() || actor.name || null,
+          assignedAgentName: salesAssignedName,
           notes: input.customerNote,
         },
         tx,
@@ -1706,8 +2364,15 @@ export class OrdersService {
           paidAmount,
           paymentStatus,
           paymentMethod,
-          assignedAgentName: input.assignedAgentName?.trim() || actor.name || null,
-          assignedUserId: input.assignedUserId?.trim() || actor.userId || null,
+          assignedAgentName: salesAssignedName,
+          assignedUserId: salesAssignedUserId,
+          ...(creditNow
+            ? {
+                orderCreditUserId: salesAssignedUserId,
+                orderCreditAgentName: salesAssignedName,
+                orderCreditedAt: new Date(),
+              }
+            : {}),
           shippingArea,
           shippingAddress: input.shippingAddress.trim(),
           district: input.district?.trim() || shippingArea,
@@ -1766,6 +2431,19 @@ export class OrdersService {
           attachmentUrls: input.attachmentUrls ?? [],
           websiteStoreId: input.websiteStoreId?.trim() || null,
           externalOrderId: input.externalOrderId?.trim() || null,
+          inboundOriginalSnapshot: input.websiteStoreId
+            ? {
+                amount,
+                lines: lineRows.map((l) => ({
+                  productId: l.productId,
+                  variantId: l.variantId,
+                  sku: l.sku,
+                  quantity: l.quantity,
+                  unitPrice: l.unitPrice,
+                })),
+              }
+            : Prisma.DbNull,
+          incentiveFlags: Prisma.DbNull,
           clientIp: clientIp ?? null,
           createdByUserId: actor.userId ?? null,
           createdByName: actor.name ?? null,
@@ -1857,6 +2535,10 @@ export class OrdersService {
       actor,
     );
 
+    if (created.status === 'hold' && input.followUpDate?.trim()) {
+      await this.upsertOrderFollowUpSchedule(organizationId, created, input.followUpDate, actor);
+    }
+
     // Background: cache courier success for this phone (website + manual create).
     // Table stays cache-only; this is the controlled API spend per new/expired phone.
     this.courierPhoneHistory.ensureFresh(organizationId, created.customerPhone);
@@ -1869,7 +2551,7 @@ export class OrdersService {
     idOrNumber: string,
     nextStatus: string | undefined,
     actor: ActorLabel,
-    options?: { fulfillmentWarehouseId?: string },
+    options?: { fulfillmentWarehouseId?: string; followUpDate?: string },
   ): Promise<OrderDetail> {
     if (!nextStatus?.trim()) {
       throw new BadRequestException('status is required');
@@ -2004,6 +2686,14 @@ export class OrdersService {
           ...(status === 'cancelled' && existing.courierConsignmentId
             ? this.courierClearFields()
             : {}),
+          ...( (await this.shouldSnapshotOrderCredit(organizationId, status)) &&
+          !existing.orderCreditedAt
+            ? {
+                orderCreditUserId: existing.assignedUserId ?? null,
+                orderCreditAgentName: existing.assignedAgentName ?? null,
+                orderCreditedAt: new Date(),
+              }
+            : {}),
           stockDeductedAt: shouldCut
             ? new Date()
             : shouldRestock
@@ -2038,11 +2728,49 @@ export class OrdersService {
       });
     });
 
+    // Keep Follow-ups Due honest: close open order-linked follow-ups when the
+    // order leaves Hold/Hold Followup or reaches a resolved/progressed status.
+    // Awaited before automations so a status-map rule cannot race a stale open row.
+    // Do not close while staying in hold / hold_followup (callback still owed).
+    if (!HOLD_CALLBACK_STATUSES.has(status)) {
+      const leftHoldCallback = HOLD_CALLBACK_STATUSES.has(prev);
+      const enteredCloseStatus = ORDER_FOLLOWUP_CLOSE_STATUSES.has(status);
+      if (leftHoldCallback || enteredCloseStatus) {
+        const outcome =
+          status === 'cancelled' || status === 'returned' ? 'done' : 'converted';
+        try {
+          await this.followups.closeOpenForOrder(organizationId, updated.id, {
+            outcome,
+            orderStatus: status,
+            actor,
+          });
+        } catch (err) {
+          this.logger.warn(
+            `Follow-up close skipped for ${updated.orderNumber}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+    }
+
     // Best-effort auto SMS / follow-up — never fail the status change
     void this.sms.tryAutoSmsOnStatusChange(organizationId, updated.id, status).catch(() => undefined);
     void this.automations
       .tryAutoFollowupOnStatusChange(organizationId, updated.id, status)
       .catch(() => undefined);
+
+    if (status === 'hold') {
+      // Courier sync can land on Hold without a date. Always schedule a callback
+      // (today in Dhaka) so Follow-ups Due and Hold → Hold Followup stay honest.
+      await this.upsertOrderFollowUpSchedule(
+        organizationId,
+        { id: updated.id },
+        options?.followUpDate?.trim() || dhakaYmd(),
+        actor,
+      );
+      return this.getById(organizationId, updated.id);
+    }
 
     return this.toDetailEnriched(organizationId, updated);
   }
@@ -2369,12 +3097,15 @@ export class OrdersService {
       Object.entries(input).every(
         ([key, value]) =>
           key === 'status' ||
+          key === 'followUpDate' ||
           key === 'fulfillmentWarehouseId' ||
           value === undefined,
       );
     if (statusOnly) {
+      this.assertHoldRequiresFollowUpDate(input.status!, input.followUpDate);
       return this.updateStatus(organizationId, existing.id, input.status, actor, {
         fulfillmentWarehouseId: input.fulfillmentWarehouseId ?? undefined,
+        followUpDate: input.followUpDate,
       });
     }
 
@@ -2498,6 +3229,29 @@ export class OrdersService {
       input.district?.trim() ||
       input.shippingArea?.trim() ||
       existing.shippingArea;
+    const nextLinesForFlags = (lineRows ??
+      existing.lineItems.map((l) => ({
+        productId: l.productId,
+        variantId: l.variantId,
+        sku: l.sku,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+      }))) as Array<{
+      productId: string | null;
+      variantId: string | null;
+      sku: string | null;
+      quantity: number;
+      unitPrice: number;
+    }>;
+    const nextIncentiveFlags =
+      lineRows || input.discount !== undefined || input.deliveryCharge !== undefined
+        ? this.deriveInboundIncentiveFlags({
+            source: existing.source,
+            snapshot: (existing as { inboundOriginalSnapshot?: unknown }).inboundOriginalSnapshot,
+            nextLines: nextLinesForFlags,
+            nextAmount: amount,
+          })
+        : undefined;
 
     const activityCreates: Array<{
       organizationId: string;
@@ -2708,6 +3462,12 @@ export class OrdersService {
             input.assignedUserId !== undefined
               ? input.assignedUserId.trim() || null
               : undefined,
+          incentiveFlags:
+            nextIncentiveFlags === undefined
+              ? undefined
+              : nextIncentiveFlags === null
+                ? Prisma.DbNull
+                : nextIncentiveFlags,
           pathaoCity:
             input.pathaoCity !== undefined
               ? input.pathaoCity.trim() || null
@@ -2839,11 +3599,13 @@ export class OrdersService {
     });
 
     if (input.status && input.status !== existing.status) {
+      this.assertHoldRequiresFollowUpDate(input.status, input.followUpDate);
       const detail = await this.updateStatus(
         organizationId,
         updated.id,
         input.status,
         actor,
+        { followUpDate: input.followUpDate },
       );
       await this.orderPayments.ensureForOrder(
         organizationId,
@@ -2857,6 +3619,11 @@ export class OrdersService {
         actor,
       );
       return detail;
+    }
+
+    if (existing.status === 'hold' && input.followUpDate?.trim()) {
+      await this.upsertOrderFollowUpSchedule(organizationId, updated, input.followUpDate, actor);
+      return this.getById(organizationId, updated.id);
     }
 
     await this.orderPayments.ensureForOrder(
@@ -3107,6 +3874,8 @@ export class OrdersService {
     organizationId: string,
     idOrNumber: string,
     actor: ActorLabel,
+    routingOverride?: RoutingOverrideInput,
+    loadMemo?: Map<string, number>,
   ): Promise<OrderDetail> {
     const existing = await this.prisma.order.findFirst({
       where: {
@@ -3203,6 +3972,12 @@ export class OrdersService {
         'pathao',
         booked.orderStatus || 'pending',
       );
+      const logistic = await this.logisticFieldsForBook(
+        organizationId,
+        existing,
+        routingOverride,
+        loadMemo,
+      );
 
       await this.prisma.order.update({
         where: { id: existing.id },
@@ -3217,6 +3992,7 @@ export class OrdersService {
           courierStatusSyncedAt: new Date(),
           courierSubmitError: null,
           courierSubmitFailedAt: null,
+          ...logistic,
           activities: {
             create: {
               organizationId,
@@ -3277,6 +4053,8 @@ export class OrdersService {
     organizationId: string,
     idOrNumber: string,
     actor: ActorLabel,
+    routingOverride?: RoutingOverrideInput,
+    loadMemo?: Map<string, number>,
   ): Promise<OrderDetail> {
     const existing = await this.prisma.order.findFirst({
       where: {
@@ -3373,6 +4151,12 @@ export class OrdersService {
         'carrybee',
         'created',
       );
+      const logistic = await this.logisticFieldsForBook(
+        organizationId,
+        existing,
+        routingOverride,
+        loadMemo,
+      );
 
       await this.prisma.order.update({
         where: { id: existing.id },
@@ -3387,6 +4171,7 @@ export class OrdersService {
           courierStatusSyncedAt: new Date(),
           courierSubmitError: null,
           courierSubmitFailedAt: null,
+          ...logistic,
           activities: {
             create: {
               organizationId,
@@ -3771,7 +4556,21 @@ export class OrdersService {
 
   private async nextOrderNumber(organizationId: string): Promise<string> {
     const year = new Date().getFullYear();
-    const prefix = `ORD-${year}-`;
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { settings: true },
+    });
+    const rawPrefix =
+      org?.settings &&
+      typeof org.settings === 'object' &&
+      !Array.isArray(org.settings)
+        ? (org.settings as { orderPrefix?: unknown }).orderPrefix
+        : undefined;
+    const customPrefix =
+      typeof rawPrefix === 'string'
+        ? rawPrefix.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+        : '';
+    const prefix = `${customPrefix || 'ORD'}-${year}-`;
     const latest = await this.prisma.order.findFirst({
       where: { organizationId, orderNumber: { startsWith: prefix } },
       orderBy: { orderNumber: 'desc' },
@@ -3950,6 +4749,11 @@ export class OrdersService {
       assignedAgentName: row.assignedAgentName ?? undefined,
       assignedUserId:
         (row as { assignedUserId?: string | null }).assignedUserId ?? undefined,
+      logisticAssignedUserId:
+        (row as { logisticAssignedUserId?: string | null }).logisticAssignedUserId ?? undefined,
+      logisticAssignedAgentName:
+        (row as { logisticAssignedAgentName?: string | null }).logisticAssignedAgentName ??
+        undefined,
       shippingArea: row.shippingArea,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -4158,6 +4962,24 @@ export class OrdersService {
       assignedUserId:
         (row as { assignedUserId?: string | null }).assignedUserId?.trim() ||
         undefined,
+      orderCreditUserId:
+        (row as { orderCreditUserId?: string | null }).orderCreditUserId?.trim() || undefined,
+      orderCreditAgentName:
+        (row as { orderCreditAgentName?: string | null }).orderCreditAgentName?.trim() ||
+        undefined,
+      orderCreditedAt:
+        (row as { orderCreditedAt?: Date | null }).orderCreditedAt?.toISOString() || undefined,
+      incentiveFlags: (() => {
+        const raw = (row as { incentiveFlags?: unknown }).incentiveFlags as
+          | { crossSell?: boolean; upsell?: boolean }
+          | null
+          | undefined;
+        if (!raw) return undefined;
+        return {
+          crossSell: Boolean(raw.crossSell),
+          upsell: Boolean(raw.upsell),
+        };
+      })(),
       lineItems: row.lineItems.map((l) => ({
         id: l.id,
         productName: l.productName,

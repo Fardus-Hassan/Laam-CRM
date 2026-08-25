@@ -18,6 +18,7 @@ import {
 import { orderPaymentsApi } from '@/features/orders/api/order-payments-api';
 import { useOrderPaymentsList } from '@/features/orders/hooks/use-order-payments-list';
 import { formatCurrency } from '@/lib/format';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import type { OrderPaymentMethod, OrderPaymentRecordStatus } from '@laam/types';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +34,10 @@ export function OrderPaymentsPage() {
     method: (method || undefined) as OrderPaymentMethod | undefined,
     page,
     pageSize: 10,
+  });
+
+  usePageDataRefresh(() => {
+    void refresh();
   });
 
   async function handleReconcile(row: { id: string }) {

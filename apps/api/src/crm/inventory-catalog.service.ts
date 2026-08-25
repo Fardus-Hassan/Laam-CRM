@@ -37,12 +37,6 @@ import { NotificationsService } from './notifications.service';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 export const PRODUCT_CATEGORY_SEEDS: { slug: string; label: string }[] = [
-  { slug: 'honey', label: 'Honey' },
-  { slug: 'dates', label: 'Dates' },
-  { slug: 'combo', label: 'Combo' },
-  { slug: 'gift', label: 'Gift box' },
-  { slug: 'raw_material', label: 'Raw material' },
-  { slug: 'packaging', label: 'Packaging' },
   { slug: 'other', label: 'Other' },
 ];
 
