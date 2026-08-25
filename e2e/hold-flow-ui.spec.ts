@@ -46,7 +46,7 @@ test.describe('Hold workflow — browser UI', () => {
     await expect(page.getByText('No products added')).not.toBeVisible({ timeout: 15_000 });
 
     await pickComboboxOption(page, 'orderSource', /phone|website|facebook|manual/i);
-    await pickComboboxOption(page, 'orderStatus', /^Hold$/i);
+    await pickComboboxOption(page, 'orderStatus', /^On Hold$/i);
     await expect(page.getByText('Hold follow-up date')).toBeVisible();
 
     const paymentLabel = (await page.locator('#paymentMethod').textContent())?.trim() ?? '';

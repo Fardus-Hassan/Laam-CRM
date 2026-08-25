@@ -14,7 +14,7 @@ export const MOCK_AGENT_DASHBOARD: AgentDashboard = {
     { id: 'confirmed', label: 'Confirms today', value: 36, icon: 'check-circle' },
     { id: 'attach', label: 'Upsell attach %', value: 22, icon: 'truck' },
     { id: 'cancelled', label: 'Cancelled', value: 4, icon: 'x-circle' },
-    { id: 'hold', label: 'Hold', value: 3, icon: 'pause-circle' },
+    { id: 'hold', label: 'On Hold', value: 3, icon: 'pause-circle' },
     { id: 'follow_ups', label: 'Follow-ups due', value: 11, icon: 'phone' },
   ],
   myOrders: {
@@ -101,7 +101,7 @@ export const MOCK_AGENT_DASHBOARD: AgentDashboard = {
       { id: 'confirmed', label: 'Confirmed', value: 18, percent: 23.7, color: '#127A3B' },
       { id: 'delivered', label: 'Delivered', value: 12, percent: 15.8, color: '#8CC63F' },
       { id: 'cancelled', label: 'Cancelled', value: 4, percent: 5.3, color: '#EF4444' },
-      { id: 'hold', label: 'Hold', value: 3, percent: 3.9, color: '#F59E0B' },
+      { id: 'hold', label: 'On Hold', value: 3, percent: 3.9, color: '#F59E0B' },
       { id: 'follow_up', label: 'Follow Ups', value: 7, percent: 9.2, color: '#3B82F6' },
       { id: 'others', label: 'Others', value: 32, percent: 42.1, color: '#94A3B8' },
     ],

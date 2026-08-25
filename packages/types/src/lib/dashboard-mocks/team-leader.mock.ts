@@ -284,7 +284,7 @@ export const MOCK_TEAM_LEADER_DASHBOARD: TeamLeaderDashboard = {
       { id: 'confirmed', label: 'Confirmed', value: 78, percent: 59.1, color: 'var(--brand-primary)' },
       { id: 'delivered', label: 'Delivered', value: 54, percent: 40.9, color: 'var(--brand-sidebar-active-bg)' },
       { id: 'cancelled', label: 'Cancelled', value: 8, percent: 6.1, color: '#EF4444' },
-      { id: 'hold', label: 'Hold', value: 6, percent: 4.5, color: 'var(--brand-accent)' },
+      { id: 'hold', label: 'On Hold', value: 6, percent: 4.5, color: 'var(--brand-accent)' },
       { id: 'follow_up', label: 'Follow Ups', value: 23, percent: 17.4, color: 'var(--brand-chart-blue)' },
     ],
   },

@@ -258,7 +258,7 @@ export const MOCK_SALES_HEAD_DASHBOARD: SalesHeadDashboard = {
       { id: 'confirmed', label: 'Confirmed', value: 1842, percent: 74.2, color: 'var(--brand-primary)' },
       { id: 'delivered', label: 'Delivered', value: 1264, percent: 50.9, color: 'var(--brand-sidebar-active-bg)' },
       { id: 'cancelled', label: 'Cancelled', value: 152, percent: 6.1, color: '#EF4444' },
-      { id: 'hold', label: 'Hold', value: 78, percent: 3.1, color: 'var(--brand-accent)' },
+      { id: 'hold', label: 'On Hold', value: 78, percent: 3.1, color: 'var(--brand-accent)' },
       { id: 'follow_ups', label: 'Follow Ups', value: 320, percent: 12.9, color: 'var(--brand-chart-blue)' },
       { id: 'others', label: 'Others', value: 86, percent: 3.5, color: '#94A3B8' },
     ],
