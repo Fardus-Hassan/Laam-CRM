@@ -79,7 +79,7 @@ function createInitialState(): CreateOrderFormState {
     selectedVariationId: '',
     orderStatus: '',
     holdFollowUpDate: null,
-    paymentMethod: '',
+    paymentMethod: 'cod',
     attachments: [],
     courierNote: '',
     packingNote: '',
