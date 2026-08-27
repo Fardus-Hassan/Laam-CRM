@@ -116,6 +116,8 @@ export class WebsiteOrdersIngestService {
       payload.lineItems,
     );
 
+    // Prefer ecommerce for Woo when the org has that source; otherwise website
+    // so older tenants (no ecommerce option) still ingest successfully.
     const source = store.platform === 'woocommerce' ? 'ecommerce' : 'website';
     const noteParts = [
       payload.notes?.trim(),
