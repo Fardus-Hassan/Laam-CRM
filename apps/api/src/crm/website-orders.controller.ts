@@ -213,12 +213,19 @@ export class WebsiteOrdersIngestController {
     const store = await this.websites.resolveByIngestToken(token);
 
     const webhookSecret = this.websites.getWebhookSecret(store.credentialsEnc);
-    const requireSig =
-      Boolean(webhookSecret) ||
+    const signatureHeader = headers['x-wc-webhook-signature'];
+    const hasSignatureHeader = Boolean(
+      (Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader)?.trim(),
+    );
+    const forceRequireSig =
       process.env['LAAM_REQUIRE_WOO_SIGNATURE'] === 'true' ||
       process.env['LAAM_REQUIRE_WOO_SIGNATURE'] === '1';
 
-    if (requireSig) {
+    // Token in the Delivery URL is always required.
+    // HMAC: verify when Woo sends X-WC-Webhook-Signature (Secret field filled).
+    // If Secret is left empty in Woo, no signature header → token-only auth (common setup).
+    // Set LAAM_REQUIRE_WOO_SIGNATURE=1 to require HMAC even when header is missing.
+    if (hasSignatureHeader || forceRequireSig) {
       if (!webhookSecret) {
         throw new UnauthorizedException(
           'WooCommerce webhook secret not configured. Rotate webhook secret in CRM settings and paste into WooCommerce webhook Secret field.',
@@ -226,7 +233,7 @@ export class WebsiteOrdersIngestController {
       }
       verifyWooWebhookSignature({
         rawBody: req.rawBody,
-        signatureHeader: headers['x-wc-webhook-signature'],
+        signatureHeader,
         secret: webhookSecret,
       });
     }
