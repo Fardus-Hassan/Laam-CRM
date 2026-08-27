@@ -61,6 +61,16 @@ function extractIngestToken(
   return (qValue ?? '').trim();
 }
 
+/** WooCommerce sends `{"webhook_id":N}` when saving/activating a webhook (not an order). */
+function isWooCommerceWebhookPing(body: unknown): boolean {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const root = body as Record<string, unknown>;
+  const hasWebhookId = root['webhook_id'] != null;
+  const hasOrderId = root['id'] != null;
+  const hasLines = Array.isArray(root['line_items']) && root['line_items'].length > 0;
+  return hasWebhookId && !hasOrderId && !hasLines;
+}
+
 function enforceIngestRateLimits(token: string, requestIp: string) {
   const byToken = websiteIngestByTokenLimiter.check(`tok:${token.slice(0, 48)}`);
   if (!byToken.allowed) {
@@ -236,6 +246,11 @@ export class WebsiteOrdersIngestController {
         signatureHeader,
         secret: webhookSecret,
       });
+    }
+
+    // Save/activate in Woo sends a ping body — acknowledge so admin UI does not show 400.
+    if (isWooCommerceWebhookPing(body)) {
+      return { ok: true, message: 'WooCommerce webhook endpoint is reachable' };
     }
 
     const canonical = this.ingest.mapWooCommercePayload(body);
