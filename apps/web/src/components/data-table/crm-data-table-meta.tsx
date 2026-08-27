@@ -47,7 +47,7 @@ export function CrmDataTableMeta({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-card px-3 py-2',
+        'flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/60 bg-card px-3 py-2',
         className,
       )}
     >
@@ -65,39 +65,37 @@ export function CrmDataTableMeta({
         {entityLabel}
       </p>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {hasSelection ? (
-          <div
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-md border border-primary/30',
-              'bg-primary/10 px-2 py-1 text-xs font-medium text-primary',
-            )}
-          >
-            <span className="tabular-nums">{formatCount(selectedCount)} selected</span>
-            {onClearSelection ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-5 gap-0.5 px-1 text-[11px] text-primary hover:bg-primary/15 hover:text-primary"
-                onClick={onClearSelection}
-              >
-                <X className="size-3" />
-                Clear
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+      {onPageSizeChange ? (
+        <CrmPageSizeControl
+          pageSize={pageSize}
+          onPageSizeChange={onPageSizeChange}
+          options={pageSizeOptions}
+          aria-label="Rows per page (top)"
+        />
+      ) : null}
 
-        {onPageSizeChange ? (
-          <CrmPageSizeControl
-            pageSize={pageSize}
-            onPageSizeChange={onPageSizeChange}
-            options={pageSizeOptions}
-            aria-label="Rows per page (top)"
-          />
-        ) : null}
-      </div>
+      {hasSelection ? (
+        <div
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md border border-primary/30',
+            'bg-primary/10 px-2 py-1 text-xs font-medium text-primary',
+          )}
+        >
+          <span className="tabular-nums">{formatCount(selectedCount)} selected</span>
+          {onClearSelection ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-5 gap-0.5 px-1 text-[11px] text-primary hover:bg-primary/15 hover:text-primary"
+              onClick={onClearSelection}
+            >
+              <X className="size-3" />
+              Clear
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
