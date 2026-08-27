@@ -262,6 +262,7 @@ const DEFAULT_PAYMENT_METHODS: OrderFormOptionDto[] = [
 const DEFAULT_SOURCES: OrderFormOptionDto[] = [
   { value: 'facebook', label: 'Facebook' },
   { value: 'website', label: 'Website' },
+  { value: 'ecommerce', label: 'E-commerce' },
   { value: 'call', label: 'Call' },
   { value: 'walk_in', label: 'Walk-in' },
 ];
@@ -2218,7 +2219,11 @@ export class OrdersService {
       throw new BadRequestException(`Invalid order status: ${status}`);
     }
     this.assertHoldRequiresFollowUpDate(status, input.followUpDate);
-    if (!options.sources.some((s) => s.value === source)) {
+    // Website/Woo ingest always uses website|ecommerce; allow even if org
+    // dropdown was seeded without those values (common on older tenants).
+    const inboundSystemSource =
+      inboundWebsite && (source === 'website' || source === 'ecommerce');
+    if (!inboundSystemSource && !options.sources.some((s) => s.value === source)) {
       throw new BadRequestException(`Invalid order source: ${source}`);
     }
 
