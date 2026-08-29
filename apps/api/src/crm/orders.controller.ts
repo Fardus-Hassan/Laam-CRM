@@ -685,6 +685,7 @@ export class OrdersController {
       followUpDate?: string;
       employeeName?: string;
       employeeUserId?: string;
+      employeeUserIds?: string[];
       courier?: string;
       fulfillmentWarehouseId?: string;
       confirmRemoteCancelled?: boolean;
@@ -703,6 +704,7 @@ export class OrdersController {
         followUpDate: body.followUpDate,
         employeeName: body.employeeName,
         employeeUserId: body.employeeUserId,
+        employeeUserIds: body.employeeUserIds,
         courier: body.courier,
         fulfillmentWarehouseId: body.fulfillmentWarehouseId,
         confirmRemoteCancelled: body.confirmRemoteCancelled,

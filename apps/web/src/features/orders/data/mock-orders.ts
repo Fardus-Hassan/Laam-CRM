@@ -657,8 +657,27 @@ export function bulkUpdateMockOrders(payload: OrderBulkActionPayload): BulkActio
         patch.followUpDate = payload.followUpDate;
       }
     }
-    if (payload.action === 'transfer_employee' && payload.employeeName) {
-      patch.assignedAgentName = payload.employeeName;
+    if (payload.action === 'transfer_employee') {
+      const ids = [
+        ...new Set(
+          [
+            ...(payload.employeeUserIds ?? []),
+            payload.employeeUserId,
+          ].filter((id): id is string => Boolean(id?.trim())),
+        ),
+      ];
+      if (ids.length === 0 && !payload.employeeName?.trim()) continue;
+      const pickId =
+        ids.length > 0
+          ? ids[successCount % ids.length]!
+          : undefined;
+      patch.assignedAgentName =
+        (pickId && pickId === payload.employeeUserId
+          ? payload.employeeName
+          : undefined) ??
+        payload.employeeName ??
+        `Assignee`;
+      if (pickId) patch.assignedUserId = pickId;
     }
     if (Object.keys(patch).length > 0) {
       updateMockOrder(order.id, patch);

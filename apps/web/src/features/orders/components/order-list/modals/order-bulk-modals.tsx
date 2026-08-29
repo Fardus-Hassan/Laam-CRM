@@ -48,7 +48,10 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
   const [smsTemplate, setSmsTemplate] = React.useState('');
   const [smsMessage, setSmsMessage] = React.useState('');
   const [smsSending, setSmsSending] = React.useState(false);
-  const [employee, setEmployee] = React.useState('');
+  const [transferMode, setTransferMode] = React.useState<'auto_split' | 'members'>('members');
+  const [transferTeamIds, setTransferTeamIds] = React.useState<string[]>([]);
+  const [transferMemberIds, setTransferMemberIds] = React.useState<string[]>([]);
+  const [transferMemberQuery, setTransferMemberQuery] = React.useState('');
   const [teamUsers, setTeamUsers] = React.useState<TenantUser[]>([]);
   const [teams, setTeams] = React.useState<OrgTeam[]>([]);
   const [followUpDate, setFollowUpDate] = React.useState('');
@@ -62,18 +65,30 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       setCourierWarehouseId('');
       setCourierMemberId('');
     }
+    if (state?.type === 'transfer') {
+      setTransferMode('members');
+      setTransferTeamIds([]);
+      setTransferMemberIds([]);
+      setTransferMemberQuery('');
+    }
   }, [state]);
 
   React.useEffect(() => {
     if (state?.type !== 'transfer') return;
     let cancelled = false;
-    void rbacApi
-      .listUsers('')
-      .then((list) => {
-        if (!cancelled) setTeamUsers(list.filter((u) => u.status === 'active'));
+    void Promise.all([rbacApi.listTeams(''), rbacApi.listUsers(''), ordersApi.getRoutingConfig()])
+      .then(([orgTeams, users, cfg]) => {
+        if (cancelled) return;
+        setTeams(orgTeams);
+        setTeamUsers(users.filter((u) => u.status === 'active'));
+        if (cfg.orderRouting.teamIds.length > 0) {
+          setTransferTeamIds(cfg.orderRouting.teamIds);
+        }
       })
       .catch(() => {
-        if (!cancelled) setTeamUsers([]);
+        if (cancelled) return;
+        setTeams([]);
+        setTeamUsers([]);
       });
     return () => {
       cancelled = true;
@@ -111,6 +126,43 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
         label: u.email ? `${u.name} · ${u.email}` : u.name,
       }));
   }, [courierTeamIds, teamUsers]);
+
+  const transferTeamMemberCount = React.useMemo(() => {
+    if (transferTeamIds.length === 0) return 0;
+    return teamUsers.filter((u) => u.teamId && transferTeamIds.includes(u.teamId)).length;
+  }, [teamUsers, transferTeamIds]);
+
+  const transferFilteredMembers = React.useMemo(() => {
+    const q = transferMemberQuery.trim().toLowerCase();
+    const list = [...teamUsers].sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return list;
+    return list.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        (u.email?.toLowerCase().includes(q) ?? false),
+    );
+  }, [teamUsers, transferMemberQuery]);
+
+  const transferPreview = React.useMemo(() => {
+    const orderCount = state?.type === 'transfer' ? state.orderIds.length : 0;
+    const memberCount =
+      transferMode === 'auto_split' ? transferTeamMemberCount : transferMemberIds.length;
+    if (orderCount === 0 || memberCount === 0) return null;
+    const base = Math.floor(orderCount / memberCount);
+    const rem = orderCount % memberCount;
+    if (memberCount === 1) {
+      return `${orderCount} order${orderCount === 1 ? '' : 's'} → 1 member`;
+    }
+    if (rem === 0) {
+      return `${orderCount} orders → ~${base} each across ${memberCount} members`;
+    }
+    return `${orderCount} orders → ${base}–${base + 1} each across ${memberCount} members (fair load)`;
+  }, [
+    state,
+    transferMode,
+    transferTeamMemberCount,
+    transferMemberIds.length,
+  ]);
 
   React.useEffect(() => {
     if (state?.type !== 'sms') return;
@@ -234,20 +286,43 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
 
   async function handleTransferSubmit() {
     if (state?.type !== 'transfer') return;
-    if (!employee) {
-      toast.error('Select an employee');
+
+    if (transferMode === 'auto_split') {
+      if (transferTeamIds.length === 0) {
+        toast.error('Select at least one team');
+        return;
+      }
+      if (transferTeamMemberCount === 0) {
+        toast.error('Selected team(s) have no active members');
+        return;
+      }
+      await bulkAction({
+        action: 'transfer_employee',
+        orderIds: state.orderIds,
+        assignmentMode: 'auto_split',
+        routingTeamIds: transferTeamIds,
+      });
+      onSuccess?.();
+      onClose();
       return;
     }
-    const selected = teamUsers.find((u) => u.id === employee);
-    if (!selected) {
-      toast.error('Select an employee');
+
+    if (transferMemberIds.length === 0) {
+      toast.error('Select at least one member');
+      return;
+    }
+    const selected = teamUsers.filter((u) => transferMemberIds.includes(u.id));
+    if (selected.length === 0) {
+      toast.error('Select at least one member');
       return;
     }
     await bulkAction({
       action: 'transfer_employee',
       orderIds: state.orderIds,
-      employeeName: selected.name,
-      employeeUserId: selected.id,
+      assignmentMode: 'specific_member',
+      employeeUserIds: selected.map((u) => u.id),
+      employeeUserId: selected.length === 1 ? selected[0]!.id : undefined,
+      employeeName: selected.length === 1 ? selected[0]!.name : undefined,
     });
     onSuccess?.();
     onClose();
@@ -416,26 +491,158 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
       </Dialog>
 
       <Dialog open={state.type === 'transfer'} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Transfer to employee</DialogTitle>
+            <DialogTitle>
+              Transfer {state.type === 'transfer' ? state.orderIds.length : 0} order
+              {state.type === 'transfer' && state.orderIds.length === 1 ? '' : 's'}
+            </DialogTitle>
           </DialogHeader>
-          <FormField label="Employee" required>
-            <FormSearchSelect
-              value={employee}
-              onChange={setEmployee}
-              options={teamUsers.map((u) => ({
-                value: u.id,
-                label: u.email ? `${u.name} · ${u.email}` : u.name,
-              }))}
-              placeholder={teamUsers.length ? 'Search employee' : 'No team members'}
-            />
-          </FormField>
+          <div className="space-y-3">
+            <FormField label="How to assign">
+              <FormSearchSelect
+                value={transferMode}
+                onChange={(v) => setTransferMode(v === 'auto_split' ? 'auto_split' : 'members')}
+                searchable={false}
+                options={[
+                  { value: 'members', label: 'Select members (equal split)' },
+                  { value: 'auto_split', label: 'Auto split by team' },
+                ]}
+              />
+            </FormField>
+
+            {transferMode === 'auto_split' ? (
+              <FormField label="Teams" required>
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {teams.map((team) => {
+                    const checked = transferTeamIds.includes(team.id);
+                    const count = teamUsers.filter((u) => u.teamId === team.id).length;
+                    return (
+                      <label
+                        key={team.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1.5 text-sm hover:bg-muted/50"
+                      >
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-primary"
+                          checked={checked}
+                          onChange={() =>
+                            setTransferTeamIds((current) =>
+                              checked
+                                ? current.filter((id) => id !== team.id)
+                                : [...current, team.id],
+                            )
+                          }
+                        />
+                        <span className="min-w-0 flex-1 truncate">{team.name}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {count} member{count === 1 ? '' : 's'}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {teams.length === 0 ? (
+                    <p className="px-1 py-2 text-xs text-muted-foreground">
+                      No teams yet. Create teams in Settings → Users / Teams.
+                    </p>
+                  ) : null}
+                </div>
+              </FormField>
+            ) : (
+              <FormField label="Members" required>
+                <div className="space-y-2 rounded-md border p-2">
+                  <FormInput
+                    value={transferMemberQuery}
+                    onChange={(e) => setTransferMemberQuery(e.target.value)}
+                    placeholder="Search by name or email"
+                    className="h-8"
+                  />
+                  <div className="flex items-center justify-between gap-2 px-0.5 text-xs text-muted-foreground">
+                    <span>
+                      {transferMemberIds.length} selected
+                      {teamUsers.length ? ` · ${teamUsers.length} active` : ''}
+                    </span>
+                    {transferMemberIds.length > 0 ? (
+                      <button
+                        type="button"
+                        className="text-foreground underline-offset-2 hover:underline"
+                        onClick={() => setTransferMemberIds([])}
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="max-h-44 space-y-0.5 overflow-y-auto">
+                    {transferFilteredMembers.map((user) => {
+                      const checked = transferMemberIds.includes(user.id);
+                      return (
+                        <label
+                          key={user.id}
+                          className="flex cursor-pointer items-start gap-2 rounded px-1.5 py-1.5 text-sm hover:bg-muted/50"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 size-4 shrink-0 accent-primary"
+                            checked={checked}
+                            onChange={() =>
+                              setTransferMemberIds((current) =>
+                                checked
+                                  ? current.filter((id) => id !== user.id)
+                                  : [...current, user.id],
+                              )
+                            }
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium leading-tight">
+                              {user.name}
+                            </span>
+                            {user.email ? (
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {user.email}
+                              </span>
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {transferFilteredMembers.length === 0 ? (
+                      <p className="px-1 py-2 text-xs text-muted-foreground">
+                        {teamUsers.length === 0
+                          ? 'No active users. Add members in Settings → Users.'
+                          : 'No match for this search.'}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </FormField>
+            )}
+
+            {transferPreview ? (
+              <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                {transferPreview}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {transferMode === 'auto_split'
+                  ? 'Orders are shared fairly across active members of the selected teams (least open workload first).'
+                  : 'Pick one member for all orders, or several — orders split evenly with fair load balancing.'}
+              </p>
+            )}
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleTransferSubmit()} disabled={isLoading}>
+            <Button
+              type="button"
+              onClick={() => void handleTransferSubmit()}
+              disabled={
+                isLoading ||
+                (transferMode === 'auto_split'
+                  ? transferTeamIds.length === 0 || transferTeamMemberCount === 0
+                  : transferMemberIds.length === 0)
+              }
+            >
               Transfer
             </Button>
           </DialogFooter>
