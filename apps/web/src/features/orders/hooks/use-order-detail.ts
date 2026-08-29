@@ -5,6 +5,8 @@ import type { OrderDetail } from '@laam/types';
 
 import { ordersApi } from '@/features/orders/api/orders-api';
 import { orderDetailCache } from '@/features/orders/data/order-query-cache';
+import { ORDERS_REALTIME_CHANGED } from '@/features/orders/data/order-realtime-store';
+import type { OrderRealtimePayload } from '@/features/orders/lib/order-realtime-stream';
 import { usePageDataRefresh } from '@/lib/page-data-refresh';
 
 export function useOrderDetail(orderNumber: string) {
@@ -14,6 +16,16 @@ export function useOrderDetail(orderNumber: string) {
   const [version, setVersion] = React.useState(0);
 
   usePageDataRefresh(() => setVersion((v) => v + 1));
+
+  React.useEffect(() => {
+    function onRealtime(event: Event) {
+      const detail = (event as CustomEvent<OrderRealtimePayload>).detail;
+      if (detail?.orderId && data?.id && detail.orderId !== data.id) return;
+      setVersion((v) => v + 1);
+    }
+    window.addEventListener(ORDERS_REALTIME_CHANGED, onRealtime);
+    return () => window.removeEventListener(ORDERS_REALTIME_CHANGED, onRealtime);
+  }, [data?.id]);
 
   const fetchDetail = React.useCallback(async (id: string, force: boolean) => {
     if (!id) {

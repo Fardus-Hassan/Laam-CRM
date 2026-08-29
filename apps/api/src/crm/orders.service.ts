@@ -38,6 +38,7 @@ import { CourierPhoneHistoryService } from './courier-phone-history.service';
 import { CustomersService } from './customers.service';
 import { FollowupsService } from './followups.service';
 import { dhakaYmd } from './order-hold-workflow.util';
+import { OrderRealtimeService } from './order-realtime.service';
 import { InventoryCatalogService } from './inventory-catalog.service';
 import { LeadsService } from './leads.service';
 import { normalizeBdPhone } from './phone.util';
@@ -307,6 +308,7 @@ export class OrdersService {
     private readonly pathaoSync: PathaoSyncService,
     @Inject(forwardRef(() => require('./carrybee-sync.service').CarrybeeSyncService))
     private readonly carrybeeSync: CarrybeeSyncService,
+    private readonly orderRealtime: OrderRealtimeService,
   ) {}
 
   requireOrg(organizationId: string | null | undefined): asserts organizationId is string {
@@ -2548,6 +2550,12 @@ export class OrdersService {
     // Table stays cache-only; this is the controlled API spend per new/expired phone.
     this.courierPhoneHistory.ensureFresh(organizationId, created.customerPhone);
 
+    this.orderRealtime.publish(organizationId, {
+      reason: 'created',
+      orderId: created.id,
+      status: created.status,
+    });
+
     return this.toDetailEnriched(organizationId, created);
   }
 
@@ -2774,9 +2782,19 @@ export class OrdersService {
         options?.followUpDate?.trim() || dhakaYmd(),
         actor,
       );
+      this.orderRealtime.publish(organizationId, {
+        reason: 'status',
+        orderId: updated.id,
+        status,
+      });
       return this.getById(organizationId, updated.id);
     }
 
+    this.orderRealtime.publish(organizationId, {
+      reason: 'status',
+      orderId: updated.id,
+      status,
+    });
     return this.toDetailEnriched(organizationId, updated);
   }
 
@@ -3628,6 +3646,11 @@ export class OrdersService {
 
     if (existing.status === 'hold' && input.followUpDate?.trim()) {
       await this.upsertOrderFollowUpSchedule(organizationId, updated, input.followUpDate, actor);
+      this.orderRealtime.publish(organizationId, {
+        reason: 'updated',
+        orderId: updated.id,
+        status: updated.status,
+      });
       return this.getById(organizationId, updated.id);
     }
 
@@ -3643,6 +3666,11 @@ export class OrdersService {
       actor,
     );
 
+    this.orderRealtime.publish(organizationId, {
+      reason: 'updated',
+      orderId: updated.id,
+      status: updated.status,
+    });
     return this.toDetailEnriched(organizationId, updated);
   }
 

@@ -8,10 +8,12 @@ import { NotificationBell } from '@/components/layout/top-bar/notification-bell'
 import { PageRefreshButton } from '@/components/layout/top-bar/page-refresh-button';
 import { TopBarUser } from '@/components/layout/top-bar/top-bar-user';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
+import { OrderRealtimeBridge } from '@/features/orders/components/order-realtime-bridge';
 
 export function TopBarActions() {
   return (
     <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+      <OrderRealtimeBridge />
       <CommandPaletteTrigger />
       <CreateOrderButton />
       <PageRefreshButton />

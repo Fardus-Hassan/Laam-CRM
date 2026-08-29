@@ -16,6 +16,10 @@ import {
   ORDER_STATUS_COUNTS_CHANGED,
   setLiveOrderNavCounts,
 } from '@/features/orders/data/order-status-counts-store';
+import {
+  isOrderRealtimeConnected,
+  ORDERS_REALTIME_CONNECTION,
+} from '@/features/orders/data/order-realtime-store';
 import { NAV_BADGES_CHANGED } from '@/features/navigation/data/nav-badges-store';
 import {
   SIDEBAR_NAV_LAYOUT_CHANGED,
@@ -34,7 +38,9 @@ import {
 import { getUniversalNavRegistry } from '@/features/navigation/config/universal-nav-registry';
 import { isPlatformHost } from '@/lib/tenant';
 
+/** Fast poll when SSE is down; slow backup when order realtime is live. */
 const STATUS_COUNTS_POLL_MS = 30_000;
+const STATUS_COUNTS_BACKUP_POLL_MS = 180_000;
 
 export function useNavigation() {
   const { user } = useAuth();
@@ -90,6 +96,7 @@ export function useNavigation() {
     if (!permissions.includes('orders.view')) return;
 
     let cancelled = false;
+    let intervalId = 0;
 
     async function loadCounts() {
       try {
@@ -112,11 +119,22 @@ export function useNavigation() {
       }
     }
 
+    function pollMs() {
+      return isOrderRealtimeConnected()
+        ? STATUS_COUNTS_BACKUP_POLL_MS
+        : STATUS_COUNTS_POLL_MS;
+    }
+
+    function restartInterval() {
+      window.clearInterval(intervalId);
+      intervalId = window.setInterval(() => {
+        if (document.visibilityState === 'hidden') return;
+        void loadCounts();
+      }, pollMs());
+    }
+
     void loadCounts();
-    const id = window.setInterval(() => {
-      if (document.visibilityState === 'hidden') return;
-      void loadCounts();
-    }, STATUS_COUNTS_POLL_MS);
+    restartInterval();
 
     function onRefreshRequest() {
       void loadCounts();
@@ -125,16 +143,21 @@ export function useNavigation() {
       if (document.visibilityState === 'hidden') return;
       void loadCounts();
     }
+    function onRealtimeConnection() {
+      restartInterval();
+    }
     window.addEventListener(ORDER_NAV_COUNTS_REFRESH, onRefreshRequest);
     window.addEventListener('focus', onVisibleOrFocus);
     document.addEventListener('visibilitychange', onVisibleOrFocus);
+    window.addEventListener(ORDERS_REALTIME_CONNECTION, onRealtimeConnection);
 
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      window.clearInterval(intervalId);
       window.removeEventListener(ORDER_NAV_COUNTS_REFRESH, onRefreshRequest);
       window.removeEventListener('focus', onVisibleOrFocus);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
+      window.removeEventListener(ORDERS_REALTIME_CONNECTION, onRealtimeConnection);
     };
   }, [permissions, user?.organizationId]);
 
@@ -149,6 +172,7 @@ export function useNavigation() {
     }
 
     let cancelled = false;
+    let intervalId = 0;
 
     async function loadNavBadges() {
       try {
@@ -163,24 +187,40 @@ export function useNavigation() {
       }
     }
 
+    function pollMs() {
+      return isOrderRealtimeConnected()
+        ? STATUS_COUNTS_BACKUP_POLL_MS
+        : STATUS_COUNTS_POLL_MS;
+    }
+
+    function restartInterval() {
+      window.clearInterval(intervalId);
+      intervalId = window.setInterval(() => {
+        if (document.visibilityState === 'hidden') return;
+        void loadNavBadges();
+      }, pollMs());
+    }
+
     void loadNavBadges();
-    const id = window.setInterval(() => {
-      if (document.visibilityState === 'hidden') return;
-      void loadNavBadges();
-    }, STATUS_COUNTS_POLL_MS);
+    restartInterval();
 
     function onVisibleOrFocus() {
       if (document.visibilityState === 'hidden') return;
       void loadNavBadges();
     }
+    function onRealtimeConnection() {
+      restartInterval();
+    }
     window.addEventListener('focus', onVisibleOrFocus);
     document.addEventListener('visibilitychange', onVisibleOrFocus);
+    window.addEventListener(ORDERS_REALTIME_CONNECTION, onRealtimeConnection);
 
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      window.clearInterval(intervalId);
       window.removeEventListener('focus', onVisibleOrFocus);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
+      window.removeEventListener(ORDERS_REALTIME_CONNECTION, onRealtimeConnection);
     };
   }, [permissions, user?.organizationId]);
 
