@@ -14,6 +14,8 @@ export function useOrderDetail(orderNumber: string) {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [version, setVersion] = React.useState(0);
+  const dataRef = React.useRef<OrderDetail | null>(null);
+  dataRef.current = data;
 
   usePageDataRefresh(() => setVersion((v) => v + 1));
 
@@ -21,6 +23,10 @@ export function useOrderDetail(orderNumber: string) {
     function onRealtime(event: Event) {
       const detail = (event as CustomEvent<OrderRealtimePayload>).detail;
       if (detail?.orderId && data?.id && detail.orderId !== data.id) return;
+      // New unrelated creates must not flash this detail page.
+      if (detail?.reason === 'created' && detail.orderId && data?.id && detail.orderId !== data.id) {
+        return;
+      }
       setVersion((v) => v + 1);
     }
     window.addEventListener(ORDERS_REALTIME_CHANGED, onRealtime);
@@ -44,7 +50,8 @@ export function useOrderDetail(orderNumber: string) {
       }
     }
 
-    setIsLoading(true);
+    const soft = force && dataRef.current != null;
+    if (!soft) setIsLoading(true);
     setError(null);
     try {
       const response = await ordersApi.getOrder(id);

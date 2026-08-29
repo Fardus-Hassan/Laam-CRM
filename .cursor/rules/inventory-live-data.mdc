@@ -23,3 +23,13 @@ options={MOCK_SUPPLIERS.map((s) => ({ value: s.name, label: s.name }))}
 const res = await inventoryApi.listSuppliers();
 options={res.items.filter((s) => s.status === 'active').map((s) => ({ value: s.name, label: s.name }))}
 ```
+
+
+
+
+
+
+
+
+
+
