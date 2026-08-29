@@ -28,6 +28,7 @@ import { OrderSalesSummaryPanel } from '@/features/orders/components/order-list/
 import { OrderSelectionBar } from '@/features/orders/components/order-list/order-selection-bar';
 import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { useOrderRowsList } from '@/features/orders/hooks/use-order-rows-list';
+import { ORDERS_REALTIME_CHANGED } from '@/features/orders/data/order-realtime-store';
 import { createOrdersListBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
 import { clampCrmPageSize, CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { formatCurrency } from '@/lib/format';
@@ -139,6 +140,12 @@ export function OrderListShell({ queue }: OrderListShellProps) {
   usePageDataRefresh(() => {
     setListVersion((v) => v + 1);
   });
+
+  React.useEffect(() => {
+    const onRealtime = () => setListVersion((v) => v + 1);
+    window.addEventListener(ORDERS_REALTIME_CHANGED, onRealtime);
+    return () => window.removeEventListener(ORDERS_REALTIME_CHANGED, onRealtime);
+  }, []);
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),

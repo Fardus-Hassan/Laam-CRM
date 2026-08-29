@@ -5,11 +5,13 @@ import {
   Get,
   HttpCode,
   MaxFileSizeValidator,
+  MessageEvent,
   Param,
   ParseFilePipe,
   Patch,
   Post,
   Query,
+  Sse,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -28,7 +30,9 @@ import { actorFromUser } from '../common/actor.util';
 import { ObjectStorageService } from './object-storage.service';
 import { OrderPaymentsService } from './order-payments.service';
 import { FailedOrdersService } from './failed-orders.service';
+import { OrderRealtimeService } from './order-realtime.service';
 import { OrdersService, type CreateOrderInput } from './orders.service';
+import type { Observable } from 'rxjs';
 
 class CreateOrderLineDto {
   @IsString()
@@ -563,6 +567,7 @@ export class OrdersController {
     private readonly payments: OrderPaymentsService,
     private readonly failedOrders: FailedOrdersService,
     private readonly storage: ObjectStorageService,
+    private readonly orderRealtime: OrderRealtimeService,
   ) {}
 
   private actor(user: AuthUserPayload) {
@@ -641,6 +646,14 @@ export class OrdersController {
   statusCounts(@CurrentUser() user: AuthUserPayload) {
     this.orders.requireOrg(user.organizationId);
     return this.orders.getNavStatusCounts(user.organizationId!);
+  }
+
+  @Sse('meta/realtime')
+  @RequirePermissions('orders.view')
+  @ApiOperation({ summary: 'SSE stream for org order list / nav count updates' })
+  realtime(@CurrentUser() user: AuthUserPayload): Observable<MessageEvent> {
+    this.orders.requireOrg(user.organizationId);
+    return this.orderRealtime.watchOrganization(user.organizationId!);
   }
 
   @Post('bulk/follow-up')
