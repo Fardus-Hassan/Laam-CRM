@@ -562,6 +562,10 @@ export function checkMockDuplicate(query: DuplicateCheckQuery): DuplicateCheckRe
 
 export function bulkSetFollowUp(orderIds: string[], followUpDate: string): BulkActionResult {
   let successCount = 0;
+  const today = new Date();
+  const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const dueNow = followUpDate.trim().slice(0, 10) <= todayYmd;
+
   for (const orderId of orderIds) {
     const order = getMockOrderById(orderId);
     if (!order) continue;
@@ -581,8 +585,10 @@ export function bulkSetFollowUp(orderIds: string[], followUpDate: string): BulkA
 
     mockOrderStore[index] = {
       ...current,
-      status: 'hold_followup',
+      status: dueNow ? 'hold_followup' : 'hold',
       notes,
+      followUpDueAt: new Date(`${followUpDate}T12:00:00`).toISOString(),
+      followUpSetAt: new Date().toISOString(),
       timeline,
     };
     successCount += 1;
@@ -591,7 +597,9 @@ export function bulkSetFollowUp(orderIds: string[], followUpDate: string): BulkA
   return {
     successCount,
     failedCount: orderIds.length - successCount,
-    message: `Follow-up set for ${successCount} order(s)`,
+    message: dueNow
+      ? `Set follow-up for ${successCount} order(s) (due today → Hold Followup)`
+      : `Moved ${successCount} order(s) to On Hold with scheduled follow-up`,
   };
 }
 

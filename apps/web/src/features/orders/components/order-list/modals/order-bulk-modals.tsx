@@ -655,7 +655,9 @@ export function OrderBulkModals({ state, selectedRows = [], onClose, onSuccess }
             <DialogTitle>Set follow-up</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Move {state.type === 'followup' ? state.orderIds.length : 0} order(s) to Hold Followup and schedule callback.
+            Move {state.type === 'followup' ? state.orderIds.length : 0} order(s) to On Hold
+            and schedule the callback date. On that date they enter Hold Followup; if still
+            unresolved at day end they return to On Hold.
           </p>
           <FormField label="Follow-up date">
             <FormInput
