@@ -30,6 +30,8 @@ import { useOrderMutations } from '@/features/orders/hooks/use-order-mutations';
 import { useOrderRowsList } from '@/features/orders/hooks/use-order-rows-list';
 import { ORDERS_REALTIME_CHANGED } from '@/features/orders/data/order-realtime-store';
 import { createOrdersListBreadcrumbs } from '@/features/orders/lib/order-breadcrumbs';
+import { shouldRefreshOrderListForRealtime } from '@/features/orders/lib/order-realtime-relevance';
+import type { OrderRealtimePayload } from '@/features/orders/lib/order-realtime-stream';
 import { clampCrmPageSize, CRM_PAGE_SIZE_OPTIONS } from '@/components/data-table/page-size-options';
 import { formatCurrency } from '@/lib/format';
 import { usePageDataRefresh } from '@/lib/page-data-refresh';
@@ -142,10 +144,18 @@ export function OrderListShell({ queue }: OrderListShellProps) {
   });
 
   React.useEffect(() => {
-    const onRealtime = () => setListVersion((v) => v + 1);
+    function onRealtime(event: Event) {
+      const payload = (event as CustomEvent<OrderRealtimePayload>).detail;
+      if (
+        !shouldRefreshOrderListForRealtime(queue, payload, filters.status)
+      ) {
+        return;
+      }
+      setListVersion((v) => v + 1);
+    }
     window.addEventListener(ORDERS_REALTIME_CHANGED, onRealtime);
     return () => window.removeEventListener(ORDERS_REALTIME_CHANGED, onRealtime);
-  }, []);
+  }, [queue, filters.status]);
 
   const selectedRows = React.useMemo(
     () => (data?.items ?? []).filter((row) => selectedIds.has(row.id)),
