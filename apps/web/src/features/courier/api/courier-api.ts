@@ -1,7 +1,12 @@
-import type { CourierOverview } from '@laam/types';
+import type {
+  CourierOverview,
+  CourierReadyListQuery,
+  CourierReadyListResponse,
+} from '@laam/types';
 
 import {
   getCourierOverview,
+  listReadyToSubmitMock,
   queueOrderForCourier,
 } from '@/features/courier/data/mock-courier';
 import { getOrderStore, updateMockOrder } from '@/features/orders/data/mock-orders';
@@ -16,6 +21,7 @@ export type CourierSubmitResult = {
 
 export type CourierApi = {
   getOverview: () => Promise<CourierOverview>;
+  listReady: (query?: CourierReadyListQuery) => Promise<CourierReadyListResponse>;
   submitOrders: (orderIds: string[], provider: string) => Promise<CourierSubmitResult>;
   markInboxRead: (eventId: string) => Promise<void>;
   settleCod: (orderId: string) => Promise<void>;
@@ -30,6 +36,10 @@ export function createMockCourierApi(): CourierApi {
     async getOverview() {
       await delay(100);
       return getCourierOverview();
+    },
+    async listReady(query) {
+      await delay(80);
+      return listReadyToSubmitMock(query);
     },
     async submitOrders(orderIds, provider) {
       await delay(200);
@@ -66,6 +76,16 @@ export function createMockCourierApi(): CourierApi {
 export function createHttpCourierApi(): CourierApi {
   return {
     getOverview: () => apiRequest<CourierOverview>('/crm/courier/overview'),
+    listReady: (query = {}) => {
+      const params = new URLSearchParams();
+      if (query.page) params.set('page', String(query.page));
+      if (query.pageSize) params.set('pageSize', String(query.pageSize));
+      if (query.search?.trim()) params.set('search', query.search.trim());
+      const qs = params.toString();
+      return apiRequest<CourierReadyListResponse>(
+        `/crm/courier/ready${qs ? `?${qs}` : ''}`,
+      );
+    },
     submitOrders: (orderIds, provider) =>
       apiRequest<CourierSubmitResult>('/crm/courier/submit', {
         method: 'POST',

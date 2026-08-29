@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 
@@ -36,10 +36,27 @@ export class CourierHubController {
 
   @Get('overview')
   @RequirePermissions('courier.view', 'courier.manage', 'orders.view')
-  @ApiOperation({ summary: 'Courier hub overview (accounts, ready queue, inbox, stats)' })
+  @ApiOperation({ summary: 'Courier hub overview (accounts, inbox, stats)' })
   overview(@CurrentUser() user: AuthUserPayload) {
     this.hub.requireOrg(user.organizationId);
     return this.hub.getOverview(user.organizationId!, user.userId);
+  }
+
+  @Get('ready')
+  @RequirePermissions('courier.view', 'courier.manage', 'orders.view')
+  @ApiOperation({ summary: 'Paginated ready-to-submit courier queue' })
+  ready(
+    @CurrentUser() user: AuthUserPayload,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    this.hub.requireOrg(user.organizationId);
+    return this.hub.listReadyToSubmit(user.organizationId!, {
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      search,
+    });
   }
 
   @Get('ready-count')

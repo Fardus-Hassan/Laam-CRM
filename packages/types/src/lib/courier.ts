@@ -94,12 +94,30 @@ export const courierOverviewSchema = z.object({
   accounts: z.array(courierAccountSchema),
   rules: courierRulesSchema,
   inbox: z.array(courierInboxEventSchema),
+  /** @deprecated Prefer GET /crm/courier/ready (paginated). May be empty. */
   readyToSubmit: z.array(courierSubmitItemSchema),
   stats: z.object({
     submittedToday: z.number(),
     inTransit: z.number(),
     deliveredToday: z.number(),
     failedToday: z.number(),
+    /** Total orders in the ready-to-submit queue. */
+    readyCount: z.number().optional(),
   }),
 });
 export type CourierOverview = z.infer<typeof courierOverviewSchema>;
+
+export const courierReadyListQuerySchema = z.object({
+  page: z.number().int().positive().optional(),
+  pageSize: z.number().int().positive().optional(),
+  search: z.string().optional(),
+});
+export type CourierReadyListQuery = z.infer<typeof courierReadyListQuerySchema>;
+
+export const courierReadyListResponseSchema = z.object({
+  items: z.array(courierSubmitItemSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+});
+export type CourierReadyListResponse = z.infer<typeof courierReadyListResponseSchema>;

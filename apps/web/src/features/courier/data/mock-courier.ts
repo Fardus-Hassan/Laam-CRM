@@ -1,4 +1,10 @@
-import type { CourierInboxEvent, CourierOverview, CourierSubmitItem } from '@laam/types';
+import type {
+  CourierInboxEvent,
+  CourierOverview,
+  CourierReadyListQuery,
+  CourierReadyListResponse,
+  CourierSubmitItem,
+} from '@laam/types';
 
 let readyToSubmit: CourierSubmitItem[] = [
   { orderId: 'ord-10', orderNumber: 'MH-8830', customerName: 'Salma Akter', district: 'Dhaka', amountBdt: 1850, status: 'ready' },
@@ -23,6 +29,7 @@ let stats = {
 };
 
 export function getCourierOverview(): CourierOverview {
+  const ready = readyToSubmit.filter((r) => r.status === 'ready');
   return {
     accounts: [
       { id: 'ca-1', provider: 'pathao', label: 'Pathao COD', status: 'active', isDefault: true, apiKeyMasked: 'ph_••••441', lastSyncAt: '2026-07-04T07:45:00Z', consignmentsToday: 42, successRate: 94.2 },
@@ -35,8 +42,33 @@ export function getCourierOverview(): CourierOverview {
       autoSubmitOnConfirm: false,
     },
     inbox: [...inbox],
-    readyToSubmit: readyToSubmit.filter((r) => r.status === 'ready'),
-    stats: { ...stats },
+    readyToSubmit: [],
+    stats: { ...stats, readyCount: ready.length },
+  };
+}
+
+export function listReadyToSubmitMock(
+  query: CourierReadyListQuery = {},
+): CourierReadyListResponse {
+  const page = Math.max(1, query.page ?? 1);
+  const pageSize = Math.min(1000, Math.max(1, query.pageSize ?? 25));
+  const search = query.search?.trim().toLowerCase() ?? '';
+  let items = readyToSubmit.filter((r) => r.status === 'ready');
+  if (search) {
+    items = items.filter(
+      (r) =>
+        r.orderNumber.toLowerCase().includes(search) ||
+        r.customerName.toLowerCase().includes(search) ||
+        r.district.toLowerCase().includes(search),
+    );
+  }
+  const total = items.length;
+  const start = (page - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
   };
 }
 
