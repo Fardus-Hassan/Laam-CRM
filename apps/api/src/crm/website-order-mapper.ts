@@ -56,6 +56,74 @@ function firstNonEmpty(...values: unknown[]): string {
 }
 
 /**
+ * Map Woo payment_method / title → CRM form-option values (cod, bkash, …).
+ * Unknown methods keep the original text so ingest still succeeds.
+ */
+export function normalizeWooPaymentMethod(
+  method?: string | null,
+  title?: string | null,
+): string | undefined {
+  const slug = String(method ?? '')
+    .trim()
+    .toLowerCase();
+  const label = String(title ?? '')
+    .trim()
+    .toLowerCase();
+  const haystack = `${slug} ${label}`.trim();
+  if (!haystack) return undefined;
+
+  // Prefer Woo gateway id, then fuzzy title (EN + common BN).
+  if (
+    slug === 'cod' ||
+    /\bcod\b/.test(haystack) ||
+    haystack.includes('cash on delivery') ||
+    haystack.includes('ক্যাশ অন ডেলিভারি') ||
+    haystack.includes('ক্যাশ অন')
+  ) {
+    return 'cod';
+  }
+  if (
+    slug === 'bkash' ||
+    slug.includes('bkash') ||
+    haystack.includes('bkash') ||
+    haystack.includes('বিকাশ')
+  ) {
+    return 'bkash';
+  }
+  if (
+    slug === 'nagad' ||
+    slug.includes('nagad') ||
+    haystack.includes('nagad') ||
+    haystack.includes('নগদ')
+  ) {
+    return 'nagad';
+  }
+  if (
+    slug === 'stripe' ||
+    slug === 'paypal' ||
+    slug.includes('card') ||
+    haystack.includes('card') ||
+    haystack.includes('credit') ||
+    haystack.includes('debit')
+  ) {
+    return 'card';
+  }
+  if (
+    slug === 'bacs' ||
+    slug === 'cheque' ||
+    haystack.includes('bank transfer') ||
+    haystack.includes('direct bank') ||
+    haystack.includes('already paid') ||
+    haystack.includes('prepaid')
+  ) {
+    return 'paid';
+  }
+
+  // Keep original title (or slug) when no CRM match — better than dropping.
+  return String(title ?? method ?? '').trim() || undefined;
+}
+
+/**
  * Map WooCommerce order.created / order.updated webhook (REST v3 shape) → canonical.
  */
 export function mapWooCommercePayload(body: unknown): WebsiteOrderIngestPayload {
@@ -132,9 +200,10 @@ export function mapWooCommercePayload(body: unknown): WebsiteOrderIngestPayload 
 
   const shippingTotal = Number(order['shipping_total']) || 0;
   const discountTotal = Number(order['discount_total']) || 0;
-  const paymentMethod =
-    String(order['payment_method_title'] ?? order['payment_method'] ?? '').trim() ||
-    undefined;
+  const paymentMethod = normalizeWooPaymentMethod(
+    String(order['payment_method'] ?? ''),
+    String(order['payment_method_title'] ?? ''),
+  );
   const paidAmount = String(order['date_paid'] ?? '').trim()
     ? Number(order['total']) || 0
     : 0;

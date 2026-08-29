@@ -32,6 +32,31 @@ describe('mapWooCommercePayload', () => {
     expect(canonical.lineItems[0]?.sku).toBe('JF-1');
     expect(canonical.utmSource).toBe('facebook');
     expect(canonical.deliveryCharge).toBe(80);
+    expect(canonical.paymentMethod).toBe('cod');
+  });
+
+  it('normalizes Woo payment slug and Bangla COD title to CRM values', () => {
+    expect(
+      mapWooCommercePayload({
+        id: 2,
+        payment_method: 'cod',
+        payment_method_title: 'ক্যাশ অন ডেলিভারি',
+        billing: { first_name: 'A', phone: '01700000001', address_1: 'X' },
+        shipping: {},
+        line_items: [{ name: 'P', quantity: 1, subtotal: '10', total: '10' }],
+      }).paymentMethod,
+    ).toBe('cod');
+
+    expect(
+      mapWooCommercePayload({
+        id: 3,
+        payment_method: 'bkash',
+        payment_method_title: 'bKash',
+        billing: { first_name: 'A', phone: '01700000002', address_1: 'X' },
+        shipping: {},
+        line_items: [{ name: 'P', quantity: 1, subtotal: '10', total: '10' }],
+      }).paymentMethod,
+    ).toBe('bkash');
   });
 
   it('uses billing address when shipping fields are empty strings', () => {
