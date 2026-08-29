@@ -1324,6 +1324,8 @@ export class OrdersService {
       followUpDate?: string;
       employeeName?: string;
       employeeUserId?: string;
+      /** Multi-member pool for equal / least-load transfer. */
+      employeeUserIds?: string[];
       courier?: string;
       fulfillmentWarehouseId?: string;
       confirmRemoteCancelled?: boolean;
@@ -1374,27 +1376,122 @@ export class OrdersService {
     }
 
     if (payload.action === 'transfer_employee') {
-      const name = payload.employeeName?.trim() || null;
-      const userId = payload.employeeUserId?.trim() || null;
+      const teamIds = this.normalizeTeamIds(payload.routingTeamIds);
+      const multiIds = [
+        ...new Set(
+          (payload.employeeUserIds ?? [])
+            .map((id) => id.trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (payload.employeeUserId?.trim() && !multiIds.includes(payload.employeeUserId.trim())) {
+        multiIds.push(payload.employeeUserId.trim());
+      }
+
+      const mode = payload.assignmentMode
+        ? this.normalizeRoutingMode(payload.assignmentMode)
+        : multiIds.length > 0
+          ? 'specific_member'
+          : teamIds.length > 0
+            ? 'auto_split'
+            : null;
+
+      // Legacy: single name/id → assign every order to that person.
+      if (!mode && (payload.employeeName?.trim() || payload.employeeUserId?.trim())) {
+        const name = payload.employeeName?.trim() || null;
+        const userId = payload.employeeUserId?.trim() || null;
+        let successCount = 0;
+        for (const orderId of ids) {
+          const existing = await this.prisma.order.findFirst({
+            where: { id: orderId, organizationId },
+          });
+          if (!existing) continue;
+          await this.prisma.order.update({
+            where: { id: existing.id },
+            data: {
+              assignedAgentName: name,
+              assignedUserId: userId,
+            },
+          });
+          successCount += 1;
+        }
+        this.orderRealtime.publish(organizationId, { reason: 'updated' });
+        return {
+          successCount,
+          failedCount: ids.length - successCount,
+          message: `Assigned ${successCount} order(s)`,
+        };
+      }
+
+      let pool: Array<{ id: string; name: string; teamId: string | null }> = [];
+      if (mode === 'auto_split') {
+        if (teamIds.length === 0) {
+          throw new BadRequestException('Select at least one team for auto split');
+        }
+        pool = await this.resolveTeamMemberPool(organizationId, teamIds);
+        if (pool.length === 0) {
+          throw new BadRequestException('No active members in the selected team(s)');
+        }
+      } else if (mode === 'specific_member') {
+        if (multiIds.length === 0) {
+          throw new BadRequestException('Select at least one member');
+        }
+        const users = await this.prisma.user.findMany({
+          where: {
+            organizationId,
+            id: { in: multiIds },
+            status: 'active',
+          },
+          select: { id: true, name: true, teamId: true },
+        });
+        const byId = new Map(users.map((u) => [u.id, u]));
+        pool = multiIds
+          .map((id) => byId.get(id))
+          .filter((u): u is { id: string; name: string; teamId: string | null } => Boolean(u));
+        if (pool.length === 0) {
+          throw new BadRequestException('No active members selected');
+        }
+      } else {
+        throw new BadRequestException('Select teams (auto split) or members to transfer');
+      }
+
+      const loadMemo = new Map<string, number>();
       let successCount = 0;
       for (const orderId of ids) {
         const existing = await this.prisma.order.findFirst({
-          where: { id: orderId, organizationId },
+          where: { id: orderId, organizationId, deletedAt: null },
+          select: { id: true },
         });
         if (!existing) continue;
+
+        const pick =
+          pool.length === 1
+            ? { userId: pool[0]!.id, userName: pool[0]!.name }
+            : await this.resolveLeastLoadUser(organizationId, 'order', pool, loadMemo);
+        if (!pick) continue;
+
+        loadMemo.set(pick.userId, (loadMemo.get(pick.userId) ?? 0) + 1);
+
         await this.prisma.order.update({
           where: { id: existing.id },
           data: {
-            assignedAgentName: name,
-            assignedUserId: userId,
+            assignedAgentName: pick.userName,
+            assignedUserId: pick.userId,
           },
         });
         successCount += 1;
       }
+
+      this.orderRealtime.publish(organizationId, { reason: 'updated' });
+
+      const splitHint =
+        pool.length > 1
+          ? ` · split across ${pool.length} member(s)`
+          : ` · ${pool[0]?.name ?? 'member'}`;
       return {
         successCount,
         failedCount: ids.length - successCount,
-        message: `Assigned ${successCount} order(s)`,
+        message: `Assigned ${successCount} order(s)${splitHint}`,
       };
     }
 

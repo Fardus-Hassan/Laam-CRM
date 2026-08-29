@@ -664,6 +664,8 @@ export const orderBulkActionPayloadSchema = z.object({
   employeeName: z.string().optional(),
   /** Stable assignee id for KPI matching (preferred over name-only). */
   employeeUserId: z.string().optional(),
+  /** Multi-member transfer pool (equal / least-load split). */
+  employeeUserIds: z.array(z.string()).optional(),
   courier: z.string().optional(),
   smsTemplateId: z.string().optional(),
   smsMessage: z.string().optional(),
