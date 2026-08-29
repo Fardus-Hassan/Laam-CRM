@@ -34,6 +34,34 @@ describe('mapWooCommercePayload', () => {
     expect(canonical.deliveryCharge).toBe(80);
   });
 
+  it('uses billing address when shipping fields are empty strings', () => {
+    const canonical = mapWooCommercePayload({
+      id: 55,
+      customer_ip_address: '203.0.113.10',
+      billing: {
+        first_name: 'Aktarul',
+        last_name: 'Naser',
+        phone: '01713025848',
+        address_1: 'c/o Abdul Karim, Companiganj, Noakhali',
+        city: '',
+        state: '',
+      },
+      shipping: {
+        address_1: '',
+        address_2: '',
+        city: '',
+        state: '',
+        postcode: '',
+        country: '',
+      },
+      line_items: [{ name: 'Honey', quantity: 1, subtotal: '980', total: '980' }],
+    });
+
+    expect(canonical.shippingAddress).toContain('Companiganj');
+    expect(canonical.shippingAddress).not.toBe('Address not provided');
+    expect(canonical.clientIp).toBe('203.0.113.10');
+  });
+
   it('rejects WooCommerce payload without phone', () => {
     expect(() =>
       mapWooCommercePayload({
