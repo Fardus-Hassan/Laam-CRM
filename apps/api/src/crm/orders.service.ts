@@ -2546,15 +2546,22 @@ export class OrdersService {
       await this.upsertOrderFollowUpSchedule(organizationId, created, input.followUpDate, actor);
     }
 
-    // Background: cache courier success for this phone (website + manual create).
-    // Table stays cache-only; this is the controlled API spend per new/expired phone.
-    this.courierPhoneHistory.ensureFresh(organizationId, created.customerPhone);
-
+    // List success rate is cache-only. Publish create immediately so the row
+    // appears, then warm courier history and publish again when cache is ready.
     this.orderRealtime.publish(organizationId, {
       reason: 'created',
       orderId: created.id,
       status: created.status,
     });
+    void this.courierPhoneHistory
+      .ensureFresh(organizationId, created.customerPhone)
+      .then(() => {
+        this.orderRealtime.publish(organizationId, {
+          reason: 'updated',
+          orderId: created.id,
+          status: created.status,
+        });
+      });
 
     return this.toDetailEnriched(organizationId, created);
   }
