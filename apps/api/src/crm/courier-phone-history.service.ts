@@ -117,22 +117,20 @@ export class CourierPhoneHistoryService {
 
   /**
    * Ensure org cache exists and is within TTL. No-op when fresh.
-   * Safe to fire-and-forget after order create (manual + website ingest).
+   * Await after order create before a second realtime tick so list success rate is ready.
    */
-  ensureFresh(organizationId: string, phoneRaw: string): void {
-    void (async () => {
-      try {
-        const phoneNormalized = normalizeBdPhone(phoneRaw);
-        if (!phoneNormalized || phoneNormalized.length < 10) return;
-        const cached = await this.readCache(organizationId, phoneNormalized);
-        if (cached && cached.expiresAt.getTime() > Date.now()) return;
-        await this.check(organizationId, phoneRaw, { refresh: true });
-      } catch (err) {
-        this.logger.warn(
-          `ensureFresh courier history failed: ${err instanceof Error ? err.message : err}`,
-        );
-      }
-    })();
+  async ensureFresh(organizationId: string, phoneRaw: string): Promise<void> {
+    try {
+      const phoneNormalized = normalizeBdPhone(phoneRaw);
+      if (!phoneNormalized || phoneNormalized.length < 10) return;
+      const cached = await this.readCache(organizationId, phoneNormalized);
+      if (cached && cached.expiresAt.getTime() > Date.now()) return;
+      await this.check(organizationId, phoneRaw, { refresh: true });
+    } catch (err) {
+      this.logger.warn(
+        `ensureFresh courier history failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   /** Cache-only map for list enrichment (no upstream calls). */
