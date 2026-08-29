@@ -46,6 +46,15 @@ function metaValue(
   return text || undefined;
 }
 
+/** First non-empty trimmed string (empty Woo shipping fields must not block billing). */
+function firstNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
 /**
  * Map WooCommerce order.created / order.updated webhook (REST v3 shape) → canonical.
  */
@@ -70,27 +79,33 @@ export function mapWooCommercePayload(body: unknown): WebsiteOrderIngestPayload 
     : [];
 
   const phone =
-    String(billing['phone'] ?? shipping['phone'] ?? order['billing_phone'] ?? '').trim() ||
-    metaValue(meta, '_billing_phone') ||
-    '';
-  const first = String(billing['first_name'] ?? shipping['first_name'] ?? '').trim();
-  const last = String(billing['last_name'] ?? shipping['last_name'] ?? '').trim();
+    firstNonEmpty(
+      billing['phone'],
+      shipping['phone'],
+      order['billing_phone'],
+      metaValue(meta, '_billing_phone'),
+    ) || '';
+  const first = firstNonEmpty(billing['first_name'], shipping['first_name']);
+  const last = firstNonEmpty(billing['last_name'], shipping['last_name']);
   const name =
     `${first} ${last}`.trim() ||
-    String(billing['company'] ?? '').trim() ||
+    firstNonEmpty(billing['company'], shipping['company']) ||
     'Website customer';
 
   if (!phone) {
     throw new BadRequestException('WooCommerce order missing billing phone');
   }
 
-  const address1 = String(shipping['address_1'] ?? billing['address_1'] ?? '').trim();
-  const address2 = String(shipping['address_2'] ?? billing['address_2'] ?? '').trim();
-  const city = String(shipping['city'] ?? billing['city'] ?? '').trim();
-  const state = String(shipping['state'] ?? billing['state'] ?? '').trim();
-  const postcode = String(shipping['postcode'] ?? billing['postcode'] ?? '').trim();
+  // Woo often sends shipping: { address_1: "", city: "", ... } when unset.
+  // `??` does not fall through empty strings — prefer first non-empty of shipping then billing.
+  const address1 = firstNonEmpty(shipping['address_1'], billing['address_1']);
+  const address2 = firstNonEmpty(shipping['address_2'], billing['address_2']);
+  const city = firstNonEmpty(shipping['city'], billing['city']);
+  const state = firstNonEmpty(shipping['state'], billing['state']);
+  const postcode = firstNonEmpty(shipping['postcode'], billing['postcode']);
+  const country = firstNonEmpty(shipping['country'], billing['country']);
   const shippingAddress =
-    [address1, address2, city, state, postcode].filter(Boolean).join(', ') ||
+    [address1, address2, city, state, postcode, country].filter(Boolean).join(', ') ||
     'Address not provided';
 
   const lineItemsRaw = Array.isArray(order['line_items'])
@@ -124,6 +139,12 @@ export function mapWooCommercePayload(body: unknown): WebsiteOrderIngestPayload 
     ? Number(order['total']) || 0
     : 0;
 
+  const clientIp = firstNonEmpty(
+    order['customer_ip_address'],
+    order['customer_ip'],
+    metaValue(meta, '_customer_ip_address'),
+  );
+
   return websiteIngestPayloadSchema.parse({
     externalOrderId: String(id),
     customerName: name,
@@ -139,6 +160,7 @@ export function mapWooCommercePayload(body: unknown): WebsiteOrderIngestPayload 
     notes: String(order['customer_note'] ?? '').trim() || undefined,
     orderDate:
       String(order['date_created'] ?? order['date_created_gmt'] ?? '').trim() || undefined,
+    clientIp: clientIp || undefined,
     utmSource: metaValue(meta, 'utm_source') || undefined,
     utmCampaign: metaValue(meta, 'utm_campaign') || undefined,
     utmContent: metaValue(meta, 'utm_content') || undefined,

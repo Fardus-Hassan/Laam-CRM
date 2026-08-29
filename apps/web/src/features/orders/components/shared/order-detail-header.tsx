@@ -160,29 +160,48 @@ export function OrderDetailSidebarMeta({ order, className }: OrderDetailSidebarM
         </div>
 
         <Can permission="security.manage">
-          <div className="flex flex-wrap gap-1.5 border-t border-border/60 pt-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => void blockTarget('mobile', order.customerPhone)}
-            >
-              <Ban className="size-3" />
-              Block mobile
-            </Button>
-            {clientIp ? (
+          <div className="space-y-1.5 border-t border-border/60 pt-2">
+            <p className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+              <Globe className="size-3 shrink-0" />
+              <span className="text-[10px] uppercase tracking-wide">Customer IP</span>
+              {clientIp ? (
+                <span className="text-foreground">{clientIp}</span>
+              ) : (
+                <span>Not captured</span>
+              )}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => void blockTarget('ip', clientIp)}
+                onClick={() => void blockTarget('mobile', order.customerPhone)}
+              >
+                <Ban className="size-3" />
+                Block mobile
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={!clientIp}
+                title={clientIp ? `Block ${clientIp}` : 'No IP on this order'}
+                onClick={() => {
+                  if (!clientIp) return;
+                  void blockTarget('ip', clientIp);
+                }}
               >
                 <Ban className="size-3" />
                 Block IP
+                {clientIp ? (
+                  <span className="max-w-[9rem] truncate font-mono font-normal opacity-90">
+                    {clientIp}
+                  </span>
+                ) : null}
               </Button>
-            ) : null}
+            </div>
           </div>
         </Can>
       </CardContent>
