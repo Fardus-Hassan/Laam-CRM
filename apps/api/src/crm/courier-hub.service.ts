@@ -65,12 +65,71 @@ export class CourierHubService {
 
   /** Sidebar badge: orders ready to book with a courier. */
   async readyCount(organizationId: string): Promise<number> {
-    const rows = await this.prisma.order.findMany({
+    return this.prisma.order.count({
       where: this.readyWhere(organizationId),
-      select: { shippingAddress: true },
-      take: 500,
     });
-    return rows.filter((r) => (r.shippingAddress?.trim().length ?? 0) >= 10).length;
+  }
+
+  async listReadyToSubmit(
+    organizationId: string,
+    query: { page?: number; pageSize?: number; search?: string },
+  ): Promise<{
+    items: CourierSubmitItem[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    const page = Math.max(1, Math.floor(query.page ?? 1));
+    const pageSize = Math.min(1000, Math.max(1, Math.floor(query.pageSize ?? 25)));
+    const search = query.search?.trim() ?? '';
+
+    const where = {
+      ...this.readyWhere(organizationId),
+      ...(search
+        ? {
+            OR: [
+              { orderNumber: { contains: search, mode: 'insensitive' as const } },
+              { customerName: { contains: search, mode: 'insensitive' as const } },
+              { customerPhone: { contains: search, mode: 'insensitive' as const } },
+              { district: { contains: search, mode: 'insensitive' as const } },
+              { shippingArea: { contains: search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          orderNumber: true,
+          customerName: true,
+          district: true,
+          shippingArea: true,
+          amount: true,
+          status: true,
+        },
+      }),
+    ]);
+
+    return {
+      items: rows.map((row) => ({
+        orderId: row.id,
+        orderNumber: row.orderNumber,
+        customerName: row.customerName,
+        district: row.district || row.shippingArea || '—',
+        amountBdt: row.amount,
+        status: 'ready' as const,
+      })),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async getOverview(
@@ -78,25 +137,11 @@ export class CourierHubService {
     userId?: string | null,
   ): Promise<CourierOverview> {
     const today = startOfTodayUtc();
-    const [pathao, carrybee, readyRows, bookedToday, inTransit, deliveredToday, failedToday, recentBooked] =
+    const [pathao, carrybee, readyCount, bookedToday, inTransit, deliveredToday, failedToday, recentBooked] =
       await Promise.all([
         this.integrations.getPathaoPublic(organizationId),
         this.integrations.getCarrybeePublic(organizationId),
-        this.prisma.order.findMany({
-          where: this.readyWhere(organizationId),
-          orderBy: { createdAt: 'desc' },
-          take: 150,
-          select: {
-            id: true,
-            orderNumber: true,
-            customerName: true,
-            district: true,
-            shippingArea: true,
-            shippingAddress: true,
-            amount: true,
-            status: true,
-          },
-        }),
+        this.readyCount(organizationId),
         this.prisma.order.count({
           where: {
             organizationId,
@@ -205,18 +250,6 @@ export class CourierHubService {
       });
     }
 
-    const readyToSubmit: CourierSubmitItem[] = readyRows
-      .filter((row) => (row.shippingAddress?.trim().length ?? 0) >= 10)
-      .slice(0, 100)
-      .map((row) => ({
-        orderId: row.id,
-        orderNumber: row.orderNumber,
-        customerName: row.customerName,
-        district: row.district || row.shippingArea || '—',
-        amountBdt: row.amount,
-        status: 'ready' as const,
-      }));
-
     const inboxBase = recentBooked.map((row) => this.toInboxEvent(row));
     let readIds = new Set<string>();
     if (userId && inboxBase.length > 0) {
@@ -244,12 +277,13 @@ export class CourierHubService {
         autoSubmitOnConfirm: false,
       },
       inbox,
-      readyToSubmit,
+      readyToSubmit: [],
       stats: {
         submittedToday: bookedToday,
         inTransit,
         deliveredToday,
         failedToday,
+        readyCount,
       },
     };
   }

@@ -2,16 +2,28 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import type { CourierOverview, CourierProvider } from '@laam/types';
+import type {
+  CourierOverview,
+  CourierProvider,
+  CourierReadyListResponse,
+  CourierSubmitItem,
+} from '@laam/types';
 import { CheckCircle2, Package, RefreshCw, Send, Truck, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Can } from '@/components/auth/can';
+import { CrmDataTableMeta } from '@/components/data-table/crm-data-table-meta';
+import { CrmDataTablePagination } from '@/components/data-table/crm-data-table-pagination';
+import {
+  clampCrmPageSize,
+  CRM_PAGE_SIZE_OPTIONS,
+} from '@/components/data-table/page-size-options';
 import { CrmSummaryStrip } from '@/features/crm/components/crm-summary-strip';
 import { PageShell } from '@/components/layout/page-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -28,6 +40,7 @@ import {
   ORDER_SECTION_HEADER_CLASS,
 } from '@/features/orders/components/create-order/section-layout';
 import { formatCurrency, formatTime } from '@/lib/format';
+import { usePageDataRefresh } from '@/lib/page-data-refresh';
 import { cn } from '@/lib/utils';
 
 const EVENT_LABELS: Record<string, string> = {
@@ -46,6 +59,8 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'se
   error: 'destructive',
 };
 
+const PAGE_SIZE_OPTIONS = [...CRM_PAGE_SIZE_OPTIONS];
+
 export function CourierHubPage() {
   const [data, setData] = React.useState<CourierOverview | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -55,7 +70,23 @@ export function CourierHubPage() {
   const [settlingId, setSettlingId] = React.useState<string | null>(null);
   const [submitProvider, setSubmitProvider] = React.useState<CourierProvider>('pathao');
 
-  const refresh = React.useCallback(async () => {
+  const [readyPage, setReadyPage] = React.useState(1);
+  const [readyPageSize, setReadyPageSize] = React.useState(25);
+  const [readySearch, setReadySearch] = React.useState('');
+  const [readyDebouncedSearch, setReadyDebouncedSearch] = React.useState('');
+  const [readyLoading, setReadyLoading] = React.useState(false);
+  const [readyList, setReadyList] = React.useState<CourierReadyListResponse | null>(null);
+
+  React.useEffect(() => {
+    const t = window.setTimeout(() => setReadyDebouncedSearch(readySearch.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [readySearch]);
+
+  React.useEffect(() => {
+    setReadyPage(1);
+  }, [readyDebouncedSearch, readyPageSize]);
+
+  const refreshOverview = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -80,15 +111,58 @@ export function CourierHubPage() {
     }
   }, []);
 
+  const refreshReady = React.useCallback(async () => {
+    setReadyLoading(true);
+    try {
+      const list = await courierApi.listReady({
+        page: readyPage,
+        pageSize: readyPageSize,
+        search: readyDebouncedSearch || undefined,
+      });
+      setReadyList(list);
+    } catch (e) {
+      setReadyList(null);
+      toast.error(e instanceof Error ? e.message : 'Failed to load ready queue');
+    } finally {
+      setReadyLoading(false);
+    }
+  }, [readyPage, readyPageSize, readyDebouncedSearch]);
+
+  const refreshAll = React.useCallback(async () => {
+    await Promise.all([refreshOverview(), refreshReady()]);
+  }, [refreshOverview, refreshReady]);
+
   React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refreshOverview();
+  }, [refreshOverview]);
+
+  React.useEffect(() => {
+    void refreshReady();
+  }, [refreshReady]);
+
+  usePageDataRefresh(() => {
+    void refreshAll();
+  });
 
   function toggle(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+
+  function togglePage(items: CourierSubmitItem[]) {
+    const ids = items.map((r) => r.orderId);
+    const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const id of ids) next.delete(id);
+      } else {
+        for (const id of ids) next.add(id);
+      }
       return next;
     });
   }
@@ -123,7 +197,7 @@ export function CourierHubPage() {
       } else {
         toast.success(result.message ?? `Booked ${result.submitted} order(s)`);
       }
-      await refresh();
+      await refreshAll();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk submit failed');
     } finally {
@@ -136,7 +210,7 @@ export function CourierHubPage() {
     try {
       await courierApi.settleCod(orderId);
       toast.success(`Settled ${orderNumber}`);
-      await refresh();
+      await refreshOverview();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Settlement failed');
     } finally {
@@ -147,6 +221,13 @@ export function CourierHubPage() {
   const pendingSettlement =
     data?.inbox.filter((e) => e.type === 'delivered') ?? [];
 
+  const readyItems = readyList?.items ?? [];
+  const readyTotal = readyList?.total ?? data?.stats.readyCount ?? 0;
+  const pageIds = readyItems.map((r) => r.orderId);
+  const allPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const somePageSelected = pageIds.some((id) => selected.has(id));
+
   return (
     <PageShell
       title="Courier Dashboard"
@@ -154,8 +235,8 @@ export function CourierHubPage() {
     >
       <div className={ORDER_PAGE_GAP}>
         <div className="flex justify-end">
-          <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>
-            <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+          <Button type="button" size="sm" variant="outline" onClick={() => void refreshAll()}>
+            <RefreshCw className={cn('size-4', (loading || readyLoading) && 'animate-spin')} />
             Refresh
           </Button>
         </div>
@@ -168,6 +249,11 @@ export function CourierHubPage() {
 
         <CrmSummaryStrip
           items={[
+            {
+              id: 'ready',
+              label: 'Ready to submit',
+              value: data ? String(data.stats.readyCount ?? readyTotal) : '—',
+            },
             {
               id: 'sub',
               label: 'Submitted today',
@@ -292,7 +378,10 @@ export function CourierHubPage() {
 
         <Card className={ORDER_CARD_CLASS}>
           <CardHeader
-            className={cn(ORDER_SECTION_HEADER_CLASS, 'flex-row items-center justify-between')}
+            className={cn(
+              ORDER_SECTION_HEADER_CLASS,
+              'flex-row flex-wrap items-center justify-between gap-2',
+            )}
           >
             <CardTitle className="text-sm">Ready to submit</CardTitle>
             <Can permission="courier.manage">
@@ -330,55 +419,114 @@ export function CourierHubPage() {
               </div>
             </Can>
           </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10" />
-                  <TableHead>Order</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>District</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.readyToSubmit.map((row) => (
-                  <TableRow key={row.orderId}>
-                    <TableCell>
+          <CardContent className="space-y-0 p-0">
+            <div className="border-b px-3 py-2">
+              <Input
+                value={readySearch}
+                onChange={(e) => setReadySearch(e.target.value)}
+                placeholder="Search order, customer, phone, district…"
+                className="h-8 max-w-md"
+              />
+            </div>
+            <CrmDataTableMeta
+              page={readyPage}
+              pageSize={readyPageSize}
+              total={readyTotal}
+              entityLabel="orders"
+              selectedCount={selected.size}
+              onClearSelection={() => setSelected(new Set())}
+              onPageSizeChange={(size) => {
+                setReadyPageSize(clampCrmPageSize(size, 25));
+              }}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+            />
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
                       <input
                         type="checkbox"
-                        checked={selected.has(row.orderId)}
-                        onChange={() => toggle(row.orderId)}
                         className="size-4"
+                        checked={allPageSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = somePageSelected && !allPageSelected;
+                        }}
+                        onChange={() => togglePage(readyItems)}
+                        disabled={readyItems.length === 0}
+                        aria-label="Select page"
                       />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <Link
-                        href={`/dashboard/orders/${row.orderNumber}`}
-                        className="hover:underline"
+                    </TableHead>
+                    <TableHead>Order</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>District</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {readyItems.map((row) => (
+                    <TableRow key={row.orderId}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(row.orderId)}
+                          onChange={() => toggle(row.orderId)}
+                          className="size-4"
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <Link
+                          href={`/dashboard/orders/${row.orderNumber}`}
+                          className="hover:underline"
+                        >
+                          {row.orderNumber}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{row.customerName}</TableCell>
+                      <TableCell>{row.district}</TableCell>
+                      <TableCell>{formatCurrency(row.amountBdt)}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{row.status}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {readyLoading && readyItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="py-8 text-center text-sm text-muted-foreground"
                       >
-                        {row.orderNumber}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{row.customerName}</TableCell>
-                    <TableCell>{row.district}</TableCell>
-                    <TableCell>{formatCurrency(row.amountBdt)}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{row.status}</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!loading && data && data.readyToSubmit.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
-                      No orders ready. Confirm an order (with address) to queue it here for bulk
-                      Pathao/Carrybee submit.
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
+                        Loading…
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  {!readyLoading && readyItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="py-8 text-center text-sm text-muted-foreground"
+                      >
+                        {readyDebouncedSearch
+                          ? 'No matching orders in the ready queue.'
+                          : 'No orders ready. Confirm an order (with address) to queue it here for bulk Pathao/Carrybee submit.'}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+            <CrmDataTablePagination
+              page={readyPage}
+              pageSize={readyPageSize}
+              total={readyTotal}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageChange={setReadyPage}
+              onPageSizeChange={(size) => {
+                setReadyPageSize(clampCrmPageSize(size, 25));
+              }}
+              showRangeSummary={false}
+            />
           </CardContent>
         </Card>
 
