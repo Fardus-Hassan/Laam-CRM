@@ -163,7 +163,8 @@ export function OrderFollowUpControl({
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Pick a callback date. Order moves to Hold (Follow-up) when saved.
+            Pick a callback date. Order goes to On Hold; on that date it moves to Hold
+            Followup. If still unresolved at day end, it returns to On Hold.
           </p>
         )}
       </div>

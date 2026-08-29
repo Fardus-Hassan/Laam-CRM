@@ -1119,6 +1119,11 @@ export class OrdersService {
     };
   }
 
+  /**
+   * Schedule a callback: order → On Hold with follow-up date.
+   * Hold workflow promotes to Hold Followup on the due date, and reverts to
+   * Hold at Dhaka EOD if still unresolved. Due today/past → Hold Followup now.
+   */
   async bulkSetFollowUp(
     organizationId: string,
     orderIds: string[],
@@ -1129,105 +1134,89 @@ export class OrdersService {
     if (ids.length === 0) {
       throw new BadRequestException('orderIds required');
     }
-    const parsed = new Date(followUpDate);
-    if (!followUpDate.trim() || Number.isNaN(parsed.getTime())) {
-      throw new BadRequestException('Valid followUpDate required (YYYY-MM-DD)');
-    }
-    const scheduleDate = new Date(
-      Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()),
-    );
-    const noteLine = `Follow-up due: ${followUpDate.trim().slice(0, 10)}`;
+    const { noteLine } = this.parseFollowUpDateOrThrow(followUpDate);
+    const dueYmd = followUpDate.trim().slice(0, 10);
+    const todayYmd = dhakaYmd();
+    const dueNow = dueYmd <= todayYmd;
 
     let successCount = 0;
+    const errors: string[] = [];
     for (const orderId of ids) {
       const order = await this.prisma.order.findFirst({
-        where: { id: orderId, organizationId },
-        include: { lineItems: true },
+        where: { id: orderId, organizationId, deletedAt: null },
+        select: { id: true, status: true, notes: true },
       });
       if (!order) continue;
 
-      const notes = order.notes ? `${order.notes}\n${noteLine}` : noteLine;
-      await this.prisma.$transaction(async (tx) => {
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            status: 'hold_followup',
-            notes,
-            skipFollowup: false,
-          },
-        });
-        await tx.orderActivity.createMany({
-          data: [
-            {
-              organizationId,
-              orderId: order.id,
-              type: 'status',
-              label: 'Status updated',
-              description: 'hold_followup',
-              actorUserId: actor.userId ?? null,
-              actorName: actor.name ?? null,
+      try {
+        if (order.status === 'hold') {
+          await this.upsertOrderFollowUpSchedule(
+            organizationId,
+            { id: order.id },
+            dueYmd,
+            actor,
+          );
+          const notes = order.notes?.includes(noteLine)
+            ? order.notes
+            : order.notes
+              ? `${order.notes}\n${noteLine}`
+              : noteLine;
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+              notes,
+              skipFollowup: false,
+              activities: {
+                create: {
+                  organizationId,
+                  type: 'note',
+                  label: 'Follow-up scheduled',
+                  description: noteLine,
+                  actorUserId: actor.userId ?? null,
+                  actorName: actor.name ?? null,
+                },
+              },
             },
-            {
-              organizationId,
-              orderId: order.id,
-              type: 'note',
-              label: 'Follow-up scheduled',
-              description: noteLine,
-              actorUserId: actor.userId ?? null,
-              actorName: actor.name ?? null,
-            },
-          ],
-        });
-      });
+          });
+        } else {
+          await this.updateStatus(organizationId, order.id, 'hold', actor, {
+            followUpDate: dueYmd,
+          });
+        }
 
-      const existingFu = await this.prisma.followup.findFirst({
-        where: { organizationId, orderId: order.id },
-      });
-      if (existingFu) {
-        await this.prisma.followup.update({
-          where: { id: existingFu.id },
-          data: {
-            scheduleDate,
-            skipped: false,
-            followupNotes: noteLine,
-          },
-        });
-      } else {
-        await this.followups.createFromOrder(
-          organizationId,
-          {
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-            customerName: order.customerName,
-            phone: order.customerPhone,
-            address: order.shippingAddress,
-            district: order.district,
-            area: order.shippingArea,
-            source: order.source,
-            assignedAgentName: order.assignedAgentName,
-            customerNotes: order.customerNote,
-            lineItems: order.lineItems.map((l) => ({
-              productName: l.productName,
-              quantity: l.quantity,
-            })),
-            skipFollowup: false,
-            customerId: order.customerId,
-          },
-          actor,
-        );
-        await this.prisma.followup.updateMany({
-          where: { organizationId, orderId: order.id },
-          data: { scheduleDate, followupNotes: noteLine },
-        });
+        if (dueNow) {
+          const current = await this.prisma.order.findFirst({
+            where: { id: order.id, organizationId, deletedAt: null },
+            select: { status: true },
+          });
+          if (current?.status === 'hold') {
+            await this.updateStatus(
+              organizationId,
+              order.id,
+              'hold_followup',
+              actor,
+            );
+          }
+        }
+
+        successCount += 1;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Follow-up failed';
+        if (errors.length < 5) errors.push(msg);
       }
-
-      successCount += 1;
     }
 
+    if (successCount > 0) {
+      this.orderRealtime.publish(organizationId, { reason: 'status' });
+    }
+
+    const detail = errors.length ? ` Examples: ${errors.join(' · ')}` : '';
     return {
       successCount,
       failedCount: ids.length - successCount,
-      message: `Follow-up set for ${successCount} order(s)`,
+      message: dueNow
+        ? `Set follow-up for ${successCount} order(s) (due today → Hold Followup).${detail}`
+        : `Moved ${successCount} order(s) to On Hold with scheduled follow-up.${detail}`,
     };
   }
 

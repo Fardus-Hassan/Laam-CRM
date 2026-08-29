@@ -658,7 +658,10 @@ export class OrdersController {
 
   @Post('bulk/follow-up')
   @RequirePermissions('orders.confirm', 'orders.create', 'orders.assign')
-  @ApiOperation({ summary: 'Bulk set follow-up date and move orders to hold_followup' })
+  @ApiOperation({
+    summary:
+      'Bulk set follow-up date: move orders to On Hold (promotes to Hold Followup on due date)',
+  })
   bulkFollowUp(
     @CurrentUser() user: AuthUserPayload,
     @Body() body: { orderIds?: string[]; followUpDate?: string },
