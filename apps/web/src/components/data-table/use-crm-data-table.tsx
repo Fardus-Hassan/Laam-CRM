@@ -25,17 +25,18 @@ import {
 import { Checkbox, type CheckedState } from '@/components/ui/checkbox';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useIsTablet } from '@/hooks/use-media-query';
+import { cn } from '@/lib/utils';
 
 const coreRowModel = getCoreRowModel();
 const sortedRowModel = getSortedRowModel();
 
 function buildColumnPinning(
   pinned: CrmPinnedColumns | undefined,
-  hasSelection: boolean,
+  leadingColumnId: '__select' | '__serial' | null,
 ): ColumnPinningState {
   const left = [...(pinned?.left ?? [])];
-  if (hasSelection && !left.includes('__select')) {
-    left.unshift('__select');
+  if (leadingColumnId && !left.includes(leadingColumnId)) {
+    left.unshift(leadingColumnId);
   }
   return {
     left,
@@ -47,7 +48,7 @@ function buildTabletVisibility<T>(columns: CrmColumnDef<T>[]): VisibilityState {
   const visibility: VisibilityState = {};
   for (const column of columns) {
     const id = column.id ?? (column as { accessorKey?: string }).accessorKey;
-    if (!id || id === '__select' || id === '__expand') {
+    if (!id || id === '__select' || id === '__serial' || id === '__expand') {
       continue;
     }
     const priority = column.meta?.priority ?? 'primary';
@@ -58,40 +59,83 @@ function buildTabletVisibility<T>(columns: CrmColumnDef<T>[]): VisibilityState {
   return visibility;
 }
 
-function buildSelectionColumn<T>(): CrmColumnDef<T> {
+/** 1-based serial for the current page (e.g. page 2 size 10 → 11, 12, …). */
+export function crmRowSerialNumber(
+  rowIndex: number,
+  pageIndex: number,
+  pageSize: number,
+): number {
+  return Math.max(0, pageIndex) * Math.max(1, pageSize) + rowIndex + 1;
+}
+
+function buildSelectSerialColumn<T>(withCheckbox: boolean): CrmColumnDef<T> {
   return {
-    id: '__select',
+    id: withCheckbox ? '__select' : '__serial',
     header: ({ table }) => (
-      <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected()
-            ? true
-            : table.getIsSomePageRowsSelected()
-              ? 'indeterminate'
-              : false
-        }
-        onCheckedChange={(value: CheckedState) =>
-          table.toggleAllPageRowsSelected(value === true)
-        }
-        aria-label="Select all rows"
-      />
+      <div
+        className={cn(
+          'flex items-center gap-2',
+          withCheckbox ? 'justify-start' : 'justify-center',
+        )}
+      >
+        {withCheckbox ? (
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected()
+                ? true
+                : table.getIsSomePageRowsSelected()
+                  ? 'indeterminate'
+                  : false
+            }
+            onCheckedChange={(value: CheckedState) =>
+              table.toggleAllPageRowsSelected(value === true)
+            }
+            aria-label="Select all rows"
+          />
+        ) : null}
+        <span className="min-w-[1.15rem] text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+          #
+        </span>
+      </div>
     ),
-    cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value: CheckedState) => row.toggleSelected(value === true)}
-        aria-label={`Select row ${row.id}`}
-      />
-    ),
+    cell: ({ row, table }) => {
+      const { pageIndex, pageSize } = table.getState().pagination;
+      const serial = crmRowSerialNumber(row.index, pageIndex, pageSize);
+      return (
+        <div
+          className={cn(
+            'flex items-center gap-2',
+            withCheckbox ? 'justify-start' : 'justify-center',
+          )}
+        >
+          {withCheckbox ? (
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(value: CheckedState) =>
+                row.toggleSelected(value === true)
+              }
+              aria-label={`Select row ${serial}`}
+            />
+          ) : null}
+          <span
+            className="min-w-[1.15rem] text-center text-[11px] font-medium tabular-nums text-muted-foreground"
+            title={`Row ${serial}`}
+          >
+            {serial}
+          </span>
+        </div>
+      );
+    },
     enableSorting: false,
     enableHiding: false,
-    size: 40,
-    minSize: 40,
-    maxSize: 40,
+    size: withCheckbox ? 68 : 44,
+    minSize: withCheckbox ? 64 : 40,
+    maxSize: withCheckbox ? 80 : 52,
     meta: {
       align: 'middle',
-      headerClassName: 'w-10',
-      cellClassName: 'w-10',
+      label: withCheckbox ? 'Select' : '#',
+      headerClassName: withCheckbox ? 'w-[68px]' : 'w-11',
+      cellClassName: withCheckbox ? 'w-[68px]' : 'w-11',
     },
   };
 }
@@ -171,11 +215,9 @@ export function useCrmDataTable<T>({
 
   const resolvedColumns = React.useMemo(() => {
     const next: ColumnDef<T, unknown>[] = [...columns];
-    if (enableRowSelection) {
-      next.unshift(buildSelectionColumn<T>());
-    }
+    next.unshift(buildSelectSerialColumn<T>(enableRowSelection));
     if (isTablet && !isMobile) {
-      next.splice(enableRowSelection ? 1 : 0, 0, buildExpandColumn<T>());
+      next.splice(1, 0, buildExpandColumn<T>());
     }
     return next;
   }, [columns, enableRowSelection, isMobile, isTablet]);
@@ -192,13 +234,15 @@ export function useCrmDataTable<T>({
     return state;
   }, [selectedIds]);
 
+  const leadingColumnId = enableRowSelection ? '__select' : '__serial';
+
   // No sticky/fixed columns on small screens — full horizontal scroll only.
   const columnPinning = React.useMemo(
     () =>
       isMobile || isTablet
         ? { left: [] as string[], right: [] as string[] }
-        : buildColumnPinning(pinnedColumns, enableRowSelection),
-    [pinnedColumns, enableRowSelection, isMobile, isTablet],
+        : buildColumnPinning(pinnedColumns, leadingColumnId),
+    [pinnedColumns, leadingColumnId, isMobile, isTablet],
   );
 
   const sorting = React.useMemo(
@@ -311,7 +355,13 @@ export function useCrmDataTable<T>({
 
   const hiddenOnTablet = table
     .getAllColumns()
-    .filter((col) => !col.getIsVisible() && col.id !== '__select' && col.id !== '__expand')
+    .filter(
+      (col) =>
+        !col.getIsVisible() &&
+        col.id !== '__select' &&
+        col.id !== '__serial' &&
+        col.id !== '__expand',
+    )
     .map((col) => col.id);
 
   return {

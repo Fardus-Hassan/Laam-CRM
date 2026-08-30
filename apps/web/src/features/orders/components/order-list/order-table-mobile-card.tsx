@@ -17,6 +17,7 @@ import {
   TruncatedText,
 } from '@/components/data-table/cells';
 import type { CrmRowContext } from '@/components/data-table';
+import { crmRowSerialNumber } from '@/components/data-table/use-crm-data-table';
 import { StatusBadge } from '@/components/dashboard/status-badge';
 import { FormPhoneInput } from '@/components/form/form-phone-input';
 import { Button } from '@/components/ui/button';
@@ -59,12 +60,20 @@ export function OrderTableMobileCard({
       }
     >
       <header className="flex items-start gap-3 p-4">
-        <Checkbox
-          checked={ctx.isSelected}
-          onCheckedChange={(value) => ctx.toggleSelected(Boolean(value))}
-          aria-label={`Select order ${row.orderNumber}`}
-          className="mt-1"
-        />
+        <div className="flex flex-col items-center gap-1 pt-0.5">
+          <Checkbox
+            checked={ctx.isSelected}
+            onCheckedChange={(value) => ctx.toggleSelected(Boolean(value))}
+            aria-label={`Select order ${row.orderNumber}`}
+          />
+          <span className="text-[10px] font-medium tabular-nums text-muted-foreground">
+            {crmRowSerialNumber(
+              ctx.row.index,
+              ctx.table.getState().pagination.pageIndex,
+              ctx.table.getState().pagination.pageSize,
+            )}
+          </span>
+        </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={row.status} kind="order" />
@@ -75,9 +84,6 @@ export function OrderTableMobileCard({
             >
               #{displayId}
             </Link>
-            {row.serialNumber ? (
-              <span className="text-[10px] text-muted-foreground">sl: {row.serialNumber}</span>
-            ) : null}
           </div>
           <div className="flex flex-wrap gap-1.5">
             <Button type="button" size="sm" variant="outline" className="h-7 px-2" asChild>

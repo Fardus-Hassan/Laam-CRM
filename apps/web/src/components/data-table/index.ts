@@ -12,6 +12,7 @@ export type {
 export { CrmDataTablePagination } from '@/components/data-table/crm-data-table-pagination';
 export { CrmPageSizeControl } from '@/components/data-table/crm-page-size-control';
 export { CrmDataTableSkeleton } from '@/components/data-table/crm-data-table-skeleton';
+export { crmRowSerialNumber } from '@/components/data-table/use-crm-data-table';
 export {
   clampCrmPageSize,
   CRM_MAX_PAGE_SIZE,
