@@ -35,7 +35,10 @@ export function CrmDataTableToolbar<T>({
 }: CrmDataTableToolbarProps<T>) {
   const hideableColumns = table
     .getAllColumns()
-    .filter((column) => column.getCanHide() && column.id !== '__select');
+    .filter(
+      (column) =>
+        column.getCanHide() && column.id !== '__select' && column.id !== '__serial',
+    );
 
   return (
     <div

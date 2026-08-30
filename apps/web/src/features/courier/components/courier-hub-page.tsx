@@ -444,18 +444,23 @@ export function CourierHubPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-10">
-                      <input
-                        type="checkbox"
-                        className="size-4"
-                        checked={allPageSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = somePageSelected && !allPageSelected;
-                        }}
-                        onChange={() => togglePage(readyItems)}
-                        disabled={readyItems.length === 0}
-                        aria-label="Select page"
-                      />
+                    <TableHead className="w-[4.5rem]">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="size-4"
+                          checked={allPageSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = somePageSelected && !allPageSelected;
+                          }}
+                          onChange={() => togglePage(readyItems)}
+                          disabled={readyItems.length === 0}
+                          aria-label="Select page"
+                        />
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                          #
+                        </span>
+                      </div>
                     </TableHead>
                     <TableHead>Order</TableHead>
                     <TableHead>Customer</TableHead>
@@ -465,15 +470,20 @@ export function CourierHubPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {readyItems.map((row) => (
+                  {readyItems.map((row, index) => (
                     <TableRow key={row.orderId}>
                       <TableCell>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(row.orderId)}
-                          onChange={() => toggle(row.orderId)}
-                          className="size-4"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(row.orderId)}
+                            onChange={() => toggle(row.orderId)}
+                            className="size-4"
+                          />
+                          <span className="min-w-[1.15rem] text-center text-[11px] font-medium tabular-nums text-muted-foreground">
+                            {(readyPage - 1) * readyPageSize + index + 1}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="font-medium">
                         <Link

@@ -6,6 +6,7 @@ import { flexRender } from '@tanstack/react-table';
 
 import { LabeledSection } from '@/components/data-table/cells';
 import type { CrmColumnMeta, CrmRowContext } from '@/components/data-table/crm-data-table-types';
+import { crmRowSerialNumber } from '@/components/data-table/use-crm-data-table';
 import { Checkbox, type CheckedState } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 
@@ -65,7 +66,11 @@ function MobileRowCard<T>({
       {mobileCard ? (
         mobileCard(row.original, ctx)
       ) : (
-        <DefaultMobileCard row={row} enableRowSelection={enableRowSelection} />
+        <DefaultMobileCard
+          row={row}
+          table={table}
+          enableRowSelection={enableRowSelection}
+        />
       )}
     </article>
   );
@@ -73,12 +78,16 @@ function MobileRowCard<T>({
 
 function DefaultMobileCard<T>({
   row,
+  table,
   enableRowSelection,
 }: {
   row: Row<T>;
+  table: Table<T>;
   enableRowSelection?: boolean;
 }) {
   const cells = row.getVisibleCells();
+  const { pageIndex, pageSize } = table.getState().pagination;
+  const serial = crmRowSerialNumber(row.index, pageIndex, pageSize);
 
   return (
     <div className="p-4">
@@ -87,11 +96,17 @@ function DefaultMobileCard<T>({
           <Checkbox
             checked={row.getIsSelected()}
             onCheckedChange={(value: CheckedState) => row.toggleSelected(value === true)}
-            aria-label={`Select row ${row.id}`}
+            aria-label={`Select row ${serial}`}
           />
-          <span className="text-xs text-muted-foreground">Select</span>
+          <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+            #{serial}
+          </span>
         </div>
-      ) : null}
+      ) : (
+        <div className="mb-3 border-b border-border/60 pb-3 text-[11px] font-medium tabular-nums text-muted-foreground">
+          #{serial}
+        </div>
+      )}
       <div className="space-y-4">
         {cells.map((cell) => {
           const meta = (cell.column.columnDef.meta as CrmColumnMeta | undefined) ?? {};

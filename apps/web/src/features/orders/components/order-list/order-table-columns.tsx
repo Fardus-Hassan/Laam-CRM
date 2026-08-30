@@ -77,11 +77,6 @@ export function buildOrderTableColumns(options?: {
             </Tooltip>
           </TooltipProvider>
         ) : null}
-        {row.original.serialNumber ? (
-          <p className="text-[10px] tabular-nums text-muted-foreground">
-            st {row.original.serialNumber}
-          </p>
-        ) : null}
       </div>
     ),
   },
