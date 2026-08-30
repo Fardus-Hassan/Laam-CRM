@@ -25,8 +25,6 @@ import {
 import { Checkbox, type CheckedState } from '@/components/ui/checkbox';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useIsTablet } from '@/hooks/use-media-query';
-import { cn } from '@/lib/utils';
-
 const coreRowModel = getCoreRowModel();
 const sortedRowModel = getSortedRowModel();
 
@@ -72,12 +70,7 @@ function buildSelectSerialColumn<T>(withCheckbox: boolean): CrmColumnDef<T> {
   return {
     id: withCheckbox ? '__select' : '__serial',
     header: ({ table }) => (
-      <div
-        className={cn(
-          'flex items-center gap-2',
-          withCheckbox ? 'justify-start' : 'justify-center',
-        )}
-      >
+      <div className="flex flex-col items-center justify-center gap-0.5 leading-none">
         {withCheckbox ? (
           <Checkbox
             checked={
@@ -93,7 +86,7 @@ function buildSelectSerialColumn<T>(withCheckbox: boolean): CrmColumnDef<T> {
             aria-label="Select all rows"
           />
         ) : null}
-        <span className="min-w-[1.15rem] text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+        <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
           #
         </span>
       </div>
@@ -102,12 +95,7 @@ function buildSelectSerialColumn<T>(withCheckbox: boolean): CrmColumnDef<T> {
       const { pageIndex, pageSize } = table.getState().pagination;
       const serial = crmRowSerialNumber(row.index, pageIndex, pageSize);
       return (
-        <div
-          className={cn(
-            'flex items-center gap-2',
-            withCheckbox ? 'justify-start' : 'justify-center',
-          )}
-        >
+        <div className="flex flex-col items-center justify-center gap-0.5 leading-none">
           {withCheckbox ? (
             <Checkbox
               checked={row.getIsSelected()}
@@ -118,7 +106,7 @@ function buildSelectSerialColumn<T>(withCheckbox: boolean): CrmColumnDef<T> {
             />
           ) : null}
           <span
-            className="min-w-[1.15rem] text-center text-[11px] font-medium tabular-nums text-muted-foreground"
+            className="text-[10px] font-medium tabular-nums text-muted-foreground"
             title={`Row ${serial}`}
           >
             {serial}
@@ -128,14 +116,14 @@ function buildSelectSerialColumn<T>(withCheckbox: boolean): CrmColumnDef<T> {
     },
     enableSorting: false,
     enableHiding: false,
-    size: withCheckbox ? 68 : 44,
-    minSize: withCheckbox ? 64 : 40,
-    maxSize: withCheckbox ? 80 : 52,
+    size: withCheckbox ? 40 : 36,
+    minSize: withCheckbox ? 36 : 32,
+    maxSize: withCheckbox ? 48 : 40,
     meta: {
       align: 'middle',
       label: withCheckbox ? 'Select' : '#',
-      headerClassName: withCheckbox ? 'w-[68px]' : 'w-11',
-      cellClassName: withCheckbox ? 'w-[68px]' : 'w-11',
+      headerClassName: withCheckbox ? 'w-10 px-1' : 'w-9 px-1',
+      cellClassName: withCheckbox ? 'w-10 px-1' : 'w-9 px-1',
     },
   };
 }

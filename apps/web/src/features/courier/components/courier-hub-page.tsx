@@ -444,8 +444,8 @@ export function CourierHubPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[4.5rem]">
-                      <div className="flex items-center gap-2">
+                    <TableHead className="w-10 px-1">
+                      <div className="flex flex-col items-center justify-center gap-0.5 leading-none">
                         <input
                           type="checkbox"
                           className="size-4"
@@ -457,7 +457,7 @@ export function CourierHubPage() {
                           disabled={readyItems.length === 0}
                           aria-label="Select page"
                         />
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                           #
                         </span>
                       </div>
@@ -472,15 +472,15 @@ export function CourierHubPage() {
                 <TableBody>
                   {readyItems.map((row, index) => (
                     <TableRow key={row.orderId}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="w-10 px-1">
+                        <div className="flex flex-col items-center justify-center gap-0.5 leading-none">
                           <input
                             type="checkbox"
                             checked={selected.has(row.orderId)}
                             onChange={() => toggle(row.orderId)}
                             className="size-4"
                           />
-                          <span className="min-w-[1.15rem] text-center text-[11px] font-medium tabular-nums text-muted-foreground">
+                          <span className="text-[10px] font-medium tabular-nums text-muted-foreground">
                             {(readyPage - 1) * readyPageSize + index + 1}
                           </span>
                         </div>
