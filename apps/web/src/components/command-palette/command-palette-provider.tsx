@@ -1,38 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
-import {
-  BarChart3,
-  BookOpen,
-  CalendarDays,
-  CheckSquare,
-  ClipboardList,
-  FileUp,
-  MessageSquare,
-  Package,
-  PlusCircle,
-  Search,
-  Tag,
-  Trash2,
-  Truck,
-  Wallet,
-} from 'lucide-react';
-
-import { FormInput } from '@/components/form/form-input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { ordersApi } from '@/features/orders/api/orders-api';
-import { MOCK_ORDER_QUEUE_PAGES } from '@/features/orders/data/mock-status-config';
-import { cn } from '@/lib/utils';
 
 type CommandPaletteContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
+  registerFocusHandler: (handler: (() => void) | null) => void;
 };
 
 const CommandPaletteContext = React.createContext<CommandPaletteContextValue | null>(null);
@@ -45,191 +18,33 @@ export function useCommandPalette() {
   return ctx;
 }
 
-const NAV_ACTIONS = [
-  { id: 'create', label: 'Create new order', href: '/dashboard/orders/new', icon: PlusCircle },
-  { id: 'all', label: 'All orders', href: '/dashboard/orders', icon: ClipboardList },
-  { id: 'pendings', label: 'Pending orders', href: '/dashboard/orders/queues/pendings', icon: Package },
-  { id: 'followups', label: 'Customer follow-ups', href: '/dashboard/followups', icon: Truck },
-  { id: 'tasks', label: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
-  { id: 'inventory', label: 'Inventory — Products', href: '/dashboard/inventory/products', icon: Package },
-  { id: 'accounting', label: 'Accounting overview', href: '/dashboard/accounting/overview', icon: Wallet },
-  { id: 'courier', label: 'Courier Dashboard', href: '/dashboard/courier', icon: Truck },
-  { id: 'support', label: 'Support tickets', href: '/dashboard/support', icon: MessageSquare },
-  { id: 'coupons', label: 'Coupons', href: '/dashboard/coupons', icon: Tag },
-  { id: 'reports', label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
-  { id: 'recycle', label: 'Recycle Bin', href: '/dashboard/recycle-bin', icon: Trash2 },
-  { id: 'import', label: 'Bulk import customers & orders', href: '/dashboard/settings/import', icon: FileUp },
-  { id: 'knowledge', label: 'Knowledge base', href: '/dashboard/knowledge', icon: BookOpen },
-  { id: 'calendar', label: 'Calendar', href: '/dashboard/calendar', icon: CalendarDays },
-  { id: 'merge', label: 'Merge customers', href: '/dashboard/customers/merge', icon: ClipboardList },
-  { id: 'failed', label: 'Failed orders', href: '/dashboard/orders/failed', icon: Package },
-];
-
-function GlobalCommandPaletteDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const router = useRouter();
-  const [query, setQuery] = React.useState('');
-  const [orderResults, setOrderResults] = React.useState<
-    Awaited<ReturnType<typeof ordersApi.quickSearchOrders>>
-  >([]);
-  const [loading, setLoading] = React.useState(false);
-  const [activeIndex, setActiveIndex] = React.useState(0);
-
-  const navMatches = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return NAV_ACTIONS;
-    return NAV_ACTIONS.filter((item) => item.label.toLowerCase().includes(q));
-  }, [query]);
-
-  const queueMatches = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const pages = MOCK_ORDER_QUEUE_PAGES.filter((p) => p.showInNav && p.kind === 'list');
-    if (!q) return pages.slice(0, 5);
-    return pages.filter((p) => p.label.toLowerCase().includes(q)).slice(0, 5);
-  }, [query]);
-
-  const allItems = React.useMemo(() => {
-    const items: { type: 'nav' | 'queue' | 'order'; id: string; label: string; href: string }[] = [];
-    for (const nav of navMatches) {
-      items.push({ type: 'nav', id: nav.id, label: nav.label, href: nav.href });
-    }
-    for (const page of queueMatches) {
-      items.push({ type: 'queue', id: page.slug, label: page.label, href: page.href });
-    }
-    for (const order of orderResults) {
-      items.push({
-        type: 'order',
-        id: order.id,
-        label: `${order.orderNumber} — ${order.customerName} (${order.customerPhone})`,
-        href: `/dashboard/orders/${order.orderNumber}`,
-      });
-    }
-    return items;
-  }, [navMatches, orderResults, queueMatches]);
-
-  React.useEffect(() => {
-    if (!open) {
-      setQuery('');
-      setOrderResults([]);
-      setActiveIndex(0);
-    }
-  }, [open]);
-
-  React.useEffect(() => {
-    setActiveIndex(0);
-  }, [query]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const q = query.trim();
-    if (q.length < 2) {
-      setOrderResults([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      void ordersApi.quickSearchOrders(q, 8).then((items) => {
-        setOrderResults(items);
-        setLoading(false);
-      });
-    }, 200);
-    return () => window.clearTimeout(timer);
-  }, [query, open]);
-
-  function go(href: string) {
-    onOpenChange(false);
-    router.push(href);
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, allItems.length - 1));
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setActiveIndex((i) => Math.max(i - 1, 0));
-    } else if (event.key === 'Enter' && allItems[activeIndex]) {
-      event.preventDefault();
-      go(allItems[activeIndex].href);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">
-        <DialogHeader className="border-b px-4 py-3 pr-12">
-          <DialogTitle className="sr-only">Search orders and navigate</DialogTitle>
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <FormInput
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Search orders, phone, or jump to a queue…"
-              className="h-10 border-0 bg-transparent pl-9 shadow-none focus-visible:ring-0"
-            />
-          </div>
-        </DialogHeader>
-        <div className="custom-scrollbar max-h-[min(60vh,420px)] overflow-y-auto px-2 py-2">
-          {allItems.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {loading ? 'Searching…' : query.trim() ? 'No results' : 'Type to search orders or queues'}
-            </p>
-          ) : (
-            <ul className="space-y-1">
-              {allItems.map((item, index) => (
-                <li key={`${item.type}-${item.id}`}>
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm',
-                      index === activeIndex ? 'bg-muted' : 'hover:bg-muted/60',
-                    )}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    onClick={() => go(item.href)}
-                  >
-                    <span className="w-11 shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {item.type}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="border-t px-4 py-2.5 text-xs text-muted-foreground">
-          ↑↓ navigate · Enter open · Esc close
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
+  const focusHandlerRef = React.useRef<(() => void) | null>(null);
+
+  const registerFocusHandler = React.useCallback((handler: (() => void) | null) => {
+    focusHandlerRef.current = handler;
+  }, []);
 
   React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setOpen((current) => !current);
-      }
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
+      event.preventDefault();
+      setOpen((current) => {
+        const next = !current;
+        if (next) {
+          requestAnimationFrame(() => focusHandlerRef.current?.());
+        }
+        return next;
+      });
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   return (
-    <CommandPaletteContext.Provider value={{ open, setOpen }}>
+    <CommandPaletteContext.Provider value={{ open, setOpen, registerFocusHandler }}>
       {children}
-      <GlobalCommandPaletteDialog open={open} onOpenChange={setOpen} />
     </CommandPaletteContext.Provider>
   );
 }

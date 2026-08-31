@@ -47,4 +47,10 @@ function PopoverContent({
   return <PopoverPrimitive.Portal>{content}</PopoverPrimitive.Portal>;
 }
 
-export { Popover, PopoverTrigger, PopoverContent };
+function PopoverAnchor({
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
+  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />;
+}
+
+export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent };
