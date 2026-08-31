@@ -30,9 +30,9 @@ export function DashboardHeader({
   breadcrumbs = [],
 }: DashboardHeaderProps) {
   return (
-    <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:h-16 sm:gap-4 sm:px-4">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <SidebarTrigger className="-ml-1 shrink-0" />
+    <header className="sticky top-0 z-40 flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-background/95 px-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:h-14 sm:gap-3 sm:px-3 md:h-16 md:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+        <SidebarTrigger className="-ml-0.5 size-8 shrink-0 sm:-ml-1" />
         <Separator orientation="vertical" className="mr-1 hidden h-4 sm:block" />
         {breadcrumbs.length > 0 ? (
           <Breadcrumb className="min-w-0">

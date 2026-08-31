@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 /** Slow backup if SSE drops; primary updates are instant via stream. */
 const UNREAD_BACKUP_POLL_MS = 180_000;
 
-export function NotificationBell() {
+export function NotificationBell({ className }: { className?: string }) {
   const [items, setItems] = React.useState<AppNotification[]>([]);
   const [unread, setUnread] = React.useState(0);
   const menuOpenRef = React.useRef(false);
@@ -134,7 +134,7 @@ export function NotificationBell() {
           type="button"
           variant="ghost"
           size="icon"
-          className="relative size-9 shrink-0 rounded-lg"
+          className={cn('relative size-9 shrink-0 rounded-lg', className)}
           aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ''}`}
         >
           <Bell className="size-5" />

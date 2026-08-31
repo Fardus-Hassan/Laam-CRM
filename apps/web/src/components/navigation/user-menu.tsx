@@ -172,10 +172,10 @@ const TopBarUserTrigger = React.forwardRef<
     <Button
       ref={ref}
       variant="ghost"
-      className="h-auto max-w-[220px] gap-2 rounded-lg px-2 py-1.5"
+      className="h-auto max-w-[220px] gap-2 rounded-lg px-1 py-1 sm:px-2 sm:py-1.5"
       {...props}
     >
-      <Avatar className="size-9 shrink-0">
+      <Avatar className="size-8 shrink-0 sm:size-9">
         <AvatarFallback className="bg-primary text-xs text-primary-foreground">
           {initials}
         </AvatarFallback>
