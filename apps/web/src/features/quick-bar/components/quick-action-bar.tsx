@@ -9,10 +9,10 @@ import {
   Package,
   Phone,
   ShoppingCart,
+  Sparkles,
   StickyNote,
   Users,
   X,
-  Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -42,6 +42,7 @@ const ITEM_CLASS =
 
 /**
  * Right-edge docked quick launcher — vertically centered on desktop.
+ * Mobile: bottom-right FAB with horizontal action sheet when open.
  */
 export function QuickActionBar() {
   const [open, setOpen] = React.useState(false);
@@ -119,19 +120,19 @@ export function QuickActionBar() {
         ref={rootRef}
         className={cn(
           'pointer-events-none fixed z-40',
-          /* Mobile: bottom-center */
-          'inset-x-0 bottom-0 flex justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]',
-          /* Desktop: true vertical middle, right edge */
-          'sm:inset-x-auto sm:bottom-auto sm:left-auto sm:right-0 sm:top-1/2 sm:-translate-y-1/2 sm:justify-end sm:p-0',
+          /* Mobile: bottom-right FAB */
+          'right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-auto flex flex-col items-end gap-2',
+          /* Desktop: vertical middle, right edge */
+          'sm:inset-x-auto sm:bottom-auto sm:left-auto sm:right-0 sm:top-1/2 sm:-translate-y-1/2 sm:gap-0',
         )}
       >
         <div
           className={cn(
-            'pointer-events-auto flex items-center gap-0.5 border bg-background/95 shadow-lg backdrop-blur',
-            'supports-[backdrop-filter]:bg-background/85',
+            'pointer-events-auto flex items-center gap-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/85',
             open
-              ? 'max-w-[calc(100vw-1rem)] rounded-2xl p-1 sm:max-w-none sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0 sm:p-1'
-              : 'rounded-2xl p-1 sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0 sm:p-0',
+              ? 'max-w-[calc(100vw-1.5rem)] rounded-2xl border bg-background/95 p-1 shadow-xl sm:max-w-none sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0 sm:shadow-lg'
+              : 'border-0 bg-transparent p-0 shadow-none sm:rounded-l-2xl sm:rounded-r-none sm:border sm:bg-background/95 sm:p-0 sm:shadow-lg',
+            open && 'flex-row-reverse sm:flex-row',
           )}
         >
           {!open ? (
@@ -139,18 +140,19 @@ export function QuickActionBar() {
               type="button"
               size="icon"
               className={cn(
-                'size-12 shrink-0 rounded-xl shadow-md transition-transform hover:scale-[1.03] active:scale-95',
-                'sm:h-12 sm:w-11 sm:rounded-l-2xl sm:rounded-r-none sm:shadow-md',
+                'size-14 shrink-0 rounded-full shadow-lg shadow-primary/30 ring-2 ring-primary/15',
+                'bg-primary text-primary-foreground transition-transform hover:bg-primary/90 hover:scale-[1.02] active:scale-95',
+                'sm:size-12 sm:rounded-l-2xl sm:rounded-r-none sm:shadow-md sm:ring-0',
               )}
               onClick={() => setOpen(true)}
               aria-label="Open quick actions"
               aria-expanded={false}
             >
-              <Zap className="size-5 shrink-0" strokeWidth={2.25} />
+              <Sparkles className="size-6 shrink-0 sm:size-5" strokeWidth={2} />
             </Button>
           ) : (
             <>
-              <div className="flex max-w-[calc(100vw-4rem)] items-center gap-0.5 overflow-x-auto sm:max-w-[min(32rem,72vw)]">
+              <div className="flex max-w-[calc(100vw-5rem)] items-center gap-0.5 overflow-x-auto sm:max-w-[min(32rem,72vw)]">
                 <QuickIconButton
                   label="Sticky"
                   icon={StickyNote}

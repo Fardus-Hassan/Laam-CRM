@@ -6,6 +6,7 @@ import { Search } from 'lucide-react';
 import { CommandPaletteResults } from '@/components/command-palette/command-palette-panel';
 import { useCommandPalette } from '@/components/command-palette/command-palette-provider';
 import { useCommandPaletteSearch } from '@/components/command-palette/use-command-palette-search';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,9 @@ type CommandPaletteTriggerProps = {
 
 const fieldShellClass =
   'inline-flex shrink-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 transition-[border-color,box-shadow] focus-within:border-border focus-within:ring-2 focus-within:ring-ring/50';
+
+const mobileIconBtnClass =
+  'size-8 shrink-0 rounded-lg border-border/70 bg-card/80 md:hidden';
 
 const searchInputClass =
   'h-8 min-h-0 flex-1 border-0 bg-transparent p-0 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent placeholder:text-muted-foreground/70';
@@ -103,16 +107,18 @@ export function CommandPaletteTrigger({ className }: CommandPaletteTriggerProps)
     <Popover modal={false} open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
         <div ref={anchorRef} className="inline-flex shrink-0">
-          <button
+          <Button
             type="button"
-            className={cn(fieldShellClass, 'size-8 justify-center md:hidden', className)}
+            variant="outline"
+            size="icon"
+            className={cn(mobileIconBtnClass, className)}
             onClick={openPalette}
             aria-label="Search orders and navigate"
             aria-expanded={open}
             aria-controls="command-palette-results"
           >
-            <Search className="size-4 text-muted-foreground" />
-          </button>
+            <Search className="size-4" />
+          </Button>
 
           <div
             className={cn(
