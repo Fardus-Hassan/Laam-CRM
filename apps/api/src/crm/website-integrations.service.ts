@@ -8,8 +8,14 @@ import {
 } from '@nestjs/common';
 import type {
   CreateWebsiteStorePayload,
+  UpdateWebsiteIngestConfigPayload,
   UpdateWebsiteStorePayload,
+  WebsiteIngestConfig,
   WebsiteStore as WebsiteStoreDto,
+} from '@laam/types';
+import {
+  updateWebsiteIngestConfigPayloadSchema,
+  websiteIngestConfigSchema,
 } from '@laam/types';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,6 +27,23 @@ export type StoredWebsiteSecrets = {
   /** HMAC secret for X-WC-Webhook-Signature (WooCommerce webhook "Secret" field). */
   wooWebhookSecret?: string;
 };
+
+type OrgSettingsJson = {
+  email?: string;
+  address?: string;
+  district?: string;
+  website?: string;
+  timezone?: string;
+  currency?: string;
+  orderPrefix?: string;
+  defaultCourier?: string;
+  websiteIngest?: WebsiteIngestConfig;
+};
+
+function asOrgSettings(value: unknown): OrgSettingsJson {
+  if (!value || typeof value !== 'object') return {};
+  return value as OrgSettingsJson;
+}
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -235,6 +258,53 @@ export class WebsiteIntegrationsService {
       where: { id: storeId },
       data: { lastError: message.slice(0, 500) },
     });
+  }
+
+  async getIngestConfig(organizationId: string): Promise<WebsiteIngestConfig> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { settings: true },
+    });
+    const stored = asOrgSettings(org?.settings).websiteIngest;
+    return websiteIngestConfigSchema.parse(stored ?? {});
+  }
+
+  async updateIngestConfig(
+    organizationId: string,
+    payload: UpdateWebsiteIngestConfigPayload,
+  ): Promise<WebsiteIngestConfig> {
+    const patch = updateWebsiteIngestConfigPayloadSchema.parse(payload);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { settings: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const current = asOrgSettings(org.settings);
+    const nextIngest = websiteIngestConfigSchema.parse({
+      ...current.websiteIngest,
+      ...patch,
+    });
+    const minutes =
+      nextIngest.duplicateMatchWindowUnit === 'hours'
+        ? nextIngest.duplicateMatchWindowValue * 60
+        : nextIngest.duplicateMatchWindowValue;
+    if (minutes < 1 || minutes > 10_080) {
+      throw new BadRequestException(
+        'Duplicate match window must be between 1 minute and 7 days (10080 minutes)',
+      );
+    }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        settings: {
+          ...current,
+          websiteIngest: nextIngest,
+        } as object,
+      },
+    });
+    return nextIngest;
   }
 
   private readSecrets(credentialsEnc: string | null): StoredWebsiteSecrets {

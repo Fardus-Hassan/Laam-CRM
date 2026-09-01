@@ -32,6 +32,7 @@ export const websiteIngestPayloadSchema = z.object({
   utmId: z.string().optional(),
   utmContent: z.string().optional(),
   utmCampaign: z.string().optional(),
+  status: z.string().min(1).max(64).optional(),
   lineItems: z.array(websiteIngestLineSchema).min(1),
 });
 
@@ -121,6 +122,41 @@ export function normalizeWooPaymentMethod(
 
   // Keep original title (or slug) when no CRM match — better than dropping.
   return String(title ?? method ?? '').trim() || undefined;
+}
+
+/**
+ * Map WooCommerce order status → CRM intake slug.
+ * - pending payment → incomplete (abandoned / not fully submitted)
+ * - processing → pending (submitted, needs ops confirm)
+ */
+export function normalizeWooOrderStatus(wooStatus?: string | null): string {
+  const slug = String(wooStatus ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+
+  if (!slug) return 'pending';
+
+  if (
+    slug === 'pending' ||
+    slug === 'pending-payment' ||
+    slug === 'on-hold' ||
+    slug === 'checkout-draft' ||
+    slug === 'draft'
+  ) {
+    return 'incomplete';
+  }
+
+  if (slug === 'processing' || slug === 'completed') {
+    return 'pending';
+  }
+
+  if (slug === 'cancelled' || slug === 'canceled' || slug === 'failed' || slug === 'refunded') {
+    return 'cancelled';
+  }
+
+  // Unknown Woo statuses still create a real intake row.
+  return 'pending';
 }
 
 /**
@@ -234,6 +270,7 @@ export function mapWooCommercePayload(body: unknown): WebsiteOrderIngestPayload 
     utmCampaign: metaValue(meta, 'utm_campaign') || undefined,
     utmContent: metaValue(meta, 'utm_content') || undefined,
     utmId: metaValue(meta, 'utm_id') || undefined,
+    status: normalizeWooOrderStatus(String(order['status'] ?? '')),
     lineItems,
   });
 }

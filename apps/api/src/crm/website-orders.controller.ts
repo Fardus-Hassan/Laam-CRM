@@ -16,6 +16,7 @@ import {
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   createWebsiteStorePayloadSchema,
+  updateWebsiteIngestConfigPayloadSchema,
   updateWebsiteStorePayloadSchema,
 } from '@laam/types';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -117,6 +118,28 @@ export class WebsiteIntegrationsController {
     return this.websites.create(
       user.organizationId!,
       parseBody(createWebsiteStorePayloadSchema, body),
+    );
+  }
+
+  @Get('ingest-config')
+  @RequirePermissions('settings.manage', 'orders.view')
+  @ApiOperation({
+    summary:
+      'Get website ingest ops rules (duplicate match window for Incomplete ↔ Pending linking)',
+  })
+  getIngestConfig(@CurrentUser() user: AuthUserPayload) {
+    this.websites.requireOrg(user.organizationId);
+    return this.websites.getIngestConfig(user.organizationId!);
+  }
+
+  @Put('ingest-config')
+  @RequirePermissions('settings.manage')
+  @ApiOperation({ summary: 'Update website ingest duplicate-match window' })
+  updateIngestConfig(@CurrentUser() user: AuthUserPayload, @Body() body: unknown) {
+    this.websites.requireOrg(user.organizationId);
+    return this.websites.updateIngestConfig(
+      user.organizationId!,
+      parseBody(updateWebsiteIngestConfigPayloadSchema, body),
     );
   }
 

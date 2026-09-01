@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import type { WebsitePlatform, WebsiteStore } from '@laam/types';
+import type { WebsiteIngestConfig, WebsitePlatform, WebsiteStore } from '@laam/types';
 import { ArrowLeft, Copy, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -40,6 +40,11 @@ export function WebsiteIntegrationsSettingsPage() {
   const [stores, setStores] = React.useState<WebsiteStore[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [savingIngest, setSavingIngest] = React.useState(false);
+  const [ingestConfig, setIngestConfig] = React.useState<WebsiteIngestConfig>({
+    duplicateMatchWindowValue: 60,
+    duplicateMatchWindowUnit: 'minutes',
+  });
   const [revealedToken, setRevealedToken] = React.useState<{
     storeId: string;
     token: string;
@@ -57,8 +62,12 @@ export function WebsiteIntegrationsSettingsPage() {
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      const list = await websiteSettingsApi.list();
+      const [list, config] = await Promise.all([
+        websiteSettingsApi.list(),
+        websiteSettingsApi.getIngestConfig().catch(() => null),
+      ]);
       setStores(list);
+      if (config) setIngestConfig(config);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to load websites');
     } finally {
@@ -69,6 +78,27 @@ export function WebsiteIntegrationsSettingsPage() {
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  async function handleSaveIngestConfig() {
+    const value = Math.floor(Number(ingestConfig.duplicateMatchWindowValue) || 0);
+    if (value < 1) {
+      toast.error('Match window must be at least 1');
+      return;
+    }
+    setSavingIngest(true);
+    try {
+      const saved = await websiteSettingsApi.updateIngestConfig({
+        duplicateMatchWindowValue: value,
+        duplicateMatchWindowUnit: ingestConfig.duplicateMatchWindowUnit,
+      });
+      setIngestConfig(saved);
+      toast.success('Ingest match window saved');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save ingest settings');
+    } finally {
+      setSavingIngest(false);
+    }
+  }
 
   async function handleCreate() {
     if (!name.trim() || !slug.trim()) {
@@ -189,6 +219,60 @@ export function WebsiteIntegrationsSettingsPage() {
             Integrations
           </Link>
         </Button>
+
+        <Card className={ORDER_CARD_CLASS}>
+          <CardHeader className={ORDER_SECTION_HEADER_CLASS}>
+            <CardTitle className="text-sm">Duplicate match window</CardTitle>
+          </CardHeader>
+          <CardContent className={cn(ORDER_SECTION_BODY_CLASS, 'space-y-3')}>
+            <p className="text-xs text-muted-foreground">
+              Same phone + same cart within this window links Woo submit to an existing Incomplete /
+              Confirmed order (no second Pending row, no double call). Default 60 minutes.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <FormField label="Value" className="w-28">
+                <FormInput
+                  type="number"
+                  min={1}
+                  max={10080}
+                  value={ingestConfig.duplicateMatchWindowValue}
+                  onChange={(e) =>
+                    setIngestConfig((prev) => ({
+                      ...prev,
+                      duplicateMatchWindowValue: Number(e.target.value) || 1,
+                    }))
+                  }
+                />
+              </FormField>
+              <FormField label="Unit" className="w-36">
+                <FormSelect
+                  value={ingestConfig.duplicateMatchWindowUnit}
+                  onChange={(v) =>
+                    setIngestConfig((prev) => ({
+                      ...prev,
+                      duplicateMatchWindowUnit: v as 'minutes' | 'hours',
+                    }))
+                  }
+                  options={[
+                    { value: 'minutes', label: 'Minutes' },
+                    { value: 'hours', label: 'Hours' },
+                  ]}
+                  searchable={false}
+                />
+              </FormField>
+              <Can permission="settings.manage">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={savingIngest}
+                  onClick={() => void handleSaveIngestConfig()}
+                >
+                  {savingIngest ? 'Saving…' : 'Save'}
+                </Button>
+              </Can>
+            </div>
+          </CardContent>
+        </Card>
 
         {revealedToken ? (
           <Card className={cn(ORDER_CARD_CLASS, 'border-primary/40')}>

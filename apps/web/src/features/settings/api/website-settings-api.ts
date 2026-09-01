@@ -1,6 +1,8 @@
 import type {
   CreateWebsiteStorePayload,
+  UpdateWebsiteIngestConfigPayload,
   UpdateWebsiteStorePayload,
+  WebsiteIngestConfig,
   WebsiteOrderIngestPayload,
   WebsiteOrderIngestResult,
   WebsiteStore,
@@ -26,6 +28,17 @@ export const websiteSettingsApi = {
 
   update(id: string, payload: UpdateWebsiteStorePayload): Promise<WebsiteStore> {
     return apiRequest<WebsiteStore>(`/crm/settings/websites/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getIngestConfig(): Promise<WebsiteIngestConfig> {
+    return apiRequest<WebsiteIngestConfig>('/crm/settings/websites/ingest-config');
+  },
+
+  updateIngestConfig(payload: UpdateWebsiteIngestConfigPayload): Promise<WebsiteIngestConfig> {
+    return apiRequest<WebsiteIngestConfig>('/crm/settings/websites/ingest-config', {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
@@ -60,4 +73,4 @@ export function websiteIngestPaths() {
   };
 }
 
-export type { WebsiteOrderIngestPayload, WebsiteOrderIngestResult };
+export type { WebsiteOrderIngestPayload, WebsiteOrderIngestResult, WebsiteIngestConfig };
