@@ -33,6 +33,7 @@ describe('mapWooCommercePayload', () => {
     expect(canonical.utmSource).toBe('facebook');
     expect(canonical.deliveryCharge).toBe(80);
     expect(canonical.paymentMethod).toBe('cod');
+    expect(canonical.status).toBe('pending');
   });
 
   it('normalizes Woo payment slug and Bangla COD title to CRM values', () => {
@@ -57,6 +58,28 @@ describe('mapWooCommercePayload', () => {
         line_items: [{ name: 'P', quantity: 1, subtotal: '10', total: '10' }],
       }).paymentMethod,
     ).toBe('bkash');
+  });
+
+  it('maps Woo pending payment → incomplete and processing → pending', () => {
+    expect(
+      mapWooCommercePayload({
+        id: 133,
+        status: 'pending',
+        billing: { first_name: 'A', phone: '01700000010', address_1: 'X' },
+        shipping: {},
+        line_items: [{ name: 'Honey', quantity: 1, subtotal: '100', total: '100' }],
+      }).status,
+    ).toBe('incomplete');
+
+    expect(
+      mapWooCommercePayload({
+        id: 134,
+        status: 'processing',
+        billing: { first_name: 'A', phone: '01700000010', address_1: 'X' },
+        shipping: {},
+        line_items: [{ name: 'Honey', quantity: 1, subtotal: '100', total: '100' }],
+      }).status,
+    ).toBe('pending');
   });
 
   it('uses billing address when shipping fields are empty strings', () => {

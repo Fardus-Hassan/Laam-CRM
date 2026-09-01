@@ -102,6 +102,11 @@ export const websiteOrderIngestPayloadSchema = z.object({
   utmId: z.string().optional(),
   utmContent: z.string().optional(),
   utmCampaign: z.string().optional(),
+  /**
+   * CRM order status slug (e.g. incomplete | pending).
+   * Woo adapter maps WooCommerce status → this field.
+   */
+  status: z.string().min(1).max(64).optional(),
   lineItems: z.array(websiteOrderIngestLineSchema).min(1),
 });
 
@@ -110,6 +115,8 @@ export type WebsiteOrderIngestPayload = z.infer<typeof websiteOrderIngestPayload
 export const websiteOrderIngestResultSchema = z.object({
   ok: z.boolean(),
   duplicate: z.boolean().default(false),
+  /** created | duplicate | linked (same journey / phone window merge) */
+  action: z.enum(['created', 'duplicate', 'linked']).optional(),
   orderId: z.string().optional(),
   orderNumber: z.string().optional(),
   unmatchedSkus: z.array(z.string()).default([]),
@@ -117,3 +124,24 @@ export const websiteOrderIngestResultSchema = z.object({
 });
 
 export type WebsiteOrderIngestResult = z.infer<typeof websiteOrderIngestResultSchema>;
+
+/** Org-level Woo/website ingest ops rules (stored in Organization.settings). */
+export const websiteIngestConfigSchema = z.object({
+  /** Numeric amount for the duplicate-match window. */
+  duplicateMatchWindowValue: z.number().int().positive().max(10_080).default(60),
+  duplicateMatchWindowUnit: z.enum(['minutes', 'hours']).default('minutes'),
+});
+
+export type WebsiteIngestConfig = z.infer<typeof websiteIngestConfigSchema>;
+
+export const updateWebsiteIngestConfigPayloadSchema = websiteIngestConfigSchema.partial();
+export type UpdateWebsiteIngestConfigPayload = z.infer<
+  typeof updateWebsiteIngestConfigPayloadSchema
+>;
+
+/** Resolve config to minutes for matching (default 60). */
+export function websiteIngestMatchWindowMinutes(config: WebsiteIngestConfig): number {
+  const value = Math.max(1, Math.floor(config.duplicateMatchWindowValue || 60));
+  const minutes = config.duplicateMatchWindowUnit === 'hours' ? value * 60 : value;
+  return Math.min(minutes, 10_080);
+}

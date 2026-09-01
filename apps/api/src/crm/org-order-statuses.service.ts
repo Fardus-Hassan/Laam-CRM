@@ -113,7 +113,8 @@ const DEFAULT_ORG_ORDER_STATUSES: SeedStatus[] = [
     sidebarOrder: 41,
     isDefault: false,
     isTerminal: false,
-    allowedTransitions: ['pending', 'processing', 'hold', 'cancelled'],
+    /** Confirm from Incomplete → Confirmed (Bizmation-style). */
+    allowedTransitions: ['confirmed', 'pending', 'processing', 'hold', 'cancelled'],
     bulkActions: PENDING_BULK,
     showInGroupByStatus: true,
   },
@@ -614,6 +615,18 @@ export class OrgOrderStatusesService {
         where: { id: hold.id },
         data: {
           allowedTransitions: [...hold.allowedTransitions, 'hold_followup'],
+        },
+      });
+    }
+
+    const incomplete = await this.prisma.orgOrderStatus.findFirst({
+      where: { organizationId, slug: 'incomplete' },
+    });
+    if (incomplete && !incomplete.allowedTransitions.includes('confirmed')) {
+      await this.prisma.orgOrderStatus.update({
+        where: { id: incomplete.id },
+        data: {
+          allowedTransitions: ['confirmed', ...incomplete.allowedTransitions],
         },
       });
     }
