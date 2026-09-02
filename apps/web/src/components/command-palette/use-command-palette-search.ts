@@ -4,7 +4,10 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 
 import { ordersApi } from '@/features/orders/api/orders-api';
-import { MOCK_ORDER_QUEUE_PAGES } from '@/features/orders/data/mock-status-config';
+import {
+  getStatusConfigBySlug,
+  MOCK_ORDER_QUEUE_PAGES,
+} from '@/features/orders/data/mock-status-config';
 
 const NAV_ACTIONS = [
   { id: 'create', label: 'Create new order', href: '/dashboard/orders/new' },
@@ -31,6 +34,8 @@ export type CommandPaletteItem = {
   id: string;
   label: string;
   href: string;
+  /** Human label for order status (orders only). */
+  statusLabel?: string;
 };
 
 export function useCommandPaletteSearch({
@@ -70,11 +75,14 @@ export function useCommandPaletteSearch({
       items.push({ type: 'queue', id: page.slug, label: page.label, href: page.href });
     }
     for (const order of orderResults) {
+      const statusLabel =
+        getStatusConfigBySlug(order.status)?.label ?? order.status;
       items.push({
         type: 'order',
         id: order.id,
         label: `${order.orderNumber} — ${order.customerName} (${order.customerPhone})`,
         href: `/dashboard/orders/${order.orderNumber}`,
+        statusLabel,
       });
     }
     return items;

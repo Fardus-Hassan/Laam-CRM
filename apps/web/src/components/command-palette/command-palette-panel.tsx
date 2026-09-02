@@ -45,6 +45,11 @@ export function CommandPaletteResults({
                     {item.type}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.statusLabel ? (
+                    <span className="max-w-[40%] shrink-0 truncate rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {item.statusLabel}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             ))}
