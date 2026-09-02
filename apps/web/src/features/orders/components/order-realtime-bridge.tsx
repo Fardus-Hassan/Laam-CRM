@@ -33,7 +33,7 @@ export function OrderRealtimeBridge() {
       const payload = lastPayload;
       lastPayload = null;
       notifyOrdersRealtimeChanged(payload);
-      requestOrderNavCountsRefresh(50);
+      requestOrderNavCountsRefresh(250);
     }
 
     async function connect() {
@@ -45,7 +45,7 @@ export function OrderRealtimeBridge() {
           onEvent: (payload) => {
             lastPayload = payload;
             window.clearTimeout(debounceTimer);
-            debounceTimer = window.setTimeout(flushEvent, 150);
+            debounceTimer = window.setTimeout(flushEvent, 200);
           },
         });
       } catch {

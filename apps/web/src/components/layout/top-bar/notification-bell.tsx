@@ -16,21 +16,35 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { notificationsApi } from '@/features/notifications/api/notifications-api';
 import { openNotificationUnreadStream } from '@/features/notifications/lib/notification-unread-stream';
+import { createInFlight } from '@/lib/in-flight';
 import { formatNotificationTime } from '@/lib/format-relative-time';
 import { cn } from '@/lib/utils';
 
 /** Slow backup if SSE drops; primary updates are instant via stream. */
-const UNREAD_BACKUP_POLL_MS = 180_000;
+const UNREAD_BACKUP_POLL_MS = 300_000;
+const UNREAD_MIN_AGE_MS = 45_000;
+
+const fetchUnreadOnce = createInFlight(async () => notificationsApi.unreadCount());
 
 export function NotificationBell({ className }: { className?: string }) {
   const [items, setItems] = React.useState<AppNotification[]>([]);
   const [unread, setUnread] = React.useState(0);
   const menuOpenRef = React.useRef(false);
   const lastUnreadRef = React.useRef<number | null>(null);
+  const streamAliveRef = React.useRef(false);
+  const lastRestUnreadAtRef = React.useRef(0);
 
-  const refreshUnread = React.useCallback(async () => {
+  const refreshUnread = React.useCallback(async (force = false) => {
+    if (
+      !force &&
+      lastRestUnreadAtRef.current > 0 &&
+      Date.now() - lastRestUnreadAtRef.current < UNREAD_MIN_AGE_MS
+    ) {
+      return;
+    }
     try {
-      const count = await notificationsApi.unreadCount();
+      const count = await fetchUnreadOnce();
+      lastRestUnreadAtRef.current = Date.now();
       setUnread(count);
     } catch {
       // keep previous badge on transient errors
@@ -39,15 +53,11 @@ export function NotificationBell({ className }: { className?: string }) {
 
   const refreshPreview = React.useCallback(async () => {
     try {
-      const [page, count] = await Promise.all([
-        notificationsApi.list({ limit: 8 }),
-        notificationsApi.unreadCount(),
-      ]);
+      // List only — unread badge stays on SSE / last known count (avoid duplicate unread-count).
+      const page = await notificationsApi.list({ limit: 8 });
       setItems(page.items);
-      setUnread(count);
     } catch {
       setItems([]);
-      setUnread(0);
     }
   }, []);
 
@@ -55,6 +65,7 @@ export function NotificationBell({ className }: { className?: string }) {
     const ac = new AbortController();
     let retryTimer = 0;
     let attempt = 0;
+    let seedTimer = 0;
 
     async function connect() {
       try {
@@ -62,6 +73,7 @@ export function NotificationBell({ className }: { className?: string }) {
         await openNotificationUnreadStream({
           signal: ac.signal,
           onUnread: (count) => {
+            streamAliveRef.current = true;
             const prev = lastUnreadRef.current;
             lastUnreadRef.current = count;
             setUnread(count);
@@ -74,6 +86,7 @@ export function NotificationBell({ className }: { className?: string }) {
       } catch {
         // fall through to reconnect
       }
+      streamAliveRef.current = false;
       if (ac.signal.aborted) return;
       attempt += 1;
       const delay = Math.min(30_000, 1500 * 2 ** Math.min(attempt, 4));
@@ -81,15 +94,23 @@ export function NotificationBell({ className }: { className?: string }) {
     }
 
     void connect();
+    // One REST seed if SSE is slow to first event — not on every focus.
+    seedTimer = window.setTimeout(() => {
+      if (lastUnreadRef.current == null) {
+        void refreshUnread(true);
+      }
+    }, 2_000);
 
     const backup = window.setInterval(() => {
       if (document.visibilityState === 'hidden') return;
-      void refreshUnread();
+      if (streamAliveRef.current) return;
+      void refreshUnread(false);
     }, UNREAD_BACKUP_POLL_MS);
 
     function onVisibleOrFocus() {
       if (document.visibilityState === 'hidden') return;
-      void refreshUnread();
+      if (streamAliveRef.current) return;
+      void refreshUnread(false);
     }
     window.addEventListener('focus', onVisibleOrFocus);
     document.addEventListener('visibilitychange', onVisibleOrFocus);
@@ -97,6 +118,7 @@ export function NotificationBell({ className }: { className?: string }) {
     return () => {
       ac.abort();
       window.clearTimeout(retryTimer);
+      window.clearTimeout(seedTimer);
       window.clearInterval(backup);
       window.removeEventListener('focus', onVisibleOrFocus);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);
@@ -112,11 +134,14 @@ export function NotificationBell({ className }: { className?: string }) {
     if (!item.isRead) {
       await notificationsApi.markRead(item.id);
       await refreshPreview();
+      void refreshUnread(true);
     }
   }
 
   async function handleMarkAll() {
     await notificationsApi.markAllRead();
+    setUnread(0);
+    lastUnreadRef.current = 0;
     await refreshPreview();
   }
 
@@ -125,6 +150,7 @@ export function NotificationBell({ className }: { className?: string }) {
     event.stopPropagation();
     await notificationsApi.deleteOne(id);
     await refreshPreview();
+    void refreshUnread(true);
   }
 
   return (
@@ -170,6 +196,7 @@ export function NotificationBell({ className }: { className?: string }) {
             >
               <Link
                 href={item.href ?? '/dashboard/notifications'}
+                prefetch={false}
                 onClick={() => void handleClick(item)}
                 className="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-2 py-2"
               >
@@ -195,7 +222,11 @@ export function NotificationBell({ className }: { className?: string }) {
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="cursor-pointer justify-center">
-          <Link href="/dashboard/notifications" className="text-sm font-medium text-primary">
+          <Link
+            href="/dashboard/notifications"
+            prefetch={false}
+            className="text-sm font-medium text-primary"
+          >
             View all
           </Link>
         </DropdownMenuItem>

@@ -14,13 +14,16 @@ import { PURCHASE_SEGMENTS_CHANGED } from '@/features/customers/data/purchase-se
 import {
   ORDER_NAV_COUNTS_REFRESH,
   ORDER_STATUS_COUNTS_CHANGED,
-  setLiveOrderNavCounts,
 } from '@/features/orders/data/order-status-counts-store';
 import {
   isOrderRealtimeConnected,
   ORDERS_REALTIME_CONNECTION,
 } from '@/features/orders/data/order-realtime-store';
 import { NAV_BADGES_CHANGED } from '@/features/navigation/data/nav-badges-store';
+import {
+  refreshNavBadges,
+  refreshOrderStatusCounts,
+} from '@/features/navigation/lib/nav-meta-fetch';
 import {
   SIDEBAR_NAV_LAYOUT_CHANGED,
   SIDEBAR_NAV_ORDER_CHANGED,
@@ -38,9 +41,30 @@ import {
 import { getUniversalNavRegistry } from '@/features/navigation/config/universal-nav-registry';
 import { isPlatformHost } from '@/lib/tenant';
 
-/** Fast poll when SSE is down; slow backup when order realtime is live. */
-const STATUS_COUNTS_POLL_MS = 30_000;
-const STATUS_COUNTS_BACKUP_POLL_MS = 180_000;
+/** Backup poll only — live updates come from order SSE. */
+const META_POLL_WHEN_SSE_DOWN_MS = 60_000;
+const META_POLL_WHEN_SSE_UP_MS = 300_000;
+
+function scheduleIdle(run: () => void, delayMs: number): number {
+  const w = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  };
+  if (typeof w.requestIdleCallback === 'function') {
+    return w.requestIdleCallback(() => run(), { timeout: delayMs + 500 });
+  }
+  return globalThis.setTimeout(run, delayMs) as unknown as number;
+}
+
+function cancelIdle(id: number) {
+  const w = window as Window & {
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  if (typeof w.cancelIdleCallback === 'function') {
+    w.cancelIdleCallback(id);
+    return;
+  }
+  globalThis.clearTimeout(id);
+}
 
 export function useNavigation() {
   const { user } = useAuth();
@@ -70,78 +94,72 @@ export function useNavigation() {
     };
   }, []);
 
+  // Order statuses / queues — needed for sidebar labels; defer so list APIs go first.
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
     if (!permissions.includes('orders.view') && !permissions.includes('settings.view')) return;
 
-    void import('@/features/orders/hooks/use-order-status-config').then(
-      ({ ensureOrderStatusConfigHydrated }) =>
-        ensureOrderStatusConfigHydrated(user?.organizationId),
-    );
+    const idleId = scheduleIdle(() => {
+      void import('@/features/orders/hooks/use-order-status-config').then(
+        ({ ensureOrderStatusConfigHydrated }) =>
+          ensureOrderStatusConfigHydrated(user?.organizationId),
+      );
+    }, 150);
+
+    return () => cancelIdle(idleId);
   }, [permissions, user?.organizationId]);
 
+  // Purchase segments — not needed on every page; load after first paint.
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
     if (!permissions.includes('companies.view') && !permissions.includes('settings.view')) {
       return;
     }
-    void import('@/features/customers/hooks/use-purchase-segments').then(
-      ({ ensurePurchaseSegmentsHydrated }) =>
-        ensurePurchaseSegmentsHydrated(user?.organizationId),
-    );
+    const idleId = scheduleIdle(() => {
+      void import('@/features/customers/hooks/use-purchase-segments').then(
+        ({ ensurePurchaseSegmentsHydrated }) =>
+          ensurePurchaseSegmentsHydrated(user?.organizationId),
+      );
+    }, 800);
+
+    return () => cancelIdle(idleId);
   }, [permissions, user?.organizationId]);
 
+  // Sidebar status counts — live via SSE; poll is backup only.
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
     if (!permissions.includes('orders.view')) return;
 
-    let cancelled = false;
     let intervalId = 0;
-
-    async function loadCounts() {
-      try {
-        const { apiRequest } = await import('@/lib/api/client');
-        const { crmEndpoints } = await import('@/lib/api/endpoints');
-        const counts = await apiRequest<{
-          byStatus: Record<string, number>;
-          followupsDue: number;
-          failed: number;
-        }>(`${crmEndpoints.orders}/meta/status-counts`);
-        if (!cancelled) {
-          setLiveOrderNavCounts({
-            byStatus: counts.byStatus ?? {},
-            followupsDue: counts.followupsDue ?? 0,
-            failed: counts.failed ?? 0,
-          });
-        }
-      } catch {
-        // keep previous badges on transient errors
-      }
-    }
 
     function pollMs() {
       return isOrderRealtimeConnected()
-        ? STATUS_COUNTS_BACKUP_POLL_MS
-        : STATUS_COUNTS_POLL_MS;
+        ? META_POLL_WHEN_SSE_UP_MS
+        : META_POLL_WHEN_SSE_DOWN_MS;
     }
 
     function restartInterval() {
       window.clearInterval(intervalId);
       intervalId = window.setInterval(() => {
         if (document.visibilityState === 'hidden') return;
-        void loadCounts();
+        void refreshOrderStatusCounts({ force: false });
       }, pollMs());
     }
 
-    void loadCounts();
+    void refreshOrderStatusCounts({ force: true });
     restartInterval();
 
     function onRefreshRequest() {
-      void loadCounts();
+      void refreshOrderStatusCounts({ force: true });
     }
     function onVisibleOrFocus() {
       if (document.visibilityState === 'hidden') return;
-      void loadCounts();
+      // SSE already pushes counts; skip redundant focus spam while live.
+      if (isOrderRealtimeConnected()) {
+        void refreshOrderStatusCounts({ force: false });
+        return;
+      }
+      void refreshOrderStatusCounts({ force: true });
     }
     function onRealtimeConnection() {
       restartInterval();
@@ -152,7 +170,6 @@ export function useNavigation() {
     window.addEventListener(ORDERS_REALTIME_CONNECTION, onRealtimeConnection);
 
     return () => {
-      cancelled = true;
       window.clearInterval(intervalId);
       window.removeEventListener(ORDER_NAV_COUNTS_REFRESH, onRefreshRequest);
       window.removeEventListener('focus', onVisibleOrFocus);
@@ -161,6 +178,7 @@ export function useNavigation() {
     };
   }, [permissions, user?.organizationId]);
 
+  // Non-order badges (tasks, courier, …) — stagger after status-counts so orders list isn't starved.
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_API !== 'true') return;
     if (
@@ -171,42 +189,36 @@ export function useNavigation() {
       return;
     }
 
-    let cancelled = false;
     let intervalId = 0;
-
-    async function loadNavBadges() {
-      try {
-        const { navBadgesApi } = await import('@/features/navigation/api/nav-badges-api');
-        const { setLiveNavBadges } = await import(
-          '@/features/navigation/data/nav-badges-store'
-        );
-        const badges = await navBadgesApi.getBadges();
-        if (!cancelled) setLiveNavBadges(badges);
-      } catch {
-        // keep previous badges
-      }
-    }
+    let cancelled = false;
 
     function pollMs() {
       return isOrderRealtimeConnected()
-        ? STATUS_COUNTS_BACKUP_POLL_MS
-        : STATUS_COUNTS_POLL_MS;
+        ? META_POLL_WHEN_SSE_UP_MS
+        : META_POLL_WHEN_SSE_DOWN_MS;
     }
 
     function restartInterval() {
       window.clearInterval(intervalId);
       intervalId = window.setInterval(() => {
         if (document.visibilityState === 'hidden') return;
-        void loadNavBadges();
+        void refreshNavBadges({ force: false });
       }, pollMs());
     }
 
-    void loadNavBadges();
-    restartInterval();
+    const idleId = scheduleIdle(() => {
+      if (cancelled) return;
+      void refreshNavBadges({ force: true });
+      restartInterval();
+    }, 400);
 
     function onVisibleOrFocus() {
       if (document.visibilityState === 'hidden') return;
-      void loadNavBadges();
+      if (isOrderRealtimeConnected()) {
+        void refreshNavBadges({ force: false });
+        return;
+      }
+      void refreshNavBadges({ force: true });
     }
     function onRealtimeConnection() {
       restartInterval();
@@ -217,6 +229,7 @@ export function useNavigation() {
 
     return () => {
       cancelled = true;
+      cancelIdle(idleId);
       window.clearInterval(intervalId);
       window.removeEventListener('focus', onVisibleOrFocus);
       document.removeEventListener('visibilitychange', onVisibleOrFocus);

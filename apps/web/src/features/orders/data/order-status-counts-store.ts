@@ -27,7 +27,7 @@ export function setLiveOrderNavCounts(counts: OrderNavStatusCounts): void {
  * Debounced refresh of sidebar order badges after mutations
  * (status change, create, delete, bulk actions, failed-order queue).
  */
-export function requestOrderNavCountsRefresh(delayMs = 200): void {
+export function requestOrderNavCountsRefresh(delayMs = 350): void {
   if (typeof window === 'undefined') return;
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
