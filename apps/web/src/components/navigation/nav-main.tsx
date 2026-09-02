@@ -85,7 +85,7 @@ function NavSubLeaf({
   return (
     <SidebarMenuSubItem>
       <SidebarMenuSubButton asChild isActive={active} data-depth={depth}>
-        <Link href={item.url}>
+        <Link href={item.url} prefetch={false}>
           <NavSubDot active={active} />
           <span className="min-w-0 flex-1 truncate">{item.title}</span>
           {item.badge != null && item.badge > 0 ? <NavCountBadge count={item.badge} /> : null}
@@ -129,7 +129,7 @@ function NavSubBranch({
       <Collapsible open={open} onOpenChange={setOpen} className="group/subcollapsible">
         <div className="flex items-center gap-0.5">
           <SidebarMenuSubButton asChild isActive={selfActive} data-depth={depth} className="min-w-0 flex-1">
-            <Link href={item.url}>
+            <Link href={item.url} prefetch={false}>
               <NavSubDot active={selfActive || branchActive} />
               <span className="min-w-0 flex-1 truncate">{item.title}</span>
               {item.badge != null && item.badge > 0 ? <NavCountBadge count={item.badge} /> : null}
@@ -211,7 +211,7 @@ function NavLeafItem({
         tooltip={item.title}
         className="h-9 rounded-lg px-3 text-sidebar-foreground transition-colors duration-150"
       >
-        <Link href={item.url}>
+        <Link href={item.url} prefetch={false}>
           <item.icon className="size-[18px]" />
           <span className="flex-1 truncate">{item.title}</span>
           {item.badge != null && item.badge > 0 ? <NavCountBadge count={item.badge} /> : null}
